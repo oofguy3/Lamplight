@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "Lamplight",
+  "short_name": "Lamplight",
+  "description": "A quiet offline reader for PDF, DOCX, TXT, Markdown and HTML — with themes, page mode and custom colors.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14161B",
+  "theme_color": "#14161B",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
