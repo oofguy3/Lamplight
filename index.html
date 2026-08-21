@@ -116,12 +116,20 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   button{font-family:var(--ui-font);}
   button:focus-visible, input:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
 
+  /* ---------- reading progress (always at the very top of the screen) ---------- */
+  #progress{
+    position:fixed; top:0; left:0; z-index:40;
+    height:3px; width:0%; background:var(--accent); transition:width .1s linear;
+  }
+
   /* ---------- top bar ---------- */
   header{
     position:sticky; top:0; z-index:20;
     background:var(--panel); border-bottom:1px solid var(--line);
-    transition:background .35s ease, border-color .35s ease;
+    transition:transform .28s ease, background .35s ease, border-color .35s ease;
   }
+  body.hidebar:not(.paged) header{transform:translateY(-105%);}
+  body.paged.immersive header{display:none;}
   .bar{
     display:flex; align-items:center; gap:8px;
     padding:10px 14px; max-width:1100px; margin:0 auto;
@@ -153,19 +161,18 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     box-shadow:0 0 10px 3px color-mix(in srgb, var(--accent) 55%, transparent);
     transition:background .35s, box-shadow .35s;
   }
-  /* reading progress */
-  #progress{height:2px; width:0%; background:var(--accent); transition:width .1s linear;}
 
   /* ---------- settings sheet ---------- */
   #sheet{
     display:none; border-bottom:1px solid var(--line); background:var(--panel);
     transition:background .35s ease, border-color .35s ease;
-    max-height:70vh; overflow-y:auto;
+    max-height:72vh; overflow-y:auto;
   }
   #sheet.open{display:block; animation:drop .22s ease;}
   @keyframes drop{from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:none;}}
   .sheet-inner{max-width:1100px; margin:0 auto; padding:14px 16px 18px; display:grid; gap:16px;}
   .group{display:grid; gap:8px;}
+  .group.dim{opacity:.45; pointer-events:none;}
   .label{
     font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
     color:var(--muted);
@@ -181,13 +188,30 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     margin-right:7px; vertical-align:0;
   }
   .chip.on i{outline:1.5px solid var(--panel); outline-offset:1px;}
-  #customRow{display:none; gap:14px; flex-wrap:wrap; align-items:center;}
-  #customRow.show{display:flex;}
+
+  /* custom theme builder */
+  #customRow{display:none;}
+  #customRow.show{display:grid; gap:10px;}
+  .cst-label{
+    font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); margin-top:2px;
+  }
+  .sw-grid{display:flex; flex-wrap:wrap; gap:9px;}
+  .sw{
+    width:32px; height:32px; border-radius:10px;
+    border:1px solid var(--line); cursor:pointer; padding:0;
+  }
+  .sw.on{outline:2.5px solid var(--accent); outline-offset:2px;}
   .swatch{display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted);}
   .swatch input[type=color]{
-    width:34px; height:34px; border:1px solid var(--line); border-radius:9px;
+    width:36px; height:36px; border:1px solid var(--line); border-radius:9px;
     padding:2px; background:transparent; cursor:pointer;
   }
+  #cPrev{
+    border-radius:12px; padding:12px 14px; border:1px solid var(--line);
+    font-family:var(--reader-font); font-size:15px; line-height:1.6;
+  }
+
   .rowline{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
   .rowline label{font-size:13px; color:var(--muted); min-width:64px;}
   input[type=range]{flex:1; min-width:140px; accent-color:var(--accent);}
@@ -195,6 +219,11 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   .check{display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ink); cursor:pointer;}
   .check input{width:17px; height:17px; accent-color:var(--accent);}
   .hint{font-size:12px; color:var(--muted);}
+  #typePreview{
+    border:1.5px dashed var(--line); border-radius:10px; padding:10px 14px;
+    font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
+    max-height:110px; overflow:hidden;
+  }
 
   /* ---------- content ---------- */
   main{padding:26px 18px 90px;}
@@ -276,6 +305,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 </head>
 <body>
 
+<div id="progress"></div>
+
 <header>
   <div class="bar">
     <div class="wordmark">lamp<span>light</span></div>
@@ -286,7 +317,6 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     <button class="ctl" id="gear" title="Reading settings">Aa</button>
     <button class="ctl primary" id="openBtn">Open</button>
   </div>
-  <div id="progress"></div>
 </header>
 
 <div id="sheet">
@@ -297,24 +327,32 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
         <button class="chip" data-flow="scroll">Scroll</button>
         <button class="chip" data-flow="pages">Pages</button>
       </div>
-      <div class="hint">Pages: tap the left or right edge of the text — or swipe — to turn.</div>
+      <div class="hint">Scroll: the top bar hides while you read and comes back when you scroll up. Pages: tap the edges or swipe to turn — tap the middle to hide or show the bars.</div>
     </div>
 
     <div class="group">
       <div class="label">Theme</div>
       <div class="chips" id="themeChips"></div>
       <div id="customRow">
-        <span class="swatch"><input type="color" id="cBg" value="#101418">Background</span>
-        <span class="swatch"><input type="color" id="cInk" value="#e7e2d6">Text</span>
-        <span class="swatch"><input type="color" id="cAcc" value="#e0a458">Accent</span>
+        <div class="cst-label">Background</div>
+        <div class="sw-grid" id="bgSwatches"></div>
+        <div class="rowline"><label for="cHue">Tint</label><input type="range" id="cHue" min="0" max="360" step="1" value="215"><span class="val" id="vHue">215°</span></div>
+        <div class="rowline"><label for="cLit">Bright</label><input type="range" id="cLit" min="3" max="97" step="1" value="10"><span class="val" id="vLit">10 %</span></div>
+        <div class="cst-label">Text color</div>
+        <label class="check"><input type="checkbox" id="autoInk" checked>Automatic — always readable</label>
+        <div class="rowline" id="inkRow" style="display:none;"><span class="swatch"><input type="color" id="cInk" value="#e7e2d6">Pick text color</span></div>
+        <div class="cst-label">Accent</div>
+        <div class="sw-grid" id="accSwatches"></div>
+        <div class="rowline"><span class="swatch"><input type="color" id="cAcc" value="#e0a458">Or pick any accent</span></div>
+        <div id="cPrev">The lamp hums quietly. <em>She turns the page anyway</em> — one more chapter, she tells herself, <span id="cPrevAcc">just one more</span>.</div>
       </div>
     </div>
 
-    <div class="group">
+    <div class="group" id="textGroup">
       <div class="label">Text</div>
       <div class="rowline"><label for="rSize">Size</label><input type="range" id="rSize" min="14" max="28" step="1" value="19"><span class="val" id="vSize">19 px</span></div>
       <div class="rowline"><label for="rLh">Spacing</label><input type="range" id="rLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="vLh">1.75</span></div>
-      <div class="rowline"><label for="rW">Width</label><input type="range" id="rW" min="480" max="960" step="20" value="720"><span class="val" id="vW">720 px</span></div>
+      <div class="rowline"><label for="rW">Width</label><input type="range" id="rW" min="320" max="960" step="20" value="720"><span class="val" id="vW">720 px</span></div>
       <div class="rowline"><label>Font</label>
         <div class="chips" id="fontChips">
           <button class="chip" data-font="serif">Serif</button>
@@ -322,7 +360,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
           <button class="chip" data-font="mono">Mono</button>
         </div>
       </div>
-      <div class="hint">Applies to text documents (DOCX, TXT, Markdown, HTML).</div>
+      <div id="typePreview">The lamp hums quietly as she turns the page — this is exactly how your book will look.</div>
+      <div class="hint" id="textHint">Applies to text documents (DOCX, TXT, Markdown, HTML).</div>
     </div>
 
     <div class="group">
@@ -377,10 +416,13 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     sans:  "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
     mono:  "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace"
   };
+  var BG_SWATCHES = ["#F6F1E4","#EFEFE8","#EDE7F3","#E4EFE7","#FBEDE0","#E8EFF5",
+                     "#14161B","#101711","#171021","#1A1310","#0D1420","#050506"];
+  var ACC_SWATCHES = ["#D8A24A","#C96A4A","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7FB069","#C9A227"];
 
   var state = {
     theme:"day",
-    custom:{bg:"#101418", ink:"#e7e2d6", accent:"#e0a458"},
+    custom:{bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true},
     font:"serif", size:19, lh:1.75, width:720,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
@@ -404,14 +446,42 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var c = hexToRgb(hex);
     return (0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2]) / 255 < 0.45;
   }
+  function hexToHsl(hex){
+    var c = hexToRgb(hex), r=c[0]/255, g=c[1]/255, b=c[2]/255;
+    var mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+    var h=0, s=0, l=(mx+mn)/2, d=mx-mn;
+    if (d){
+      s = l > 0.5 ? d/(2-mx-mn) : d/(mx+mn);
+      if (mx===r) h = (g-b)/d + (g<b?6:0);
+      else if (mx===g) h = (b-r)/d + 2;
+      else h = (r-g)/d + 4;
+      h *= 60;
+    }
+    return [Math.round(h), Math.round(s*100), Math.round(l*100)];
+  }
+  function hslToHex(h,s,l){
+    s/=100; l/=100;
+    var k = function(n){ return (n + h/30) % 12; };
+    var a = s * Math.min(l, 1-l);
+    var f = function(n){
+      var v = l - a * Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n), 1)));
+      return Math.round(v*255).toString(16).padStart(2,"0");
+    };
+    return "#" + f(0) + f(8) + f(4);
+  }
+  function deriveInk(bg){
+    var hs = hexToHsl(bg);
+    return isDarkColor(bg) ? hslToHex(hs[0], 12, 86) : hslToHex(hs[0], 22, 13);
+  }
   function currentTheme(){
     if (state.theme === "custom"){
       var c = state.custom;
+      var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
       return {
-        bg:c.bg, ink:c.ink, accent:c.accent,
-        panel: mix(c.bg, c.ink, 0.05),
-        line:  mix(c.bg, c.ink, 0.15),
-        muted: mix(c.ink, c.bg, 0.42)
+        bg:c.bg, ink:ink, accent:c.accent,
+        panel: mix(c.bg, ink, 0.05),
+        line:  mix(c.bg, ink, 0.15),
+        muted: mix(ink, c.bg, 0.42)
       };
     }
     return THEMES[state.theme];
@@ -419,13 +489,36 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 
   /* ---------- theme + type ---------- */
   function buildThemeChips(){
-    var box = $("#themeChips");
     var html = "";
     CYCLE.forEach(function(k){
       html += '<button class="chip" data-theme="' + k + '"><i style="background:' + THEMES[k].accent + '"></i>' + THEMES[k].name + "</button>";
     });
     html += '<button class="chip" data-theme="custom"><i id="customDot" style="background:' + state.custom.accent + '"></i>Custom</button>';
-    box.innerHTML = html;
+    $("#themeChips").innerHTML = html;
+  }
+  function buildCustomUI(){
+    $("#bgSwatches").innerHTML = BG_SWATCHES.map(function(c){
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+    }).join("");
+    $("#accSwatches").innerHTML = ACC_SWATCHES.map(function(c){
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+    }).join("");
+  }
+  function syncCustomUI(){
+    var c = state.custom;
+    var hs = hexToHsl(c.bg);
+    $("#cHue").value = hs[0]; $("#vHue").textContent = hs[0] + "°";
+    $("#cLit").value = hs[2]; $("#vLit").textContent = hs[2] + " %";
+    $("#autoInk").checked = c.autoInk;
+    $("#inkRow").style.display = c.autoInk ? "none" : "flex";
+    $("#cInk").value = c.autoInk ? deriveInk(c.bg) : c.ink;
+    $("#cAcc").value = c.accent;
+    document.querySelectorAll("#bgSwatches .sw").forEach(function(s){
+      s.classList.toggle("on", s.dataset.c.toLowerCase() === c.bg.toLowerCase());
+    });
+    document.querySelectorAll("#accSwatches .sw").forEach(function(s){
+      s.classList.toggle("on", s.dataset.c.toLowerCase() === c.accent.toLowerCase());
+    });
   }
   function applyTheme(){
     var t = currentTheme();
@@ -441,11 +534,18 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var dot = $("#customDot");
     if (dot) dot.style.background = state.custom.accent;
     $("#customRow").classList.toggle("show", state.theme === "custom");
+    /* live preview of the custom combo */
+    var ct = state.theme === "custom" ? t : currentTheme();
+    var pv = $("#cPrev");
+    pv.style.background = state.theme === "custom" ? t.bg : "transparent";
+    pv.style.color = t.ink;
+    pv.style.borderColor = t.line;
+    $("#cPrevAcc").style.color = t.accent;
   }
   function applyType(){
     var r = document.documentElement.style;
     r.setProperty("--fs", state.size + "px");
-    r.setProperty("--lh", state.lh);
+    r.setProperty("--lh", String(state.lh));
     r.setProperty("--w", state.width + "px");
     r.setProperty("--reader-font", FONTS[state.font]);
     document.querySelectorAll("#fontChips .chip").forEach(function(ch){
@@ -471,15 +571,20 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       document.body.classList.remove("paged");
       $("#pager").style.display = "none";
     }
+    $("#textGroup").classList.toggle("dim", mode === "pdf");
+    $("#textHint").textContent = mode === "pdf"
+      ? "A PDF is open — these apply to text documents. Use Zoom below for PDFs."
+      : "Applies to text documents (DOCX, TXT, Markdown, HTML).";
   }
   function status(msg){ $("#status").textContent = msg; show("status"); }
 
-  /* ---------- paged reading (text) ---------- */
+  /* ---------- paged reading ---------- */
   function pagedActive(){
     return state.flow === "pages" && (state.mode === "doc" || state.mode === "pdf");
   }
   function availHeight(){
-    var headH  = document.querySelector("header").offsetHeight;
+    var head = document.querySelector("header");
+    var headH = document.body.classList.contains("immersive") ? 0 : head.offsetHeight;
     var pagerH = $("#pager").offsetHeight || 56;
     return Math.max(160, window.innerHeight - headH - pagerH - 26);
   }
@@ -504,11 +609,19 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     $("#doc").style.transform = "translateX(" + (-n * (state.colw + state.gap)) + "px)";
     updatePager(); updateProgress();
   }
+  function relayoutPaged(){
+    if (state.mode === "doc" && state.flow === "pages"){
+      layoutDocPages(); gotoPage(state.page);
+    } else if (state.mode === "pdf" && state.flow === "pages" && state.pdfDoc){
+      renderPdfSingle();
+    }
+  }
 
   /* ---------- reflow: apply the current reading mode ---------- */
   function reflow(){
     var paged = pagedActive();
     document.body.classList.toggle("paged", paged);
+    if (!paged) document.body.classList.remove("immersive");
     $("#pager").style.display = paged ? "flex" : "none";
     if (state.mode === "doc"){
       if (state.flow === "pages"){ layoutDocPages(); gotoPage(state.page); }
@@ -536,6 +649,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     });
     if (state.mode === "pdf" && state.pdfDoc && f === "pages")
       state.pdfPageNum = Math.round(frac * (state.pdfDoc.numPages - 1)) + 1;
+    document.body.classList.remove("hidebar");
     reflow();
     if (state.mode === "doc" && f === "pages")
       gotoPage(Math.round(frac * (state.totalPages - 1)));
@@ -569,12 +683,21 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   }
 
   /* ---------- file opening ---------- */
+  function cleanHtml(html){
+    return DOMPurify.sanitize(html, {
+      USE_PROFILES: {html: true},
+      FORBID_TAGS: ["style", "font"],
+      FORBID_ATTR: ["style", "color", "face", "size", "bgcolor", "align"]
+    });
+  }
   function openFile(file){
     if (!file) return;
     var ext = (file.name.split(".").pop() || "").toLowerCase();
     $("#fname").textContent = file.name;
     document.title = file.name + " — lamplight";
     window.scrollTo(0,0);
+    document.body.classList.remove("hidebar");
+    document.body.classList.remove("immersive");
     state.pdfDoc = null;
     state.page = 0; state.pdfPageNum = 1;
     renderGen++;
@@ -632,7 +755,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     } catch(err){ fail(err); }
   }
   function setDocHtml(html){
-    $("#doc").innerHTML = DOMPurify.sanitize(html, {USE_PROFILES:{html:true}});
+    $("#doc").innerHTML = cleanHtml(html);
     show("doc");
     reflow();
   }
@@ -736,21 +859,62 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     state.theme = CYCLE[(idx + 1) % CYCLE.length];
     applyTheme();
   });
-  $("#gear").addEventListener("click", function(){ $("#sheet").classList.toggle("open"); });
+  $("#gear").addEventListener("click", function(){
+    document.body.classList.remove("hidebar");
+    $("#sheet").classList.toggle("open");
+  });
 
   $("#themeChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
     if (!ch) return;
     state.theme = ch.dataset.theme;
+    if (state.theme === "custom") syncCustomUI();
     applyTheme();
   });
-  ["cBg","cInk","cAcc"].forEach(function(id, i){
-    $("#" + id).addEventListener("input", function(e){
-      var key = ["bg","ink","accent"][i];
-      state.custom[key] = e.target.value;
-      state.theme = "custom";
-      applyTheme();
-    });
+
+  /* custom theme controls */
+  $("#bgSwatches").addEventListener("click", function(e){
+    var s = e.target.closest(".sw");
+    if (!s) return;
+    state.custom.bg = s.dataset.c;
+    state.theme = "custom";
+    syncCustomUI(); applyTheme();
+  });
+  function bgFromSliders(){
+    var h = +$("#cHue").value, l = +$("#cLit").value;
+    var s = l > 55 ? 14 : 22;
+    state.custom.bg = hslToHex(h, s, l);
+    state.theme = "custom";
+    $("#vHue").textContent = h + "°";
+    $("#vLit").textContent = l + " %";
+    document.querySelectorAll("#bgSwatches .sw").forEach(function(x){ x.classList.remove("on"); });
+    applyTheme();
+  }
+  $("#cHue").addEventListener("input", bgFromSliders);
+  $("#cLit").addEventListener("input", bgFromSliders);
+  $("#autoInk").addEventListener("change", function(e){
+    state.custom.autoInk = e.target.checked;
+    if (!e.target.checked) state.custom.ink = $("#cInk").value;
+    state.theme = "custom";
+    syncCustomUI(); applyTheme();
+  });
+  $("#cInk").addEventListener("input", function(e){
+    state.custom.ink = e.target.value;
+    state.custom.autoInk = false;
+    state.theme = "custom";
+    applyTheme();
+  });
+  $("#accSwatches").addEventListener("click", function(e){
+    var s = e.target.closest(".sw");
+    if (!s) return;
+    state.custom.accent = s.dataset.c;
+    state.theme = "custom";
+    syncCustomUI(); applyTheme();
+  });
+  $("#cAcc").addEventListener("input", function(e){
+    state.custom.accent = e.target.value;
+    state.theme = "custom";
+    syncCustomUI(); applyTheme();
   });
 
   $("#flowChips").addEventListener("click", function(e){
@@ -793,7 +957,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   $("#smaller").addEventListener("click", function(){ bump(-1); });
   $("#bigger").addEventListener("click",  function(){ bump(1); });
 
-  /* page turning: buttons, edge taps, swipes, keys */
+  /* page turning: buttons, edge taps, swipes, keys — middle tap toggles the bars */
   $("#prevPg").addEventListener("click", function(){ turn(-1); });
   $("#nextPg").addEventListener("click", function(){ turn(1); });
 
@@ -806,6 +970,11 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var x = (e.clientX - r.left) / r.width;
     if (x < 0.35) turn(-1);
     else if (x > 0.65) turn(1);
+    else {
+      document.body.classList.toggle("immersive");
+      $("#sheet").classList.remove("open");
+      relayoutPaged();
+    }
   }
   $("#docView").addEventListener("click", tapNav);
   $("#pdf").addEventListener("click", tapNav);
@@ -839,15 +1008,38 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     }, 350);
   });
 
+  /* scroll: progress bar + auto-hiding top bar.
+     Down past a bit -> bar hides. Up a decent amount (or near the top) -> bar returns. */
+  var lastY = 0, upAcc = 0;
   window.addEventListener("scroll", function(){
     if (document.body.classList.contains("paged")) return;
     var h = document.documentElement;
     var max = h.scrollHeight - h.clientHeight;
     $("#progress").style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+
+    if (state.mode !== "doc" && state.mode !== "pdf") return;
+    var y = h.scrollTop;
+    var dy = y - lastY;
+    lastY = y;
+    if ($("#sheet").classList.contains("open") || y < 90){
+      document.body.classList.remove("hidebar");
+      upAcc = 0;
+    } else if (dy > 4){
+      upAcc = 0;
+      if (y > 170) document.body.classList.add("hidebar");
+    } else if (dy < 0){
+      upAcc += -dy;
+      if (upAcc > 150){
+        document.body.classList.remove("hidebar");
+        upAcc = 0;
+      }
+    }
   }, {passive:true});
 
   /* ---------- boot ---------- */
   buildThemeChips();
+  buildCustomUI();
+  syncCustomUI();
   document.querySelectorAll("#flowChips .chip").forEach(function(ch){
     ch.classList.toggle("on", ch.dataset.flow === state.flow);
   });
