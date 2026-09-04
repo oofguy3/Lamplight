@@ -1036,6 +1036,501 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     }
   }, {passive:true});
 
+
+  /* ============================================================
+     Lamplight — offline dictionary + sentence explainer
+     ============================================================ */
+  (function(){
+    var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
+    var LS_KEY  = "ll_apikey";
+    var dictMode = localStorage.getItem(LS_MODE) || "tap";
+
+    /* ---------- styles ---------- */
+    var css = document.createElement("style");
+    css.textContent = [
+      "#doc.nosel, #doc.nosel *{",
+      "  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;",
+      "}",
+      ".ll-hit{background:var(--accent); color:var(--bg); border-radius:3px;}",
+      "#dictScrim{",
+      "  position:fixed; inset:0; z-index:59; background:transparent; display:none;",
+      "}",
+      "#dictScrim.on{display:block;}",
+      "#dictCard{",
+      "  position:fixed; left:0; right:0; bottom:0; z-index:60;",
+      "  background:var(--panel); color:var(--ink);",
+      "  border-top:1px solid var(--line);",
+      "  border-radius:16px 16px 0 0;",
+      "  box-shadow:0 -10px 40px rgba(0,0,0,.28);",
+      "  transform:translateY(110%); transition:transform .24s ease;",
+      "  max-height:62vh; overflow-y:auto; overscroll-behavior:contain;",
+      "  padding:0 0 max(16px, env(safe-area-inset-bottom));",
+      "  font-family:var(--ui-font);",
+      "}",
+      "#dictCard.open{transform:none;}",
+      "#dictCard .grab{",
+      "  width:40px; height:4px; border-radius:999px; background:var(--line);",
+      "  margin:9px auto 4px;",
+      "}",
+      "#dictCard .inner{max-width:1100px; margin:0 auto; padding:6px 18px 4px;}",
+      "#dictCard .head{display:flex; align-items:flex-start; gap:12px;}",
+      "#dictCard .mark{",
+      "  flex:none; width:38px; height:38px; border-radius:50%;",
+      "  display:flex; align-items:center; justify-content:center;",
+      "  background:color-mix(in srgb, var(--accent) 22%, transparent);",
+      "  color:var(--accent); font-size:19px; margin-top:2px;",
+      "}",
+      "#dictCard .hw{flex:1; min-width:0;}",
+      "#dictCard .term{",
+      "  font-family:var(--reader-font); font-size:20px; line-height:1.25;",
+      "  word-break:break-word;",
+      "}",
+      "#dictCard .ipa{color:var(--muted); font-size:15px; font-weight:400;}",
+      "#dictCard .x{",
+      "  flex:none; border:0; background:transparent; color:var(--muted);",
+      "  font-size:22px; line-height:1; padding:4px 2px 4px 8px; cursor:pointer;",
+      "}",
+      "#dictCard .senses{margin:10px 0 2px; display:grid; gap:9px;}",
+      "#dictCard .sense{font-size:15px; line-height:1.5;}",
+      "#dictCard .pos{",
+      "  color:var(--accent); font-style:italic; margin-right:7px;",
+      "}",
+      "#dictCard .syn{",
+      "  display:block; margin-top:3px; font-size:12.5px; color:var(--muted);",
+      "}",
+      "#dictCard .quote{",
+      "  font-family:var(--reader-font); font-size:15.5px; line-height:1.55;",
+      "  padding:10px 12px; margin:4px 0 12px;",
+      "  border-left:3px solid var(--accent);",
+      "  background:color-mix(in srgb, var(--accent) 8%, transparent);",
+      "  border-radius:0 8px 8px 0;",
+      "}",
+      "#dictCard .note{color:var(--muted); font-size:12.5px; padding:2px 0 6px;}",
+      "#dictCard .brk{display:grid; gap:7px; margin-top:2px;}",
+      "#dictCard .brk div{font-size:14px; line-height:1.45;}",
+      "#dictCard .brk b{font-weight:600;}",
+      "#dictCard .acts{display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 2px;}",
+      "#dictCard .act{",
+      "  padding:7px 13px; border-radius:999px; border:1px solid var(--line);",
+      "  background:transparent; color:var(--ink); font-size:13px; cursor:pointer;",
+      "}",
+      "#dictCard .act.go{background:var(--accent); border-color:var(--accent); color:var(--panel);}",
+      "@media (min-width:820px){",
+      "  #dictCard{left:auto; right:22px; bottom:22px; width:420px;",
+      "    border-radius:16px; border:1px solid var(--line); max-height:70vh;}",
+      "}"
+    ].join("\n");
+    document.head.appendChild(css);
+
+    /* ---------- card markup ---------- */
+    var scrim = document.createElement("div"); scrim.id = "dictScrim";
+    var card  = document.createElement("div"); card.id  = "dictCard";
+    card.innerHTML = '<div class="grab"></div><div class="inner"></div>';
+    document.body.appendChild(scrim);
+    document.body.appendChild(card);
+    var inner = card.querySelector(".inner");
+
+    function openCard(){ scrim.classList.add("on"); card.classList.add("open"); }
+    function closeCard(){
+      scrim.classList.remove("on"); card.classList.remove("open");
+      clearHit();
+    }
+    scrim.addEventListener("click", closeCard);
+    card.querySelector(".grab").addEventListener("click", closeCard);
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape") closeCard();
+    });
+
+    /* ---------- highlight the tapped word ---------- */
+    var hitEl = null;
+    function clearHit(){
+      if (!hitEl) return;
+      var p = hitEl.parentNode;
+      if (p){ p.replaceChild(document.createTextNode(hitEl.textContent), hitEl); p.normalize(); }
+      hitEl = null;
+    }
+    function markHit(node, s, e){
+      clearHit();
+      try {
+        var r = document.createRange();
+        r.setStart(node, s); r.setEnd(node, e);
+        var sp = document.createElement("span");
+        sp.className = "ll-hit";
+        r.surroundContents(sp);
+        hitEl = sp;
+      } catch(_){}
+    }
+
+    /* ---------- dictionary data ---------- */
+    var DB = null, dbPromise = null;
+    function loadDict(){
+      if (DB) return Promise.resolve(DB);
+      if (dbPromise) return dbPromise;
+      dbPromise = fetch("./dict.json")
+        .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+        .then(function(d){ DB = d; return d; })
+        .catch(function(){ DB = {}; return DB; });
+      return dbPromise;
+    }
+    /* warm it up quietly after boot so the first tap feels instant */
+    if (window.requestIdleCallback) requestIdleCallback(function(){ loadDict(); }, { timeout: 3000 });
+    else setTimeout(loadDict, 1200);
+
+    /* inflection guesses, so "lentils" / "knocked" / "whistling" resolve */
+    function variants(w){
+      var o = [w];
+      function add(x){ if (x && x.length > 1 && o.indexOf(x) < 0) o.push(x); }
+      if (w.length > 3){
+        if (/ies$/.test(w)) add(w.slice(0,-3) + "y");
+        if (/(ses|xes|zes|ches|shes)$/.test(w)) add(w.slice(0,-2));
+        if (/s$/.test(w) && !/ss$/.test(w)) add(w.slice(0,-1));
+        if (/ied$/.test(w)) add(w.slice(0,-3) + "y");
+        if (/ed$/.test(w)){ add(w.slice(0,-1)); add(w.slice(0,-2)); }
+        if (/ing$/.test(w)){ add(w.slice(0,-3)); add(w.slice(0,-3) + "e"); }
+        if (/(.)\1(ed|ing|er|est)$/.test(w)) add(w.replace(/(.)\1(ed|ing|er|est)$/, "$1"));
+        if (/est$/.test(w)){ add(w.slice(0,-3)); add(w.slice(0,-2)); }
+        if (/er$/.test(w)){ add(w.slice(0,-2)); add(w.slice(0,-1)); }
+        if (/ly$/.test(w)) add(w.slice(0,-2));
+        if (/'s$|’s$/.test(w)) add(w.slice(0,-2));
+      }
+      return o;
+    }
+
+    function lookupLocal(word){
+      var w = word.toLowerCase().replace(/[’]/g, "'");
+      return loadDict().then(function(d){
+        var tries = variants(w);
+        for (var i = 0; i < tries.length; i++){
+          if (d[tries[i]]) return { word: tries[i], entry: d[tries[i]] };
+        }
+        return null;
+      });
+    }
+
+    /* online fallback — free, no key needed */
+    function lookupOnline(word){
+      return fetch("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word))
+        .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+        .then(function(j){
+          var e = j && j[0]; if (!e) return null;
+          var ipa = "";
+          (e.phonetics || []).some(function(p){ if(p.text){ ipa = p.text; return true; } });
+          var m = [];
+          (e.meanings || []).forEach(function(mm){
+            (mm.definitions || []).slice(0,3).forEach(function(dd){
+              m.push({ p: mm.partOfSpeech, d: dd.definition });
+            });
+          });
+          if (!m.length) return null;
+          return { word: e.word, entry: { i: ipa || e.phonetic || "", m: m.slice(0,6) }, online: true };
+        })
+        .catch(function(){ return null; });
+    }
+
+    function esc(s){
+      return String(s).replace(/[&<>"]/g, function(c){
+        return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c];
+      });
+    }
+
+    function renderWord(term, res){
+      var h = '<div class="head">' +
+              '<div class="mark">\u{1F56E}</div><div class="hw">';
+      if (res){
+        h += '<div class="term">' + esc(res.word);
+        if (res.entry.i) h += ' <span class="ipa">' + esc(res.entry.i) + '</span>';
+        h += '</div></div>' +
+             '<button class="x" aria-label="Close">\u00D7</button></div>';
+        h += '<div class="senses">';
+        res.entry.m.slice(0,6).forEach(function(m){
+          h += '<div class="sense">';
+          if (m.p) h += '<span class="pos">' + esc(m.p) + '</span> ';
+          h += esc(m.d);
+          if (m.s && m.s.length) h += '<span class="syn">also: ' + esc(m.s.join(", ")) + '</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+        if (res.online) h += '<div class="note">Looked up online \u2014 not in the offline dictionary.</div>';
+      } else {
+        h += '<div class="term">' + esc(term) + '</div></div>' +
+             '<button class="x" aria-label="Close">\u00D7</button></div>' +
+             '<div class="note">No definition found' +
+             (navigator.onLine ? '' : ' \u2014 you\u2019re offline, so only the built-in dictionary was searched') +
+             '.</div>';
+      }
+      inner.innerHTML = h;
+      inner.querySelector(".x").addEventListener("click", closeCard);
+    }
+
+    function defineWord(term){
+      inner.innerHTML = '<div class="note">Looking up \u201C' + esc(term) + '\u201D\u2026</div>';
+      openCard();
+      lookupLocal(term).then(function(res){
+        if (res){ renderWord(term, res); return; }
+        if (!navigator.onLine){ renderWord(term, null); return; }
+        var base = variants(term.toLowerCase())[0];
+        return lookupOnline(base).then(function(r2){ renderWord(term, r2); });
+      });
+    }
+
+    /* ---------- sentence explaining ---------- */
+    var COMMON = ("the and for that this with you not are from your all have new more was will home can about page has search free but our one other information time they site may what which their news out use any there see only his when contact here business who web also now help get view online first been would how were services some these click its like service than find price date back top people had list name just over state year day into email two health world next used work last most products music buy data make them should product system post her city add policy number such please available copyright support message after best software then jan good video well where info rights public books high school through each links she review years order very privacy book items company read group sex need many user said does set under general research university january mail full map reviews program life know games way days management part could great united hotel real item international center ebay must store travel comments made development report off member details line terms before hotels did send right type because local those using results office education national car design take posted internet address community within states area want phone dvd shipping reserved subject between forum family long based code show even black check special prices website index being women much sign file link open today technology south case project same pages version section own found sports house related security both county american photo game members power while care network down computer systems three total place end following download him without per access think north resources current posts big media law control water history pictures size art personal since including guide shop directory board location change white text small rating rate government children during usa return students shopping account times sites level digital profile previous form events love old john main call hours image department title description non insurance another why shall property class still money quality every listing content country private little visit save tools low reply customer december compare movies include college value article york man card jobs provide food source author different press learn sale around print course job canada process teen room stock training too credit point join science men categories advanced west sales look english left team estate box conditions select windows photos gay thread week category note live large gallery table register however june october november market library really action start series model features air industry plan human provided yes required second hot accessories cost movie forums march september better say questions july yahoo going medical test friend come dec server study application cart staff articles san feedback again play looking issues april never users complete street topic comment financial things working against standard tax person below mobile less got blog party payment equipment login student let programs offers legal above recent park stores side act problem red give memory performance social august quote language story sell options experience rates create key body young america important field few east paper single age activities club example girls additional password latest something road gift question changes night hard texas oct pay four poker status browse issue range building seller court february always result audio light write war nov offer blue groups easy given files event release analysis request fax china making picture needs possible might professional yet month major star areas future space committee hand sun cards problems london washington meeting rss become interest child keep enter california porn share similar garden schools million added reference companies listed baby learning energy run delivery net popular term film stories put computers journal reports try welcome central images president notice god original head radio until cell color self council away includes track australia discussion archive once others entertainment agreement format least society months log safety friends sure faq trade edition cars messages marketing tell further updated association able having provides david fun already green studies close common drive specific several gold feb living sep collection called short arts lot ask display limited powered solutions means director daily beach past natural whether due electronics five upon period planning database says official weather mar land average done technical window france pro region island record direct microsoft conference environment records district calendar costs style url front statement update parts aug ever downloads early miles sound resource present applications either ago document word works material bill apr written talk federal hosting rules final adult tickets thing centre requirements via cheap nude kids finance true minutes else mark third rock gifts europe reading topics bad individual tips plus auto cover usually edit together videos percent fast function fact unit getting global tech meet far economic player projects lyrics often subscribe submit germany amount watch included feel though bank risk thanks everything deals various words linux jul production commercial james weight town heart advertising received choose treatment newsletter archives points knowledge magazine error camera jun girl currently construction toys registered clear golf receive domain methods chapter makes protection policies loan wide beauty manager india position taken sort listings models michael known half cases step engineering florida simple quick none wireless license paul friday lake whole annual published later basic sony shows corporate google church method purchase customers active response practice hardware figure materials fire holiday chat enough designed along among death writing speed html countries loss face brand discount higher effects created remember standards oil bit yellow political increase advertise kingdom base near environmental thought stuff french storage japan doing loans shoes entry stay nature orders availability africa summary turn mean growth notes agency king monday european activity copy although drug pics western income force cash employment overall bay river commission package contents seen players engine port album regional stop supplies started administration bar institute views plans double dog build screen exchange types soon sponsored lines electronic continue across benefits needed season apply someone held anything printer condition effective believe organization effect asked eur mind sunday selection casino pdf lost tour menu volume cross anyone mortgage hope silver corporation wish inside solution mature role rather weeks addition came supply nothing certain usr executive running lower necessary union jewelry according clothing mon com particular fine names robert homepage hour gas skills six bush islands advice career military rental decision leave british teens pre huge sat woman facilities zip bid kind sellers middle move cable opportunities taking values division coming tuesday object lesbian appropriate machine logo length actually nice score statistics client returns capital follow sample investment sent shown saturday christmas england culture band flash lead george choice went starting registration fri thursday courses consumer airport foreign artist outside furniture levels channel letter mode phones ideas wednesday structure fund summer allow degree contract button releases wed homes super male matter custom virginia almost took located multiple asian distribution editor inn industrial cause potential song cnet ltd los focus late fall featured idea rooms female responsible inc communications win associated thomas primary cancer numbers reason tool browser spring foundation answer voice friendly schedule documents communication purpose feature bed comes police everyone independent approach cameras brown physical operating hill maps medicine deal hold ratings chicago forms glass happy tue smith wanted developed thank safe unique survey prior telephone sport ready feed animal sources mexico population regular secure navigation operations therefore ass simply evidence station christian round paypal favorite understand option master valley recently probably thu rentals sea built publications blood cut worldwide improve connection publisher hall larger anti networks earth parents nokia impact transfer introduction kitchen strong tel carolina wedding properties hospital ground overview ship accommodation owners disease excellent paid italy perfect hair opportunity kit classic basis command cities william express anal award distance tree peter assessment ensure thus wall involved extra especially interface pussy partners budget rated guides success maximum operation existing quite selected boy amazon patients restaurants beautiful warning wine locations horse vote forward flowers stars significant lists technologies owner retail animals useful directly manufacturer ways est son providing rule mac housing takes iii gmt bring catalog searches max trying mother authority considered told xml traffic programme joined input strategy feet agent valid bin modern senior ireland sexy teaching door grand testing trial charge units instead canadian cool normal wrote enterprise ships entire educational leading metal positive fitness chinese opinion asia football abstract uses output funds greater likely develop employees artists alternative processing responsibility resolution java guest seems publication pass relations trust van contains session multi photography republic fees components vacation century academic assistance completed skin graphics indian prev ads mary expected ring grade dating pacific mountain organizations pop filter mailing vehicle longer consider int northern behind panel floor german buying match proposed default require iraq boys outdoor deep morning otherwise allows rest protein plant reported hit transportation pool mini politics partner disclaimer authors boards faculty parties fish membership mission eye string sense modified pack released stage internal goods recommended born unless richard detailed japanese race approved background target except character usb maintenance ability maybe functions moving brands places php pretty trademarks phentermine spain").split(" ");
+    var COMMONSET = {}; COMMON.forEach(function(w){ COMMONSET[w] = 1; });
+
+    function explainSentence(sentence){
+      var apiKey = localStorage.getItem(LS_KEY) || "";
+      var h = '<div class="head"><div class="mark">\u2727</div><div class="hw">' +
+              '<div class="term">This sentence</div></div>' +
+              '<button class="x" aria-label="Close">\u00D7</button></div>' +
+              '<div class="quote">' + esc(sentence) + '</div>' +
+              '<div id="dictExpl"><div class="note">Reading it\u2026</div></div>';
+      inner.innerHTML = h;
+      inner.querySelector(".x").addEventListener("click", closeCard);
+      openCard();
+
+      var box = inner.querySelector("#dictExpl");
+
+      /* offline: break down the words that carry the meaning */
+      var words = (sentence.toLowerCase().match(/[a-z'’-]{3,}/g) || [])
+        .filter(function(w, i, a){
+          if (a.indexOf(w) !== i) return false;
+          return !variants(w).some(function(v){ return COMMONSET[v]; });
+        })
+        .slice(0, 8);
+
+      Promise.all(words.map(function(w){
+        return lookupLocal(w).then(function(r){ return r ? { w: w, r: r } : null; });
+      })).then(function(list){
+        list = list.filter(Boolean);
+        var out = "";
+        if (list.length){
+          out += '<div class="note">Key words in this sentence</div><div class="brk">';
+          list.forEach(function(x){
+            out += "<div><b>" + esc(x.r.word) + "</b> \u2014 " + esc(x.r.entry.m[0].d) + "</div>";
+          });
+          out += "</div>";
+        } else {
+          out += '<div class="note">Nothing unusual to gloss here.</div>';
+        }
+        if (!apiKey){
+          out += '<div class="acts"><button class="act" id="dictSetup">Add a key for real explanations</button></div>';
+        }
+        box.innerHTML = out;
+        var su = box.querySelector("#dictSetup");
+        if (su) su.addEventListener("click", askForKey);
+      });
+
+      /* online + key: an actual plain-language explanation */
+      if (apiKey && navigator.onLine){
+        var prompt = "Explain this sentence from a novel in plain English, in 2-3 short sentences. " +
+          "Say what it means and what it implies about the characters or mood. No preamble.\n\n" + sentence;
+        fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-5",
+            max_tokens: 350,
+            messages: [{ role: "user", content: prompt }]
+          })
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          var txt = (j.content || []).map(function(c){ return c.text || ""; }).join("").trim();
+          if (!txt) throw 0;
+          var pre = document.createElement("div");
+          pre.className = "sense";
+          pre.style.marginBottom = "10px";
+          pre.textContent = txt;
+          box.insertBefore(pre, box.firstChild);
+        })
+        .catch(function(){
+          var n = document.createElement("div");
+          n.className = "note";
+          n.textContent = "Couldn\u2019t reach the explanation service \u2014 showing the offline breakdown.";
+          box.insertBefore(n, box.firstChild);
+        });
+      }
+    }
+
+    function askForKey(){
+      var k = prompt("Paste an Anthropic API key for real sentence explanations.\n\nIt is stored only on this phone and never leaves it except to call the API. Leave blank to remove.", localStorage.getItem(LS_KEY) || "");
+      if (k === null) return;
+      k = k.trim();
+      if (k) localStorage.setItem(LS_KEY, k); else localStorage.removeItem(LS_KEY);
+      closeCard();
+    }
+
+    /* ---------- finding the word / sentence under the finger ---------- */
+    function rangeAt(x, y){
+      if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+      if (document.caretPositionFromPoint){
+        var p = document.caretPositionFromPoint(x, y);
+        if (!p) return null;
+        var r = document.createRange();
+        r.setStart(p.offsetNode, p.offset); r.collapse(true);
+        return r;
+      }
+      return null;
+    }
+
+    var WORDCH = /[A-Za-z\u00C0-\u024F'’]/;
+
+    function wordAt(x, y){
+      var r = rangeAt(x, y);
+      if (!r) return null;
+      var n = r.startContainer;
+      if (n.nodeType !== 3) return null;
+      if (!n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
+      var t = n.textContent, i = Math.min(r.startOffset, t.length - 1);
+      if (i < 0) return null;
+      if (!WORDCH.test(t[i]) && i > 0 && WORDCH.test(t[i-1])) i--;
+      if (!WORDCH.test(t[i])) return null;
+      var s = i, e = i;
+      while (s > 0 && WORDCH.test(t[s-1])) s--;
+      while (e < t.length && WORDCH.test(t[e])) e++;
+      var w = t.slice(s, e).replace(/^['’]+|['’]+$/g, "");
+      if (!w) return null;
+      return { word: w, node: n, s: s, e: e };
+    }
+
+    function sentenceAt(x, y){
+      var r = rangeAt(x, y);
+      if (!r) return null;
+      var n = r.startContainer;
+      var block = (n.nodeType === 3 ? n.parentNode : n);
+      if (!block || !block.closest) return null;
+      block = block.closest("p, li, blockquote, h1, h2, h3, h4, td, div");
+      if (!block || !block.closest("#doc")) return null;
+      var full = block.textContent.replace(/\s+/g, " ").trim();
+      if (!full) return null;
+
+      /* where in the block did we tap? */
+      var pre = document.createRange();
+      pre.selectNodeContents(block);
+      try { pre.setEnd(r.startContainer, r.startOffset); } catch(_){}
+      var at = pre.toString().replace(/\s+/g, " ").length;
+
+      var parts = full.match(/[^.!?…]+[.!?…]*["”’]?\s*/g) || [full];
+      var pos = 0;
+      for (var i = 0; i < parts.length; i++){
+        var end = pos + parts[i].length;
+        if (at <= end || i === parts.length - 1){
+          var s = parts[i].trim();
+          if (s.length < 12 && parts[i+1]) s = (s + " " + parts[i+1]).trim();
+          return s;
+        }
+        pos = end;
+      }
+      return full;
+    }
+
+    /* ---------- gestures ---------- */
+    var doc = document.getElementById("doc");
+    function applyMode(){
+      if (!doc) return;
+      doc.classList.toggle("nosel", dictMode !== "off");
+    }
+    applyMode();
+
+    var tStart = 0, tX = 0, tY = 0, held = false, holdTimer = null, moved = false;
+
+    function inMiddleBand(x){
+      if (!document.body.classList.contains("paged")) return true;
+      var r = doc.getBoundingClientRect();
+      var f = (x - r.left) / r.width;
+      return f >= 0.35 && f <= 0.65;
+    }
+
+    if (doc){
+      doc.addEventListener("touchstart", function(e){
+        if (dictMode === "off" || e.touches.length > 1) return;
+        tStart = Date.now(); moved = false; held = false;
+        tX = e.touches[0].clientX; tY = e.touches[0].clientY;
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(function(){
+          if (moved) return;
+          held = true;
+          if (navigator.vibrate) navigator.vibrate(12);
+          var s = sentenceAt(tX, tY);
+          if (s) explainSentence(s);
+        }, 480);
+      }, { passive: true });
+
+      doc.addEventListener("touchmove", function(e){
+        if (!e.touches.length) return;
+        if (Math.abs(e.touches[0].clientX - tX) > 12 || Math.abs(e.touches[0].clientY - tY) > 12){
+          moved = true; clearTimeout(holdTimer);
+        }
+      }, { passive: true });
+
+      doc.addEventListener("touchend", function(){ clearTimeout(holdTimer); }, { passive: true });
+
+      doc.addEventListener("click", function(e){
+        if (dictMode !== "tap") return;
+        if (held){ held = false; e.stopPropagation(); return; }
+        if (moved) return;
+        if (e.target.closest && e.target.closest("a")) return;
+        if (!inMiddleBand(e.clientX)) return;
+        var w = wordAt(e.clientX, e.clientY);
+        if (!w) return;
+        e.stopPropagation();
+        markHit(w.node, w.s, w.e);
+        defineWord(w.word);
+      }, true);
+
+      /* desktop: long-press equivalent is a right-click */
+      doc.addEventListener("contextmenu", function(e){
+        if (dictMode === "off") return;
+        var s = sentenceAt(e.clientX, e.clientY);
+        if (s){ e.preventDefault(); explainSentence(s); }
+      });
+    }
+
+    /* ---------- settings ---------- */
+    var sheet = document.querySelector(".sheet-inner");
+    if (sheet){
+      var g = document.createElement("div");
+      g.className = "group";
+      g.innerHTML =
+        '<div class="label">Dictionary</div>' +
+        '<div class="chips" id="dictChips">' +
+          '<button class="chip" data-dm="tap">Tap a word</button>' +
+          '<button class="chip" data-dm="hold">Hold only</button>' +
+          '<button class="chip" data-dm="off">Off</button>' +
+        '</div>' +
+        '<div class="label" style="font-weight:400; letter-spacing:0; text-transform:none;">' +
+          'Hold on a sentence to have it explained. ' +
+          '<a href="#" id="dictKeyLink" style="color:var(--accent)">Explanation key\u2026</a>' +
+        '</div>';
+      sheet.appendChild(g);
+      function syncChips(){
+        g.querySelectorAll("#dictChips .chip").forEach(function(c){
+          c.classList.toggle("on", c.dataset.dm === dictMode);
+        });
+      }
+      g.querySelectorAll("#dictChips .chip").forEach(function(c){
+        c.addEventListener("click", function(){
+          dictMode = c.dataset.dm;
+          localStorage.setItem(LS_MODE, dictMode);
+          syncChips(); applyMode();
+        });
+      });
+      g.querySelector("#dictKeyLink").addEventListener("click", function(e){
+        e.preventDefault(); askForKey();
+      });
+      syncChips();
+    }
+
+    /* re-apply after a new file is opened (doc innerHTML is replaced) */
+    var mo = new MutationObserver(applyMode);
+    if (doc) mo.observe(doc, { childList: true });
+  })();
+
   /* ---------- boot ---------- */
   buildThemeChips();
   buildCustomUI();

@@ -1,11 +1,12 @@
 /* lamplight service worker v2 — offline cache, but always grab a fresh index.html when online */
-const CACHE = "lamplight-v2";
+const CACHE = "lamplight-v3";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./icon-192.png",
-  "./icon-512.png"
+  "./icon-512.png",
+  "./dict.json"
 ];
 
 self.addEventListener("install", (e) => {
