@@ -1041,6 +1041,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
      Lamplight — offline dictionary + sentence explainer
      ============================================================ */
   (function(){
+    var ICON_BOOK = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg>';
+    var ICON_STAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z"/></svg>';
     var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
     var LS_KEY  = "ll_apikey";
     var dictMode = localStorage.getItem(LS_MODE) || "tap";
@@ -1162,23 +1164,46 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     }
 
     /* ---------- dictionary data ---------- */
+    var DICT_PARTS = 6;
     var DB = null, dbPromise = null;
     function loadDict(){
       if (DB) return Promise.resolve(DB);
       if (dbPromise) return dbPromise;
-      dbPromise = fetch("./dict.json")
-        .then(function(r){ if(!r.ok) throw 0; return r.json(); })
-        .then(function(d){ DB = d; return d; })
-        .catch(function(){ DB = {}; return DB; });
+      var jobs = [];
+      for (var i = 1; i <= DICT_PARTS; i++){
+        jobs.push(
+          fetch("./dict" + i + ".json")
+            .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+            .catch(function(){ return {}; })
+        );
+      }
+      dbPromise = Promise.all(jobs).then(function(parts){
+        DB = parts;               /* kept separate — merging 170k keys was the lag */
+        return parts;
+      });
       return dbPromise;
     }
     /* warm it up quietly after boot so the first tap feels instant */
     if (window.requestIdleCallback) requestIdleCallback(function(){ loadDict(); }, { timeout: 3000 });
     else setTimeout(loadDict, 1200);
 
-    /* inflection guesses, so "lentils" / "knocked" / "whistling" resolve */
+    var IRREG = {"was":"be","were":"be","been":"be","am":"be","is":"be","are":"be","being":"be","had":"have","has":"have","having":"have","did":"do","does":"do","done":"do","went":"go","gone":"go","goes":"go","gave":"give","given":"give","took":"take","taken":"take","came":"come","became":"become","saw":"see","seen":"see","knew":"know","known":"know","got":"get","gotten":"get","made":"make","said":"say","thought":"think","told":"tell","found":"find","left":"leave","felt":"feel","kept":"keep","held":"hold","brought":"bring","bought":"buy","caught":"catch","taught":"teach","sought":"seek","fought":"fight","stood":"stand","understood":"understand","heard":"hear","led":"lead","meant":"mean","met":"meet","paid":"pay","ran":"run","sat":"sit","sold":"sell","sent":"send","spent":"spend","spoke":"speak","spoken":"speak","stole":"steal","stolen":"steal","swore":"swear","sworn":"swear","swam":"swim","swum":"swim","threw":"throw","thrown":"throw","wore":"wear","worn":"wear","won":"win","wrote":"write","written":"write","woke":"wake","woken":"wake","drew":"draw","drawn":"draw","drove":"drive","driven":"drive","drank":"drink","drunk":"drink","ate":"eat","eaten":"eat","fell":"fall","fallen":"fall","flew":"fly","flown":"fly","forgot":"forget","forgotten":"forget","froze":"freeze","frozen":"freeze","grew":"grow","grown":"grow","hid":"hide","hidden":"hide","hung":"hang","lain":"lie","laid":"lay","lost":"lose","rang":"ring","rung":"ring","rose":"rise","risen":"rise","rode":"ride","ridden":"ride","sang":"sing","sung":"sing","sank":"sink","sunk":"sink","shook":"shake","shaken":"shake","shone":"shine","shot":"shoot","slept":"sleep","slid":"slide","sprang":"spring","sprung":"spring","stuck":"stick","struck":"strike","strung":"string","swept":"sweep","swung":"swing","tore":"tear","torn":"tear","trod":"tread","trodden":"tread","wept":"weep","wrung":"wring","bent":"bend","bit":"bite","bitten":"bite","bled":"bleed","blew":"blow","blown":"blow","bred":"breed","broke":"break","broken":"break","built":"build","burnt":"burn","chose":"choose","chosen":"choose","clung":"cling","crept":"creep","dealt":"deal","dug":"dig","dreamt":"dream","fed":"feed","fled":"flee","flung":"fling","forbade":"forbid","forbidden":"forbid","knelt":"kneel","lent":"lend","lit":"light","leapt":"leap","learnt":"learn","shrank":"shrink","shrunk":"shrink","smelt":"smell","spelt":"spell","spilt":"spill","spat":"spit","spoilt":"spoil","spun":"spin","strode":"stride","strove":"strive","striven":"strive","swollen":"swell","wove":"weave","woven":"weave","withdrew":"withdraw","withdrawn":"withdraw","arose":"arise","arisen":"arise","bore":"bear","borne":"bear","beat":"beat","beaten":"beat","begun":"begin","began":"begin","bound":"bind","dwelt":"dwell","hewn":"hew","overcame":"overcome","shrunken":"shrink","children":"child","men":"man","women":"woman","feet":"foot","teeth":"tooth","geese":"goose","mice":"mouse","people":"person","lice":"louse","oxen":"ox","knives":"knife","wives":"wife","lives":"life","leaves":"leaf","halves":"half","shelves":"shelf","wolves":"wolf","thieves":"thief","calves":"calf","loaves":"loaf","selves":"self","scarves":"scarf","hooves":"hoof","elves":"elf","sheaves":"sheaf","criteria":"criterion","phenomena":"phenomenon","his":"he","him":"he","her":"she","hers":"she","its":"it","their":"they","them":"they","theirs":"they","our":"we","ours":"we","us":"we","mine":"I","your":"you","yours":"you"};
+
+    function findIn(parts, w){
+      for (var i = 0; i < parts.length; i++){ if (parts[i][w]) return parts[i][w]; }
+      return null;
+    }
+
+    /* Webster lists inflected forms as bare cross-references ("of Give",
+       "pl. of Child"). Those are useless in a card, so prefer a real entry. */
+    var STUB = /^(&\s*)?((p\.\s*p\.|pl\.|sing\.|imp\.|past|a\s+form)\s*(&\s*)?)*(of|see)\b/i;
+    function isStub(entry){
+      return entry.m.every(function(m){ return STUB.test((m.d || "").trim()); });
+    }
+
+    /* inflection guesses, so "gave" / "lentils" / "shelves" / "whistling" resolve */
     function variants(w){
-      var o = [w];
+      var o = IRREG[w] ? [IRREG[w], w] : [w];
       function add(x){ if (x && x.length > 1 && o.indexOf(x) < 0) o.push(x); }
       if (w.length > 3){
         if (/ies$/.test(w)) add(w.slice(0,-3) + "y");
@@ -1198,12 +1223,15 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 
     function lookupLocal(word){
       var w = word.toLowerCase().replace(/[’]/g, "'");
-      return loadDict().then(function(d){
-        var tries = variants(w);
+      return loadDict().then(function(parts){
+        var tries = variants(w), fallback = null;
         for (var i = 0; i < tries.length; i++){
-          if (d[tries[i]]) return { word: tries[i], entry: d[tries[i]] };
+          var e = findIn(parts, tries[i]);
+          if (!e) continue;
+          if (!isStub(e)) return { word: tries[i], entry: e };
+          if (!fallback) fallback = { word: tries[i], entry: e };
         }
-        return null;
+        return fallback;
       });
     }
 
@@ -1235,7 +1263,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 
     function renderWord(term, res){
       var h = '<div class="head">' +
-              '<div class="mark">\u{1F56E}</div><div class="hw">';
+              '<div class="mark">' + ICON_BOOK + '</div><div class="hw">';
       if (res){
         h += '<div class="term">' + esc(res.word);
         if (res.entry.i) h += ' <span class="ipa">' + esc(res.entry.i) + '</span>';
@@ -1263,13 +1291,19 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     }
 
     function defineWord(term){
-      inner.innerHTML = '<div class="note">Looking up \u201C' + esc(term) + '\u201D\u2026</div>';
+      inner.innerHTML = '<div class="note">Looking up \u201C' + esc(term) + '\u201D\u2026' +
+        (DB ? '' : '<br>Getting the dictionary ready \u2014 this only happens once.') + '</div>';
       openCard();
       lookupLocal(term).then(function(res){
         if (res){ renderWord(term, res); return; }
         if (!navigator.onLine){ renderWord(term, null); return; }
-        var base = variants(term.toLowerCase())[0];
-        return lookupOnline(base).then(function(r2){ renderWord(term, r2); });
+        var lw = term.toLowerCase();
+        var base = IRREG[lw] || lw;
+        return lookupOnline(base).then(function(r2){
+          if (r2) { renderWord(term, r2); return; }
+          if (base === lw) { renderWord(term, null); return; }
+          return lookupOnline(lw).then(function(r3){ renderWord(term, r3); });
+        });
       });
     }
 
@@ -1279,7 +1313,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 
     function explainSentence(sentence){
       var apiKey = localStorage.getItem(LS_KEY) || "";
-      var h = '<div class="head"><div class="mark">\u2727</div><div class="hw">' +
+      var h = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw">' +
               '<div class="term">This sentence</div></div>' +
               '<button class="x" aria-label="Close">\u00D7</button></div>' +
               '<div class="quote">' + esc(sentence) + '</div>' +
