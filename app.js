@@ -732,8 +732,7 @@
       var docRect = $("#doc").getBoundingClientRect();
       gotoPage(pageOfOffset(rect.left - docRect.left + 1));
     } else {
-      var head = document.querySelector("header");
-      var headH = document.body.classList.contains("immersive") ? 0 : head.offsetHeight;
+      var headH = Library.headerHeight();
       var pad = (opts && opts.center) ? Math.round((window.innerHeight - headH) * 0.3) : 8;
       window.scrollTo(0, Math.max(0, rect.top + window.scrollY - headH - pad));
     }
@@ -748,8 +747,7 @@
       var offset = r.left - docRect.left;             /* distance inside the column strip */
       gotoPage(pageOfOffset(offset));
     } else {
-      var head = document.querySelector("header");
-      var y = el.getBoundingClientRect().top + window.scrollY - (head ? head.offsetHeight : 0) - 12;
+      var y = el.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 12;
       window.scrollTo(0, Math.max(0, y));
     }
   }
@@ -1276,9 +1274,11 @@
     }).catch(function(err){ console.warn("library unavailable", err); });
 
     /* ---- position capture ---- */
+    /* everything stuck to the top of the window: the bar, plus the settings sheet while it is open */
     function headerHeight(){
-      var head = document.querySelector("header");
-      return document.body.classList.contains("immersive") ? 0 : (head ? head.offsetHeight : 0);
+      if (document.body.classList.contains("immersive")) return 0;
+      var head = document.querySelector("header"), sheet = $("#sheet");
+      return (head ? head.offsetHeight : 0) + (sheet && sheet.classList.contains("open") ? sheet.offsetHeight : 0);
     }
     var charOffsetOf = Anchor.offsetOf, rangeAtOffset = Anchor.rangeAt;
     function topCharOffset(){
@@ -1481,7 +1481,7 @@
         document.body.classList.remove("hidebar", "immersive");
         window.scrollTo(0, 0);
       }
-      $("#sheet").classList.remove("open");
+      setSheet(false);
       $("#fname").textContent = "";
       document.title = "lamplight — reader";
       show("empty");
@@ -2653,11 +2653,29 @@
     state.theme = CYCLE[(idx + 1) % CYCLE.length];
     applyTheme(); AutoTheme.userPicked(state.theme);
   });
+  /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
+     Scroll flow, opening it should push the text down so what was at the top reappears just
+     under the sheet, and closing it should pull the text back up; browsers with scroll
+     anchoring undo exactly that shift, so the document is put where it belongs afterwards. */
+  function setSheet(open){
+    var sheet = $("#sheet");
+    var was = sheet.classList.contains("open");
+    if (open === undefined) open = !was;
+    if (open === was) return;
+    var paged = document.body.classList.contains("paged"), ref = $("#main");
+    var before = ref.getBoundingClientRect().top, h = was ? sheet.offsetHeight : 0;
+    sheet.classList.toggle("open", open);
+    $("#gear").setAttribute("aria-expanded", open ? "true" : "false");
+    sheet.setAttribute("aria-hidden", open ? "false" : "true");
+    if (!paged){
+      if (open) h = sheet.offsetHeight;
+      var wanted = before + (open ? h : -h), actual = ref.getBoundingClientRect().top;
+      if (Math.abs(actual - wanted) > 1) window.scrollBy(0, actual - wanted);
+    }
+  }
   $("#gear").addEventListener("click", function(){
     document.body.classList.remove("hidebar");
-    var open = $("#sheet").classList.toggle("open");
-    $("#gear").setAttribute("aria-expanded", open ? "true" : "false");
-    $("#sheet").setAttribute("aria-hidden", open ? "false" : "true");
+    setSheet();
   });
 
   $("#themeChips").addEventListener("click", function(e){
@@ -2772,7 +2790,7 @@
     else if (x > 0.65) turn(1);
     else {
       document.body.classList.toggle("immersive");
-      $("#sheet").classList.remove("open");
+      setSheet(false);
       relayoutPaged();
     }
   }
@@ -2792,7 +2810,7 @@
   }, {passive:true});
 
   document.addEventListener("keydown", function(e){
-    if (e.key === "Escape"){ $("#sheet").classList.remove("open"); $("#gear").setAttribute("aria-expanded", "false"); return; }
+    if (e.key === "Escape"){ setSheet(false); return; }
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
     if (!pagedActive()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " "){ e.preventDefault(); turn(1); }
