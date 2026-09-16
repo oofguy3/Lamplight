@@ -638,6 +638,7 @@
     opts = opts || {};
     state.toc = opts.toc || null;
     $("#doc").innerHTML = cleanHtml(html);
+    Anchor.invalidate();
     show("doc");
     reflow();
     Library.docReady();
@@ -1009,50 +1010,73 @@
      with the last reading position per document.
      ============================================================ */
   /* character offsets inside #doc — a layout-independent way to point at a spot in the text */
-  var Anchor = {
-    textNodes: function(root){
-      var out = [], w = document.createTreeWalker(root || $("#doc"), NodeFilter.SHOW_TEXT);
-      var n; while ((n = w.nextNode())) out.push(n);
-      return out;
-    },
-    offsetOf: function(node, off){
-      var nodes = Anchor.textNodes(), sum = 0;
-      for (var i = 0; i < nodes.length; i++){
-        if (nodes[i] === node) return sum + off;
-        sum += nodes[i].length;
+  /* ---------- character offsets <-> DOM positions ----------
+     A place in a text document (resume position, highlight, search hit, read-aloud unit)
+     is a plain character offset into the concatenated text of #doc, so it survives
+     re-layouts and reopening. The text nodes and their start offsets are cached until
+     the document changes. */
+  var Anchor = (function(){
+    var nodes = null, starts = null, index = null;
+    function build(){
+      if (nodes) return;
+      nodes = []; starts = []; index = new Map();
+      var w = document.createTreeWalker($("#doc"), NodeFilter.SHOW_TEXT), n, sum = 0;
+      while ((n = w.nextNode())){ index.set(n, nodes.length); nodes.push(n); starts.push(sum); sum += n.length; }
+      starts.push(sum);
+    }
+    function invalidate(){ nodes = starts = index = null; }
+    /* whatever rewrites #doc (a new document, highlight marks, the tapped-word span) calls
+       invalidate() itself; the observer catches anything else, a moment later */
+    if (window.MutationObserver) new MutationObserver(invalidate).observe($("#doc"), { childList: true, subtree: true, characterData: true });
+    function textNodes(root){
+      if (root && root !== $("#doc")){
+        var out = [], w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), n;
+        while ((n = w.nextNode())) out.push(n);
+        return out;
       }
-      return null;
-    },
-    /* (node, offset) for a character offset; boundary offsets belong to the following node */
-    point: function(off, preferEnd){
-      var nodes = Anchor.textNodes(), sum = 0;
-      for (var i = 0; i < nodes.length; i++){
-        var len = nodes[i].length;
-        if (off < sum + len || (preferEnd && off === sum + len) || (i === nodes.length - 1 && off <= sum + len)){
-          if (!/\S/.test(nodes[i].textContent) && i < nodes.length - 1 && !preferEnd){ sum += len; continue; }
-          return { node: nodes[i], offset: Math.max(0, Math.min(len, off - sum)) };
-        }
-        sum += len;
+      build();
+      return nodes;
+    }
+    function offsetOf(node, off){
+      build();
+      var i = index.get(node);
+      return i === undefined ? null : starts[i] + off;
+    }
+    /* (node, offset) for a character offset; boundary offsets belong to the following node
+       unless preferEnd, and collapsed whitespace between blocks is skipped */
+    function point(off, preferEnd){
+      build();
+      if (!nodes.length) return null;
+      var lo = 0, hi = nodes.length - 1;
+      while (lo < hi){
+        var mid = (lo + hi + 1) >> 1;
+        if (preferEnd ? starts[mid] < off : starts[mid] <= off) lo = mid; else hi = mid - 1;
       }
-      return null;
-    },
-    rangeAt: function(off){
-      var p = Anchor.point(off);
+      var i = lo;
+      if (!preferEnd) while (i < nodes.length - 1 && !/\S/.test(nodes[i].textContent)) i++;
+      return { node: nodes[i], offset: Math.max(0, Math.min(nodes[i].length, off - starts[i])) };
+    }
+    function rangeAt(off){
+      var p = point(off);
       if (!p) return null;
       var r = document.createRange();
       var o = Math.min(p.offset, Math.max(0, p.node.length - 1));
       r.setStart(p.node, o); r.setEnd(p.node, Math.min(p.node.length, o + 1));
       return r;
-    },
-    rangeBetween: function(start, end){
-      var a = Anchor.point(start), b = Anchor.point(end, true);
+    }
+    function rangeBetween(start, end){
+      var a = point(start), b = point(end, true);
       if (!a || !b) return null;
       var r = document.createRange();
       r.setStart(a.node, a.offset); r.setEnd(b.node, b.offset);
       return r;
-    },
-    textLength: function(){ return $("#doc").textContent.length; }
-  };
+    }
+    function textLength(){ build(); return starts[starts.length - 1]; }
+    /* start offset of a text node's index — for callers that walk nodes with a running sum */
+    function startOf(i){ build(); return starts[i]; }
+    return { textNodes: textNodes, offsetOf: offsetOf, point: point, rangeAt: rangeAt, rangeBetween: rangeBetween,
+             textLength: textLength, startOf: startOf, invalidate: invalidate };
+  })();
 
   /* ---------- side panel: contents, marks, search share one drawer ---------- */
   var Side = (function(){
@@ -1446,28 +1470,65 @@
         var p = mk.parentNode; while (mk.firstChild) p.insertBefore(mk.firstChild, mk); p.removeChild(mk);
       });
       doc.normalize();
+      Anchor.invalidate();
     }
-    function wrap(m){
-      var nodes = Anchor.textNodes(), sum = 0;
-      for (var i = 0; i < nodes.length; i++){
-        var n = nodes[i], len = n.length, a = Math.max(0, m.start - sum), b = Math.min(len, m.end - sum);
-        sum += len;
-        if (b <= a || !/\S/.test(n.textContent.slice(a, b))) continue;
-        var target = n;
-        if (b < len) target.splitText(b);
-        if (a > 0) target = target.splitText(a);
-        var mk = document.createElement("mark");
-        mk.className = "ll-mark" + (m.note ? " noted" : "");
-        mk.dataset.key = m.key; if (m.color && m.color !== "accent") mk.dataset.color = m.color;
-        target.parentNode.insertBefore(mk, target); mk.appendChild(target);
-      }
+    /* wrap every highlight in one pass: the node list and start offsets are kept up to
+       date locally while nodes are split, so a document with many marks stays quick */
+    function wrapAll(marks){
+      var nodes = Anchor.textNodes().slice(), starts = nodes.map(function(n, i){ return Anchor.startOf(i); });
+      marks.forEach(function(m){
+        if (!(m.end > m.start) || !nodes.length) return;
+        var lo = 0, hi = nodes.length - 1;                     /* last node starting at or before the mark */
+        while (lo < hi){ var mid = (lo + hi + 1) >> 1; if (starts[mid] <= m.start) lo = mid; else hi = mid - 1; }
+        for (var i = lo; i < nodes.length && starts[i] < m.end; i++){
+          var n = nodes[i], len = n.length, a = Math.max(0, m.start - starts[i]), b = Math.min(len, m.end - starts[i]);
+          if (b <= a || !/\S/.test(n.textContent.slice(a, b))) continue;
+          var target = n;
+          if (b < len){ nodes.splice(i + 1, 0, target.splitText(b)); starts.splice(i + 1, 0, starts[i] + b); }
+          if (a > 0){ target = target.splitText(a); nodes.splice(i + 1, 0, target); starts.splice(i + 1, 0, starts[i] + a); i++; }
+          var mk = document.createElement("mark");
+          mk.className = "ll-mark" + (m.note ? " noted" : "");
+          mk.dataset.key = m.key; if (m.color && m.color !== "accent") mk.dataset.color = m.color;
+          target.parentNode.insertBefore(mk, target); mk.appendChild(target);
+        }
+      });
+      Anchor.invalidate();
     }
+    /* search keeps live ranges on the text; drop them while the DOM is rewritten and paint again after */
     function apply(){
       if (state.mode !== "doc") return;
+      if (window.Search) Search.clearPaint();
       unwrapAll();
-      list.forEach(function(m){ if (m.kind === "highlight" && typeof m.start === "number") wrap(m); });
+      wrapAll(list.filter(function(m){ return m.kind === "highlight" && typeof m.start === "number"; }));
       rendered = true;
       if (window.Search) Search.refresh();
+    }
+    /* one new highlight: wrap just that one instead of redrawing them all */
+    function applyOne(m){
+      if (state.mode !== "doc") return;
+      if (!rendered){ apply(); return; }
+      if (window.Search) Search.clearPaint();
+      wrapAll([m]);
+      if (window.Search) Search.refresh();
+    }
+    /* remove one highlight's <mark> elements and merge the text back */
+    function unwrapOne(m){
+      if (state.mode !== "doc") return;
+      if (window.Search) Search.clearPaint();
+      var parents = [];
+      Array.prototype.slice.call($("#doc").querySelectorAll('mark.ll-mark[data-key="' + CSS.escape(m.key) + '"]')).forEach(function(mk){
+        var p = mk.parentNode; while (mk.firstChild) p.insertBefore(mk.firstChild, mk); p.removeChild(mk);
+        if (parents.indexOf(p) < 0) parents.push(p);
+      });
+      parents.forEach(function(p){ p.normalize(); });
+      Anchor.invalidate();
+      if (window.Search) Search.refresh();
+    }
+    function restyle(m){
+      Array.prototype.slice.call($("#doc").querySelectorAll('mark.ll-mark[data-key="' + CSS.escape(m.key) + '"]')).forEach(function(mk){
+        mk.classList.toggle("noted", !!m.note);
+        if (m.color && m.color !== "accent") mk.dataset.color = m.color; else delete mk.dataset.color;
+      });
     }
     function docReady(){ rendered = false; if (loaded) apply(); }
 
@@ -1480,7 +1541,7 @@
       if (!docId || state.mode !== "doc" || !(end > start)) return null;
       var m = { key: docId + ":" + uid(), doc: docId, kind: "highlight", start: start, end: end, text: textOf(start, end).slice(0, 2000), note: note || "", color: color || "accent", created: Date.now() };
       list.push(m); list.sort(function(a, b){ return sortKey(a) - sortKey(b); });
-      save(m); apply(); refreshPanel();
+      save(m); applyOne(m); refreshPanel();
       return m;
     }
     function selectionOffsets(){
@@ -1532,10 +1593,10 @@
     }
     function remove(m){
       list = list.filter(function(x){ return x !== m; });
-      del(m); if (m.kind === "highlight") apply(); refreshPanel(); hidePop();
+      del(m); if (m.kind === "highlight") unwrapOne(m); refreshPanel(); hidePop();
     }
-    function setNote(m, note){ m.note = note || ""; m.updated = Date.now(); save(m); if (m.kind === "highlight") apply(); refreshPanel(); }
-    function setColor(m, color){ m.color = color; save(m); apply(); refreshPanel(); }
+    function setNote(m, note){ m.note = note || ""; m.updated = Date.now(); save(m); if (m.kind === "highlight") restyle(m); refreshPanel(); }
+    function setColor(m, color){ m.color = color; save(m); restyle(m); refreshPanel(); }
     function reveal(m){
       Side.close();
       if (m.pdfPage && state.mode === "pdf"){
@@ -1828,15 +1889,22 @@
       var s = Math.max(0, a - 44), e = Math.min(text.length, b + 60);
       return (s > 0 ? "\u2026" : "") + esc(text.slice(s, a)) + "<b>" + esc(text.slice(a, b)) + "</b>" + esc(text.slice(b, e)) + (e < text.length ? "\u2026" : "");
     }
-    function sectionTitleFor(off){
-      var hs = $("#doc").querySelectorAll("h1, h2, h3");
-      var best = null;
+    /* headings with their character offsets, gathered once per search */
+    function headingIndex(){
+      var hs = $("#doc").querySelectorAll("h1, h2, h3"), out = [];
       for (var i = 0; i < hs.length; i++){
-        var first = null, w = document.createTreeWalker(hs[i], NodeFilter.SHOW_TEXT); first = w.nextNode();
+        var first = document.createTreeWalker(hs[i], NodeFilter.SHOW_TEXT).nextNode();
         var o = first ? Anchor.offsetOf(first, 0) : null;
-        if (o !== null && o <= off) best = hs[i]; else if (o !== null && o > off) break;
+        if (o !== null) out.push({ off: o, title: hs[i].textContent.replace(/\s+/g, " ").trim() });
       }
-      return best ? best.textContent.replace(/\s+/g, " ").trim() : "";
+      return out;
+    }
+    /* the last heading at or before an offset */
+    function sectionTitleFor(heads, off){
+      var lo = 0, hi = heads.length - 1;
+      if (hi < 0 || heads[0].off > off) return "";
+      while (lo < hi){ var mid = (lo + hi + 1) >> 1; if (heads[mid].off <= off) lo = mid; else hi = mid - 1; }
+      return heads[lo].title;
     }
     function paint(){
       if (!hasHL) return;
@@ -1861,7 +1929,8 @@
         out.push({ start: m.index, end: m.index + m[0].length, html: snippet(text, m.index, m.index + m[0].length) });
         if (!m[0].length) re.lastIndex++;
       }
-      out.forEach(function(r){ r.where = sectionTitleFor(r.start); });
+      var heads = headingIndex();
+      out.forEach(function(r){ r.where = sectionTitleFor(heads, r.start); });
       return Promise.resolve(out);
     }
     function runPdf(q, myGen){
@@ -1953,7 +2022,7 @@
       }
     });
     Menu.add({ order: 20, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
-    return { openPanel: openPanel, reset: reset, refresh: refresh, go: go, results: function(){ return results; } };
+    return { openPanel: openPanel, reset: reset, refresh: refresh, clearPaint: clearPaint, go: go, results: function(){ return results; } };
   })();
 
   /* ============================================================
@@ -2899,6 +2968,7 @@
       var p = hitEl.parentNode;
       if (p){ p.replaceChild(document.createTextNode(hitEl.textContent), hitEl); p.normalize(); }
       hitEl = null;
+      Anchor.invalidate();
     }
     function markHit(node, s, e){
       clearHit();
@@ -2909,6 +2979,7 @@
         sp.className = "ll-hit";
         r.surroundContents(sp);
         hitEl = sp;
+        Anchor.invalidate();
       } catch(_){}
     }
 
@@ -3354,7 +3425,7 @@
         if (mm){
           var walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
           var first = walker.nextNode();
-          var base = first ? window.__ll.Anchor.offsetOf(first, 0) : null;
+          var base = first ? Anchor.offsetOf(first, 0) : null;
           if (base !== null){ res.start = base + pStart + mm.index; res.end = res.start + mm[0].length; }
         }
       } catch(_){}
