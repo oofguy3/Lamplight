@@ -1,7 +1,7 @@
-/* lamplight service worker — offline cache for everything, fresh index.html when online.
+/* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.16-16";
+const VERSION = "2026.09.16-17";
 const CACHE = "lamplight-" + VERSION;
 const ASSETS = [
   "./",
@@ -78,39 +78,34 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-  if (e.request.method !== "GET") return;
+  /* only our own files: the online dictionary and the AI API go straight to the network */
+  if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   const isPage =
     e.request.mode === "navigate" ||
     url.pathname.endsWith("/") ||
     url.pathname.endsWith("/index.html");
 
-  if (isPage) {
-    // Network first: pick up updates automatically, fall back to cache offline
-    e.respondWith(
-      fetch(e.request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-          return res;
-        })
-        .catch(() =>
-          caches
-            .match(e.request, { ignoreSearch: true })
-            .then((hit) => hit || caches.match("./index.html"))
-        )
-    );
-  } else {
-    // Cache first for icons/manifest
-    e.respondWith(
-      caches.match(e.request, { ignoreSearch: true }).then(
-        (hit) =>
-          hit ||
-          fetch(e.request).then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, copy));
-            return res;
-          })
-      )
-    );
-  }
+  /* Everything, the page included, is served from this version's cache so the shell and
+     its scripts always match. A new release installs in the background and the app offers
+     a reload (see the message handler above); only then does the new cache take over. */
+  e.respondWith(
+    (async () => {
+      const c = await caches.open(CACHE);       /* this version's cache only, never a newer one still waiting */
+      const hit = await c.match(e.request, { ignoreSearch: true });
+      /* the cached shell was stored under "./"; hand it back under the URL that was asked for
+         (./?shared=1, ./?action=continue) so nothing downstream sees the wrong address */
+      if (hit) return isPage ? new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers }) : hit;
+      try {
+        const res = await fetch(e.request);
+        if (res.ok && res.type === "basic") c.put(e.request, res.clone()).catch(() => null);
+        return res;
+      } catch (err) {
+        if (isPage) {
+          const page = await c.match("./index.html");
+          if (page) return page;
+        }
+        throw err;
+      }
+    })()
+  );
 });

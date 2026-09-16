@@ -90,7 +90,7 @@ Files, positions, highlights and notes live in your browser's IndexedDB; setting
 
 Everything is hand-written ES5-style JavaScript in `app.js`; there is no bundler and no dependencies to install. To work on it, serve the folder over HTTPS or `localhost` (for example `python3 -m http.server`) and open it in a browser.
 
-Releasing: bump `VERSION` in `sw.js`. Installed copies pick the new version up in the background and show a *Reload* toast.
+Releasing: bump `VERSION` in `sw.js` — every file, `index.html` included, is served from that version's cache, so the shell and its scripts always match; installed copies pick the new version up in the background and show a *Reload* toast. Without the bump, a deployed change is not picked up by installed copies.
 
 The `explain.js` analyser is rule-based: a tokeniser that splits contractions, a part-of-speech tagger that combines the dictionary with built-in word lists, clause splitting on conjunctions, subordinators and relative pronouns, and a small grammar for verb groups (tense, aspect, modals, passives, questions and imperatives). It runs in well under a millisecond per sentence.
 

@@ -3658,7 +3658,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, Updates: Updates, state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
+  window.__ll = { need: need, state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
@@ -3717,7 +3717,7 @@
       });
     }
     function register(){
-      if (!("serviceWorker" in navigator) || location.protocol !== "https:") return;
+      if (!("serviceWorker" in navigator) || !window.isSecureContext) return;   /* https, or localhost while developing */
       navigator.serviceWorker.register("./sw.js").then(function(r){
         reg = r;
         if (r.waiting && navigator.serviceWorker.controller) toast();
@@ -3737,6 +3737,7 @@
     return { register: register, hasToast: function(){ return !!toastEl; } };
   })();
   Updates.register();
+  if (window.__ll) window.__ll.Updates = Updates;
 
   /* ask the browser to keep our storage (library, positions, notes) out of automatic eviction */
   if (navigator.storage && navigator.storage.persist){
