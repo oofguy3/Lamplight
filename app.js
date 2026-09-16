@@ -2313,6 +2313,375 @@
   })();
 
   /* ============================================================
+     About this text — reading level, vocabulary, hardest words
+     ============================================================ */
+  var About = (function(){
+    var CHUNK = 20000, WINDOW = 1000, MAX_PDF_PAGES = 600, HARD = 30, RARE = 7000, UNCOMMON = 4500;
+    /* a word: letters (Latin with accents, Greek, Cyrillic) and digits, apostrophes and hyphens
+       inside; "1,000" and "3.14" stay whole. Quotes and sentence ends come through as their
+       own matches so one pass sees them all */
+    var TOKEN = /[A-Za-zÀ-ɏͰ-ϿЀ-ӿ0-9]+(?:['’-][A-Za-zÀ-ɏͰ-ϿЀ-ӿ0-9]+|[.,][0-9]+)*|["“”]|[.!?…]+/g;
+    var SENT_END = /[.!?…]+[”’"')\]]*(?=\s|$)/g;
+    var HASWORD = /[A-Za-zÀ-ɏͰ-ϿЀ-ӿ0-9]/;
+    var WORDY = /^[a-zà-ɏͰ-ϿЀ-ӿ]+(?:['-][a-zà-ɏͰ-ϿЀ-ӿ]+)*$/;
+    var ABBR = { mr:1, mrs:1, ms:1, dr:1, st:1, vs:1, "e.g":1, "i.e":1, etc:1, prof:1, sr:1, jr:1, mt:1, fig:1, vol:1, pp:1, inc:1, ltd:1, "a.m":1, "p.m":1, "u.s":1, "u.k":1 };
+    var BANDS = [
+      [90, "Very easy", "Easily understood by an average 11-year-old."],
+      [80, "Easy", "Conversational English; most 12-year-olds can follow it."],
+      [70, "Fairly easy", "Most 13-year-olds can follow it."],
+      [60, "Standard", "Plain English; easily understood by most 14- to 15-year-olds."],
+      [50, "Fairly difficult", "Fairly hard to read; comfortable for older teenagers."],
+      [30, "Difficult", "Hard to read; best understood by university-level readers."],
+      [0,  "Very difficult", "Very hard to read; best understood by graduates and specialists."]
+    ];
+    var TIER = { 3: "very rare", 2: "rare", 1: "uncommon" };
+    var FIND_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="6.8" cy="6.8" r="4.6"/><path d="M10.4 10.4 14 14"/></svg>';
+    var cache = null, gen = 0, statusEl = null;
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    function fmtN(n){ return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+    function one(n){ return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, ""); }
+
+    /* ---- syllables: an English heuristic ----
+       vowel groups, minus the silent endings, plus the vowel pairs that are usually spoken
+       apart; a short list of very common words the rules get wrong */
+    var SYL_FIX = { every:2, everything:3, everyone:3, everybody:4, everywhere:3, evening:2, something:2, sometimes:2,
+      somewhere:2, someone:2, somebody:3, somehow:2, somewhat:2, business:2, businesses:3, eye:1, eyes:1, eyed:1,
+      area:3, areas:3, idea:3, ideas:3, real:2, really:2, science:2, sciences:3, society:4, theatre:3, poem:2, poems:2,
+      poet:2, poets:2, poetry:3 };
+    function syllables(word){
+      var w = String(word).toLowerCase().replace(/[^a-zà-öø-ÿ]/g, "");
+      if (!w) return 1;
+      if (SYL_FIX.hasOwnProperty(w)) return SYL_FIX[w];
+      var s = w.replace(/^y/, "").replace(/qu/g, "q");
+      /* silent -es / -ed ("makes", "jumped"), not "boxes", "pages", "tables", "wanted", "settled", "agreed" */
+      if (/es$/.test(s) && !/(?:[sxzcg]|[cs]h)es$/.test(s) && !/[^aeiouylr]les$/.test(s)) s = s.slice(0, -2);
+      else if (/ed$/.test(s) && !/[tde]ed$/.test(s) && !/[^aeiouylr]led$/.test(s)) s = s.slice(0, -2);
+      var n = (s.match(/[aeiouyà-öø-ÿ]+/g) || []).length;
+      /* a silent final e ("whale", "some", "bye"), unless it sounds after l + consonant ("table") */
+      if (/[^aeiou]e$/.test(s) && !/[^aeiouy]le$/.test(s)) n--;
+      /* the same e before -ly, -ment, -ness… ("lonely", "movement"), but not in "settlement" */
+      if (/[^aeiouy]e(?:ly|ment|ness|less|ful|some)$/.test(s) && !/[^aeiouy]le(?:ly|ment|ness|less|ful|some)$/.test(s)) n--;
+      /* vowel pairs spoken as two: "quiet", "client", "radio", "video", "actual", "chaos", "radius" — but
+         "nation", "special", "people", "pigeon", "million", "guard" keep one */
+      n += (s.match(/[^tcs]ie[nt](?!d)|[^ctsx]ia|[^tscxgn]io|[^g]eo(?!p)|geo(?![nu])|[^gq]ua|uo|ao|ii|iu/g) || []).length;
+      n -= (s.match(/llio/g) || []).length;
+      /* "going", "seeing", "playing"; "player", "royal", "beyond" */
+      if (/[aeiouy]ing$/.test(s)) n++;
+      n += (s.match(/[aeiou]y(?!ing$)[aeiou]/g) || []).length;
+      return Math.max(1, n);
+    }
+
+    /* ---- the text ----
+       a document block by block: a blank line between blocks (paragraph breaks end sentences),
+       a line break for <br>; the text nodes as they are, so counts match what is shown */
+    var BLOCK = /^(?:P|DIV|H[1-6]|LI|BLOCKQUOTE|PRE|TR|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER|ASIDE|FIGURE|FIGCAPTION|UL|OL|TABLE|CAPTION|HR|NAV|MAIN|DETAILS|SUMMARY|ADDRESS)$/;
+    function docText(){
+      var out = [], w = document.createTreeWalker($("#doc"), NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT), n;
+      while ((n = w.nextNode())){
+        if (n.nodeType === 3) out.push(n.nodeValue);
+        else if (n.tagName === "BR") out.push("\n");
+        else if (BLOCK.test(n.tagName)) out.push("\n\n");
+      }
+      return out.join("");
+    }
+    /* every page of the PDF, one after another with a breather between pages; each page is a
+       paragraph, words split by a line-end hyphen are joined again */
+    function pdfText(doc, status, live){
+      var n = Math.min(doc.numPages, MAX_PDF_PAGES), pages = [], i = 1;
+      return new Promise(function(resolve){
+        (function next(){
+          if (!live()){ resolve(null); return; }
+          if (i > n){ resolve({ text: pages.join("\n\n"), capped: doc.numPages > n }); return; }
+          status("Reading page " + i + " of " + doc.numPages + "…");
+          PdfText.get(i).then(function(t){
+            pages.push(t.replace(/([A-Za-zÀ-ɏ])-\n\s*([a-zà-ɏ])/g, "$1$2"));
+            i++;
+            setTimeout(next, 0);
+          });
+        })();
+      });
+    }
+
+    /* ---- sentences ----
+       an end is . ! ? or … before a space, unless what comes before is an abbreviation or an
+       initial, or what follows starts in lower case ("e.g. this", "wait… what"). A number that
+       opens the paragraph is a list marker, not a sentence */
+    function sentencesIn(p){
+      var n = 0, last = 0, m;
+      SENT_END.lastIndex = 0;
+      while ((m = SENT_END.exec(p))){
+        var end = m.index + m[0].length;
+        if (m[0].charAt(0) === "."){
+          var prev = /([A-Za-zÀ-ɏ]+(?:\.[A-Za-zÀ-ɏ]+)*)$/.exec(p.slice(Math.max(0, m.index - 12), m.index));
+          if (prev){
+            var a = prev[1].toLowerCase();
+            if (ABBR[a] || (a.length === 1 && prev[1] !== "I" && prev[1] !== a)) continue;
+          } else if (m.index <= 3 && /^\s*\d{1,3}$/.test(p.slice(0, m.index))) continue;
+        }
+        if (/^\s+[a-zà-ɏ]/.test(p.slice(end, end + 4))) continue;
+        if (HASWORD.test(p.slice(last, m.index))) n++;
+        last = end;
+      }
+      if (HASWORD.test(p.slice(last))) n++;
+      return n;
+    }
+
+    /* ---- counting ----
+       one pass over the text in chunks of CHUNK words with a breather between them, so a whole
+       novel is counted without freezing the page. Resolves to the stats, or null when `live`
+       says the result is no longer wanted */
+    function analyse(text, opts){
+      opts = opts || {};
+      var paras = String(text).replace(/\r\n?/g, "\n").split(/\n[ \t]*\n+/);
+      var forms = new Map(), words = 0, sentences = 0, paragraphs = 0, dialogue = 0;
+      var win = new Set(), winN = 0, ttrSum = 0, windows = 0;
+      var pi = 0, pos = 0, pw = 0, inQ = false, atStart = true;
+      return new Promise(function(resolve){
+        function live(){ return !opts.live || opts.live(); }
+        function step(){
+          if (!live()){ resolve(null); return; }
+          var budget = CHUNK;
+          while (pi < paras.length){
+            var p = paras[pi], m = null;
+            TOKEN.lastIndex = pos;
+            while (budget > 0 && (m = TOKEN.exec(p))){
+              var t = m[0], c = t.charCodeAt(0);
+              if (c === 34){ inQ = !inQ; continue; }
+              if (c === 0x201C){ inQ = true; continue; }
+              if (c === 0x201D){ inQ = false; continue; }
+              if (c === 46 || c === 33 || c === 63 || c === 0x2026){ atStart = true; continue; }
+              budget--; words++; pw++;
+              if (inQ) dialogue++;
+              var lw = t.toLowerCase();
+              if (lw.indexOf("’") >= 0) lw = lw.replace(/’/g, "'");
+              var f = forms.get(lw);
+              if (!f){ f = { n: 0, mid: 0, capMid: 0 }; forms.set(lw, f); }
+              f.n++;
+              /* capitals count only away from a sentence start, where every word gets one */
+              if (atStart) atStart = false;
+              else { f.mid++; if (t.charAt(0) !== lw.charAt(0)) f.capMid++; }
+              win.add(lw);
+              if (++winN === WINDOW){ ttrSum += win.size / WINDOW; windows++; win.clear(); winN = 0; }
+            }
+            if (m){ pos = TOKEN.lastIndex; if (opts.onProgress) opts.onProgress(words); setTimeout(step, 0); return; }
+            if (pw){ paragraphs++; sentences += sentencesIn(p); }
+            pi++; pos = 0; pw = 0; inQ = false; atStart = true;
+          }
+          finish();
+        }
+        /* per distinct form once, then weighted by how often it occurs */
+        function finish(){
+          var keys = [], ki = 0, hapax = 0, syl = 0, letters = 0;
+          forms.forEach(function(f, w){ keys.push(w); });
+          (function more(){
+            if (!live()){ resolve(null); return; }
+            var stop = Math.min(keys.length, ki + 5000);
+            for (; ki < stop; ki++){
+              var w = keys[ki], f = forms.get(w);
+              f.syl = syllables(w); f.len = w.replace(/['-]/g, "").length;
+              syl += f.syl * f.n; letters += f.len * f.n;
+              if (f.n === 1) hapax++;
+            }
+            if (ki < keys.length){ setTimeout(more, 0); return; }
+            var s = Math.max(1, sentences), safe = Math.max(1, words);
+            var asl = words / s, asw = syl / safe;
+            resolve({
+              words: words, unique: forms.size, sentences: s, paragraphs: paragraphs, syllables: syl, letters: letters,
+              dialogue: dialogue, hapax: hapax, forms: forms,
+              avgSentence: asl, avgWord: letters / safe,
+              ttr: windows ? ttrSum / windows : (words ? forms.size / words : 0),
+              flesch: Math.round(Math.max(0, Math.min(100, 206.835 - 1.015 * asl - 84.6 * asw))),
+              grade: 0.39 * asl + 11.8 * asw - 15.59,
+              cli: 0.0588 * (letters / safe * 100) - 0.296 * (s / safe * 100) - 15.8,
+              note: null, hard: null
+            });
+          })();
+        }
+        step();
+      });
+    }
+
+    /* ---- reading the numbers ---- */
+    function band(score){ for (var i = 0; i < BANDS.length; i++) if (score >= BANDS[i][0]) return BANDS[i]; return BANDS[BANDS.length - 1]; }
+    function gradeText(g){
+      var n = Math.round(g);
+      if (n < 1) return "before grade 1 · about age 5–6";
+      if (n >= 17) return "beyond grade 16 · postgraduate reading";
+      if (n >= 13) return "grade " + n + " · university level";
+      return "grade " + n + " · about age " + (n + 5) + "–" + (n + 6);
+    }
+    function ttrLabel(r){ return r < 0.40 ? "Simple" : r < 0.48 ? "Moderate" : r < 0.56 ? "Rich" : "Very rich"; }
+    function readingTime(words){
+      var min = words / Math.max(60, Progress.wpm());
+      if (min < 1) return "under a minute";
+      if (min < 59.5) return "about " + Math.round(min) + " min";
+      var h = Math.floor(min / 60), m = Math.round(min % 60);
+      if (m === 60){ h++; m = 0; }
+      return "about " + h + " h" + (m ? " " + m + " min" : "");
+    }
+    /* the hardest words: outside the common-word list (or in its long tail), the long and
+       many-syllabled first; names, numbers and short words don't count */
+    function rankOf(ex, w){
+      var r = ex.rank(w);
+      if (ex.lemmas) ex.lemmas(w).forEach(function(l){ r = Math.min(r, ex.rank(l[0])); });
+      return r;
+    }
+    function hardest(st){
+      var ex = window.llExplain;
+      if (!ex || !st || !st.forms) return null;
+      var out = [];
+      st.forms.forEach(function(f, w){
+        if ((f.mid && f.capMid === f.mid) || !WORDY.test(w)) return;
+        var len = f.len !== undefined ? f.len : w.replace(/['-]/g, "").length;
+        if (len < 4) return;
+        var r = rankOf(ex, w), tier = r === Infinity ? 3 : r > RARE ? 2 : r > UNCOMMON ? 1 : 0;
+        if (!tier) return;
+        var syl = f.syl !== undefined ? f.syl : syllables(w);
+        out.push({ w: w, n: f.n, tier: tier, syl: syl, score: tier * 4 + len * 0.5 + syl * 1.5 });
+      });
+      out.sort(function(a, b){ return b.score - a.score || a.n - b.n || (a.w < b.w ? -1 : a.w > b.w ? 1 : 0); });
+      return out.slice(0, HARD);
+    }
+
+    /* ---- the panel ---- */
+    function docLabel(){
+      var id = Library.currentId(), b = Library.books().filter(function(x){ return x.id === id; })[0];
+      return { name: (b && (b.title || b.name)) || $("#fname").textContent || "This document",
+               type: b ? b.type : (state.mode === "pdf" ? "PDF" : "") };
+    }
+    function keyNow(){
+      return (Library.currentId() || "") + ":" + state.mode + ":" + (state.mode === "pdf" ? (state.pdfDoc ? state.pdfDoc.numPages : 0) : $("#doc").textContent.length);
+    }
+    function header(st){
+      var d = docLabel();
+      return '<div class="about-doc"><span class="about-name">' + esc(d.name) + '</span>' +
+        (d.type ? '<span class="about-fmt">' + esc(d.type) + '</span>' : '') +
+        (st && st.note ? '<span class="about-part">' + esc(st.note) + '</span>' : '') + '</div>';
+    }
+    function tile(value, label, cls){ return '<div class="about-tile' + (cls ? ' ' + cls : '') + '"><b>' + value + '</b><span>' + label + '</span></div>'; }
+    function wordRow(x){
+      return '<div class="about-row"><button type="button" class="about-word" data-w="' + esc(x.w) + '">' +
+        '<span class="w">' + esc(x.w) + '</span><span class="n">×' + x.n + '</span><span class="r">' + TIER[x.tier] + '</span></button>' +
+        '<button type="button" class="about-find" data-find="' + esc(x.w) + '" title="Find in the text" aria-label="Find “' + esc(x.w) + '” in the text">' + FIND_ICON + '</button></div>';
+    }
+    function draw(st){
+      var body = Side.body, foot = Side.foot, h = header(st);
+      statusEl = null;
+      if (!st.words){
+        body.innerHTML = h + '<div class="empty-note">Nothing to count yet.</div>';
+        foot.innerHTML = ""; foot.style.display = "none";
+        return;
+      }
+      var bd = band(st.flesch), share = Math.round(st.dialogue / st.words * 100);
+      h += '<h2 class="about-h">At a glance</h2><div class="about-grid">' +
+        tile(fmtN(st.words), "Words") + tile(fmtN(st.unique), "Unique words") + tile(fmtN(st.sentences), "Sentences") +
+        tile(esc(readingTime(st.words)), "Reading time at your speed", "full") +
+        tile(one(st.avgSentence), "Words per sentence") + tile(one(st.avgWord), "Letters per word") +
+        (share > 0 ? tile(share + "%", "Dialogue") : "") + '</div>';
+      h += '<h2 class="about-h">Reading level</h2><div class="about-level">' +
+        '<div class="about-score"><b>' + st.flesch + '</b><span>' + bd[1] + '</span><small>Flesch reading ease</small></div>' +
+        '<div class="about-scale" aria-hidden="true"><i style="left:' + st.flesch + '%"></i></div>' +
+        '<div class="about-ends" aria-hidden="true"><span>harder</span><span>easier</span></div>' +
+        '<p class="about-note">' + esc(bd[2]) + '</p>' +
+        '<p class="about-note muted">Flesch–Kincaid: ' + gradeText(st.grade) + '<br>Coleman–Liau, as a second opinion: ' + gradeText(st.cli) + '</p></div>';
+      h += '<h2 class="about-h">Vocabulary</h2><div class="about-grid">' +
+        tile(ttrLabel(st.ttr), "Vocabulary richness (" + st.ttr.toFixed(2) + ")", "wide") + tile(fmtN(st.hapax), "Words used only once") + '</div>';
+      h += '<h2 class="about-h">Hardest words</h2><div class="about-words" id="aboutWords"><div class="empty-note">Preparing…</div></div>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button class="chip" data-about="copy">Copy</button>' +
+        '<div class="about-foot-note">Counts are from the text as shown; numbers, headings and captions are included.</div>';
+      foot.style.display = "flex";
+      fillHardest(st);
+    }
+    /* the word list needs explain.js's frequency list, fetched the first time it is wanted */
+    function fillHardest(st){
+      var el = function(){ return Side.is("about") && cache && cache.stats === st ? Side.body.querySelector("#aboutWords") : null; };
+      need(["explain"]).then(function(){
+        var box = el(); if (!box) return;
+        var list = hardest(st) || [];
+        st.hard = list;
+        box.innerHTML = list.length ? list.map(wordRow).join("") : '<div class="empty-note">No unusual words — everything here is everyday English.</div>';
+      }, function(){
+        var box = el(); if (box) box.innerHTML = '<div class="empty-note">Couldn’t load the word list.</div>';
+      });
+    }
+    function compute(){
+      var myGen = ++gen, key = keyNow(), mode = state.mode, pdf = state.pdfDoc, note = null;
+      function live(){ return myGen === gen && Side.is("about") && state.mode === mode && (mode !== "pdf" || state.pdfDoc === pdf); }
+      function status(msg){ if (live() && statusEl) statusEl.textContent = msg; }
+      var src = mode === "pdf" && pdf
+        ? pdfText(pdf, status, live).then(function(r){ if (r && r.capped) note = "first " + MAX_PDF_PAGES + " pages"; return r ? r.text : null; })
+        : Promise.resolve(docText());
+      src.then(function(text){
+        if (text === null || !live()) return null;
+        status("Counting words…");
+        return analyse(text, { live: live, onProgress: function(n){ status("Counting words… " + fmtN(n) + " so far"); } });
+      }).then(function(st){
+        if (!st || !live()) return;
+        st.note = note;
+        cache = { key: key, stats: st };
+        draw(st);
+      }).catch(function(err){ console.warn("about: couldn’t read the text", err); status("Couldn’t read the text."); });
+    }
+    function render(body){
+      var key = keyNow();
+      if (cache && cache.key === key){ draw(cache.stats); return; }
+      body.innerHTML = header() + '<div class="empty-note" id="aboutStatus" aria-live="polite">Reading the text…</div>';
+      statusEl = body.querySelector("#aboutStatus");
+      compute();
+    }
+    function openPanel(){
+      if (!docOpen()) return;
+      Side.open("about", "About this text", render, function(){ gen++; statusEl = null; });
+    }
+    /* a plain-text summary for the clipboard */
+    function summary(st, name){
+      var bd = band(st.flesch), share = Math.round(st.dialogue / Math.max(1, st.words) * 100), out = [];
+      out.push("About “" + name + "”" + (st.note ? " (" + st.note + ")" : ""));
+      out.push("Words: " + fmtN(st.words) + " · unique words: " + fmtN(st.unique) + " · sentences: " + fmtN(st.sentences));
+      out.push("Reading time: " + readingTime(st.words) + " at " + Math.round(Progress.wpm()) + " words a minute");
+      out.push("Average sentence: " + one(st.avgSentence) + " words · average word: " + one(st.avgWord) + " letters" + (share > 0 ? " · dialogue: " + share + "%" : ""));
+      out.push("Reading level: Flesch reading ease " + st.flesch + " (" + bd[1] + ") — " + bd[2]);
+      out.push("Flesch–Kincaid: " + gradeText(st.grade) + " · Coleman–Liau: " + gradeText(st.cli));
+      out.push("Vocabulary richness: " + ttrLabel(st.ttr) + " (" + st.ttr.toFixed(2) + ") · words used only once: " + fmtN(st.hapax));
+      if (st.hard && st.hard.length) out.push("Hardest words: " + st.hard.map(function(x){ return x.w + " (" + x.n + ")"; }).join(", "));
+      return out.join("\n");
+    }
+    function copy(text){
+      var done = function(){ Marks.toast("Copied"); }, fail = function(){ Marks.toast("Couldn’t copy"); };
+      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, fail); return; }
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        var ok = document.execCommand("copy"); ta.remove();
+        if (ok) done(); else fail();
+      } catch(_){ fail(); }
+    }
+    /* Search has no query API: open it, then type into its box */
+    function findWord(word){
+      Search.openPanel();
+      var input = Side.body.querySelector("#findInput");
+      if (input){ input.value = word; input.dispatchEvent(new Event("input", { bubbles: true })); }
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("about")) return;
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.w !== undefined){ if (window.llDict) window.llDict.defineWord(b.dataset.w); }
+      else if (b.dataset.find !== undefined) findWord(b.dataset.find);
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("about") || !cache) return;
+      var b = e.target.closest("button[data-about]"); if (!b) return;
+      copy(summary(cache.stats, docLabel().name));
+    });
+    Menu.add({ order: 60, label: "About this text", key: "I", run: openPanel, show: docOpen });
+    window.llAbout = { openPanel: openPanel, stats: analyse, syllables: syllables, sentences: sentencesIn, hardest: hardest, summary: summary };
+    return { openPanel: openPanel, stats: analyse, syllables: syllables, hardest: hardest };
+  })();
+
+  /* ============================================================
      Read aloud — Web Speech API, sentence by sentence, with a narrator and a
      second voice for quoted speech, and a little expression read off the text
      ============================================================ */
@@ -3317,6 +3686,7 @@
     add("l", "Reading ruler", function(){ Ruler.toggle(); }, docOpen);
     add("a", "Auto-scroll (start / stop)", function(){ if (Auto.isOn()) Auto.stop(); else Auto.start(); }, docOpen);
     add("h", "Library / home", function(){ Library.home(); }, docOpen);
+    add("i", "About this text", function(){ About.openPanel(); }, docOpen);
     add("?", "Keyboard shortcuts", function(){ openHelp(); });
     var extra = [
       ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],

@@ -473,6 +473,53 @@
     width:70px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink);
     font-family:var(--ui-font); font-size:0.8438rem;
   }
+  /* ---------- about this text ---------- */
+  .about-doc{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:4px 2px 8px; font-size:0.8438rem; color:var(--muted);}
+  .about-doc .about-name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); font-family:var(--reader-font); font-size:0.9688rem;}
+  .about-doc .about-fmt, .about-doc .about-part{font-size:0.6562rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); white-space:nowrap;}
+  .about-doc .about-part{color:var(--muted);}
+  .about-h{margin:16px 0 8px; font-size:0.6562rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--accent);}
+  .about-grid{display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px;}
+  .about-tile{padding:10px 10px 9px; border:1px solid var(--line); border-radius:10px; min-width:0;}
+  .about-tile b{display:block; font-family:var(--reader-font); font-size:1.375rem; font-weight:600; line-height:1.15; color:var(--ink); font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+  .about-tile span{display:block; margin-top:3px; font-size:0.7188rem; line-height:1.3; color:var(--muted);}
+  .about-tile.wide{grid-column:span 2;}
+  .about-tile.full{grid-column:1 / -1;}
+  .about-tile.wide b, .about-tile.full b{font-size:1.125rem; padding-top:2px;}
+  .about-level{padding:10px 12px 11px; border:1px solid var(--line); border-radius:10px;}
+  .about-score{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  .about-score b{font-family:var(--reader-font); font-size:1.75rem; font-weight:600; line-height:1; font-variant-numeric:tabular-nums;}
+  .about-score span{font-size:0.9375rem; font-weight:600;}
+  .about-score small{margin-left:auto; font-size:0.7188rem; color:var(--muted);}
+  /* the 0–100 scale is decoration; the numbers are in the text */
+  .about-scale{position:relative; height:6px; margin:12px 0 5px; border-radius:3px; background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), color-mix(in srgb, var(--accent) 10%, transparent));}
+  .about-scale i{position:absolute; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; background:var(--accent); border:2px solid var(--panel); box-shadow:0 0 0 1px var(--line);}
+  .about-ends{display:flex; justify-content:space-between; font-size:0.6562rem; color:var(--muted);}
+  .about-note{margin:8px 0 0; font-size:0.8125rem; line-height:1.45; color:var(--ink);}
+  .about-note.muted{color:var(--muted);}
+  .about-words{display:grid; gap:4px;}
+  .about-row{display:flex; gap:4px; align-items:stretch;}
+  .about-word{
+    flex:1; min-width:0; display:flex; align-items:baseline; gap:8px; padding:7px 10px; text-align:left;
+    border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:0.8438rem; cursor:pointer; transition:border-color .2s;
+  }
+  .about-word:hover{border-color:var(--accent);}
+  .about-word .w{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--reader-font); font-size:0.9375rem;}
+  .about-word .n{font-size:0.7188rem; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .about-word .r{font-size:0.6562rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); white-space:nowrap;}
+  .about-find{
+    width:38px; flex:none; display:flex; align-items:center; justify-content:center; padding:0;
+    border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--muted); cursor:pointer; transition:border-color .2s, color .2s;
+  }
+  .about-find:hover{border-color:var(--accent); color:var(--accent);}
+  .about-find svg{width:15px; height:15px;}
+  .about-foot-note{flex-basis:100%; font-size:0.7188rem; line-height:1.4; color:var(--muted);}
+  @media (forced-colors: active){
+    .about-tile, .about-level, .about-word, .about-find{border:1px solid ButtonText;}
+    .about-scale{background:ButtonText; forced-color-adjust:none;}
+    .about-scale i{background:Highlight; border-color:Canvas; forced-color-adjust:none;}
+  }
   #updateToast{
     position:fixed; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:71;
     display:flex; align-items:center; gap:10px; background:var(--ink); color:var(--bg); padding:9px 10px 9px 16px;
