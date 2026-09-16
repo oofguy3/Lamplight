@@ -363,32 +363,45 @@
     return Math.max(160, window.innerHeight - headH - pagerH - ttsH - 26);
   }
   function spreadOn(){ return state.spread !== false && window.innerWidth >= 1000; }
+  /* Pages flow lays the text out in fixed-height columns and shows one column (or two,
+     side by side) at a time by scrolling the view sideways. The column boxes are
+     measured from the layout itself, so the margins setting can't put them out of step. */
   function layoutDocPages(){
     var view = $("#docView"), doc = $("#doc");
     view.style.height = availHeight() + "px";
     state.perPage = spreadOn() ? 2 : 1;
     document.body.classList.toggle("spread", state.perPage === 2);
-    state.colw = state.perPage === 2 ? Math.floor((view.clientWidth - state.gap) / 2) : view.clientWidth;
-    doc.style.columnWidth = state.colw + "px";
+    doc.style.columnWidth = "";
+    doc.style.columnCount = String(state.perPage);
     doc.style.columnGap = state.gap + "px";
-    var cols = Math.max(1, Math.ceil(doc.scrollWidth / (state.colw + state.gap)));
+    var w = doc.getBoundingClientRect().width;
+    state.colw = (w - (state.perPage - 1) * state.gap) / state.perPage;
+    state.stride = state.colw + state.gap;
+    var cols = Math.max(1, Math.round((doc.scrollWidth + state.gap) / state.stride));
     state.totalPages = Math.max(1, Math.ceil(cols / state.perPage));
   }
   /* which page shows a given x offset inside the column strip */
-  function pageOfOffset(x){ return Math.floor(x / (state.colw + state.gap) / (state.perPage || 1)); }
+  function pageOfOffset(x){ return Math.floor((x + 0.5) / (state.stride || (state.colw + state.gap)) / (state.perPage || 1)); }
   function exitDocPages(){
     var view = $("#docView"), doc = $("#doc");
     document.body.classList.remove("spread");
     state.perPage = 1;
     view.style.height = "";
+    view.scrollLeft = 0;
     doc.style.columnWidth = "";
+    doc.style.columnCount = "";
     doc.style.columnGap = "";
     doc.style.transform = "";
   }
-  function gotoPage(n){
+  var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  function gotoPage(n, animate){
     n = Math.max(0, Math.min(n, state.totalPages - 1));
+    var was = state.page;
     state.page = n;
-    $("#doc").style.transform = "translateX(" + (-n * (state.perPage || 1) * (state.colw + state.gap)) + "px)";
+    var view = $("#docView"), left = n * (state.perPage || 1) * state.stride;
+    var smooth = animate && !(reduceMotion && reduceMotion.matches) && Math.abs(n - was) === 1;
+    if (smooth && view.scrollTo) view.scrollTo({ left: left, behavior: "smooth" });
+    else view.scrollLeft = left;
     updatePager(); updateProgress();
     Library.notePosition();
   }
@@ -446,7 +459,7 @@
   }
   function turn(dir){
     if (!pagedActive()) return;
-    if (state.mode === "doc"){ gotoPage(state.page + dir); }
+    if (state.mode === "doc"){ gotoPage(state.page + dir, true); }
     else {
       var step = state.perPage || 1;
       var n = state.pdfPageNum + dir * step;
