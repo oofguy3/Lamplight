@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.16-21";
+const VERSION = "2026.09.16-22";
 const CACHE = "lamplight-" + VERSION;
 const ASSETS = [
   "./",
@@ -9,6 +9,7 @@ const ASSETS = [
   "./app.css",
   "./app.js",
   "./explain.js",
+  "./morph.js",
   "./manifest.webmanifest",
   "./dict-index.json",
   "./icon-192.png",
@@ -27,6 +28,41 @@ const ASSETS = [
 ];
 /* dictionary chunks: cached one by one so a single failure can't block install */
 const DICTS = [1,2,3,4,5,6].map((i) => "./dict" + i + ".json");
+/* bundled reading fonts (FONTS in app.js): the app fetches a family only when it is chosen, so
+   they are cached the same tolerant way — a missing file must not block install either */
+const FONTS = [
+  "./fonts/opendyslexic-latin-400-normal.woff2",
+  "./fonts/opendyslexic-latin-700-normal.woff2",
+  "./fonts/opendyslexic-latin-400-italic.woff2",
+  "./fonts/opendyslexic-latin-700-italic.woff2",
+  "./fonts/lexend-latin-wght-normal.woff2",
+  "./fonts/andika-latin-400-normal.woff2",
+  "./fonts/andika-latin-700-normal.woff2",
+  "./fonts/andika-latin-400-italic.woff2",
+  "./fonts/literata-latin-wght-normal.woff2",
+  "./fonts/literata-latin-wght-italic.woff2",
+  "./fonts/source-serif-4-latin-wght-normal.woff2",
+  "./fonts/source-serif-4-latin-wght-italic.woff2",
+  "./fonts/lora-latin-wght-normal.woff2",
+  "./fonts/lora-latin-wght-italic.woff2",
+  "./fonts/merriweather-latin-wght-normal.woff2",
+  "./fonts/merriweather-latin-wght-italic.woff2",
+  "./fonts/eb-garamond-latin-wght-normal.woff2",
+  "./fonts/eb-garamond-latin-wght-italic.woff2",
+  "./fonts/crimson-pro-latin-wght-normal.woff2",
+  "./fonts/crimson-pro-latin-wght-italic.woff2",
+  "./fonts/libre-baskerville-latin-400-normal.woff2",
+  "./fonts/libre-baskerville-latin-700-normal.woff2",
+  "./fonts/libre-baskerville-latin-400-italic.woff2",
+  "./fonts/bitter-latin-wght-normal.woff2",
+  "./fonts/inter-latin-wght-normal.woff2",
+  "./fonts/ibm-plex-sans-latin-wght-normal.woff2",
+  "./fonts/ibm-plex-sans-latin-wght-italic.woff2",
+  "./fonts/nunito-latin-wght-normal.woff2",
+  "./fonts/jetbrains-mono-latin-wght-normal.woff2",
+  "./fonts/ibm-plex-mono-latin-400-normal.woff2",
+  "./fonts/ibm-plex-mono-latin-700-normal.woff2"
+];
 
 /* fetched past the HTTP cache, so a release never installs files a CDN or the browser still
    held from the previous one */
@@ -34,7 +70,7 @@ const fresh = (u) => new Request(u, { cache: "reload" });
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE).then((c) =>
-      c.addAll(ASSETS.map(fresh)).then(() => Promise.all(DICTS.map((d) => c.add(fresh(d)).catch(() => null))))
+      c.addAll(ASSETS.map(fresh)).then(() => Promise.all(DICTS.concat(FONTS).map((d) => c.add(fresh(d)).catch(() => null))))
     )
   );
 });

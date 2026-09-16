@@ -52,7 +52,7 @@
 
     <div class="group">
       <div class="label">Theme</div>
-      <div class="chips" id="themeChips"></div>
+      <div id="themeChips"></div>
       <div class="rowline"><label>Auto</label>
         <div class="chips" id="autoChips">
           <button class="chip" data-auto="off">Manual</button>
@@ -66,17 +66,55 @@
         <div class="hint" id="autoHint"></div>
       </div>
       <div id="customRow">
+        <div class="cst-head">
+          <div class="cst-name" id="cName">Custom</div>
+          <div class="cst-acts">
+            <button class="chip" id="cRename">Rename</button>
+            <button class="chip" id="cDup">Duplicate</button>
+            <button class="chip" id="cSaveAs">Save as new</button>
+            <button class="chip" id="cDel">Delete</button>
+          </div>
+        </div>
         <div class="cst-label">Background</div>
         <div class="sw-grid" id="bgSwatches"></div>
         <div class="rowline"><label for="cHue">Tint</label><input type="range" id="cHue" min="0" max="360" step="1" value="215"><span class="val" id="vHue">215°</span></div>
         <div class="rowline"><label for="cLit">Bright</label><input type="range" id="cLit" min="3" max="97" step="1" value="10"><span class="val" id="vLit">10 %</span></div>
-        <div class="cst-label">Text color</div>
+        <div class="cpick"><label for="cBg">Or any colour</label><span class="cpick-in"><input type="color" id="cBg" value="#101418"><input type="text" id="hBg" class="hex" value="#101418" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Background hex code"></span></div>
+        <div class="cst-label">Text</div>
         <label class="check"><input type="checkbox" id="autoInk" checked>Automatic — always readable</label>
-        <div class="rowline" id="inkRow" style="display:none;"><span class="swatch"><input type="color" id="cInk" value="#e7e2d6" aria-label="Text colour">Pick text color</span></div>
+        <div class="cpick"><label for="cInk">Text colour</label><span class="cpick-in"><input type="color" id="cInk" value="#e7e2d6"><input type="text" id="hInk" class="hex" value="#e7e2d6" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Text hex code"></span></div>
         <div class="cst-label">Accent</div>
         <div class="sw-grid" id="accSwatches"></div>
-        <div class="rowline"><span class="swatch"><input type="color" id="cAcc" value="#e0a458" aria-label="Accent colour">Or pick any accent</span></div>
-        <div id="cPrev">The lamp hums quietly. <em>She turns the page anyway</em> — one more chapter, she tells herself, <span id="cPrevAcc">just one more</span>.</div>
+        <div class="cpick"><label for="cAcc">Or any colour</label><span class="cpick-in"><input type="color" id="cAcc" value="#e0a458"><input type="text" id="hAcc" class="hex" value="#e0a458" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Accent hex code"></span></div>
+        <details class="cst-adv">
+          <summary>Advanced</summary>
+          <div class="cst-adv-body">
+            <div class="cst-label">Panel</div>
+            <div class="hint">The bars, the menu and this sheet.</div>
+            <label class="check"><input type="checkbox" id="autoPanel" checked>Automatic — a shade off the background</label>
+            <div class="cpick"><label for="cPanel">Panel colour</label><span class="cpick-in"><input type="color" id="cPanel" value="#151a1f"><input type="text" id="hPanel" class="hex" value="#151a1f" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Panel hex code"></span></div>
+            <div class="cst-label">Secondary text</div>
+            <div class="hint">Hints, captions and page numbers.</div>
+            <label class="check"><input type="checkbox" id="autoMuted" checked>Automatic — between the text and the background</label>
+            <div class="cpick"><label for="cMuted">Secondary text colour</label><span class="cpick-in"><input type="color" id="cMuted" value="#8f8c86"><input type="text" id="hMuted" class="hex" value="#8f8c86" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Secondary text hex code"></span></div>
+          </div>
+        </details>
+        <div class="cst-meter" id="cMeter">
+          <div class="cst-label">Contrast</div>
+          <dl class="meter">
+            <div class="meter-row" data-k="ink"><dt>Text on background</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
+            <div class="meter-row" data-k="muted"><dt>Secondary text on background</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
+            <div class="meter-row" data-k="accent"><dt>Accent on background</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
+            <div class="meter-row" data-k="accentPanel"><dt>Accent on panel</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
+          </dl>
+          <p class="meter-sum" id="cMeterSum" aria-live="polite"></p>
+          <button class="chip" id="cFix" hidden>Fix contrast</button>
+        </div>
+        <div id="cPrev">
+          <div class="cprev-panel" id="cPrevPanel"><span class="cprev-mark">lamp<span id="cPrevPanelAcc">light</span></span><span>Chapter three · 12 min left</span></div>
+          <p>The lamp hums quietly. <em>She turns the page anyway</em> — one more chapter, she tells herself, <span id="cPrevAcc" class="cprev-link">just one more</span>.</p>
+          <div class="cprev-muted" id="cPrevMuted">Secondary text looks like this — page 42 of 310.</div>
+        </div>
       </div>
     </div>
 
@@ -86,13 +124,9 @@
       <div class="rowline"><label for="rLh">Spacing</label><input type="range" id="rLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="vLh">1.75</span></div>
       <div class="rowline"><label for="rW">Width</label><input type="range" id="rW" min="320" max="960" step="20" value="720"><span class="val" id="vW">720 px</span></div>
       <div class="rowline"><label for="rM">Margins</label><input type="range" id="rM" min="0" max="64" step="4" value="0"><span class="val" id="vM">0 px</span></div>
-      <div class="rowline"><label>Font</label>
-        <div class="chips" id="fontChips">
-          <button class="chip" data-font="serif">Serif</button>
-          <button class="chip" data-font="sans">Sans</button>
-          <button class="chip" data-font="mono">Mono</button>
-          <button class="chip" data-font="hyper" title="Atkinson Hyperlegible — designed for low vision readers">Hyperlegible</button>
-        </div>
+      <div class="rowline"><label for="fontSel">Font</label>
+        <select id="fontSel" class="sel"></select>
+        <button class="chip" id="fontBrowse" aria-haspopup="dialog">Browse fonts…</button>
       </div>
       <div class="rowline">
         <label class="check"><input type="checkbox" id="cJustify">Justify text</label>
@@ -117,6 +151,7 @@
     <button class="ctl primary" id="openBtn2" style="margin:0 auto;">Open a file</button>
     <div class="formats">PDF · EPUB · DOCX · TXT · MARKDOWN · HTML</div>
   </div>
+  <div id="streak"></div>
   <div id="library" aria-label="Recent files">
     <div class="lib-head"><div class="label">Continue reading</div><button id="libClear" title="Remove all files from this device">Clear library</button></div>
     <div class="lib-list" id="libList"></div>
@@ -141,6 +176,9 @@
   <button class="ctl" id="ttsNext" title="Next sentence" aria-label="Next sentence">›</button>
   <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
   <select id="ttsVoice" aria-label="Voice"></select>
+  <button class="ctl tts-sex" id="ttsWoman" title="Use a woman's voice" aria-label="Use a woman's voice" aria-pressed="false" hidden>♀</button>
+  <button class="ctl tts-sex" id="ttsMan" title="Use a man's voice" aria-label="Use a man's voice" aria-pressed="false" hidden>♂</button>
+  <button class="ctl tts-voices" id="ttsVoices" title="Voices, dialogue voice and expression" aria-label="Read-aloud voices" aria-haspopup="dialog">Voices…</button>
   <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading">×</button>
 </div>
 <div id="sideScrim"></div>

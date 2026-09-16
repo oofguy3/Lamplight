@@ -17,7 +17,8 @@
     marked:  ["./vendor/marked.min.js"],
     purify:  ["./vendor/purify.min.js"],
     jszip:   ["./vendor/jszip.min.js"],
-    explain: ["./explain.js"]
+    explain: ["./explain.js"],
+    morph:   ["./morph.js"]
   };
   function need(names){
     var files = [];
@@ -55,34 +56,125 @@
     }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
+  /* Built-in themes. Every pair the reader meets (text, secondary text and accent on the page
+     and on the panel) is at least 4.5:1 — tests/themes.js audits this table. */
   var THEMES = {
+    /* light */
     day:   {name:"Day",    bg:"#EDEDE6", ink:"#1F2323", muted:"#646B68", panel:"#F5F5EF", line:"#D8D9CF", accent:"#2F6D5B"},
-    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#8D5A1D"},
+    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#86551A"},
     mist:  {name:"Mist",   bg:"#E7EBEE", ink:"#25303A", muted:"#5D6A76", panel:"#F0F3F5", line:"#D1D9DF", accent:"#3C6E93"},
-    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#AE4D5E"},
+    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#A8495A"},
+    paper:     {name:"Paper",     bg:"#FAFAF7", ink:"#141414", muted:"#5C5C58", panel:"#FFFFFF", line:"#E1E1DA", accent:"#BE2A24"},
+    parchment: {name:"Parchment", bg:"#F1E4C6", ink:"#2C2114", muted:"#67563A", panel:"#F7ECD4", line:"#DCCBA3", accent:"#8B2F2A"},
+    linen:     {name:"Linen",     bg:"#F3EFE6", ink:"#2B2A26", muted:"#65625A", panel:"#FAF8F1", line:"#DDD8CB", accent:"#5A6828"},
+    sage:      {name:"Sage",      bg:"#E3EADD", ink:"#1F2A22", muted:"#556358", panel:"#EDF2E8", line:"#CAD5C3", accent:"#A2502E"},
+    lavender:  {name:"Lavender",  bg:"#ECE7F4", ink:"#29233A", muted:"#605876", panel:"#F4F1FA", line:"#D6CFE4", accent:"#6A4DB5"},
+    sky:       {name:"Sky",       bg:"#E2EDF7", ink:"#17293A", muted:"#4F6274", panel:"#EEF5FB", line:"#C7D8E7", accent:"#2068A8"},
+    peach:     {name:"Peach",     bg:"#FBE7DA", ink:"#3B2A21", muted:"#765A4D", panel:"#FDF1E8", line:"#EBD1C0", accent:"#146C72"},
+    newsprint: {name:"Newsprint", bg:"#E3E2DC", ink:"#2B2B2B", muted:"#5E5E5B", panel:"#EBEAE5", line:"#CDCCC5", accent:"#A82424"},
+    mint:      {name:"Mint",      bg:"#DEF2E8", ink:"#153128", muted:"#48685C", panel:"#EAF7F0", line:"#C1DFD1", accent:"#0D7566"},
+    /* dark */
     dusk:  {name:"Dusk",   bg:"#14161B", ink:"#D6D3C8", muted:"#8E9088", panel:"#1B1E25", line:"#2A2E37", accent:"#D8A24A"},
     forest:{name:"Forest", bg:"#101711", ink:"#CDD8C6", muted:"#83907E", panel:"#161F17", line:"#263223", accent:"#7FB069"},
     ocean: {name:"Ocean",  bg:"#0D141E", ink:"#CBD5E1", muted:"#7E8CA0", panel:"#131C29", line:"#223042", accent:"#5C9CD6"},
     plum:  {name:"Plum",   bg:"#17101F", ink:"#D8CDE3", muted:"#91849F", panel:"#1E1628", line:"#2F2440", accent:"#A97FD6"},
     ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#7F7C72", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F"},
+    midnight:  {name:"Midnight",  bg:"#0B1126", ink:"#D8DDEE", muted:"#8F9AB9", panel:"#111A36", line:"#20294B", accent:"#9DB4FF"},
+    graphite:  {name:"Graphite",  bg:"#1E1F22", ink:"#D8D8D5", muted:"#9A9A96", panel:"#26272B", line:"#36373C", accent:"#74D0B8"},
+    ember:     {name:"Ember",     bg:"#1A1210", ink:"#EBDACD", muted:"#A68F80", panel:"#221815", line:"#3B2A22", accent:"#F2812E"},
+    moss:      {name:"Moss",      bg:"#161A10", ink:"#D7DBC2", muted:"#949B7F", panel:"#1D2215", line:"#303826", accent:"#B7C86A"},
+    cocoa:     {name:"Cocoa",     bg:"#1B1411", ink:"#E9DBCF", muted:"#A6958A", panel:"#241B17", line:"#3A2D27", accent:"#D8A067"},
+    slate:     {name:"Slate",     bg:"#1C2229", ink:"#D5DBE1", muted:"#8F9BA7", panel:"#242B33", line:"#353E48", accent:"#EF8C76"},
+    /* dim: for reading in the dark without a black screen */
+    candle:    {name:"Candle",    bg:"#2A1D14", ink:"#F0DDB4", muted:"#B39F80", panel:"#33251A", line:"#4C3A2A", accent:"#E9C46A"},
+    /* phosphor screens and pure black */
+    terminal:  {name:"Terminal",  bg:"#050805", ink:"#3FE86F", muted:"#2FA354", panel:"#0A110A", line:"#183018", accent:"#D9FF6E"},
+    amber:     {name:"Amber",     bg:"#0F0A03", ink:"#FFB000", muted:"#B98319", panel:"#17100A", line:"#302311", accent:"#FFDF70"},
+    noir:      {name:"Noir",      bg:"#000000", ink:"#C6C6C6", muted:"#8E8E8E", panel:"#0B0B0B", line:"#242424", accent:"#EDEDED"},
     /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
     hicon: {name:"Contrast",      bg:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", panel:"#FFFFFF", line:"#000000", accent:"#0033CC"},
     hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400"}
   };
-  var CYCLE = Object.keys(THEMES);
-  var FONTS = {
+  /* the chips and the day / night lists show the built-ins in three groups; the lamp cycles
+     them in the same order: lights, then darks, then high contrast */
+  var HICON = ["hicon", "hidark"];
+  function themeGroups(){
+    var light = [], dark = [];
+    Object.keys(THEMES).forEach(function(k){ if (HICON.indexOf(k) < 0) (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
+    return [{ id: "light", name: "Light", ids: light }, { id: "dark", name: "Dark", ids: dark }, { id: "hicon", name: "High contrast", ids: HICON }];
+  }
+  var CYCLE = themeGroups().reduce(function(all, g){ return all.concat(g.ids); }, []);
+  /* system stacks: the plain choice in each group, and what a bundled family shows before it
+     has loaded (or falls back to when it can't) */
+  var STACKS = {
     serif: "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif",
     sans:  "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
-    mono:  "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace",
-    hyper: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    mono:  "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace"
   };
+  /* a bundled face: fonts/<file>.woff2 at one weight (a range for variable fonts) and style.
+     A family's first file is its regular face, the only one a preview needs. */
+  function fontFile(file, weight, style){ return { url: "./fonts/" + file + ".woff2", weight: weight, style: style || "normal" }; }
+  /* the type catalogue, in menu order. Families with files are bundled and fetched the first
+     time they are chosen or previewed (see Fonts), so this table costs nothing at load; system
+     entries have no files. The old ids (serif, sans, mono, hyper) keep their stacks. */
+  var FONTS = {
+    /* easy reading */
+    dyslexic:    { name: "OpenDyslexic", group: "easy", stack: "'OpenDyslexic', " + STACKS.sans, note: "weighted letter bottoms and wide spacing help letters stay put",
+                   files: [fontFile("opendyslexic-latin-400-normal", "400"), fontFile("opendyslexic-latin-700-normal", "700"), fontFile("opendyslexic-latin-400-italic", "400", "italic"), fontFile("opendyslexic-latin-700-italic", "700", "italic")] },
+    lexend:      { name: "Lexend", group: "easy", stack: "'Lexend', " + STACKS.sans, note: "wide, even shapes shown to raise reading speed",
+                   files: [fontFile("lexend-latin-wght-normal", "100 900")] },
+    hyper:       { name: "Atkinson Hyperlegible", group: "easy", stack: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", note: "designed for low vision readers" },   /* its @font-face rules are in app.css */
+    andika:      { name: "Andika", group: "easy", stack: "'Andika', " + STACKS.sans, note: "clear letterforms for beginning readers",
+                   files: [fontFile("andika-latin-400-normal", "400"), fontFile("andika-latin-700-normal", "700"), fontFile("andika-latin-400-italic", "400", "italic")] },
+    /* serif */
+    serif:       { name: "Georgia", group: "serif", stack: STACKS.serif, note: "the classic screen serif, on nearly every device" },
+    palatino:    { name: "Palatino", group: "serif", stack: "'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', serif", note: "a calligraphic book face, where the device has it" },
+    times:       { name: "Times", group: "serif", stack: "'Times New Roman', Times, 'Nimbus Roman', serif", note: "the newspaper serif everyone knows" },
+    literata:    { name: "Literata", group: "serif", stack: "'Literata', " + STACKS.serif, note: "made for e-reading",
+                   files: [fontFile("literata-latin-wght-normal", "200 900"), fontFile("literata-latin-wght-italic", "200 900", "italic")] },
+    sourceserif: { name: "Source Serif", family: "Source Serif 4", group: "serif", stack: "'Source Serif 4', " + STACKS.serif, note: "a sturdy, open text serif",
+                   files: [fontFile("source-serif-4-latin-wght-normal", "200 900"), fontFile("source-serif-4-latin-wght-italic", "200 900", "italic")] },
+    lora:        { name: "Lora", group: "serif", stack: "'Lora', " + STACKS.serif, note: "brushed curves with a modern feel",
+                   files: [fontFile("lora-latin-wght-normal", "400 700"), fontFile("lora-latin-wght-italic", "400 700", "italic")] },
+    merriweather:{ name: "Merriweather", group: "serif", stack: "'Merriweather', " + STACKS.serif, note: "large x-height, pleasant on screens",
+                   files: [fontFile("merriweather-latin-wght-normal", "300 900"), fontFile("merriweather-latin-wght-italic", "300 900", "italic")] },
+    garamond:    { name: "EB Garamond", group: "serif", stack: "'EB Garamond', " + STACKS.serif, note: "a faithful old-style Garamond",
+                   files: [fontFile("eb-garamond-latin-wght-normal", "400 800"), fontFile("eb-garamond-latin-wght-italic", "400 800", "italic")] },
+    crimson:     { name: "Crimson Pro", group: "serif", stack: "'Crimson Pro', " + STACKS.serif, note: "an old-style face in the spirit of printed books",
+                   files: [fontFile("crimson-pro-latin-wght-normal", "200 900"), fontFile("crimson-pro-latin-wght-italic", "200 900", "italic")] },
+    baskerville: { name: "Libre Baskerville", group: "serif", stack: "'Libre Baskerville', " + STACKS.serif, note: "a Baskerville tuned for reading on screens",
+                   files: [fontFile("libre-baskerville-latin-400-normal", "400"), fontFile("libre-baskerville-latin-700-normal", "700"), fontFile("libre-baskerville-latin-400-italic", "400", "italic")] },
+    bitter:      { name: "Bitter", group: "serif", stack: "'Bitter', " + STACKS.serif, note: "a slab serif, solid at any size",
+                   files: [fontFile("bitter-latin-wght-normal", "100 900")] },
+    /* sans */
+    sans:        { name: "System sans", group: "sans", stack: STACKS.sans, note: "whatever your device uses for its own text" },
+    helvetica:   { name: "Helvetica / Arial", group: "sans", stack: "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif", note: "neutral and familiar" },
+    verdana:     { name: "Verdana", group: "sans", stack: "Verdana, 'DejaVu Sans', Geneva, sans-serif", note: "wide and generous, made for small screens" },
+    inter:       { name: "Inter", group: "sans", stack: "'Inter', " + STACKS.sans, note: "a clean interface sans with tall letters",
+                   files: [fontFile("inter-latin-wght-normal", "100 900")] },
+    plex:        { name: "IBM Plex Sans", group: "sans", stack: "'IBM Plex Sans', " + STACKS.sans, note: "a warm, even sans with a slight edge",
+                   files: [fontFile("ibm-plex-sans-latin-wght-normal", "100 700"), fontFile("ibm-plex-sans-latin-wght-italic", "100 700", "italic")] },
+    nunito:      { name: "Nunito", group: "sans", stack: "'Nunito', " + STACKS.sans, note: "rounded and soft on the eye",
+                   files: [fontFile("nunito-latin-wght-normal", "200 1000")] },
+    /* mono */
+    mono:        { name: "System mono", group: "mono", stack: STACKS.mono, note: "fixed width, for code and plain text" },
+    jetbrains:   { name: "JetBrains Mono", group: "mono", stack: "'JetBrains Mono', " + STACKS.mono, note: "a tall, open monospace made for long reads",
+                   files: [fontFile("jetbrains-mono-latin-wght-normal", "100 800")] },
+    plexmono:    { name: "IBM Plex Mono", group: "mono", stack: "'IBM Plex Mono', " + STACKS.mono, note: "a typewriter-flavoured monospace",
+                   files: [fontFile("ibm-plex-mono-latin-400-normal", "400"), fontFile("ibm-plex-mono-latin-700-normal", "700")] }
+  };
+  var FONT_GROUPS = [{ id: "easy", name: "Easy reading" }, { id: "serif", name: "Serif" }, { id: "sans", name: "Sans" }, { id: "mono", name: "Mono" }];
   var BG_SWATCHES = ["#F6F1E4","#EFEFE8","#EDE7F3","#E4EFE7","#FBEDE0","#E8EFF5",
                      "#14161B","#101711","#171021","#1A1310","#0D1420","#050506"];
   var ACC_SWATCHES = ["#D8A24A","#C96A4A","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7FB069","#C9A227"];
+  /* the single "Custom" theme of earlier versions; still read so a saved one carries over into `customs` */
+  var CUSTOM_DEFAULT = {bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true};
 
   var state = {
     theme:"day",
-    custom:{bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true},
+    custom:Object.assign({}, CUSTOM_DEFAULT),
+    /* saved custom themes {id, name, bg, ink, autoInk, accent, panel?, muted?}; "c:" + id selects one */
+    customs:[],
     font:"serif", size:19, lh:1.75, width:720, margin:0, justify:false, hyphens:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
     zoom:1, soften:true,
@@ -93,13 +185,40 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
     var loading = false;
     function save(){
       if (loading) return;
       var o = {};
       FIELDS.forEach(function(f){ o[f] = state[f]; });
       Store.set(KEY, JSON.stringify(o));
+    }
+    /* saved custom themes from storage: only well-formed entries with real colours are kept */
+    function validCustoms(list){
+      var out = [], seen = {};
+      if (!Array.isArray(list)) return out;
+      list.forEach(function(c){
+        if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id || typeof c.name !== "string" || seen[c.id]) return;
+        var bg = normHex(c.bg), accent = normHex(c.accent), ink = normHex(c.ink);
+        if (!bg || !accent) return;
+        var t = { id: c.id, name: c.name.trim().slice(0, 60) || "Custom", bg: bg, ink: ink || deriveInk(bg), autoInk: c.autoInk !== false || !ink, accent: accent };
+        if (normHex(c.panel)) t.panel = normHex(c.panel);
+        if (normHex(c.muted)) t.muted = normHex(c.muted);
+        seen[c.id] = true; out.push(t);
+      });
+      return out;
+    }
+    /* the single scratch "Custom" theme of earlier versions becomes a saved theme, once: afterwards
+       the scratch colours are back at their defaults and nothing points at "custom" any more */
+    function migrateCustom(){
+      var c = state.custom, d = CUSTOM_DEFAULT;
+      var used = state.theme === "custom" || state.autoDay === "custom" || state.autoNight === "custom" || c.autoInk !== d.autoInk ||
+        ["bg", "ink", "accent"].some(function(k){ return String(c[k]).toLowerCase() !== d[k]; });
+      if (!used) return;
+      var bg = normHex(c.bg), accent = normHex(c.accent), ink = normHex(c.ink), theme = null;
+      if (bg && accent) theme = "c:" + addCustom({ name: "My theme", bg: bg, ink: ink || deriveInk(bg), autoInk: c.autoInk !== false || !ink, accent: accent }).id;
+      ["theme", "autoDay", "autoNight"].forEach(function(k){ if (state[k] === "custom") state[k] = theme || (k === "autoNight" ? "dusk" : "day"); });
+      state.custom = Object.assign({}, d);
     }
     function load(){
       var o = null;
@@ -109,16 +228,18 @@
       FIELDS.forEach(function(f){
         if (o[f] === undefined || o[f] === null) return;
         if (f === "custom"){ if (typeof o.custom === "object") state.custom = Object.assign({}, state.custom, o.custom); return; }
+        if (f === "customs"){ state.customs = validCustoms(o.customs); return; }
         if (typeof state[f] === "number" && typeof o[f] !== "number") return;
         state[f] = o[f];
       });
-      if (!THEMES[state.theme] && state.theme !== "custom") state.theme = "day";
+      migrateCustom();
+      if (!resolveTheme(state.theme)) state.theme = "day";
       if (!/^(off|system|time)$/.test(state.auto)) state.auto = "off";
-      if (!THEMES[state.autoDay] && state.autoDay !== "custom") state.autoDay = "day";
-      if (!THEMES[state.autoNight] && state.autoNight !== "custom") state.autoNight = "dusk";
+      if (!resolveTheme(state.autoDay)) state.autoDay = "day";
+      if (!resolveTheme(state.autoNight)) state.autoNight = "dusk";
       if (!/^\d\d:\d\d$/.test(state.nightFrom)) state.nightFrom = "21:00";
       if (!/^\d\d:\d\d$/.test(state.nightTo)) state.nightTo = "07:00";
-      if (!FONTS[state.font]) state.font = "serif";
+      if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
       if (state.flow !== "pages") state.flow = "scroll";
@@ -170,75 +291,219 @@
     var hs = hexToHsl(bg);
     return isDarkColor(bg) ? hslToHex(hs[0], 12, 86) : hslToHex(hs[0], 22, 13);
   }
-  function currentTheme(){
-    if (state.theme === "custom"){
-      var c = state.custom;
-      var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
-      return {
-        bg:c.bg, ink:ink, accent:c.accent,
-        panel: mix(c.bg, ink, 0.05),
-        line:  mix(c.bg, ink, 0.15),
-        muted: mix(ink, c.bg, 0.42)
-      };
-    }
-    return THEMES[state.theme];
+  /* WCAG contrast: relative luminance of sRGB, then (lighter + .05) / (darker + .05) */
+  function luminance(hex){
+    var c = hexToRgb(hex).map(function(v){ v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function contrast(a, b){
+    var x = luminance(a), y = luminance(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  /* "#abc" or "#aabbcc", with or without the hash → "#aabbcc"; anything else → null */
+  function normHex(v){
+    var m = /^\s*#?([0-9a-f]{3}|[0-9a-f]{6})\s*$/i.exec(typeof v === "string" ? v : "");
+    if (!m) return null;
+    var h = m[1].toLowerCase();
+    if (h.length === 3) h = h.split("").map(function(c){ return c + c; }).join("");
+    return "#" + h;
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+
+  /* ---------- themes: built-ins and the saved custom ones ---------- */
+  function isBuiltIn(theme){ return typeof theme === "string" && Object.prototype.hasOwnProperty.call(THEMES, theme); }
+  /* the saved custom theme a "c:" + id refers to, or null */
+  function customById(theme){
+    if (typeof theme !== "string" || theme.slice(0, 2) !== "c:") return null;
+    var id = theme.slice(2);
+    for (var i = 0; i < state.customs.length; i++) if (state.customs[i].id === id) return state.customs[i];
+    return null;
+  }
+  /* a custom theme's six colours: panel and secondary text are derived from the background and
+     the text unless the user picked them; the hairline always is */
+  function customColors(c){
+    var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
+    return {
+      name: c.name, bg: c.bg, ink: ink, accent: c.accent,
+      panel: c.panel || mix(c.bg, ink, 0.05),
+      line:  mix(c.bg, ink, 0.15),
+      muted: c.muted || deriveMuted(ink, c.bg)
+    };
+  }
+  /* secondary text: the text mixed towards the background, but no further than still reads on it */
+  function deriveMuted(ink, bg){
+    for (var t = 0.42; t > 0; t -= 0.03){ var m = mix(ink, bg, t); if (contrast(m, bg) >= 4.5) return m; }
+    return ink;
+  }
+  function resolveTheme(theme){
+    if (isBuiltIn(theme)) return THEMES[theme];
+    var c = customById(theme);
+    return c ? customColors(c) : null;
+  }
+  function currentTheme(){ return resolveTheme(state.theme) || THEMES.day; }
+  function newCustomId(){ var id; do { id = Math.random().toString(36).slice(2, 8); } while (!id || customById("c:" + id)); return id; }
+  function addCustom(t){ var c = Object.assign({ id: newCustomId() }, t); state.customs.push(c); return c; }
+  function copyCustom(c, name){
+    var t = { name: name, bg: c.bg, ink: c.ink, autoInk: c.autoInk, accent: c.accent };
+    if (c.panel) t.panel = c.panel;
+    if (c.muted) t.muted = c.muted;
+    return addCustom(t);
+  }
+  /* "Custom 1", "Custom 2"… (the first free number), or `base`, `base 2`, `base 3`… */
+  function customName(base){
+    var names = state.customs.map(function(c){ return c.name; }), n, i;
+    if (base){ n = base; i = 2; while (names.indexOf(n) >= 0) n = base + " " + (i++); return n; }
+    for (i = 1; ; i++) if (names.indexOf("Custom " + i) < 0) return "Custom " + i;
   }
 
   /* ---------- theme + type ---------- */
+  /* a chip's swatch: the theme's page colour with its accent as the lamp in the middle */
+  function swatchHtml(t){ return '<i style="--sw-bg:' + t.bg + ';--sw-acc:' + t.accent + '" aria-hidden="true"></i>'; }
+  function chipHtml(theme, t){ return '<button class="chip" data-theme="' + theme + '">' + swatchHtml(t) + escapeHtml(t.name) + '</button>'; }
   function buildThemeChips(){
     var html = "";
-    CYCLE.forEach(function(k){
-      html += '<button class="chip" data-theme="' + k + '"><i style="background:' + THEMES[k].accent + '"></i>' + THEMES[k].name + "</button>";
+    themeGroups().forEach(function(g){
+      html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="chips">' +
+        g.ids.map(function(k){ return chipHtml(k, THEMES[k]); }).join("") + '</div></div>';
     });
-    html += '<button class="chip" data-theme="custom"><i id="customDot" style="background:' + state.custom.accent + '"></i>Custom</button>';
+    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">Custom</div><div class="chips">' +
+      state.customs.map(function(c){ return chipHtml("c:" + c.id, customColors(c)); }).join("") +
+      '<button class="chip chip-new" data-new="1" title="Start a custom theme from the colours on screen">New…</button></div></div>';
     $("#themeChips").innerHTML = html;
   }
   function buildCustomUI(){
     $("#bgSwatches").innerHTML = BG_SWATCHES.map(function(c){
-      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Background ' + c + '"></button>';
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Background ' + c + '" aria-pressed="false"></button>';
     }).join("");
     $("#accSwatches").innerHTML = ACC_SWATCHES.map(function(c){
-      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Accent ' + c + '"></button>';
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Accent ' + c + '" aria-pressed="false"></button>';
     }).join("");
   }
-  function syncCustomUI(){
-    var c = state.custom;
-    var hs = hexToHsl(c.bg);
-    $("#cHue").value = hs[0]; $("#vHue").textContent = hs[0] + "°";
-    $("#cLit").value = hs[2]; $("#vLit").textContent = hs[2] + " %";
-    $("#autoInk").checked = c.autoInk;
-    $("#inkRow").style.display = c.autoInk ? "none" : "flex";
-    $("#cInk").value = c.autoInk ? deriveInk(c.bg) : c.ink;
-    $("#cAcc").value = c.accent;
-    document.querySelectorAll("#bgSwatches .sw").forEach(function(s){
-      s.classList.toggle("on", s.dataset.c.toLowerCase() === c.bg.toLowerCase());
-    });
-    document.querySelectorAll("#accSwatches .sw").forEach(function(s){
-      s.classList.toggle("on", s.dataset.c.toLowerCase() === c.accent.toLowerCase());
+  /* a colour picker and its hex field show the same colour; a derived colour is shown but not editable.
+     The hex field keeps what is being typed in it until it is left. */
+  function setPick(key, hex, auto){
+    var p = $("#c" + key), h = $("#h" + key);
+    p.value = hex; p.disabled = !!auto; h.disabled = !!auto;
+    if (document.activeElement !== h){ h.value = hex; h.classList.remove("bad"); h.removeAttribute("aria-invalid"); }
+  }
+  function markSwatches(sel, hex){
+    document.querySelectorAll(sel + " .sw").forEach(function(s){
+      var on = s.dataset.c.toLowerCase() === hex;
+      s.classList.toggle("on", on); s.setAttribute("aria-pressed", on ? "true" : "false");
     });
   }
+  /* the pickers, hex fields, auto boxes and swatch marks follow the theme (the sliders are left
+     alone, so dragging or stepping them is never undone by a rounding trip through hex) */
+  function syncPicks(c){
+    var t = customColors(c);
+    setPick("Bg", c.bg);
+    $("#autoInk").checked = !!c.autoInk; setPick("Ink", t.ink, c.autoInk);
+    setPick("Acc", c.accent);
+    $("#autoPanel").checked = !c.panel; setPick("Panel", t.panel, !c.panel);
+    $("#autoMuted").checked = !c.muted; setPick("Muted", t.muted, !c.muted);
+    markSwatches("#bgSwatches", c.bg); markSwatches("#accSwatches", c.accent);
+  }
+  /* the editor shows the saved custom theme that is selected */
+  function syncCustomUI(){
+    var c = customById(state.theme);
+    if (!c) return;
+    var hs = hexToHsl(c.bg);
+    $("#cName").textContent = c.name;
+    $("#cHue").value = hs[0]; $("#vHue").textContent = hs[0] + "°";
+    $("#cLit").value = hs[2]; $("#vLit").textContent = hs[2] + " %";
+    syncPicks(c);
+  }
+  /* the contrast meter: the pairs a reader meets, graded like WCAG (AA from 4.5:1, AAA from 7:1) */
+  var METER = [
+    { id: "ink",         what: "text",           fg: "ink",    on: "bg" },
+    { id: "muted",       what: "secondary text", fg: "muted",  on: "bg" },
+    { id: "accent",      what: "accent",         fg: "accent", on: "bg" },
+    { id: "accentPanel", what: "accent",         fg: "accent", on: "panel" }
+  ];
+  function grade(r){ return r >= 7 ? "AAA" : r >= 4.5 ? "AA" : "Low"; }
+  /* whether white or black is the better text colour on this background */
+  function lighterWins(bg){ return contrast(bg, "#ffffff") >= contrast(bg, "#000000"); }
+  function syncMeter(t){
+    var low = [];
+    METER.forEach(function(m){
+      var r = contrast(t[m.fg], t[m.on]), row = $('#cMeter [data-k="' + m.id + '"]');
+      row.classList.toggle("low", r < 4.5);
+      row.querySelector(".meter-bar i").style.width = Math.round(Math.min(1, Math.log(r) / Math.log(21)) * 100) + "%";
+      row.querySelector(".meter-n").textContent = r.toFixed(1) + ":1";
+      row.querySelector(".meter-badge").textContent = grade(r);
+      if (r < 4.5) low.push(m);
+    });
+    $("#cMeterSum").textContent = meterSummary(low, t);
+    $("#cFix").hidden = !low.length;
+  }
+  function meterSummary(low, t){
+    if (!low.length) return METER.every(function(m){ return contrast(t[m.fg], t[m.on]) >= 7; }) ? "All text is comfortably readable." : "All text is readable.";
+    var names = [], dir = lighterWins(t.bg) ? "lighter" : "darker";
+    low.forEach(function(m){ if (names.indexOf(m.what) < 0) names.push(m.what); });
+    var list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0];
+    var where = low.every(function(m){ return m.on === "panel"; }) ? "the panel" : "this background";
+    var fix = names.length > 1 ? dir + " colours" : (names[0] === "accent" ? "a " + dir + " accent" : dir + " " + names[0]);
+    return list.charAt(0).toUpperCase() + list.slice(1) + (names.length > 1 ? " are" : " is") + " hard to read on " + where + " — try " + fix + ".";
+  }
+  /* move a colour's lightness away from the background, hue and saturation kept, until it reads
+     on every surface it sits on; when no lightness manages that (a mid-grey background), the
+     one that comes closest is used */
+  function fixColor(hex, surfaces){
+    var worst = function(h){ return Math.min.apply(null, surfaces.map(function(s){ return contrast(h, s); })); };
+    if (worst(hex) >= 4.5) return hex;
+    var hs = hexToHsl(hex), best = hex, bestScore = worst(hex);
+    var dirs = lighterWins(surfaces[0]) ? [1, -1] : [-1, 1];
+    for (var d = 0; d < dirs.length; d++){
+      var step = dirs[d], l = hs[2];
+      while (l + step >= 0 && l + step <= 100){
+        l += step;
+        var out = hslToHex(hs[0], hs[1], l), score = worst(out);
+        if (score >= 4.5) return out;
+        if (score > bestScore){ best = out; bestScore = score; }
+      }
+    }
+    return best;
+  }
+  /* Fix contrast: only the colours the meter marks low change, and only in lightness. A derived
+     colour that is fixed becomes a picked one (the derived value was the problem). */
+  function fixContrast(){
+    var c = customById(state.theme);
+    if (!c) return;
+    var t = customColors(c);
+    if (contrast(t.ink, t.bg) < 4.5){ c.ink = fixColor(t.ink, [t.bg]); c.autoInk = false; t = customColors(c); }
+    if (contrast(t.muted, t.bg) < 4.5){ c.muted = fixColor(t.muted, [t.bg]); t = customColors(c); }
+    if (contrast(t.accent, t.bg) < 4.5 || contrast(t.accent, t.panel) < 4.5) c.accent = fixColor(t.accent, [t.bg, t.panel]);
+    syncCustomUI(); applyTheme();
+  }
   function applyTheme(){
-    var t = currentTheme();
+    var t = currentTheme(), custom = customById(state.theme);
     var r = document.documentElement.style;
     r.setProperty("--bg", t.bg);      r.setProperty("--ink", t.ink);
     r.setProperty("--muted", t.muted);r.setProperty("--panel", t.panel);
     r.setProperty("--line", t.line);  r.setProperty("--accent", t.accent);
     document.documentElement.style.colorScheme = isDarkColor(t.bg) ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && isDarkColor(t.bg));
-    document.querySelectorAll("#themeChips .chip").forEach(function(ch){
-      ch.classList.toggle("on", ch.dataset.theme === state.theme);
+    /* the installed app's title bar takes the panel colour */
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", t.panel);
+    document.querySelectorAll("#themeChips .chip[data-theme]").forEach(function(ch){
+      var on = ch.dataset.theme === state.theme;
+      ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      if (on && custom){ var sw = ch.querySelector("i"); sw.style.setProperty("--sw-bg", t.bg); sw.style.setProperty("--sw-acc", t.accent); }
     });
-    var dot = $("#customDot");
-    if (dot) dot.style.background = state.custom.accent;
-    $("#customRow").classList.toggle("show", state.theme === "custom");
-    /* live preview of the custom combo */
-    var ct = state.theme === "custom" ? t : currentTheme();
-    var pv = $("#cPrev");
-    pv.style.background = state.theme === "custom" ? t.bg : "transparent";
-    pv.style.color = t.ink;
-    pv.style.borderColor = t.line;
-    $("#cPrevAcc").style.color = t.accent;
+    $("#customRow").classList.toggle("show", !!custom);
+    if (custom) previewCustom(t);
     Prefs.save();
+  }
+  /* the preview and the meter show every colour of the theme being edited */
+  function previewCustom(t){
+    var pv = $("#cPrev"), strip = $("#cPrevPanel");
+    pv.style.background = t.bg; pv.style.color = t.ink; pv.style.borderColor = t.line;
+    strip.style.background = t.panel; strip.style.borderColor = t.line; strip.style.color = t.muted;
+    $("#cPrevPanelAcc").style.color = t.accent;
+    $("#cPrevAcc").style.color = t.accent;
+    $("#cPrevMuted").style.color = t.muted;
+    syncMeter(t);
   }
   /* ---------- automatic theme: system setting or a night schedule ---------- */
   var AutoTheme = (function(){
@@ -262,7 +527,10 @@
       document.querySelectorAll("#autoChips .chip").forEach(function(ch){ ch.classList.toggle("on", ch.dataset.auto === state.auto); });
       $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
-      var opts = CYCLE.map(function(k){ return '<option value="' + k + '">' + THEMES[k].name + '</option>'; }).join("") + '<option value="custom">Custom</option>';
+      var opts = themeGroups().map(function(g){
+        return '<optgroup label="' + g.name + '">' + g.ids.map(function(k){ return '<option value="' + k + '">' + THEMES[k].name + '</option>'; }).join("") + '</optgroup>';
+      }).join("");
+      if (state.customs.length) opts += '<optgroup label="Custom">' + state.customs.map(function(c){ return '<option value="c:' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join("") + '</optgroup>';
       if ($("#autoDay").innerHTML !== opts){ $("#autoDay").innerHTML = opts; $("#autoNight").innerHTML = opts; }
       $("#autoDay").value = state.autoDay; $("#autoNight").value = state.autoNight;
       $("#nightFrom").value = state.nightFrom; $("#nightTo").value = state.nightTo;
@@ -306,15 +574,16 @@
   })();
 
   function applyType(){
-    var r = document.documentElement.style;
+    var r = document.documentElement.style, font = FONTS[state.font] || FONTS.serif;
     r.setProperty("--fsN", String(state.size));
     r.setProperty("--lh", String(state.lh));
     r.setProperty("--w", state.width + "px");
-    r.setProperty("--reader-font", FONTS[state.font] || FONTS.serif);
+    /* the stack goes in at once (its system fallback shows first); a bundled family is fetched
+       on first use and swaps in when it lands, and the loadingdone listener re-lays-out Pages flow */
+    r.setProperty("--reader-font", font.stack);
     r.setProperty("--margin", (state.margin || 0) + "px");
-    document.querySelectorAll("#fontChips .chip").forEach(function(ch){
-      ch.classList.toggle("on", ch.dataset.font === state.font);
-    });
+    Fonts.use(state.font);
+    Fonts.syncUI();
     $("#doc").classList.toggle("justify", !!state.justify);
     $("#doc").classList.toggle("hyphens", !!state.hyphens);
     $("#cJustify").checked = !!state.justify;
@@ -327,6 +596,126 @@
     if (state.mode === "doc" && state.flow === "pages") relayoutDocPages();
     Prefs.save();
   }
+
+  /* ---------- fonts: bundled families load on demand, plus the browse panel ---------- */
+  var Fonts = (function(){
+    var SYSTEM = { easy: "sans", serif: "serif", sans: "sans", mono: "mono" };   /* the stack each group falls back to */
+    var faces = {};        /* file url → promise of its face, once requested */
+    var failed = {};       /* font id → true after a fetch failed (forgotten when we come back online) */
+    var listEl = null, watcher = null;
+    function ids(group){ return Object.keys(FONTS).filter(function(id){ return FONTS[id].group === group; }); }
+    function familyOf(f){ return f.family || f.name; }
+
+    /* one face. The FontFace API says when it has landed or failed; without it an @font-face
+       rule does the same job, though it can't report a failure */
+    function addFace(family, file){
+      if (faces[file.url]) return faces[file.url];
+      var p;
+      if (window.FontFace && document.fonts && document.fonts.add){
+        var face = new FontFace(family, "url(" + file.url + ")", { weight: file.weight, style: file.style, display: "swap" });
+        document.fonts.add(face);
+        p = face.load().then(function(){ return face; }, function(err){ document.fonts.delete(face); delete faces[file.url]; throw err; });
+      } else {
+        var st = $("#fontFaces");
+        if (!st){ st = document.createElement("style"); st.id = "fontFaces"; document.head.appendChild(st); }
+        st.appendChild(document.createTextNode("@font-face{font-family:'" + family + "'; src:url('" + file.url + "') format('woff2'); font-weight:" + file.weight + "; font-style:" + file.style + "; font-display:swap;}"));
+        p = Promise.resolve(null);
+      }
+      faces[file.url] = p;
+      return p;
+    }
+    /* a whole family, or just its regular face for a preview. Only the regular face is
+       essential: a bold or italic that fails to arrive is synthesised by the browser */
+    function load(id, previewOnly){
+      var f = FONTS[id];
+      if (!f || !f.files) return Promise.resolve([]);
+      var files = previewOnly ? f.files.slice(0, 1) : f.files;
+      return Promise.all(files.map(function(file, i){
+        var p = addFace(familyOf(f), file);
+        return i ? p.catch(function(){ return null; }) : p;
+      }));
+    }
+    function fallback(f){ document.documentElement.style.setProperty("--reader-font", STACKS[SYSTEM[f.group]]); }
+    /* the chosen family: fetched the first time it is used. If that fails (first use while
+       offline — the service worker normally holds every file) the group's system face is read
+       in instead, and the family is tried again once the connection is back */
+    function use(id){
+      var f = FONTS[id];
+      if (!f || !f.files) return;
+      if (failed[id]){ fallback(f); return; }
+      load(id).catch(function(){
+        failed[id] = true;
+        if (state.font !== id) return;
+        fallback(f);
+        Marks.toast("Font not available offline");
+      });
+    }
+    window.addEventListener("online", function(){ failed = {}; if (FONTS[state.font]) use(state.font); });
+    /* true once a bundled family's regular face is in and ready */
+    function loaded(id){
+      var f = FONTS[id], ok = false;
+      if (!f || !f.files || !document.fonts) return false;
+      document.fonts.forEach(function(face){ if (face.status === "loaded" && face.family.replace(/^["']|["']$/g, "") === familyOf(f)) ok = true; });
+      return ok;
+    }
+
+    /* the grouped select in the sheet */
+    var sel = $("#fontSel");
+    FONT_GROUPS.forEach(function(g){
+      var og = document.createElement("optgroup"); og.label = g.name;
+      ids(g.id).forEach(function(id){ var o = document.createElement("option"); o.value = id; o.textContent = FONTS[id].name; og.appendChild(o); });
+      sel.appendChild(og);
+    });
+    function syncUI(){
+      var f = FONTS[state.font] || FONTS.serif;
+      sel.value = state.font;
+      sel.title = f.name + " — " + f.note;
+      if (listEl) Array.prototype.forEach.call(listEl.querySelectorAll(".font-item"), function(b){ b.setAttribute("aria-pressed", b.dataset.font === state.font ? "true" : "false"); });
+    }
+
+    /* the browse panel: every family by group, each name set in the face itself */
+    function item(id){
+      var f = FONTS[id];
+      return '<button class="font-item" data-font="' + id + '" aria-pressed="' + (id === state.font) + '">' +
+        '<span class="font-name" style="font-family:' + f.stack.replace(/"/g, "&quot;") + '">' + f.name + '</span>' +
+        '<span class="font-note">' + f.note + '</span></button>';
+    }
+    function render(body){
+      var h = '<div class="font-list">';
+      FONT_GROUPS.forEach(function(g){
+        h += '<div class="font-set" role="group" aria-labelledby="fontGroup-' + g.id + '"><div class="font-group" id="fontGroup-' + g.id + '">' + g.name + '</div>';
+        ids(g.id).forEach(function(id){ h += item(id); });
+        h += '</div>';
+      });
+      body.innerHTML = h + '</div>';
+      listEl = body.firstChild;
+      listEl.addEventListener("click", function(e){
+        var b = e.target.closest(".font-item");
+        if (!b) return;
+        state.font = b.dataset.font;
+        applyType();
+      });
+      /* a bundled family's preview is fetched only once its row comes into view, so opening
+         the panel doesn't pull every font at once */
+      var rows = Array.prototype.filter.call(listEl.querySelectorAll(".font-item"), function(b){ return !!FONTS[b.dataset.font].files; });
+      if (window.IntersectionObserver){
+        watcher = new IntersectionObserver(function(entries){
+          entries.forEach(function(en){
+            if (!en.isIntersecting) return;
+            watcher.unobserve(en.target);
+            load(en.target.dataset.font, true).catch(function(){});
+          });
+        }, { root: body, rootMargin: "80px 0px" });
+        rows.forEach(function(b){ watcher.observe(b); });
+      } else rows.forEach(function(b){ load(b.dataset.font, true).catch(function(){}); });
+    }
+    function closed(){ if (watcher) watcher.disconnect(); watcher = null; listEl = null; }
+    function openPanel(){ Side.open("fonts", "Fonts", render, closed); }
+
+    /* for tests and other modules */
+    window.llFonts = { load: load, loaded: loaded, use: use, openPanel: openPanel, catalogue: FONTS, groups: FONT_GROUPS };
+    return { use: use, load: load, loaded: loaded, syncUI: syncUI, openPanel: openPanel };
+  })();
 
   /* ---------- view switching ---------- */
   function show(mode){
@@ -346,6 +735,7 @@
     $("#textHint").textContent = mode === "pdf"
       ? "A PDF is open — these apply to text documents. Use Zoom below for PDFs."
       : "Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).";
+    if (window.llStats) window.llStats.onMode(mode);
   }
   function status(msg){ $("#status").textContent = msg; show("status"); }
   $("#status").setAttribute("role", "status"); $("#status").setAttribute("aria-live", "polite");
@@ -2138,67 +2528,568 @@
   })();
 
   /* ============================================================
-     Read aloud — Web Speech API, sentence by sentence
+     About this text — reading level, vocabulary, hardest words
+     ============================================================ */
+  var About = (function(){
+    var CHUNK = 20000, WINDOW = 1000, MAX_PDF_PAGES = 600, HARD = 30, RARE = 7000, UNCOMMON = 4500;
+    /* a word: letters (Latin with accents, Greek, Cyrillic) and digits, apostrophes and hyphens
+       inside; "1,000" and "3.14" stay whole. Quotes and sentence ends come through as their
+       own matches so one pass sees them all */
+    var TOKEN = /[A-Za-zÀ-ɏͰ-ϿЀ-ӿ0-9]+(?:['’-][A-Za-zÀ-ɏͰ-ϿЀ-ӿ0-9]+|[.,][0-9]+)*|["“”]|[.!?…]+/g;
+    var SENT_END = /[.!?…]+[”’"')\]]*(?=\s|$)/g;
+    var HASWORD = /[A-Za-zÀ-ɏͰ-ϿЀ-ӿ0-9]/;
+    var WORDY = /^[a-zà-ɏͰ-ϿЀ-ӿ]+(?:['-][a-zà-ɏͰ-ϿЀ-ӿ]+)*$/;
+    var ABBR = { mr:1, mrs:1, ms:1, dr:1, st:1, vs:1, "e.g":1, "i.e":1, etc:1, prof:1, sr:1, jr:1, mt:1, fig:1, vol:1, pp:1, inc:1, ltd:1, "a.m":1, "p.m":1, "u.s":1, "u.k":1 };
+    var BANDS = [
+      [90, "Very easy", "Easily understood by an average 11-year-old."],
+      [80, "Easy", "Conversational English; most 12-year-olds can follow it."],
+      [70, "Fairly easy", "Most 13-year-olds can follow it."],
+      [60, "Standard", "Plain English; easily understood by most 14- to 15-year-olds."],
+      [50, "Fairly difficult", "Fairly hard to read; comfortable for older teenagers."],
+      [30, "Difficult", "Hard to read; best understood by university-level readers."],
+      [0,  "Very difficult", "Very hard to read; best understood by graduates and specialists."]
+    ];
+    var TIER = { 3: "very rare", 2: "rare", 1: "uncommon" };
+    var FIND_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="6.8" cy="6.8" r="4.6"/><path d="M10.4 10.4 14 14"/></svg>';
+    var cache = null, gen = 0, statusEl = null;
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    function fmtN(n){ return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+    function one(n){ return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, ""); }
+
+    /* ---- syllables: an English heuristic ----
+       vowel groups, minus the silent endings, plus the vowel pairs that are usually spoken
+       apart; a short list of very common words the rules get wrong */
+    var SYL_FIX = { every:2, everything:3, everyone:3, everybody:4, everywhere:3, evening:2, something:2, sometimes:2,
+      somewhere:2, someone:2, somebody:3, somehow:2, somewhat:2, business:2, businesses:3, eye:1, eyes:1, eyed:1,
+      area:3, areas:3, idea:3, ideas:3, real:2, really:2, science:2, sciences:3, society:4, theatre:3, poem:2, poems:2,
+      poet:2, poets:2, poetry:3 };
+    function syllables(word){
+      var w = String(word).toLowerCase().replace(/[^a-zà-öø-ÿ]/g, "");
+      if (!w) return 1;
+      if (SYL_FIX.hasOwnProperty(w)) return SYL_FIX[w];
+      var s = w.replace(/^y/, "").replace(/qu/g, "q");
+      /* silent -es / -ed ("makes", "jumped"), not "boxes", "pages", "tables", "wanted", "settled", "agreed" */
+      if (/es$/.test(s) && !/(?:[sxzcg]|[cs]h)es$/.test(s) && !/[^aeiouylr]les$/.test(s)) s = s.slice(0, -2);
+      else if (/ed$/.test(s) && !/[tde]ed$/.test(s) && !/[^aeiouylr]led$/.test(s)) s = s.slice(0, -2);
+      var n = (s.match(/[aeiouyà-öø-ÿ]+/g) || []).length;
+      /* a silent final e ("whale", "some", "bye"), unless it sounds after l + consonant ("table") */
+      if (/[^aeiou]e$/.test(s) && !/[^aeiouy]le$/.test(s)) n--;
+      /* the same e before -ly, -ment, -ness… ("lonely", "movement"), but not in "settlement" */
+      if (/[^aeiouy]e(?:ly|ment|ness|less|ful|some)$/.test(s) && !/[^aeiouy]le(?:ly|ment|ness|less|ful|some)$/.test(s)) n--;
+      /* vowel pairs spoken as two: "quiet", "client", "radio", "video", "actual", "chaos", "radius" — but
+         "nation", "special", "people", "pigeon", "million", "guard" keep one */
+      n += (s.match(/[^tcs]ie[nt](?!d)|[^ctsx]ia|[^tscxgn]io|[^g]eo(?!p)|geo(?![nu])|[^gq]ua|uo|ao|ii|iu/g) || []).length;
+      n -= (s.match(/llio/g) || []).length;
+      /* "going", "seeing", "playing"; "player", "royal", "beyond" */
+      if (/[aeiouy]ing$/.test(s)) n++;
+      n += (s.match(/[aeiou]y(?!ing$)[aeiou]/g) || []).length;
+      return Math.max(1, n);
+    }
+
+    /* ---- the text ----
+       a document block by block: a blank line between blocks (paragraph breaks end sentences),
+       a line break for <br>; the text nodes as they are, so counts match what is shown */
+    var BLOCK = /^(?:P|DIV|H[1-6]|LI|BLOCKQUOTE|PRE|TR|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER|ASIDE|FIGURE|FIGCAPTION|UL|OL|TABLE|CAPTION|HR|NAV|MAIN|DETAILS|SUMMARY|ADDRESS)$/;
+    function docText(){
+      var out = [], w = document.createTreeWalker($("#doc"), NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT), n;
+      while ((n = w.nextNode())){
+        if (n.nodeType === 3) out.push(n.nodeValue);
+        else if (n.tagName === "BR") out.push("\n");
+        else if (BLOCK.test(n.tagName)) out.push("\n\n");
+      }
+      return out.join("");
+    }
+    /* every page of the PDF, one after another with a breather between pages; each page is a
+       paragraph, words split by a line-end hyphen are joined again */
+    function pdfText(doc, status, live){
+      var n = Math.min(doc.numPages, MAX_PDF_PAGES), pages = [], i = 1;
+      return new Promise(function(resolve){
+        (function next(){
+          if (!live()){ resolve(null); return; }
+          if (i > n){ resolve({ text: pages.join("\n\n"), capped: doc.numPages > n }); return; }
+          status("Reading page " + i + " of " + doc.numPages + "…");
+          PdfText.get(i).then(function(t){
+            pages.push(t.replace(/([A-Za-zÀ-ɏ])-\n\s*([a-zà-ɏ])/g, "$1$2"));
+            i++;
+            setTimeout(next, 0);
+          });
+        })();
+      });
+    }
+
+    /* ---- sentences ----
+       an end is . ! ? or … before a space, unless what comes before is an abbreviation or an
+       initial, or what follows starts in lower case ("e.g. this", "wait… what"). A number that
+       opens the paragraph is a list marker, not a sentence */
+    function sentencesIn(p){
+      var n = 0, last = 0, m;
+      SENT_END.lastIndex = 0;
+      while ((m = SENT_END.exec(p))){
+        var end = m.index + m[0].length;
+        if (m[0].charAt(0) === "."){
+          var prev = /([A-Za-zÀ-ɏ]+(?:\.[A-Za-zÀ-ɏ]+)*)$/.exec(p.slice(Math.max(0, m.index - 12), m.index));
+          if (prev){
+            var a = prev[1].toLowerCase();
+            if (ABBR[a] || (a.length === 1 && prev[1] !== "I" && prev[1] !== a)) continue;
+          } else if (m.index <= 3 && /^\s*\d{1,3}$/.test(p.slice(0, m.index))) continue;
+        }
+        if (/^\s+[a-zà-ɏ]/.test(p.slice(end, end + 4))) continue;
+        if (HASWORD.test(p.slice(last, m.index))) n++;
+        last = end;
+      }
+      if (HASWORD.test(p.slice(last))) n++;
+      return n;
+    }
+
+    /* ---- counting ----
+       one pass over the text in chunks of CHUNK words with a breather between them, so a whole
+       novel is counted without freezing the page. Resolves to the stats, or null when `live`
+       says the result is no longer wanted */
+    function analyse(text, opts){
+      opts = opts || {};
+      var paras = String(text).replace(/\r\n?/g, "\n").split(/\n[ \t]*\n+/);
+      var forms = new Map(), words = 0, sentences = 0, paragraphs = 0, dialogue = 0;
+      var win = new Set(), winN = 0, ttrSum = 0, windows = 0;
+      var pi = 0, pos = 0, pw = 0, inQ = false, atStart = true;
+      return new Promise(function(resolve){
+        function live(){ return !opts.live || opts.live(); }
+        function step(){
+          if (!live()){ resolve(null); return; }
+          var budget = CHUNK;
+          while (pi < paras.length){
+            var p = paras[pi], m = null;
+            TOKEN.lastIndex = pos;
+            while (budget > 0 && (m = TOKEN.exec(p))){
+              var t = m[0], c = t.charCodeAt(0);
+              if (c === 34){ inQ = !inQ; continue; }
+              if (c === 0x201C){ inQ = true; continue; }
+              if (c === 0x201D){ inQ = false; continue; }
+              if (c === 46 || c === 33 || c === 63 || c === 0x2026){ atStart = true; continue; }
+              budget--; words++; pw++;
+              if (inQ) dialogue++;
+              var lw = t.toLowerCase();
+              if (lw.indexOf("’") >= 0) lw = lw.replace(/’/g, "'");
+              var f = forms.get(lw);
+              if (!f){ f = { n: 0, mid: 0, capMid: 0 }; forms.set(lw, f); }
+              f.n++;
+              /* capitals count only away from a sentence start, where every word gets one */
+              if (atStart) atStart = false;
+              else { f.mid++; if (t.charAt(0) !== lw.charAt(0)) f.capMid++; }
+              win.add(lw);
+              if (++winN === WINDOW){ ttrSum += win.size / WINDOW; windows++; win.clear(); winN = 0; }
+            }
+            if (m){ pos = TOKEN.lastIndex; if (opts.onProgress) opts.onProgress(words); setTimeout(step, 0); return; }
+            if (pw){ paragraphs++; sentences += sentencesIn(p); }
+            pi++; pos = 0; pw = 0; inQ = false; atStart = true;
+          }
+          finish();
+        }
+        /* per distinct form once, then weighted by how often it occurs */
+        function finish(){
+          var keys = [], ki = 0, hapax = 0, syl = 0, letters = 0;
+          forms.forEach(function(f, w){ keys.push(w); });
+          (function more(){
+            if (!live()){ resolve(null); return; }
+            var stop = Math.min(keys.length, ki + 5000);
+            for (; ki < stop; ki++){
+              var w = keys[ki], f = forms.get(w);
+              f.syl = syllables(w); f.len = w.replace(/['-]/g, "").length;
+              syl += f.syl * f.n; letters += f.len * f.n;
+              if (f.n === 1) hapax++;
+            }
+            if (ki < keys.length){ setTimeout(more, 0); return; }
+            var s = Math.max(1, sentences), safe = Math.max(1, words);
+            var asl = words / s, asw = syl / safe;
+            resolve({
+              words: words, unique: forms.size, sentences: s, paragraphs: paragraphs, syllables: syl, letters: letters,
+              dialogue: dialogue, hapax: hapax, forms: forms,
+              avgSentence: asl, avgWord: letters / safe,
+              ttr: windows ? ttrSum / windows : (words ? forms.size / words : 0),
+              flesch: Math.round(Math.max(0, Math.min(100, 206.835 - 1.015 * asl - 84.6 * asw))),
+              grade: 0.39 * asl + 11.8 * asw - 15.59,
+              cli: 0.0588 * (letters / safe * 100) - 0.296 * (s / safe * 100) - 15.8,
+              note: null, hard: null
+            });
+          })();
+        }
+        step();
+      });
+    }
+
+    /* ---- reading the numbers ---- */
+    function band(score){ for (var i = 0; i < BANDS.length; i++) if (score >= BANDS[i][0]) return BANDS[i]; return BANDS[BANDS.length - 1]; }
+    function gradeText(g){
+      var n = Math.round(g);
+      if (n < 1) return "before grade 1 · about age 5–6";
+      if (n >= 17) return "beyond grade 16 · postgraduate reading";
+      if (n >= 13) return "grade " + n + " · university level";
+      return "grade " + n + " · about age " + (n + 5) + "–" + (n + 6);
+    }
+    function ttrLabel(r){ return r < 0.40 ? "Simple" : r < 0.48 ? "Moderate" : r < 0.56 ? "Rich" : "Very rich"; }
+    function readingTime(words){
+      var min = words / Math.max(60, Progress.wpm());
+      if (min < 1) return "under a minute";
+      if (min < 59.5) return "about " + Math.round(min) + " min";
+      var h = Math.floor(min / 60), m = Math.round(min % 60);
+      if (m === 60){ h++; m = 0; }
+      return "about " + h + " h" + (m ? " " + m + " min" : "");
+    }
+    /* the hardest words: outside the common-word list (or in its long tail), the long and
+       many-syllabled first; names, numbers and short words don't count */
+    function rankOf(ex, w){
+      var r = ex.rank(w);
+      if (ex.lemmas) ex.lemmas(w).forEach(function(l){ r = Math.min(r, ex.rank(l[0])); });
+      return r;
+    }
+    function hardest(st){
+      var ex = window.llExplain;
+      if (!ex || !st || !st.forms) return null;
+      var out = [];
+      st.forms.forEach(function(f, w){
+        if ((f.mid && f.capMid === f.mid) || !WORDY.test(w)) return;
+        var len = f.len !== undefined ? f.len : w.replace(/['-]/g, "").length;
+        if (len < 4) return;
+        var r = rankOf(ex, w), tier = r === Infinity ? 3 : r > RARE ? 2 : r > UNCOMMON ? 1 : 0;
+        if (!tier) return;
+        var syl = f.syl !== undefined ? f.syl : syllables(w);
+        out.push({ w: w, n: f.n, tier: tier, syl: syl, score: tier * 4 + len * 0.5 + syl * 1.5 });
+      });
+      out.sort(function(a, b){ return b.score - a.score || a.n - b.n || (a.w < b.w ? -1 : a.w > b.w ? 1 : 0); });
+      return out.slice(0, HARD);
+    }
+
+    /* ---- the panel ---- */
+    function docLabel(){
+      var id = Library.currentId(), b = Library.books().filter(function(x){ return x.id === id; })[0];
+      return { name: (b && (b.title || b.name)) || $("#fname").textContent || "This document",
+               type: b ? b.type : (state.mode === "pdf" ? "PDF" : "") };
+    }
+    function keyNow(){
+      return (Library.currentId() || "") + ":" + state.mode + ":" + (state.mode === "pdf" ? (state.pdfDoc ? state.pdfDoc.numPages : 0) : $("#doc").textContent.length);
+    }
+    function header(st){
+      var d = docLabel();
+      return '<div class="about-doc"><span class="about-name">' + esc(d.name) + '</span>' +
+        (d.type ? '<span class="about-fmt">' + esc(d.type) + '</span>' : '') +
+        (st && st.note ? '<span class="about-part">' + esc(st.note) + '</span>' : '') + '</div>';
+    }
+    function tile(value, label, cls){ return '<div class="about-tile' + (cls ? ' ' + cls : '') + '"><b>' + value + '</b><span>' + label + '</span></div>'; }
+    function wordRow(x){
+      return '<div class="about-row"><button type="button" class="about-word" data-w="' + esc(x.w) + '">' +
+        '<span class="w">' + esc(x.w) + '</span><span class="n">×' + x.n + '</span><span class="r">' + TIER[x.tier] + '</span></button>' +
+        '<button type="button" class="about-find" data-find="' + esc(x.w) + '" title="Find in the text" aria-label="Find “' + esc(x.w) + '” in the text">' + FIND_ICON + '</button></div>';
+    }
+    function draw(st){
+      var body = Side.body, foot = Side.foot, h = header(st);
+      statusEl = null;
+      if (!st.words){
+        body.innerHTML = h + '<div class="empty-note">Nothing to count yet.</div>';
+        foot.innerHTML = ""; foot.style.display = "none";
+        return;
+      }
+      var bd = band(st.flesch), share = Math.round(st.dialogue / st.words * 100);
+      h += '<h2 class="about-h">At a glance</h2><div class="about-grid">' +
+        tile(fmtN(st.words), "Words") + tile(fmtN(st.unique), "Unique words") + tile(fmtN(st.sentences), "Sentences") +
+        tile(esc(readingTime(st.words)), "Reading time at your speed", "full") +
+        tile(one(st.avgSentence), "Words per sentence") + tile(one(st.avgWord), "Letters per word") +
+        (share > 0 ? tile(share + "%", "Dialogue") : "") + '</div>';
+      h += '<h2 class="about-h">Reading level</h2><div class="about-level">' +
+        '<div class="about-score"><b>' + st.flesch + '</b><span>' + bd[1] + '</span><small>Flesch reading ease</small></div>' +
+        '<div class="about-scale" aria-hidden="true"><i style="left:' + st.flesch + '%"></i></div>' +
+        '<div class="about-ends" aria-hidden="true"><span>harder</span><span>easier</span></div>' +
+        '<p class="about-note">' + esc(bd[2]) + '</p>' +
+        '<p class="about-note muted">Flesch–Kincaid: ' + gradeText(st.grade) + '<br>Coleman–Liau, as a second opinion: ' + gradeText(st.cli) + '</p></div>';
+      h += '<h2 class="about-h">Vocabulary</h2><div class="about-grid">' +
+        tile(ttrLabel(st.ttr), "Vocabulary richness (" + st.ttr.toFixed(2) + ")", "wide") + tile(fmtN(st.hapax), "Words used only once") + '</div>';
+      h += '<h2 class="about-h">Hardest words</h2><div class="about-words" id="aboutWords"><div class="empty-note">Preparing…</div></div>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button class="chip" data-about="copy">Copy</button>' +
+        '<div class="about-foot-note">Counts are from the text as shown; numbers, headings and captions are included.</div>';
+      foot.style.display = "flex";
+      fillHardest(st);
+    }
+    /* the word list needs explain.js's frequency list, fetched the first time it is wanted */
+    function fillHardest(st){
+      var el = function(){ return Side.is("about") && cache && cache.stats === st ? Side.body.querySelector("#aboutWords") : null; };
+      need(["explain"]).then(function(){
+        var box = el(); if (!box) return;
+        var list = hardest(st) || [];
+        st.hard = list;
+        box.innerHTML = list.length ? list.map(wordRow).join("") : '<div class="empty-note">No unusual words — everything here is everyday English.</div>';
+      }, function(){
+        var box = el(); if (box) box.innerHTML = '<div class="empty-note">Couldn’t load the word list.</div>';
+      });
+    }
+    function compute(){
+      var myGen = ++gen, key = keyNow(), mode = state.mode, pdf = state.pdfDoc, note = null;
+      function live(){ return myGen === gen && Side.is("about") && state.mode === mode && (mode !== "pdf" || state.pdfDoc === pdf); }
+      function status(msg){ if (live() && statusEl) statusEl.textContent = msg; }
+      var src = mode === "pdf" && pdf
+        ? pdfText(pdf, status, live).then(function(r){ if (r && r.capped) note = "first " + MAX_PDF_PAGES + " pages"; return r ? r.text : null; })
+        : Promise.resolve(docText());
+      src.then(function(text){
+        if (text === null || !live()) return null;
+        status("Counting words…");
+        return analyse(text, { live: live, onProgress: function(n){ status("Counting words… " + fmtN(n) + " so far"); } });
+      }).then(function(st){
+        if (!st || !live()) return;
+        st.note = note;
+        cache = { key: key, stats: st };
+        draw(st);
+      }).catch(function(err){ console.warn("about: couldn’t read the text", err); status("Couldn’t read the text."); });
+    }
+    function render(body){
+      var key = keyNow();
+      if (cache && cache.key === key){ draw(cache.stats); return; }
+      body.innerHTML = header() + '<div class="empty-note" id="aboutStatus" aria-live="polite">Reading the text…</div>';
+      statusEl = body.querySelector("#aboutStatus");
+      compute();
+    }
+    function openPanel(){
+      if (!docOpen()) return;
+      Side.open("about", "About this text", render, function(){ gen++; statusEl = null; });
+    }
+    /* a plain-text summary for the clipboard */
+    function summary(st, name){
+      var bd = band(st.flesch), share = Math.round(st.dialogue / Math.max(1, st.words) * 100), out = [];
+      out.push("About “" + name + "”" + (st.note ? " (" + st.note + ")" : ""));
+      out.push("Words: " + fmtN(st.words) + " · unique words: " + fmtN(st.unique) + " · sentences: " + fmtN(st.sentences));
+      out.push("Reading time: " + readingTime(st.words) + " at " + Math.round(Progress.wpm()) + " words a minute");
+      out.push("Average sentence: " + one(st.avgSentence) + " words · average word: " + one(st.avgWord) + " letters" + (share > 0 ? " · dialogue: " + share + "%" : ""));
+      out.push("Reading level: Flesch reading ease " + st.flesch + " (" + bd[1] + ") — " + bd[2]);
+      out.push("Flesch–Kincaid: " + gradeText(st.grade) + " · Coleman–Liau: " + gradeText(st.cli));
+      out.push("Vocabulary richness: " + ttrLabel(st.ttr) + " (" + st.ttr.toFixed(2) + ") · words used only once: " + fmtN(st.hapax));
+      if (st.hard && st.hard.length) out.push("Hardest words: " + st.hard.map(function(x){ return x.w + " (" + x.n + ")"; }).join(", "));
+      return out.join("\n");
+    }
+    function copy(text){
+      var done = function(){ Marks.toast("Copied"); }, fail = function(){ Marks.toast("Couldn’t copy"); };
+      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, fail); return; }
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        var ok = document.execCommand("copy"); ta.remove();
+        if (ok) done(); else fail();
+      } catch(_){ fail(); }
+    }
+    /* Search has no query API: open it, then type into its box */
+    function findWord(word){
+      Search.openPanel();
+      var input = Side.body.querySelector("#findInput");
+      if (input){ input.value = word; input.dispatchEvent(new Event("input", { bubbles: true })); }
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("about")) return;
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.w !== undefined){ if (window.llDict) window.llDict.defineWord(b.dataset.w); }
+      else if (b.dataset.find !== undefined) findWord(b.dataset.find);
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("about") || !cache) return;
+      var b = e.target.closest("button[data-about]"); if (!b) return;
+      copy(summary(cache.stats, docLabel().name));
+    });
+    Menu.add({ order: 60, label: "About this text", key: "I", run: openPanel, show: docOpen });
+    window.llAbout = { openPanel: openPanel, stats: analyse, syllables: syllables, sentences: sentencesIn, hardest: hardest, summary: summary };
+    return { openPanel: openPanel, stats: analyse, syllables: syllables, hardest: hardest };
+  })();
+
+  /* ============================================================
+     Read aloud — Web Speech API, sentence by sentence, with a narrator and a
+     second voice for quoted speech, and a little expression read off the text
      ============================================================ */
   var Speak = (function(){
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
+    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices");
     var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
+    var wait = null, sampleGen = 0, voiceKey = "";
     var rate = parseFloat(Store.get("ll_tts_rate") || "1") || 1;
     var voiceName = Store.get("ll_tts_voice") || "";
+    var dialogueName = Store.get("ll_tts_dialogue") || "";     /* "" = auto (the other voice), "same", or a voice name */
+    var expr = Store.get("ll_tts_expr") || "natural";           /* off | natural | dramatic */
+    var pitchPref = clamp(parseFloat(Store.get("ll_tts_pitch") || "1") || 1, 0.7, 1.3);
     var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
-    rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "\u00D7";
+    if (!/^(off|natural|dramatic)$/.test(expr)) expr = "natural";
+    rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "×";
+    function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
+    function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
 
+    /* ---- voices ---- */
+    /* the API says nothing about gender, so guess it from the name: the words woman / man,
+       then the first names Apple, Microsoft, Google, Amazon and espeak give their voices */
+    function set(s){ var o = {}; s.split(" ").forEach(function(w){ if (w) o[w] = 1; }); return o; }
+    var WOMEN = set("samantha karen moira tessa fiona victoria kate serena allison ava susan zira hazel heera aria jenny sara sonia libby emma olivia amy joanna kendra kimberly salli ivy nicole raveena aditi zoe flo martha shelley nicky sandy grandma kathy princess vicki catherine natasha matilda isha veena sangeeta anna alice ellen laura paulina monica luciana joana yuna kyoko ting-ting mei-jia sin-ji lekha milena amelie audrey aurelie chantal marie carmit damayanti ioana melina alva nora satu zosia zuzana mariska kanya yelda helena petra federica paola angelica marisol laila o-ren yu-shu linda hedda katja hortense julie elsa haruka ayumi sayaka heami huihui yaoyao hanhan yating tracy irina maria gadis kalpana hoda vlasta heidi helle sabina daria ewa");
+    var MEN = set("daniel alex fred david george mark ryan guy christopher eric steffan thomas brian matthew joey justin kevin russell aaron arthur gordon lee oliver reed rishi rocko tom bruce junior ralph albert eddy grandpa evan nathan jamie jorge diego juan carlos luca xander yannick maged majed tarik otoya hattori nicolas markus viktor jordi li-mu yuri james richard sean stefan conrad paul pablo raul cosimo ichiro kangkang zhiwei danny pavel adam frank andika hemant naayf ivan filip lado szabolcs jakub karsten jon bengt pattara tolga rizwan ravi");
+    function voiceGender(v){
+      var name = typeof v === "string" ? v : (v && v.name) || "", low = name.toLowerCase();
+      if (/\b(female|woman)\b/.test(low)) return "f";
+      if (/\b(male|man)\b/.test(low)) return "m";
+      var ts = low.split(/[\s,.()+_\/\\:\[\]"']+/), i;
+      for (i = 0; i < ts.length; i++){
+        if (WOMEN[ts[i]] || /^(f|female)\d$/.test(ts[i])) return "f";     /* espeak variants: en+f3 */
+        if (MEN[ts[i]] || /^(m|male)\d$/.test(ts[i])) return "m";
+      }
+      if (/^google\s/.test(low)) return "f";     /* Chrome's Google voices are women except "UK English Male" */
+      return "";
+    }
     function voices(){ return supported ? speechSynthesis.getVoices() : []; }
-    function fillVoices(){
-      var vs = voices();
-      var lang = (document.documentElement.lang || "en").slice(0, 2).toLowerCase();
-      vs = vs.slice().sort(function(a, b){
-        var al = a.lang.slice(0, 2).toLowerCase() === lang ? 0 : 1, bl = b.lang.slice(0, 2).toLowerCase() === lang ? 0 : 1;
+    function docLang(){ return (document.documentElement.lang || "en").slice(0, 2).toLowerCase(); }
+    function langOf(v){ return (v.lang || "").slice(0, 2).toLowerCase(); }
+    /* the document's language first, local voices before online ones, then by name */
+    function sortedVoices(){
+      var lang = docLang();
+      return voices().slice().sort(function(a, b){
+        var al = langOf(a) === lang ? 0 : 1, bl = langOf(b) === lang ? 0 : 1;
         if (al !== bl) return al - bl;
-        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+        if (!a.localService !== !b.localService) return a.localService ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-      voiceSel.innerHTML = vs.map(function(v){
-        return '<option value="' + v.name.replace(/"/g, "&quot;") + '"' + (v.name === voiceName ? ' selected' : '') + '>' + v.name.replace(/</g, "&lt;") + (v.localService ? "" : " (online)") + '</option>';
-      }).join("") || '<option value="">Default voice</option>';
     }
-    if (supported){ fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
+    function gendered(g){ return sortedVoices().filter(function(v){ return voiceGender(v) === g; }); }
+    /* the best voice of a gender: language match, local first; strict = only that language */
+    function bestVoice(g, lang, notName, strict){
+      var vs = gendered(g).filter(function(v){ return v.name !== notName; });
+      if (lang){ var same = vs.filter(function(v){ return langOf(v) === lang; }); if (same.length || strict) vs = same; }
+      return vs[0] || null;
+    }
+    function voiceOptions(vs, selected){
+      var groups = { f: [], m: [], "": [] };
+      vs.forEach(function(v){ groups[voiceGender(v)].push(v); });
+      return [["f", "Women"], ["m", "Men"], ["", "Other"]].map(function(g){
+        if (!groups[g[0]].length) return "";
+        return '<optgroup label="' + g[1] + '">' + groups[g[0]].map(function(v){
+          return '<option value="' + esc(v.name) + '"' + (v.name === selected ? ' selected' : '') + '>' + esc(v.name) + (v.localService ? "" : " (online)") + '</option>';
+        }).join("") + '</optgroup>';
+      }).join("");
+    }
     function currentVoice(){
       var vs = voices(), name = voiceSel.value || voiceName;
       return vs.filter(function(v){ return v.name === name; })[0] || null;
     }
+    /* the voice for quoted speech: the one chosen, the narrator, or (auto) the other gender in
+       the narrator's language; failing that the narrator's own voice pitched a little away */
+    function dialogueVoice(narr){
+      narr = narr || currentVoice();
+      if (dialogueName === "same") return { voice: narr, pitchOffset: 0 };
+      var chosen = dialogueName ? voices().filter(function(v){ return v.name === dialogueName; })[0] : null;
+      if (chosen) return { voice: chosen, pitchOffset: 0 };
+      var g = narr ? voiceGender(narr) : "", lang = narr ? langOf(narr) : docLang(), not = narr ? narr.name : "";
+      var other = g === "f" ? bestVoice("m", lang, not, true) : g === "m" ? bestVoice("f", lang, not, true)
+                : (bestVoice("m", lang, not, true) || bestVoice("f", lang, not, true));
+      if (other) return { voice: other, pitchOffset: 0 };
+      return { voice: narr, pitchOffset: g === "m" ? 0.15 : -0.15 };
+    }
+    function syncSexButtons(){
+      var g = voiceGender(currentVoice());
+      [[womanBtn, "f"], [manBtn, "m"]].forEach(function(p){
+        p[0].classList.toggle("on", g === p[1]); p[0].setAttribute("aria-pressed", g === p[1] ? "true" : "false");
+      });
+    }
+    function fillVoices(){
+      var vs = sortedVoices(), key = vs.map(function(v){ return v.name; }).join("\n");
+      voiceSel.innerHTML = voiceOptions(vs, voiceName) || '<option value="">Default voice</option>';
+      womanBtn.hidden = !bestVoice("f"); manBtn.hidden = !bestVoice("m");
+      syncSexButtons();
+      /* voices can arrive late; redraw the panel when the list really changed */
+      if (key !== voiceKey){ voiceKey = key; if (Side.is("voices")) Side.refresh("voices", renderPanel); }
+    }
+    if (supported){ fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
+    function setVoice(name){
+      voiceName = name; Store.set("ll_tts_voice", name);
+      voiceSel.value = name;
+      var narr = $("#ttsNarr"); if (narr) narr.value = name;
+      syncSexButtons(); syncHint();
+      if (playing) speakCurrent();
+    }
+    /* ♀ / ♂: the best voice of that gender; pressed again, the next one */
+    function pickGender(g){
+      var list = gendered(g); if (!list.length) return;
+      var cur = currentVoice(), i = cur ? list.indexOf(cur) : -1;
+      var lang = docLang(), same = list.filter(function(v){ return langOf(v) === lang; });
+      if (i < 0 && same.length) list = same;
+      setVoice(list[(i + 1) % list.length].name);
+    }
 
     /* ---- sentence units ---- */
-    var SENT = /[^.!?\u2026]+[.!?\u2026]*["\u201d\u2019)]?\s*/g;
-    function splitLong(text, base, out){
+    var SENT = /[^.!?…]+[.!?…]*["”’)»]?\s*/g;
+    var CLOSER = { "“": "”", "«": "»", "\"": "\"", "‘": "’" };
+    function splitLong(text, base, out, meta){
       /* keep utterances short: some engines cut off after ~15 seconds */
-      if (text.length <= 220){ out.push({ start: base, end: base + text.length, text: text }); return; }
+      if (text.length <= 220){ out.push(Object.assign({ start: base, end: base + text.length, text: text }, meta || {})); return; }
       var i = 0;
       while (i < text.length){
         var j = Math.min(text.length, i + 200);
         if (j < text.length){ var k = text.lastIndexOf(" ", j); if (k > i + 60) j = k; }
-        out.push({ start: base + i, end: base + j, text: text.slice(i, j) });
+        out.push(Object.assign({ start: base + i, end: base + j, text: text.slice(i, j) }, meta || {}));
         i = j;
       }
     }
-    function unitsFromText(text, base, out){
-      /* paragraphs (blank lines) then sentences; offsets are relative to base */
+    /* where quoted speech runs in a paragraph, as [open, close] index pairs; a quote left open
+       stays speech to the end of the paragraph. Curly and straight doubles, guillemets, and
+       single curly quotes only when the opener follows a space and the closer precedes space or
+       punctuation, so apostrophes are left alone. A quoted scrap under two characters isn't speech. */
+    function quoteSpans(seg){
+      var spans = [], open = -1, closer = "", i, c;
+      for (i = 0; i < seg.length; i++){
+        c = seg.charAt(i);
+        if (open < 0){
+          if (c === "“" || c === "«" || (c === "\"" && /\S/.test(seg.charAt(i + 1))) ||
+              (c === "‘" && (i === 0 || /[\s(\[—–-]/.test(seg.charAt(i - 1))))){ open = i; closer = CLOSER[c]; }
+        } else if (c === closer){
+          if (c === "’" && i < seg.length - 1 && /[^\s.,;:!?…)\]—–-]/.test(seg.charAt(i + 1))) continue;
+          spans.push([open, i]); open = -1;
+        }
+      }
+      if (open >= 0) spans.push([open, seg.length]);
+      return spans.filter(function(s){ return seg.slice(s[0] + 1, s[1]).trim().length >= 2; });
+    }
+    function parenSpans(seg){
+      var spans = [], open = -1, i, c;
+      for (i = 0; i < seg.length; i++){
+        c = seg.charAt(i);
+        if (c === "(" && open < 0) open = i;
+        else if (c === ")" && open >= 0){ spans.push([open, i]); open = -1; }
+      }
+      return spans;
+    }
+    function unitsFromText(text, base, out, meta){
+      /* paragraphs (blank lines), then sentences, then the quoted speech cut out of each
+         sentence as its own unit (dialogue: true, quote marks left out of the text). Offsets are
+         relative to base and exact, so highlighting and "read from here" line up. */
       var re = /\n[ \t]*\n/g, last = 0, m;
       var paras = [];
       while ((m = re.exec(text))){ paras.push([last, m.index]); last = m.index + m[0].length; }
       paras.push([last, text.length]);
       paras.forEach(function(p){
-        var seg = text.slice(p[0], p[1]);
+        var seg = text.slice(p[0], p[1]), quotes = quoteSpans(seg), parens = parenSpans(seg), before = out.length;
         SENT.lastIndex = 0;
         var sm;
         while ((sm = SENT.exec(seg))){
-          var t = sm[0], lead = t.length - t.replace(/^\s+/, "").length, trail = t.length - t.replace(/\s+$/, "").length;
-          var core = t.slice(lead, t.length - trail);
-          if (!/[A-Za-z0-9\u00C0-\u024F]/.test(core)) continue;
-          splitLong(core.replace(/\s+/g, " "), base + p[0] + sm.index + lead, out);
+          var t = sm[0], ss = sm.index + (t.length - t.replace(/^\s+/, "").length), se = sm.index + t.replace(/\s+$/, "").length;
           if (!t.length) SENT.lastIndex++;
+          if (se <= ss) continue;
+          var pieces = [], pos = ss;
+          quotes.forEach(function(q){
+            if (q[1] < ss || q[0] >= se) return;
+            if (q[0] > pos) pieces.push([pos, Math.min(q[0], se), false]);
+            pieces.push([Math.max(q[0] + 1, ss), Math.min(q[1], se), true]);
+            pos = Math.min(q[1] + 1, se);
+          });
+          if (pos < se) pieces.push([pos, se, false]);
+          pieces.forEach(function(pc){
+            var piece = seg.slice(pc[0], pc[1]);
+            var lead = piece.length - piece.replace(/^\s+/, "").length, trail = piece.length - piece.replace(/\s+$/, "").length;
+            var core = piece.slice(lead, piece.length - trail);
+            if (!/[A-Za-z0-9À-ɏ]/.test(core)) return;
+            var a = pc[0] + lead, b = pc[1] - trail;
+            var paren = parens.some(function(ps){ return ps[0] <= a && b <= ps[1] + 1; });
+            splitLong(core.replace(/\s+/g, " "), base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren }, meta || {}));
+          });
         }
+        if (out.length > before) out[out.length - 1].last = true;
       });
     }
     function buildDocUnits(){
@@ -2214,18 +3105,81 @@
         if (!first || !text.trim()) return;
         var base = offsetOfNode.get(first);
         if (base === undefined) return;
-        unitsFromText(text, base, out);
+        unitsFromText(text, base, out, { heading: /^H[1-4]$/.test(b.tagName) });
       });
       return out;
+    }
+
+    /* ---- expression: pitch, rate and volume for a unit, read off its punctuation, and the
+       breath after it. Pure: unit + { prev, next, expr } → { pitch, rate, volume, pauseAfter }.
+       pitch and rate are relative to 1; the caller adds the user's pitch and speed. ---- */
+    var TAGS = [
+      [/\b(whisper|murmur|mutter|breath)/i, { volume: 0.55, rate: 0.9 }],
+      [/\b(shout|yell|scream|cried|exclaim|roar)/i, { volume: 1, pitch: 0.12, rate: 1.1 }],
+      [/\b(sigh|slowly|wear)/i, { rate: 0.85 }],
+      [/\b(laugh|grin|chuckl)/i, { pitch: 0.08 }],
+      [/\b(hiss|snap|growl)/i, { pitch: -0.08, rate: 1.05 }]
+    ];
+    /* the narration right before or after a quote, the ~40 characters nearest it */
+    function saidTag(u, prev, next){
+      var s = "";
+      if (prev && !prev.dialogue && u.start - prev.end <= 40) s += prev.text.slice(-48) + " ";
+      if (next && !next.dialogue && next.start - u.end <= 40) s += next.text.slice(0, 48);
+      return s;
+    }
+    function express(u, ctx){
+      ctx = ctx || {};
+      var k = ctx.expr === "off" ? 0 : ctx.expr === "dramatic" ? 1.8 : 1;
+      var t = u.text || "", pitch = 0, rate = 1, vol = 1, pause = 0;
+      var tail = t.replace(/[\s"”’)\]»]+$/, ""), end = tail.charAt(tail.length - 1);
+      if (end === "?"){ pitch += 0.08; pause = 260; }
+      else if (end === "!"){ pitch += 0.1; rate *= 1.08; pause = 260; }
+      else if (end === "…" || /\.\.\.$/.test(tail)){ rate *= 0.92; pause = 500; }
+      else if (end === "."){ pause = 260; }
+      else if (end === "," || end === ";" || end === ":"){ pause = 120; }
+      else if (end === "—" || end === "–" || /--$/.test(tail)){ pause = 0; }    /* cut off mid-sentence: run straight on */
+      if (u.heading){ rate *= 0.9; pitch -= 0.05; pause = 700; }
+      else if (u.last) pause += 350;
+      if (u.paren){ pitch -= 0.06; vol = Math.min(vol, 0.9); rate *= 1.05; }
+      if (u.dialogue){
+        var tag = saidTag(u, ctx.prev, ctx.next);
+        TAGS.forEach(function(r){
+          if (!r[0].test(tag)) return;
+          var d = r[1];
+          if (d.pitch) pitch += d.pitch;
+          if (d.rate) rate *= d.rate;
+          if (d.volume !== undefined) vol = Math.min(vol, d.volume);
+        });
+      }
+      /* a word in capitals: engines can't stress one word, so the whole unit slows a touch */
+      if (/\b[A-Z]{3,}\b/.test(t)) rate *= 0.95;
+      var r3 = function(x){ return Math.round(x * 1000) / 1000; };
+      return {
+        pitch: r3(1 + clamp(pitch * k, -0.3, 0.3)),
+        rate: r3(1 + clamp((rate - 1) * k, -0.45, 0.45)),
+        volume: r3(1 - Math.min(0.6, (1 - vol) * k)),
+        pauseAfter: pause
+      };
+    }
+    function utterFor(u, prev, next){
+      var x = express(u, { prev: prev, next: next, expr: expr });
+      var narr = currentVoice(), v = narr, off = 0;
+      if (u.dialogue){ var d = dialogueVoice(narr); v = d.voice; off = d.pitchOffset; }
+      var ut = new SpeechSynthesisUtterance(u.text);
+      ut.rate = clamp(rate * x.rate, 0.5, 2.5);
+      ut.pitch = clamp(pitchPref + (x.pitch - 1) + off, 0.5, 1.6);
+      ut.volume = clamp(x.volume, 0.4, 1);
+      if (v){ ut.voice = v; ut.lang = v.lang; }
+      return { utter: ut, pauseAfter: x.pauseAfter };
     }
 
     /* ---- painting + revealing ---- */
     function paint(u){
       if (!hasHL) return;
-      CSS.highlights.delete("ll-speak");
+      CSS.highlights.delete("ll-speak"); CSS.highlights.delete("ll-speak-dialogue");
       if (!u || state.mode !== "doc") return;
       var r = Anchor.rangeBetween(u.start, u.end);
-      if (r) CSS.highlights.set("ll-speak", new Highlight(r));
+      if (r) CSS.highlights.set(u.dialogue ? "ll-speak-dialogue" : "ll-speak", new Highlight(r));
     }
     function ensureVisible(u){
       if (state.mode !== "doc") return;
@@ -2244,13 +3198,18 @@
     function speakCurrent(){
       if (!units.length || idx < 0 || idx >= units.length){ finish(); return; }
       var u = units[idx], myGen = ++gen;
+      clearTimeout(wait); sampleGen++;
       try { speechSynthesis.cancel(); } catch(_){}
       paint(u); ensureVisible(u);
       if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
-      utter = new SpeechSynthesisUtterance(u.text);
-      utter.rate = rate;
-      var v = currentVoice(); if (v){ utter.voice = v; utter.lang = v.lang; }
-      utter.onend = function(){ if (myGen !== gen || !playing) return; idx++; if (idx < units.length) speakCurrent(); else finish(); };
+      var s = utterFor(u, units[idx - 1], units[idx + 1]);
+      utter = s.utter;
+      utter.onend = function(){
+        if (myGen !== gen || !playing) return;
+        if (idx + 1 >= units.length){ finish(); return; }
+        /* a breath between sentences, a longer one after a paragraph; Prev / Next cut it short */
+        wait = setTimeout(function(){ if (myGen !== gen || !playing) return; idx++; speakCurrent(); }, s.pauseAfter);
+      };
       utter.onerror = function(e){
         if (myGen !== gen) return;
         if (e.error === "interrupted" || e.error === "canceled") return;
@@ -2262,13 +3221,13 @@
     }
     function play(){
       if (!units.length) return;
-      playing = true; playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause");
+      playing = true; playBtn.textContent = "❚❚"; playBtn.setAttribute("aria-label", "Pause");
       speakCurrent();
     }
     function pause(){
-      playing = false; gen++;
+      playing = false; gen++; sampleGen++; clearTimeout(wait);
       try { speechSynthesis.cancel(); } catch(_){}
-      playBtn.textContent = "\u25B6"; playBtn.setAttribute("aria-label", "Play");
+      playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play");
     }
     function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); }
     function stop(){
@@ -2277,12 +3236,13 @@
       document.body.classList.remove("tts-on");
       if (state.flow === "pages") relayoutPaged();
     }
+    function measure(){ if (active) document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px"); }
     function startFrom(offset){
-      if (!supported){ Marks.toast("Read aloud isn\u2019t available in this browser"); return; }
+      if (!supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
       if (state.mode !== "doc" && state.mode !== "pdf") return;
       active = true; bar.classList.add("on"); fillVoices();
       document.body.classList.add("tts-on");
-      document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
+      measure();
       if (state.flow === "pages") relayoutPaged();
       if (state.mode === "doc"){
         units = buildDocUnits();
@@ -2318,22 +3278,106 @@
         })();
       });
     }
+    /* a short line in both voices, so the panel's choices can be heard */
+    var SAMPLE = "The lamp hums quietly. \"Are you still reading?\" she asked. \"Just one more chapter!\"";
+    function sample(){
+      if (!supported) return;
+      if (playing) pause();
+      var list = [], myGen = ++sampleGen, i = 0;
+      unitsFromText(SAMPLE, 0, list);
+      try { speechSynthesis.cancel(); } catch(_){}
+      (function next(){
+        if (myGen !== sampleGen || i >= list.length) return;
+        var s = utterFor(list[i], list[i - 1], list[i + 1]);
+        s.utter.onend = function(){ if (myGen !== sampleGen) return; i++; setTimeout(next, s.pauseAfter); };
+        setTimeout(function(){ if (myGen === sampleGen) speechSynthesis.speak(s.utter); }, 0);
+      })();
+    }
+
+    /* ---- the voices panel ---- */
+    function pitchLabel(){ return pitchPref.toFixed(2); }
+    function hintText(){
+      var narr = currentVoice();
+      if (!narr || dialogueName) return dialogueName === "same" ? "Quoted speech is read in the narrator’s voice." : "";
+      var d = dialogueVoice(narr), g = voiceGender(narr);
+      if (d.voice && d.voice !== narr) return "Auto: " + d.voice.name + " reads the quoted speech.";
+      return "Auto: no " + (g === "f" ? "man’s" : g === "m" ? "woman’s" : "second") + " voice for this language, so quoted speech is the narrator pitched " + (d.pitchOffset > 0 ? "higher" : "lower") + ".";
+    }
+    function syncHint(){ var h = $("#ttsDlgHint"); if (h) h.textContent = hintText(); }
+    function exprChips(){
+      return [["off", "Off"], ["natural", "Natural"], ["dramatic", "Dramatic"]].map(function(c){
+        return '<button class="chip' + (expr === c[0] ? ' on' : '') + '" role="radio" aria-checked="' + (expr === c[0] ? "true" : "false") + '" data-expr="' + c[0] + '">' + c[1] + '</button>';
+      }).join("");
+    }
+    function setExpr(v){
+      if (!/^(off|natural|dramatic)$/.test(v)) return;
+      expr = v; Store.set("ll_tts_expr", v);
+      var chips = $("#ttsExpr");
+      if (chips) Array.prototype.forEach.call(chips.querySelectorAll(".chip"), function(c){
+        var on = c.dataset.expr === v; c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+      });
+      if (playing) speakCurrent();
+    }
+    function renderPanel(body, foot){
+      var vs = sortedVoices();
+      body.innerHTML = '<div class="tts-panel">' +
+        '<div class="rowline"><label for="ttsNarr">Narrator</label><select id="ttsNarr" class="sel" tabindex="0">' + (voiceOptions(vs, voiceName) || '<option value="">Default voice</option>') + '</select></div>' +
+        '<div class="rowline"><label for="ttsDlg">Dialogue</label><select id="ttsDlg" class="sel">' +
+          '<option value=""' + (!dialogueName ? ' selected' : '') + '>Auto — the other voice</option>' +
+          '<option value="same"' + (dialogueName === "same" ? ' selected' : '') + '>Same as narrator</option>' + voiceOptions(vs, dialogueName) + '</select></div>' +
+        '<div class="hint" id="ttsDlgHint">' + esc(hintText()) + '</div>' +
+        '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
+        '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
+        '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
+        '</div>';
+      foot.innerHTML = '<button class="chip" id="ttsSample">Hear a sample</button>';
+      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr");
+      var pitchEl = body.querySelector("#ttsPitch"), pitchV = body.querySelector("#ttsPitchV");
+      narr.addEventListener("change", function(){ setVoice(narr.value); });
+      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); if (playing) speakCurrent(); });
+      chips.addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch) setExpr(ch.dataset.expr); });
+      chips.addEventListener("keydown", function(e){
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        var all = Array.prototype.slice.call(chips.querySelectorAll(".chip")), i = all.indexOf(e.target);
+        if (i < 0) return;
+        e.preventDefault();
+        var n = all[(i + (e.key === "ArrowRight" ? 1 : all.length - 1)) % all.length];
+        n.focus(); setExpr(n.dataset.expr);
+      });
+      pitchEl.addEventListener("input", function(){
+        pitchPref = +pitchEl.value; pitchV.textContent = pitchLabel(); Store.set("ll_tts_pitch", String(pitchPref));
+        if (playing) speakCurrent();
+      });
+      foot.querySelector("#ttsSample").addEventListener("click", sample);
+    }
+    function openPanel(){ Side.open("voices", "Read-aloud voices", renderPanel); }
 
     playBtn.addEventListener("click", function(){ if (playing) pause(); else play(); });
     $("#ttsStop").addEventListener("click", stop);
     $("#ttsPrev").addEventListener("click", function(){ if (!units.length) return; idx = Math.max(0, idx - 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
     $("#ttsNext").addEventListener("click", function(){ if (!units.length) return; idx = Math.min(units.length - 1, idx + 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
     rateEl.addEventListener("input", function(){
-      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "\u00D7"; Store.set("ll_tts_rate", String(rate));
+      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "×"; Store.set("ll_tts_rate", String(rate));
       if (playing) speakCurrent();
     });
-    voiceSel.addEventListener("change", function(){ voiceName = voiceSel.value; Store.set("ll_tts_voice", voiceName); if (playing) speakCurrent(); });
+    voiceSel.addEventListener("change", function(){ setVoice(voiceSel.value); });
+    womanBtn.addEventListener("click", function(){ pickGender("f"); });
+    manBtn.addEventListener("click", function(){ pickGender("m"); });
+    voicesBtn.addEventListener("click", openPanel);
+    window.addEventListener("resize", measure);
     window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} });
 
     Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
+    /* test hook: the pure pieces, and what the panel would choose */
+    window.llSpeak = {
+      voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
+      plan: function(text){ var out = []; unitsFromText(String(text || ""), 0, out); return out; },
+      settings: function(){ return { voice: voiceName, dialogue: dialogueName, expr: expr, pitch: pitchPref, rate: rate }; },
+      openPanel: openPanel, sample: sample
+    };
     return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
-             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, supported: supported };
+             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel, supported: supported };
   })();
 
   /* ============================================================
@@ -2391,7 +3435,7 @@
         if (lastFrac !== null){
           var dt = now - lastT, dw = (frac - lastFrac) * docWords;
           /* count only steady forward reading: small steps, no long pauses */
-          if (dt > 0 && dt < 45000 && dw > 0 && dw < 400 && document.visibilityState === "visible"){ sample.words += dw; sample.ms += dt; }
+          if (dt > 0 && dt < 45000 && dw > 0 && dw < 400 && document.visibilityState === "visible"){ sample.words += dw; sample.ms += dt; Stats.noteWords(dw); }
         }
         var left = (1 - frac) * docWords / currentWpm();
         text = Math.round(frac * 100) + "%" + (docWords > 80 ? " \u00B7 " + fmt(left) : "");
@@ -2399,7 +3443,7 @@
         var pages = state.pdfDoc ? state.pdfDoc.numPages : 1, page = Library.currentPdfPage();
         if (lastFrac !== null){
           var dt2 = now - lastT, dp = (frac - lastFrac) * (pages - 1);
-          if (dt2 > 0 && dt2 < 120000 && dp > 0 && dp < 3 && document.visibilityState === "visible"){ sample.pages += dp; sample.pms += dt2; }
+          if (dt2 > 0 && dt2 < 120000 && dp > 0 && dp < 3 && document.visibilityState === "visible"){ sample.pages += dp; sample.pms += dt2; Stats.notePages(dp); }
         }
         var leftP = (pages - page) / currentPpm();
         text = "p. " + page + " / " + pages + (pages > 3 ? " \u00B7 " + fmt(leftP) : "");
@@ -2417,6 +3461,257 @@
       }, 1500);
     }
     return { tick: tick, wpm: currentWpm, ppm: currentPpm, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
+  })();
+
+  /* ============================================================
+     Reading stats — minutes, words and pages per day, a daily goal and
+     the streak of days it was kept. All of it stays on this device.
+     ============================================================ */
+  var Stats = (function(){
+    var KEY = "ll_stats", GOALS = [5, 10, 15, 20, 30, 45, 60], MAX_DAYS = 400, TICK = 15000, IDLE = 3 * 60000;
+    var WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var widget = $("#streak");
+    var data = load(), dirty = false, saveTimer = null, lastActive = 0, docKey = null, widgetHtml = "";
+
+    /* ---- days are keyed by the local date, built by hand (toISOString would shift them to UTC) ---- */
+    function pad(n){ return (n < 10 ? "0" : "") + n; }
+    function keyOf(d){ return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+    function dateOf(key){ var p = key.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+    function addDays(key, n){ var d = dateOf(key); d.setDate(d.getDate() + n); return keyOf(d); }
+    function todayKey(){ return keyOf(new Date()); }
+
+    /* ---- storage: one JSON record, saved at most every 5 s and when the page goes away ---- */
+    function fresh(){ return { v: 1, goal: 10, days: {}, books: {}, best: { streak: 0, day: "" }, notified: "" }; }
+    function num(x){ return typeof x === "number" && isFinite(x) && x > 0 ? x : 0; }
+    function load(){
+      var o = null, out = fresh();
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
+      if (!o || typeof o !== "object") return out;
+      if (GOALS.indexOf(o.goal) >= 0) out.goal = o.goal;
+      Object.keys(o.days && typeof o.days === "object" ? o.days : {}).forEach(function(k){
+        var d = o.days[k];
+        if (!/^\d{4}-\d\d-\d\d$/.test(k) || !d || typeof d !== "object") return;
+        out.days[k] = { ms: num(d.ms), words: num(d.words), pages: num(d.pages), docs: Array.isArray(d.docs) ? d.docs.filter(function(x){ return typeof x === "string"; }) : [] };
+      });
+      Object.keys(o.books && typeof o.books === "object" ? o.books : {}).forEach(function(k){
+        var b = o.books[k];
+        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), opened: Math.round(num(b.opened)), finished: !!b.finished };
+      });
+      if (o.best && typeof o.best === "object") out.best = { streak: Math.round(num(o.best.streak)), day: typeof o.best.day === "string" ? o.best.day : "" };
+      if (typeof o.notified === "string") out.notified = o.notified;
+      return out;
+    }
+    /* words and pages arrive in fractions; they are rounded on the way out, never in memory */
+    function tidy(k, v){ return k === "words" ? Math.round(v) : k === "pages" ? Math.round(v * 10) / 10 : v; }
+    function save(){
+      clearTimeout(saveTimer); saveTimer = null;
+      if (!dirty) return;
+      dirty = false;
+      var keys = Object.keys(data.days).sort();
+      while (keys.length > MAX_DAYS) delete data.days[keys.shift()];
+      Store.set(KEY, JSON.stringify(data, tidy));
+    }
+    function touch(){ dirty = true; if (!saveTimer) saveTimer = setTimeout(save, 5000); }
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "hidden") save(); renderWidget(); });
+    window.addEventListener("pagehide", save);
+
+    /* ---- records ---- */
+    function day(key){ return data.days[key] || (data.days[key] = { ms: 0, words: 0, pages: 0, docs: [] }); }
+    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, opened: 0, finished: false }); }
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    /* the open document belongs to today; an opening is counted once per open (the id arrives a moment after the file) */
+    function noteDoc(){
+      if (!docOpen()) return null;
+      var id = Library.currentId();
+      if (!id) return null;
+      var t = day(todayKey()), b = book(id);
+      if (t.docs.indexOf(id) < 0){ t.docs.push(id); touch(); }
+      if (id !== docKey){ docKey = id; b.opened++; touch(); }
+      return b;
+    }
+    function noteFinished(b){ if (b && !b.finished && readFrac() >= 0.98){ b.finished = true; touch(); } }
+    /* forward reading, as Progress measures it */
+    function noteWords(dw){ var b = noteDoc(); if (!b) return; day(todayKey()).words += dw; b.words += dw; lastActive = Date.now(); noteFinished(b); touch(); }
+    function notePages(dp){ var b = noteDoc(); if (!b) return; day(todayKey()).pages += dp; b.pages += dp; lastActive = Date.now(); noteFinished(b); touch(); }
+
+    /* ---- goal and streak ---- */
+    function met(key){ var d = data.days[key]; return !!d && d.ms >= data.goal * 60000; }
+    /* consecutive days up to today — or up to yesterday while today is still open: a streak lives until midnight */
+    function streak(){
+      var k = todayKey(), n = 0;
+      if (!met(k)) k = addDays(k, -1);
+      while (met(k)){ n++; k = addDays(k, -1); }
+      return n;
+    }
+    /* the longest run in what we still have on record; it never shrinks when old days are pruned */
+    function updateBest(){
+      var run = 0, prev = null, top = data.best.streak, last = data.best.day;
+      Object.keys(data.days).sort().forEach(function(k){
+        if (!met(k)){ run = 0; prev = null; return; }
+        run = prev && addDays(prev, 1) === k ? run + 1 : 1; prev = k;
+        if (run > top){ top = run; last = k; }
+      });
+      if (top !== data.best.streak || last !== data.best.day){ data.best = { streak: top, day: last }; touch(); }
+    }
+    function checkGoal(){
+      var k = todayKey();
+      updateBest();
+      if (met(k) && data.notified !== k){ data.notified = k; touch(); Marks.toast("Daily goal reached — " + streak() + "-day streak"); }
+    }
+
+    /* ---- active time: 15 s slices while a document is open, the page is visible, and the reader did something in the last 3 minutes
+       (read-aloud and auto-scroll count as doing something all the while) ---- */
+    function active(){ lastActive = Date.now(); }
+    ["scroll", "wheel", "keydown", "pointerdown", "touchstart"].forEach(function(ev){ window.addEventListener(ev, active, { passive: true, capture: true }); });
+    if (window.MutationObserver) new MutationObserver(active).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
+    document.addEventListener("ll:fileopened", function(){ docKey = null; active(); renderWidget(); });
+    function busy(){ return Speak.isPlaying() || (Auto.isOn() && !Auto.isPaused()); }
+    function tick(){
+      var now = Date.now();
+      if (docOpen() && document.visibilityState === "visible" && (busy() || now - lastActive <= IDLE)){
+        var b = noteDoc();
+        day(todayKey()).ms += TICK;
+        if (b){ b.ms += TICK; noteFinished(b); }
+        touch();
+        checkGoal();
+      }
+      renderWidget();
+      refreshPanel();
+    }
+    updateBest();      /* history brought in from another device or an older goal */
+    setInterval(tick, TICK);
+    function onMode(mode){
+      if (mode === "doc" || mode === "pdf"){ active(); if (!noteDoc()) setTimeout(noteDoc, 600); }
+      else docKey = null;
+      renderWidget();
+    }
+
+    /* ---- words ---- */
+    function mins(ms){ return Math.floor(ms / 60000); }
+    function dur(ms){ var m = mins(ms), h = Math.floor(m / 60); return h ? h + " h" + (m % 60 ? " " + (m % 60) + " min" : "") : m + " min"; }
+    function count(x){ return Math.round(x).toLocaleString(); }
+    function plural(c, one, many){ return c + " " + (c === 1 ? one : many); }
+    function dayLabel(key){ var d = dateOf(key); return WD[d.getDay()] + " " + d.getDate() + " " + MO[d.getMonth()]; }
+    function dayTitle(key){ var d = data.days[key]; return dayLabel(key) + " — " + mins(d ? d.ms : 0) + " min"; }
+    function weekStart(key){ return addDays(key, -((dateOf(key).getDay() + 6) % 7)); }
+    function sum(from, n){ var ms = 0; for (var i = 0; i < n; i++){ var d = data.days[addDays(from, i)]; if (d) ms += d.ms; } return ms; }
+    function hasReading(){ return Object.keys(data.days).some(function(k){ var d = data.days[k]; return d.ms > 0 || d.words > 0 || d.pages > 0; }); }
+    /* a row of lamp dots, one per day: lit when the goal was met, half-lit when there was some reading, today outlined */
+    function dots(n, decorative){
+      var k = todayKey(), h = '<span class="st-days"' + (decorative ? ' aria-hidden="true"' : '') + '>';
+      for (var i = n - 1; i >= 0; i--){
+        var key = addDays(k, -i), d = data.days[key];
+        var cls = "st-day" + (met(key) ? " lit" : d && (d.ms > 0 || d.words > 0 || d.pages > 0) ? " half" : "") + (i === 0 ? " today" : "");
+        h += '<span class="' + cls + '"' + (decorative ? '' : ' role="img" title="' + dayTitle(key) + '" aria-label="' + dayTitle(key) + '"') + '></span>';
+      }
+      return h + '</span>';
+    }
+
+    /* ---- start-screen widget: one calm line, only once there is something to say ---- */
+    function renderWidget(){
+      if (!widget) return;
+      var on = state.mode === "empty" && hasReading(), html = "";
+      if (on){
+        var s = streak(), t = data.days[todayKey()], parts = [];
+        if (s) parts.push(s + "-day streak");
+        parts.push(mins(t ? t.ms : 0) + " min today");
+        parts.push("goal " + data.goal + " min");
+        html = '<button type="button" class="st-widget" title="Reading stats"><span>' + parts.join(" · ") + '</span>' + dots(7, true) + '</button>';
+      }
+      widget.classList.toggle("show", on);
+      if (html !== widgetHtml){ widgetHtml = html; widget.innerHTML = html; }
+    }
+    if (widget) widget.addEventListener("click", function(e){ if (e.target.closest(".st-widget")) openPanel(); });
+
+    /* ---- panel ---- */
+    function row(k, v){ return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
+    function renderPanel(body, foot){
+      var k = todayKey(), t = data.days[k] || { ms: 0, words: 0, pages: 0 }, goalMs = data.goal * 60000, done = t.ms >= goalMs;
+      var s = streak(), left = Math.max(0, Math.ceil((goalMs - t.ms) / 60000)), h = "";
+      /* today */
+      var also = [plural(Math.round(t.words), "word", "words")];
+      if (t.pages >= 1) also.push(plural(Math.round(t.pages), "page", "pages"));
+      h += '<section class="st-sec"><div class="label">Today</div><div class="st-today">' +
+        '<div class="st-ring" style="--p:' + Math.min(100, Math.round(t.ms / goalMs * 100)) + '%" aria-hidden="true"></div>' +
+        '<div><div class="st-big">' + mins(t.ms) + '<span> of ' + data.goal + ' min</span></div>' +
+        '<div class="st-sub">' + (done ? "Goal reached" : plural(left, "minute", "minutes") + " to go") + ' · ' + also.join(" · ") + '</div></div></div></section>';
+      /* streak */
+      h += '<section class="st-sec"><div class="label">Streak</div>' + dots(14) +
+        '<div class="st-line">' + (s ? s + "-day streak" : "No streak yet") + (data.best.streak ? ' · best ' + plural(data.best.streak, "day", "days") : '') + '</div>' +
+        (done ? '' : '<div class="st-hint">Read ' + plural(left, "more minute", "more minutes") + ' today to ' + (s ? "keep it" : "start one") + '.</div>') + '</section>';
+      /* the last four weeks, a bar per day */
+      var max = data.goal, keys = [];
+      for (var i = 27; i >= 0; i--){ var kk = addDays(k, -i); keys.push(kk); if (data.days[kk]) max = Math.max(max, data.days[kk].ms / 60000); }
+      var ws = weekStart(k);
+      h += '<section class="st-sec"><div class="label">Last 4 weeks</div><div class="st-chart">' +
+        '<div class="st-goal" style="bottom:' + (data.goal / max * 100).toFixed(1) + '%"></div>' +
+        keys.map(function(key){
+          var m = data.days[key] ? data.days[key].ms / 60000 : 0, pct = m > 0 ? Math.max(3, m / max * 100) : 0;
+          return '<div class="st-bar' + (met(key) ? ' met' : '') + '" style="height:' + pct.toFixed(1) + '%" role="img" aria-label="' + dayTitle(key) + '"></div>';
+        }).join("") + '</div>' +
+        '<div class="st-line">This week ' + dur(sum(ws, 7)) + ' · last week ' + dur(sum(addDays(ws, -7), 7)) + '</div></section>';
+      /* all time */
+      var all = { ms: 0, words: 0, pages: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
+      dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; });
+      var finished = ids.filter(function(id){ return data.books[id].finished; }).length, first = dayKeys.length ? dateOf(dayKeys[0]) : null;
+      h += '<section class="st-sec"><div class="label">All time</div><dl class="st-grid">' +
+        row("Time read", dur(all.ms)) + row("Words", count(all.words)) + row("Pages", count(all.pages)) +
+        row("Documents opened", count(ids.length)) + row("Books finished", count(finished)) +
+        row("Average speed", Math.round(Progress.wpm()) + " words per minute") +
+        row("First day recorded", first ? first.getDate() + " " + MO[first.getMonth()] + " " + first.getFullYear() : "—") + '</dl></section>';
+      /* goal */
+      h += '<section class="st-sec"><div class="label">Daily goal</div><div class="chips st-goals" role="group" aria-label="Daily goal in minutes">' +
+        GOALS.map(function(g){ return '<button type="button" class="chip' + (g === data.goal ? ' on' : '') + '" data-goal="' + g + '" aria-pressed="' + (g === data.goal) + '" aria-label="' + plural(g, "minute", "minutes") + ' a day">' + g + '</button>'; }).join("") +
+        '</div><div class="hint">Minutes of reading a day. A day counts toward the streak once the goal is met.</div></section>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button type="button" class="chip" data-st="export">Export JSON</button><button type="button" class="chip" data-st="reset">Reset…</button>';
+    }
+    /* redraw in place: the scroll position and the focused chip survive the refresh */
+    function refreshPanel(){
+      if (!Side.is("stats")) return;
+      var body = Side.body, top = body.scrollTop, a = document.activeElement, sel = null;
+      if (a && (body.contains(a) || Side.foot.contains(a))) sel = a.dataset.goal ? '[data-goal="' + a.dataset.goal + '"]' : a.dataset.st ? '[data-st="' + a.dataset.st + '"]' : null;
+      Side.refresh("stats", renderPanel);
+      body.scrollTop = top;
+      var again = sel && (body.querySelector(sel) || Side.foot.querySelector(sel));
+      if (again) again.focus({ preventScroll: true });
+    }
+    function openPanel(){ Side.open("stats", "Reading stats", renderPanel); }
+    function setGoal(g){
+      if (GOALS.indexOf(g) < 0 || g === data.goal) return;
+      data.goal = g; dirty = true;
+      checkGoal(); save(); refreshPanel(); renderWidget();
+    }
+    function download(name, text, type){
+      var blob = new Blob([text], { type: type }), url = URL.createObjectURL(blob);
+      var a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
+    }
+    function exportJson(){
+      var out = { app: "Lamplight", exported: new Date().toISOString(), goal: data.goal, streak: streak(), best: data.best, days: data.days, books: data.books };
+      download("lamplight-stats.json", JSON.stringify(out, tidy, 2), "application/json");
+    }
+    function reset(){
+      if (!confirm("Clear all reading stats from this device? This can’t be undone.")) return;
+      data = fresh(); docKey = null; dirty = true;
+      save(); refreshPanel(); renderWidget();
+      Marks.toast("Reading stats cleared");
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("stats")) return;
+      var b = e.target.closest("button[data-goal]"); if (b) setGoal(+b.dataset.goal);
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("stats")) return;
+      var b = e.target.closest("button[data-st]"); if (!b) return;
+      if (b.dataset.st === "export") exportJson(); else reset();
+    });
+    Menu.add({ order: 61, label: "Reading stats", key: "G", run: openPanel });
+
+    function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); return o; }
+    /* for tests and other scripts */
+    window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save };
+    return { noteWords: noteWords, notePages: notePages, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
   })();
 
   /* ============================================================
@@ -2703,66 +3998,124 @@
   $("#themeChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
     if (!ch) return;
-    state.theme = ch.dataset.theme;
-    if (state.theme === "custom") syncCustomUI();
-    applyTheme(); AutoTheme.userPicked(state.theme);
+    if (ch.dataset.new) createCustom(); else selectTheme(ch.dataset.theme);
   });
+  function selectTheme(theme){
+    state.theme = theme;
+    if (customById(theme)) syncCustomUI();
+    applyTheme(); AutoTheme.userPicked(theme);
+  }
+  /* the saved themes changed (new, renamed, copied or deleted): redraw the chips and the day / night lists */
+  function customsChanged(){ buildThemeChips(); AutoTheme.syncUI(); }
+  function focusChip(theme){ var ch = $('#themeChips .chip[data-theme="' + theme + '"]'); if (ch) ch.focus(); }
+  /* New…: a saved theme that starts from the colours on screen */
+  function createCustom(){
+    var t = currentTheme();
+    var c = addCustom({ name: customName(), bg: normHex(t.bg), ink: normHex(t.ink), autoInk: true, accent: normHex(t.accent) });
+    customsChanged(); selectTheme("c:" + c.id); focusChip("c:" + c.id);
+    return c;
+  }
 
-  /* custom theme controls */
+  /* ---- custom theme editor: every change applies at once and is saved with the theme ---- */
+  function editing(){ return customById(state.theme); }
+  function edited(){ syncCustomUI(); applyTheme(); }
+  $("#cRename").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    var name = prompt("Name for this theme", c.name);
+    if (name === null) return;
+    name = name.trim().slice(0, 60);
+    if (!name || name === c.name) return;
+    c.name = name; customsChanged(); edited();
+  });
+  $("#cDup").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    var d = copyCustom(c, customName(c.name + " copy"));
+    customsChanged(); selectTheme("c:" + d.id);
+    Marks.toast("Copied as “" + d.name + "”");
+  });
+  $("#cSaveAs").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    var name = prompt("Name for the new theme", customName());
+    if (name === null) return;
+    var d = copyCustom(c, name.trim().slice(0, 60) || customName());
+    customsChanged(); selectTheme("c:" + d.id);
+    Marks.toast("Saved as “" + d.name + "”");
+  });
+  $("#cDel").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    if (!confirm("Delete the theme “" + c.name + "”?")) return;
+    state.customs.splice(state.customs.indexOf(c), 1);
+    var gone = "c:" + c.id, fallback = isDarkColor(c.bg) ? "dusk" : "day";
+    if (state.autoDay === gone) state.autoDay = "day";
+    if (state.autoNight === gone) state.autoNight = "dusk";
+    customsChanged(); selectTheme(fallback); focusChip(fallback);
+  });
+  /* background: quick swatches, the tint / brightness sliders, or any colour */
   $("#bgSwatches").addEventListener("click", function(e){
-    var s = e.target.closest(".sw");
-    if (!s) return;
-    state.custom.bg = s.dataset.c;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
+    var s = e.target.closest(".sw"), c = editing();
+    if (!s || !c) return;
+    c.bg = s.dataset.c.toLowerCase(); edited();
   });
   function bgFromSliders(){
+    var c = editing(); if (!c) return;
     var h = +$("#cHue").value, l = +$("#cLit").value;
-    var s = l > 55 ? 14 : 22;
-    state.custom.bg = hslToHex(h, s, l);
-    state.theme = "custom";
+    c.bg = hslToHex(h, l > 55 ? 14 : 22, l);
     $("#vHue").textContent = h + "°";
     $("#vLit").textContent = l + " %";
-    document.querySelectorAll("#bgSwatches .sw").forEach(function(x){ x.classList.remove("on"); });
-    applyTheme();
+    syncPicks(c); applyTheme();
   }
   $("#cHue").addEventListener("input", bgFromSliders);
   $("#cLit").addEventListener("input", bgFromSliders);
+  /* a picker and its hex field drive the same colour; a valid hex applies as it is typed */
+  function bindPick(key, set){
+    var p = $("#c" + key), h = $("#h" + key);
+    p.addEventListener("input", function(){ var c = editing(); if (!c) return; set(c, p.value); edited(); });
+    h.addEventListener("input", function(){
+      var c = editing(), v = normHex(h.value);
+      h.classList.toggle("bad", !v);
+      if (v) h.removeAttribute("aria-invalid"); else h.setAttribute("aria-invalid", "true");
+      if (c && v){ set(c, v); edited(); }
+    });
+    h.addEventListener("blur", function(){ var c = editing(); if (c) syncPicks(c); });
+  }
+  bindPick("Bg", function(c, v){ c.bg = v; });
+  bindPick("Ink", function(c, v){ c.ink = v; c.autoInk = false; });
+  bindPick("Acc", function(c, v){ c.accent = v; });
+  bindPick("Panel", function(c, v){ c.panel = v; });
+  bindPick("Muted", function(c, v){ c.muted = v; });
+  /* the automatic boxes: turning one off keeps the derived colour as the starting point */
   $("#autoInk").addEventListener("change", function(e){
-    state.custom.autoInk = e.target.checked;
-    if (!e.target.checked) state.custom.ink = $("#cInk").value;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
+    var c = editing(); if (!c) return;
+    c.autoInk = e.target.checked;
+    if (!c.autoInk) c.ink = $("#cInk").value;
+    edited();
   });
-  $("#cInk").addEventListener("input", function(e){
-    state.custom.ink = e.target.value;
-    state.custom.autoInk = false;
-    state.theme = "custom";
-    applyTheme();
+  $("#autoPanel").addEventListener("change", function(e){
+    var c = editing(); if (!c) return;
+    if (e.target.checked) delete c.panel; else c.panel = $("#cPanel").value;
+    edited();
+  });
+  $("#autoMuted").addEventListener("change", function(e){
+    var c = editing(); if (!c) return;
+    if (e.target.checked) delete c.muted; else c.muted = $("#cMuted").value;
+    edited();
   });
   $("#accSwatches").addEventListener("click", function(e){
-    var s = e.target.closest(".sw");
-    if (!s) return;
-    state.custom.accent = s.dataset.c;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
+    var s = e.target.closest(".sw"), c = editing();
+    if (!s || !c) return;
+    c.accent = s.dataset.c.toLowerCase(); edited();
   });
-  $("#cAcc").addEventListener("input", function(e){
-    state.custom.accent = e.target.value;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
-  });
+  $("#cFix").addEventListener("click", fixContrast);
+  /* exposed for tests (not a public API) */
+  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
+    customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast };
 
   $("#flowChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
     if (ch) setFlow(ch.dataset.flow);
   });
-  document.querySelectorAll("#fontChips .chip").forEach(function(ch){
-    ch.addEventListener("click", function(){
-      state.font = ch.dataset.font;
-      applyType();
-    });
-  });
+  $("#fontSel").addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
+  $("#fontBrowse").addEventListener("click", Fonts.openPanel);
   $("#rSize").addEventListener("input", function(e){ state.size = +e.target.value; applyType(); });
   $("#rLh").addEventListener("input",  function(e){ state.lh   = +e.target.value; applyType(); });
   $("#rW").addEventListener("input",   function(e){ state.width= +e.target.value; applyType(); });
@@ -2861,7 +4214,9 @@
     add("l", "Reading ruler", function(){ Ruler.toggle(); }, docOpen);
     add("a", "Auto-scroll (start / stop)", function(){ if (Auto.isOn()) Auto.stop(); else Auto.start(); }, docOpen);
     add("h", "Library / home", function(){ Library.home(); }, docOpen);
+    add("i", "About this text", function(){ About.openPanel(); }, docOpen);
     add("?", "Keyboard shortcuts", function(){ openHelp(); });
+    add("g", "Reading stats", function(){ Stats.openPanel(); });
     var extra = [
       ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],
       ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
@@ -3021,6 +4376,21 @@
       "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
       "#dictCard .brk i{color:var(--muted); font-style:italic;}",
+      /* word parts: a row of tiles, one per prefix / root / suffix, joined by plus signs */
+      "#dictCard .parts{display:flex; flex-wrap:wrap; align-items:stretch; gap:6px 4px; margin:2px 0 6px;}",
+      "#dictCard .part{",
+      "  display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:12em;",
+      "  padding:6px 9px 7px; border-radius:10px; border:1px solid var(--line);",
+      "  background:var(--panel); font:inherit; color:var(--ink); text-align:left;",
+      "}",
+      "#dictCard button.part{cursor:pointer; border-color:color-mix(in srgb, var(--accent) 45%, var(--line));}",
+      "#dictCard button.part:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      "#dictCard .part .pt{font-family:var(--reader-font); font-size:1.0625rem; line-height:1.2; font-weight:600;}",
+      "#dictCard .part .pk{font-size:0.7812rem; line-height:1.3; color:var(--accent); margin-top:1px;}",
+      "#dictCard .part .pm{font-size:0.7812rem; line-height:1.35; margin-top:2px;}",
+      "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
+      "#dictCard .plus{align-self:center; color:var(--muted); font-size:0.9375rem; padding:0 1px;}",
+      "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
       "#dictCard .clause{",
       "  padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;",
       "}",
@@ -3262,6 +4632,75 @@
       }
       inner.innerHTML = h;
       inner.querySelector(".x").addEventListener("click", closeCard);
+      renderParts(term, res);
+    }
+
+    /* ---------- word parts (prefix / root / suffix, see llMorph) ----------
+       Drawn under the definition once morph.js and the chunks for the possible stems are
+       in; the definition itself never waits for it. */
+    var partsToken = 0;
+    function shortDef(entry){
+      var m = null;
+      if (window.llExplain){
+        var best = window.llExplain.bestSense(entry, null, window.llExplain.rank);
+        if (best) m = best.m;
+      }
+      if (!m){
+        for (var i = 0; i < entry.m.length; i++) if (entry.m[i].p){ m = entry.m[i]; break; }
+        m = m || entry.m[0];
+      }
+      var d = window.llExplain ? window.llExplain.cleanDef(m.d, m.p) : String(m.d || "").replace(/\s+/g, " ").trim();
+      if (d.length > 60) d = d.slice(0, 57).replace(/\s+\S*$/, "") + "…";
+      return d;
+    }
+    /* what the analyser is told about a dictionary word: a short definition, its parts of
+       speech, and whether some senses (Webster's) carry no tag at all */
+    function partLookup(w){
+      var tries = IRREG[w] ? [w, IRREG[w]] : [w];
+      for (var i = 0; i < tries.length; i++){
+        var e = find(tries[i]);
+        if (!e || isStub(e)) continue;
+        var pos = [], open = false;
+        e.m.forEach(function(m){ if (m.p){ if (pos.indexOf(m.p) < 0) pos.push(m.p); } else open = true; });
+        return { d: shortDef(e), pos: pos, open: open, obscure: !pos.length };
+      }
+      return null;
+    }
+    function renderParts(term, res){
+      var token = ++partsToken;
+      var words = [term.toLowerCase().replace(/[’]/g, "'")];
+      if (res && res.word && words.indexOf(res.word) < 0) words.push(res.word);
+      need(["morph"]).then(function(){
+        var cands = [];
+        words.forEach(function(w){ cands = cands.concat(window.llMorph.candidates(w)); });
+        return withWords(cands.concat(cands.map(function(c){ return IRREG[c]; })));
+      }).then(function(){
+        if (token !== partsToken || !card.classList.contains("open")) return;
+        var r = null;
+        for (var i = 0; i < words.length && !r; i++) r = window.llMorph.analyse(words[i], partLookup);
+        if (!r) return;
+        var h = '<div class="sec">Word parts</div><div class="parts">';
+        r.parts.forEach(function(p, i){
+          if (i) h += '<span class="plus" aria-hidden="true">+</span>';
+          /* a base is shown as the word it is (hurry, not the hurri- of "unhurried") */
+          var tile = '<span class="pt">' + esc(p.kind === "base" && p.word ? p.word : p.text) + '</span><small class="pk">' + esc(p.kind) + '</small>' +
+                     (p.meaning ? '<span class="pm">' + esc(p.meaning) + '</span>' : '') +
+                     (p.origin ? '<i class="po">' + esc(p.origin) + '</i>' : '');
+          if (p.kind === "base" && p.word) h += '<button type="button" class="part" data-w="' + esc(p.word) + '" title="Look up “' + esc(p.word) + '”">' + tile + '</button>';
+          else h += '<span class="part"' + (p.origin ? ' title="' + esc(p.origin) + '"' : '') + '>' + tile + '</span>';
+        });
+        h += '</div>';
+        if (r.gloss) h += '<div class="gloss">so: ' + esc(r.gloss) + '</div>';
+        if (r.confidence < 0.5) h += '<div class="note">A guess from the spelling.</div>';
+        var box = document.createElement("div");
+        box.className = "wordparts";
+        box.innerHTML = h;
+        box.addEventListener("click", function(e){
+          var b = e.target.closest("button.part");
+          if (b) defineWord(b.dataset.w);
+        });
+        inner.appendChild(box);
+      }).catch(function(err){ console.warn("Word parts unavailable", err); });
     }
 
     function defineWord(term){

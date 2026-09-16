@@ -31,7 +31,7 @@ jobs:
       - name: Stage the site (everything except repo housekeeping)
         run: |
           mkdir -p _site
-          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'docs' --exclude 'README.md' --exclude 'lighthouserc.json' ./ _site/
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'docs' --exclude 'tests' --exclude 'README.md' --exclude 'lighthouserc.json' ./ _site/
           du -sh _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
