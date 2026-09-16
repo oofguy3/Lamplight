@@ -449,6 +449,7 @@
   function openFile(file, opts){
     if (!file) return;
     opts = opts || {};
+    try { document.dispatchEvent(new CustomEvent("ll:fileopened")); } catch(_){}
     var ext = (file.name.split(".").pop() || "").toLowerCase();
     Library.onOpen(file, opts);
     $("#fname").textContent = file.name;
@@ -3332,7 +3333,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
+  window.__ll = { need: need, Updates: Updates, state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
@@ -3359,8 +3360,62 @@
   var warm = function(){ need(["purify", "marked"]).catch(function(){}); };
   if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 4000 }); else setTimeout(warm, 2500);
 
-  /* offline install: only active when hosted (https), harmless as a local file */
-  if ("serviceWorker" in navigator && location.protocol === "https:"){
-    navigator.serviceWorker.register("./sw.js").catch(function(){});
+  /* ---------- offline install + updates ----------
+     Only active when hosted (https), harmless as a local file. A new service worker
+     installs in the background; when it is ready we offer a reload rather than
+     switching under the reader's feet. */
+  var Updates = (function(){
+    var reg = null, toastEl = null, reloading = false;
+    function toast(){
+      if (toastEl) return;
+      toastEl = document.createElement("div");
+      toastEl.id = "updateToast"; toastEl.setAttribute("role", "status");
+      toastEl.innerHTML = '<span>A new version of Lamplight is ready.</span><button type="button" id="updateReload">Reload</button><button type="button" id="updateLater" aria-label="Later">\u00D7</button>';
+      document.body.appendChild(toastEl);
+      toastEl.querySelector("#updateReload").addEventListener("click", function(){
+        if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        else location.reload();
+      });
+      toastEl.querySelector("#updateLater").addEventListener("click", function(){ toastEl.remove(); toastEl = null; });
+    }
+    function watch(worker){
+      if (!worker) return;
+      worker.addEventListener("statechange", function(){
+        if (worker.state === "installed" && navigator.serviceWorker.controller) toast();
+      });
+    }
+    function register(){
+      if (!("serviceWorker" in navigator) || location.protocol !== "https:") return;
+      navigator.serviceWorker.register("./sw.js").then(function(r){
+        reg = r;
+        if (r.waiting && navigator.serviceWorker.controller) toast();
+        watch(r.installing);
+        r.addEventListener("updatefound", function(){ watch(r.installing); });
+        /* look for updates now and then, and whenever the reader comes back */
+        setInterval(function(){ r.update().catch(function(){}); }, 60 * 60 * 1000);
+        document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") r.update().catch(function(){}); });
+      }).catch(function(){});
+      navigator.serviceWorker.addEventListener("controllerchange", function(){
+        if (reloading) return;
+        reloading = true;
+        Library.flush();
+        location.reload();
+      });
+    }
+    return { register: register, hasToast: function(){ return !!toastEl; } };
+  })();
+  Updates.register();
+
+  /* ask the browser to keep our storage (library, positions, notes) out of automatic eviction */
+  if (navigator.storage && navigator.storage.persist){
+    var askPersist = function(){
+      if (localStorage.getItem("ll_persist") === "granted") return;
+      navigator.storage.persisted().then(function(p){
+        if (p){ localStorage.setItem("ll_persist", "granted"); return; }
+        return navigator.storage.persist().then(function(ok){ localStorage.setItem("ll_persist", ok ? "granted" : "denied"); });
+      }).catch(function(){});
+    };
+    /* best asked once something is worth keeping: the first time a file is opened */
+    document.addEventListener("ll:fileopened", askPersist, { once: true });
   }
 })();

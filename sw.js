@@ -1,5 +1,8 @@
-/* lamplight service worker v2 — offline cache, but always grab a fresh index.html when online */
-const CACHE = "lamplight-v8";
+/* lamplight service worker — offline cache for everything, fresh index.html when online.
+   Bump VERSION with every release: a new version installs in the background, and the app
+   shows an "update ready" toast; reloading switches over to the new cache. */
+const VERSION = "2026.09.16-9";
+const CACHE = "lamplight-" + VERSION;
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,12 +27,17 @@ const ASSETS = [
 const DICTS = [1,2,3,4,5,6].map((i) => "./dict" + i + ".json");
 
 self.addEventListener("install", (e) => {
-  self.skipWaiting();
   e.waitUntil(
     caches.open(CACHE).then((c) =>
       c.addAll(ASSETS).then(() => Promise.all(DICTS.map((d) => c.add(d).catch(() => null))))
     )
   );
+});
+
+/* the app asks the waiting worker to take over once the reader is ready to reload */
+self.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
+  if (e.data && e.data.type === "GET_VERSION" && e.source) e.source.postMessage({ type: "VERSION", version: VERSION });
 });
 
 self.addEventListener("activate", (e) => {
