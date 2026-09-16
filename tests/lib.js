@@ -8,17 +8,25 @@ const ROOT = path.resolve(__dirname, "..");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".webmanifest": "application/manifest+json", ".png": "image/png", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".txt": "text/plain" };
 
-function serve(port){
+/* serve(port, opts): opts.overrides = { "/sw.js": () => "text" } lets a test hand out a modified file
+   (used to simulate a new release for the update toast); returns { server, url, overrides } */
+function serve(port, opts){
+  const overrides = (opts && opts.overrides) || {};
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
       let p = decodeURIComponent(req.url.split("?")[0]);
       if (p.endsWith("/")) p += "index.html";
+      if (overrides[p]){
+        const body = overrides[p](req);
+        res.writeHead(200, { "Content-Type": MIME[path.extname(p)] || "text/plain", "Cache-Control": "no-store" });
+        res.end(body); return;
+      }
       const file = path.join(ROOT, p);
       if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){ res.writeHead(404); res.end("not found"); return; }
       res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-store" });
       fs.createReadStream(file).pipe(res);
     });
-    srv.listen(port || 0, "127.0.0.1", () => resolve({ server: srv, url: "http://127.0.0.1:" + srv.address().port + "/" }));
+    srv.listen(port || 0, "127.0.0.1", () => resolve({ server: srv, url: "http://127.0.0.1:" + srv.address().port + "/", overrides }));
   });
 }
 async function browser(opts){
