@@ -2313,67 +2313,199 @@
   })();
 
   /* ============================================================
-     Read aloud — Web Speech API, sentence by sentence
+     Read aloud — Web Speech API, sentence by sentence, with a narrator and a
+     second voice for quoted speech, and a little expression read off the text
      ============================================================ */
   var Speak = (function(){
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
+    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices");
     var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
+    var wait = null, sampleGen = 0, voiceKey = "";
     var rate = parseFloat(Store.get("ll_tts_rate") || "1") || 1;
     var voiceName = Store.get("ll_tts_voice") || "";
+    var dialogueName = Store.get("ll_tts_dialogue") || "";     /* "" = auto (the other voice), "same", or a voice name */
+    var expr = Store.get("ll_tts_expr") || "natural";           /* off | natural | dramatic */
+    var pitchPref = clamp(parseFloat(Store.get("ll_tts_pitch") || "1") || 1, 0.7, 1.3);
     var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
-    rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "\u00D7";
+    if (!/^(off|natural|dramatic)$/.test(expr)) expr = "natural";
+    rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "×";
+    function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
+    function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
 
+    /* ---- voices ---- */
+    /* the API says nothing about gender, so guess it from the name: the words woman / man,
+       then the first names Apple, Microsoft, Google, Amazon and espeak give their voices */
+    function set(s){ var o = {}; s.split(" ").forEach(function(w){ if (w) o[w] = 1; }); return o; }
+    var WOMEN = set("samantha karen moira tessa fiona victoria kate serena allison ava susan zira hazel heera aria jenny sara sonia libby emma olivia amy joanna kendra kimberly salli ivy nicole raveena aditi zoe flo martha shelley nicky sandy grandma kathy princess vicki catherine natasha matilda isha veena sangeeta anna alice ellen laura paulina monica luciana joana yuna kyoko ting-ting mei-jia sin-ji lekha milena amelie audrey aurelie chantal marie carmit damayanti ioana melina alva nora satu zosia zuzana mariska kanya yelda helena petra federica paola angelica marisol laila o-ren yu-shu linda hedda katja hortense julie elsa haruka ayumi sayaka heami huihui yaoyao hanhan yating tracy irina maria gadis kalpana hoda vlasta heidi helle sabina daria ewa");
+    var MEN = set("daniel alex fred david george mark ryan guy christopher eric steffan thomas brian matthew joey justin kevin russell aaron arthur gordon lee oliver reed rishi rocko tom bruce junior ralph albert eddy grandpa evan nathan jamie jorge diego juan carlos luca xander yannick maged majed tarik otoya hattori nicolas markus viktor jordi li-mu yuri james richard sean stefan conrad paul pablo raul cosimo ichiro kangkang zhiwei danny pavel adam frank andika hemant naayf ivan filip lado szabolcs jakub karsten jon bengt pattara tolga rizwan ravi");
+    function voiceGender(v){
+      var name = typeof v === "string" ? v : (v && v.name) || "", low = name.toLowerCase();
+      if (/\b(female|woman)\b/.test(low)) return "f";
+      if (/\b(male|man)\b/.test(low)) return "m";
+      var ts = low.split(/[\s,.()+_\/\\:\[\]"']+/), i;
+      for (i = 0; i < ts.length; i++){
+        if (WOMEN[ts[i]] || /^(f|female)\d$/.test(ts[i])) return "f";     /* espeak variants: en+f3 */
+        if (MEN[ts[i]] || /^(m|male)\d$/.test(ts[i])) return "m";
+      }
+      if (/^google\s/.test(low)) return "f";     /* Chrome's Google voices are women except "UK English Male" */
+      return "";
+    }
     function voices(){ return supported ? speechSynthesis.getVoices() : []; }
-    function fillVoices(){
-      var vs = voices();
-      var lang = (document.documentElement.lang || "en").slice(0, 2).toLowerCase();
-      vs = vs.slice().sort(function(a, b){
-        var al = a.lang.slice(0, 2).toLowerCase() === lang ? 0 : 1, bl = b.lang.slice(0, 2).toLowerCase() === lang ? 0 : 1;
+    function docLang(){ return (document.documentElement.lang || "en").slice(0, 2).toLowerCase(); }
+    function langOf(v){ return (v.lang || "").slice(0, 2).toLowerCase(); }
+    /* the document's language first, local voices before online ones, then by name */
+    function sortedVoices(){
+      var lang = docLang();
+      return voices().slice().sort(function(a, b){
+        var al = langOf(a) === lang ? 0 : 1, bl = langOf(b) === lang ? 0 : 1;
         if (al !== bl) return al - bl;
-        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+        if (!a.localService !== !b.localService) return a.localService ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-      voiceSel.innerHTML = vs.map(function(v){
-        return '<option value="' + v.name.replace(/"/g, "&quot;") + '"' + (v.name === voiceName ? ' selected' : '') + '>' + v.name.replace(/</g, "&lt;") + (v.localService ? "" : " (online)") + '</option>';
-      }).join("") || '<option value="">Default voice</option>';
     }
-    if (supported){ fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
+    function gendered(g){ return sortedVoices().filter(function(v){ return voiceGender(v) === g; }); }
+    /* the best voice of a gender: language match, local first; strict = only that language */
+    function bestVoice(g, lang, notName, strict){
+      var vs = gendered(g).filter(function(v){ return v.name !== notName; });
+      if (lang){ var same = vs.filter(function(v){ return langOf(v) === lang; }); if (same.length || strict) vs = same; }
+      return vs[0] || null;
+    }
+    function voiceOptions(vs, selected){
+      var groups = { f: [], m: [], "": [] };
+      vs.forEach(function(v){ groups[voiceGender(v)].push(v); });
+      return [["f", "Women"], ["m", "Men"], ["", "Other"]].map(function(g){
+        if (!groups[g[0]].length) return "";
+        return '<optgroup label="' + g[1] + '">' + groups[g[0]].map(function(v){
+          return '<option value="' + esc(v.name) + '"' + (v.name === selected ? ' selected' : '') + '>' + esc(v.name) + (v.localService ? "" : " (online)") + '</option>';
+        }).join("") + '</optgroup>';
+      }).join("");
+    }
     function currentVoice(){
       var vs = voices(), name = voiceSel.value || voiceName;
       return vs.filter(function(v){ return v.name === name; })[0] || null;
     }
+    /* the voice for quoted speech: the one chosen, the narrator, or (auto) the other gender in
+       the narrator's language; failing that the narrator's own voice pitched a little away */
+    function dialogueVoice(narr){
+      narr = narr || currentVoice();
+      if (dialogueName === "same") return { voice: narr, pitchOffset: 0 };
+      var chosen = dialogueName ? voices().filter(function(v){ return v.name === dialogueName; })[0] : null;
+      if (chosen) return { voice: chosen, pitchOffset: 0 };
+      var g = narr ? voiceGender(narr) : "", lang = narr ? langOf(narr) : docLang(), not = narr ? narr.name : "";
+      var other = g === "f" ? bestVoice("m", lang, not, true) : g === "m" ? bestVoice("f", lang, not, true)
+                : (bestVoice("m", lang, not, true) || bestVoice("f", lang, not, true));
+      if (other) return { voice: other, pitchOffset: 0 };
+      return { voice: narr, pitchOffset: g === "m" ? 0.15 : -0.15 };
+    }
+    function syncSexButtons(){
+      var g = voiceGender(currentVoice());
+      [[womanBtn, "f"], [manBtn, "m"]].forEach(function(p){
+        p[0].classList.toggle("on", g === p[1]); p[0].setAttribute("aria-pressed", g === p[1] ? "true" : "false");
+      });
+    }
+    function fillVoices(){
+      var vs = sortedVoices(), key = vs.map(function(v){ return v.name; }).join("\n");
+      voiceSel.innerHTML = voiceOptions(vs, voiceName) || '<option value="">Default voice</option>';
+      womanBtn.hidden = !bestVoice("f"); manBtn.hidden = !bestVoice("m");
+      syncSexButtons();
+      /* voices can arrive late; redraw the panel when the list really changed */
+      if (key !== voiceKey){ voiceKey = key; if (Side.is("voices")) Side.refresh("voices", renderPanel); }
+    }
+    if (supported){ fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
+    function setVoice(name){
+      voiceName = name; Store.set("ll_tts_voice", name);
+      voiceSel.value = name;
+      var narr = $("#ttsNarr"); if (narr) narr.value = name;
+      syncSexButtons(); syncHint();
+      if (playing) speakCurrent();
+    }
+    /* ♀ / ♂: the best voice of that gender; pressed again, the next one */
+    function pickGender(g){
+      var list = gendered(g); if (!list.length) return;
+      var cur = currentVoice(), i = cur ? list.indexOf(cur) : -1;
+      var lang = docLang(), same = list.filter(function(v){ return langOf(v) === lang; });
+      if (i < 0 && same.length) list = same;
+      setVoice(list[(i + 1) % list.length].name);
+    }
 
     /* ---- sentence units ---- */
-    var SENT = /[^.!?\u2026]+[.!?\u2026]*["\u201d\u2019)]?\s*/g;
-    function splitLong(text, base, out){
+    var SENT = /[^.!?…]+[.!?…]*["”’)»]?\s*/g;
+    var CLOSER = { "“": "”", "«": "»", "\"": "\"", "‘": "’" };
+    function splitLong(text, base, out, meta){
       /* keep utterances short: some engines cut off after ~15 seconds */
-      if (text.length <= 220){ out.push({ start: base, end: base + text.length, text: text }); return; }
+      if (text.length <= 220){ out.push(Object.assign({ start: base, end: base + text.length, text: text }, meta || {})); return; }
       var i = 0;
       while (i < text.length){
         var j = Math.min(text.length, i + 200);
         if (j < text.length){ var k = text.lastIndexOf(" ", j); if (k > i + 60) j = k; }
-        out.push({ start: base + i, end: base + j, text: text.slice(i, j) });
+        out.push(Object.assign({ start: base + i, end: base + j, text: text.slice(i, j) }, meta || {}));
         i = j;
       }
     }
-    function unitsFromText(text, base, out){
-      /* paragraphs (blank lines) then sentences; offsets are relative to base */
+    /* where quoted speech runs in a paragraph, as [open, close] index pairs; a quote left open
+       stays speech to the end of the paragraph. Curly and straight doubles, guillemets, and
+       single curly quotes only when the opener follows a space and the closer precedes space or
+       punctuation, so apostrophes are left alone. A quoted scrap under two characters isn't speech. */
+    function quoteSpans(seg){
+      var spans = [], open = -1, closer = "", i, c;
+      for (i = 0; i < seg.length; i++){
+        c = seg.charAt(i);
+        if (open < 0){
+          if (c === "“" || c === "«" || (c === "\"" && /\S/.test(seg.charAt(i + 1))) ||
+              (c === "‘" && (i === 0 || /[\s(\[—–-]/.test(seg.charAt(i - 1))))){ open = i; closer = CLOSER[c]; }
+        } else if (c === closer){
+          if (c === "’" && i < seg.length - 1 && /[^\s.,;:!?…)\]—–-]/.test(seg.charAt(i + 1))) continue;
+          spans.push([open, i]); open = -1;
+        }
+      }
+      if (open >= 0) spans.push([open, seg.length]);
+      return spans.filter(function(s){ return seg.slice(s[0] + 1, s[1]).trim().length >= 2; });
+    }
+    function parenSpans(seg){
+      var spans = [], open = -1, i, c;
+      for (i = 0; i < seg.length; i++){
+        c = seg.charAt(i);
+        if (c === "(" && open < 0) open = i;
+        else if (c === ")" && open >= 0){ spans.push([open, i]); open = -1; }
+      }
+      return spans;
+    }
+    function unitsFromText(text, base, out, meta){
+      /* paragraphs (blank lines), then sentences, then the quoted speech cut out of each
+         sentence as its own unit (dialogue: true, quote marks left out of the text). Offsets are
+         relative to base and exact, so highlighting and "read from here" line up. */
       var re = /\n[ \t]*\n/g, last = 0, m;
       var paras = [];
       while ((m = re.exec(text))){ paras.push([last, m.index]); last = m.index + m[0].length; }
       paras.push([last, text.length]);
       paras.forEach(function(p){
-        var seg = text.slice(p[0], p[1]);
+        var seg = text.slice(p[0], p[1]), quotes = quoteSpans(seg), parens = parenSpans(seg), before = out.length;
         SENT.lastIndex = 0;
         var sm;
         while ((sm = SENT.exec(seg))){
-          var t = sm[0], lead = t.length - t.replace(/^\s+/, "").length, trail = t.length - t.replace(/\s+$/, "").length;
-          var core = t.slice(lead, t.length - trail);
-          if (!/[A-Za-z0-9\u00C0-\u024F]/.test(core)) continue;
-          splitLong(core.replace(/\s+/g, " "), base + p[0] + sm.index + lead, out);
+          var t = sm[0], ss = sm.index + (t.length - t.replace(/^\s+/, "").length), se = sm.index + t.replace(/\s+$/, "").length;
           if (!t.length) SENT.lastIndex++;
+          if (se <= ss) continue;
+          var pieces = [], pos = ss;
+          quotes.forEach(function(q){
+            if (q[1] < ss || q[0] >= se) return;
+            if (q[0] > pos) pieces.push([pos, Math.min(q[0], se), false]);
+            pieces.push([Math.max(q[0] + 1, ss), Math.min(q[1], se), true]);
+            pos = Math.min(q[1] + 1, se);
+          });
+          if (pos < se) pieces.push([pos, se, false]);
+          pieces.forEach(function(pc){
+            var piece = seg.slice(pc[0], pc[1]);
+            var lead = piece.length - piece.replace(/^\s+/, "").length, trail = piece.length - piece.replace(/\s+$/, "").length;
+            var core = piece.slice(lead, piece.length - trail);
+            if (!/[A-Za-z0-9À-ɏ]/.test(core)) return;
+            var a = pc[0] + lead, b = pc[1] - trail;
+            var paren = parens.some(function(ps){ return ps[0] <= a && b <= ps[1] + 1; });
+            splitLong(core.replace(/\s+/g, " "), base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren }, meta || {}));
+          });
         }
+        if (out.length > before) out[out.length - 1].last = true;
       });
     }
     function buildDocUnits(){
@@ -2389,18 +2521,81 @@
         if (!first || !text.trim()) return;
         var base = offsetOfNode.get(first);
         if (base === undefined) return;
-        unitsFromText(text, base, out);
+        unitsFromText(text, base, out, { heading: /^H[1-4]$/.test(b.tagName) });
       });
       return out;
+    }
+
+    /* ---- expression: pitch, rate and volume for a unit, read off its punctuation, and the
+       breath after it. Pure: unit + { prev, next, expr } → { pitch, rate, volume, pauseAfter }.
+       pitch and rate are relative to 1; the caller adds the user's pitch and speed. ---- */
+    var TAGS = [
+      [/\b(whisper|murmur|mutter|breath)/i, { volume: 0.55, rate: 0.9 }],
+      [/\b(shout|yell|scream|cried|exclaim|roar)/i, { volume: 1, pitch: 0.12, rate: 1.1 }],
+      [/\b(sigh|slowly|wear)/i, { rate: 0.85 }],
+      [/\b(laugh|grin|chuckl)/i, { pitch: 0.08 }],
+      [/\b(hiss|snap|growl)/i, { pitch: -0.08, rate: 1.05 }]
+    ];
+    /* the narration right before or after a quote, the ~40 characters nearest it */
+    function saidTag(u, prev, next){
+      var s = "";
+      if (prev && !prev.dialogue && u.start - prev.end <= 40) s += prev.text.slice(-48) + " ";
+      if (next && !next.dialogue && next.start - u.end <= 40) s += next.text.slice(0, 48);
+      return s;
+    }
+    function express(u, ctx){
+      ctx = ctx || {};
+      var k = ctx.expr === "off" ? 0 : ctx.expr === "dramatic" ? 1.8 : 1;
+      var t = u.text || "", pitch = 0, rate = 1, vol = 1, pause = 0;
+      var tail = t.replace(/[\s"”’)\]»]+$/, ""), end = tail.charAt(tail.length - 1);
+      if (end === "?"){ pitch += 0.08; pause = 260; }
+      else if (end === "!"){ pitch += 0.1; rate *= 1.08; pause = 260; }
+      else if (end === "…" || /\.\.\.$/.test(tail)){ rate *= 0.92; pause = 500; }
+      else if (end === "."){ pause = 260; }
+      else if (end === "," || end === ";" || end === ":"){ pause = 120; }
+      else if (end === "—" || end === "–" || /--$/.test(tail)){ pause = 0; }    /* cut off mid-sentence: run straight on */
+      if (u.heading){ rate *= 0.9; pitch -= 0.05; pause = 700; }
+      else if (u.last) pause += 350;
+      if (u.paren){ pitch -= 0.06; vol = Math.min(vol, 0.9); rate *= 1.05; }
+      if (u.dialogue){
+        var tag = saidTag(u, ctx.prev, ctx.next);
+        TAGS.forEach(function(r){
+          if (!r[0].test(tag)) return;
+          var d = r[1];
+          if (d.pitch) pitch += d.pitch;
+          if (d.rate) rate *= d.rate;
+          if (d.volume !== undefined) vol = Math.min(vol, d.volume);
+        });
+      }
+      /* a word in capitals: engines can't stress one word, so the whole unit slows a touch */
+      if (/\b[A-Z]{3,}\b/.test(t)) rate *= 0.95;
+      var r3 = function(x){ return Math.round(x * 1000) / 1000; };
+      return {
+        pitch: r3(1 + clamp(pitch * k, -0.3, 0.3)),
+        rate: r3(1 + clamp((rate - 1) * k, -0.45, 0.45)),
+        volume: r3(1 - Math.min(0.6, (1 - vol) * k)),
+        pauseAfter: pause
+      };
+    }
+    function utterFor(u, prev, next){
+      var x = express(u, { prev: prev, next: next, expr: expr });
+      var narr = currentVoice(), v = narr, off = 0;
+      if (u.dialogue){ var d = dialogueVoice(narr); v = d.voice; off = d.pitchOffset; }
+      var ut = new SpeechSynthesisUtterance(u.text);
+      ut.rate = clamp(rate * x.rate, 0.5, 2.5);
+      ut.pitch = clamp(pitchPref + (x.pitch - 1) + off, 0.5, 1.6);
+      ut.volume = clamp(x.volume, 0.4, 1);
+      if (v){ ut.voice = v; ut.lang = v.lang; }
+      return { utter: ut, pauseAfter: x.pauseAfter };
     }
 
     /* ---- painting + revealing ---- */
     function paint(u){
       if (!hasHL) return;
-      CSS.highlights.delete("ll-speak");
+      CSS.highlights.delete("ll-speak"); CSS.highlights.delete("ll-speak-dialogue");
       if (!u || state.mode !== "doc") return;
       var r = Anchor.rangeBetween(u.start, u.end);
-      if (r) CSS.highlights.set("ll-speak", new Highlight(r));
+      if (r) CSS.highlights.set(u.dialogue ? "ll-speak-dialogue" : "ll-speak", new Highlight(r));
     }
     function ensureVisible(u){
       if (state.mode !== "doc") return;
@@ -2419,13 +2614,18 @@
     function speakCurrent(){
       if (!units.length || idx < 0 || idx >= units.length){ finish(); return; }
       var u = units[idx], myGen = ++gen;
+      clearTimeout(wait); sampleGen++;
       try { speechSynthesis.cancel(); } catch(_){}
       paint(u); ensureVisible(u);
       if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
-      utter = new SpeechSynthesisUtterance(u.text);
-      utter.rate = rate;
-      var v = currentVoice(); if (v){ utter.voice = v; utter.lang = v.lang; }
-      utter.onend = function(){ if (myGen !== gen || !playing) return; idx++; if (idx < units.length) speakCurrent(); else finish(); };
+      var s = utterFor(u, units[idx - 1], units[idx + 1]);
+      utter = s.utter;
+      utter.onend = function(){
+        if (myGen !== gen || !playing) return;
+        if (idx + 1 >= units.length){ finish(); return; }
+        /* a breath between sentences, a longer one after a paragraph; Prev / Next cut it short */
+        wait = setTimeout(function(){ if (myGen !== gen || !playing) return; idx++; speakCurrent(); }, s.pauseAfter);
+      };
       utter.onerror = function(e){
         if (myGen !== gen) return;
         if (e.error === "interrupted" || e.error === "canceled") return;
@@ -2437,13 +2637,13 @@
     }
     function play(){
       if (!units.length) return;
-      playing = true; playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause");
+      playing = true; playBtn.textContent = "❚❚"; playBtn.setAttribute("aria-label", "Pause");
       speakCurrent();
     }
     function pause(){
-      playing = false; gen++;
+      playing = false; gen++; sampleGen++; clearTimeout(wait);
       try { speechSynthesis.cancel(); } catch(_){}
-      playBtn.textContent = "\u25B6"; playBtn.setAttribute("aria-label", "Play");
+      playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play");
     }
     function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); }
     function stop(){
@@ -2452,12 +2652,13 @@
       document.body.classList.remove("tts-on");
       if (state.flow === "pages") relayoutPaged();
     }
+    function measure(){ if (active) document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px"); }
     function startFrom(offset){
-      if (!supported){ Marks.toast("Read aloud isn\u2019t available in this browser"); return; }
+      if (!supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
       if (state.mode !== "doc" && state.mode !== "pdf") return;
       active = true; bar.classList.add("on"); fillVoices();
       document.body.classList.add("tts-on");
-      document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
+      measure();
       if (state.flow === "pages") relayoutPaged();
       if (state.mode === "doc"){
         units = buildDocUnits();
@@ -2493,22 +2694,106 @@
         })();
       });
     }
+    /* a short line in both voices, so the panel's choices can be heard */
+    var SAMPLE = "The lamp hums quietly. \"Are you still reading?\" she asked. \"Just one more chapter!\"";
+    function sample(){
+      if (!supported) return;
+      if (playing) pause();
+      var list = [], myGen = ++sampleGen, i = 0;
+      unitsFromText(SAMPLE, 0, list);
+      try { speechSynthesis.cancel(); } catch(_){}
+      (function next(){
+        if (myGen !== sampleGen || i >= list.length) return;
+        var s = utterFor(list[i], list[i - 1], list[i + 1]);
+        s.utter.onend = function(){ if (myGen !== sampleGen) return; i++; setTimeout(next, s.pauseAfter); };
+        setTimeout(function(){ if (myGen === sampleGen) speechSynthesis.speak(s.utter); }, 0);
+      })();
+    }
+
+    /* ---- the voices panel ---- */
+    function pitchLabel(){ return pitchPref.toFixed(2); }
+    function hintText(){
+      var narr = currentVoice();
+      if (!narr || dialogueName) return dialogueName === "same" ? "Quoted speech is read in the narrator’s voice." : "";
+      var d = dialogueVoice(narr), g = voiceGender(narr);
+      if (d.voice && d.voice !== narr) return "Auto: " + d.voice.name + " reads the quoted speech.";
+      return "Auto: no " + (g === "f" ? "man’s" : g === "m" ? "woman’s" : "second") + " voice for this language, so quoted speech is the narrator pitched " + (d.pitchOffset > 0 ? "higher" : "lower") + ".";
+    }
+    function syncHint(){ var h = $("#ttsDlgHint"); if (h) h.textContent = hintText(); }
+    function exprChips(){
+      return [["off", "Off"], ["natural", "Natural"], ["dramatic", "Dramatic"]].map(function(c){
+        return '<button class="chip' + (expr === c[0] ? ' on' : '') + '" role="radio" aria-checked="' + (expr === c[0] ? "true" : "false") + '" data-expr="' + c[0] + '">' + c[1] + '</button>';
+      }).join("");
+    }
+    function setExpr(v){
+      if (!/^(off|natural|dramatic)$/.test(v)) return;
+      expr = v; Store.set("ll_tts_expr", v);
+      var chips = $("#ttsExpr");
+      if (chips) Array.prototype.forEach.call(chips.querySelectorAll(".chip"), function(c){
+        var on = c.dataset.expr === v; c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+      });
+      if (playing) speakCurrent();
+    }
+    function renderPanel(body, foot){
+      var vs = sortedVoices();
+      body.innerHTML = '<div class="tts-panel">' +
+        '<div class="rowline"><label for="ttsNarr">Narrator</label><select id="ttsNarr" class="sel" tabindex="0">' + (voiceOptions(vs, voiceName) || '<option value="">Default voice</option>') + '</select></div>' +
+        '<div class="rowline"><label for="ttsDlg">Dialogue</label><select id="ttsDlg" class="sel">' +
+          '<option value=""' + (!dialogueName ? ' selected' : '') + '>Auto — the other voice</option>' +
+          '<option value="same"' + (dialogueName === "same" ? ' selected' : '') + '>Same as narrator</option>' + voiceOptions(vs, dialogueName) + '</select></div>' +
+        '<div class="hint" id="ttsDlgHint">' + esc(hintText()) + '</div>' +
+        '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
+        '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
+        '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
+        '</div>';
+      foot.innerHTML = '<button class="chip" id="ttsSample">Hear a sample</button>';
+      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr");
+      var pitchEl = body.querySelector("#ttsPitch"), pitchV = body.querySelector("#ttsPitchV");
+      narr.addEventListener("change", function(){ setVoice(narr.value); });
+      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); if (playing) speakCurrent(); });
+      chips.addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch) setExpr(ch.dataset.expr); });
+      chips.addEventListener("keydown", function(e){
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        var all = Array.prototype.slice.call(chips.querySelectorAll(".chip")), i = all.indexOf(e.target);
+        if (i < 0) return;
+        e.preventDefault();
+        var n = all[(i + (e.key === "ArrowRight" ? 1 : all.length - 1)) % all.length];
+        n.focus(); setExpr(n.dataset.expr);
+      });
+      pitchEl.addEventListener("input", function(){
+        pitchPref = +pitchEl.value; pitchV.textContent = pitchLabel(); Store.set("ll_tts_pitch", String(pitchPref));
+        if (playing) speakCurrent();
+      });
+      foot.querySelector("#ttsSample").addEventListener("click", sample);
+    }
+    function openPanel(){ Side.open("voices", "Read-aloud voices", renderPanel); }
 
     playBtn.addEventListener("click", function(){ if (playing) pause(); else play(); });
     $("#ttsStop").addEventListener("click", stop);
     $("#ttsPrev").addEventListener("click", function(){ if (!units.length) return; idx = Math.max(0, idx - 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
     $("#ttsNext").addEventListener("click", function(){ if (!units.length) return; idx = Math.min(units.length - 1, idx + 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
     rateEl.addEventListener("input", function(){
-      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "\u00D7"; Store.set("ll_tts_rate", String(rate));
+      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "×"; Store.set("ll_tts_rate", String(rate));
       if (playing) speakCurrent();
     });
-    voiceSel.addEventListener("change", function(){ voiceName = voiceSel.value; Store.set("ll_tts_voice", voiceName); if (playing) speakCurrent(); });
+    voiceSel.addEventListener("change", function(){ setVoice(voiceSel.value); });
+    womanBtn.addEventListener("click", function(){ pickGender("f"); });
+    manBtn.addEventListener("click", function(){ pickGender("m"); });
+    voicesBtn.addEventListener("click", openPanel);
+    window.addEventListener("resize", measure);
     window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} });
 
     Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
+    /* test hook: the pure pieces, and what the panel would choose */
+    window.llSpeak = {
+      voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
+      plan: function(text){ var out = []; unitsFromText(String(text || ""), 0, out); return out; },
+      settings: function(){ return { voice: voiceName, dialogue: dialogueName, expr: expr, pitch: pitchPref, rate: rate }; },
+      openPanel: openPanel, sample: sample
+    };
     return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
-             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, supported: supported };
+             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel, supported: supported };
   })();
 
   /* ============================================================

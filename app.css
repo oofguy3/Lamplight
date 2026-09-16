@@ -403,20 +403,40 @@
   #tts.on{display:flex;}
   body.paged #tts{bottom:var(--pagerH, 56px); padding-bottom:8px;}
   #tts .ctl{min-width:38px; height:38px; padding:0 9px; font-size:0.9375rem;}
-  #tts label{display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--muted); flex:1; min-width:90px;}
+  #tts [hidden]{display:none;}
+  #tts label{display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--muted); flex:1; min-width:90px; min-height:36px;}
   #tts input[type=range]{flex:1; min-width:50px;}
   #tts .val{min-width:34px;}
   #tts select{
-    max-width:150px; min-width:0; padding:7px 8px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
+    max-width:150px; min-width:0; min-height:36px; padding:7px 8px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
     font-family:var(--ui-font); font-size:0.7812rem; text-overflow:ellipsis;
   }
+  /* ♀ ♂ pick a voice of that gender; the one matching the narrator is shown pressed */
+  #tts .tts-sex{min-width:36px; padding:0 7px; font-size:1.0625rem; font-weight:400; line-height:1;}
+  #tts .tts-sex.on{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}
+  #tts .tts-voices{font-size:0.8125rem; padding:0 11px; white-space:nowrap;}
   #tts .tts-x{font-size:1.125rem;}
+  /* in scroll flow the last lines must clear the bar (two rows on a phone) */
+  body.tts-on:not(.paged) > main{padding-bottom:calc(var(--ttsH, 56px) + 40px);}
   @media (max-width:560px){
-    #tts{gap:5px; padding-left:8px; padding-right:8px;}
-    #tts select{max-width:96px; font-size:0.75rem;}
-    #tts label{min-width:80px;}
+    /* two rows: the buttons, then speed and voice */
+    #tts{flex-wrap:wrap; gap:6px 5px; padding-left:8px; padding-right:8px;}
+    #tts::after{content:""; order:1; flex-basis:100%; height:0;}
+    #tts .tts-x{margin-left:auto;}
+    #tts label, #tts select{order:2;}
+    #tts label{min-width:0; flex:1 1 140px;}
+    #tts select{max-width:none; flex:1 1 110px; font-size:0.75rem;}
   }
+  @media (max-width:400px){
+    #tts .ctl{min-width:36px; padding:0 7px;}
+    #tts .tts-sex{min-width:34px; padding:0 5px;}
+  }
+  /* the voices panel (narrator, dialogue voice, expression, pitch) */
+  .tts-panel{display:grid; gap:12px; padding-top:4px;}
+  .tts-panel .sel{flex:1; min-width:0; max-width:100%;}
+  .tts-panel .hint{margin-top:-4px; line-height:1.45;}
   ::highlight(ll-speak){background:color-mix(in srgb, var(--accent) 24%, transparent); color:inherit;}
+  ::highlight(ll-speak-dialogue){background:color-mix(in srgb, var(--accent) 12%, transparent); color:inherit; text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 65%, transparent);}
 
   /* search */
   .find-row{display:flex; gap:6px; align-items:center; margin:2px 0 8px;}
