@@ -1,11 +1,19 @@
 /* lamplight service worker v2 — offline cache, but always grab a fresh index.html when online */
-const CACHE = "lamplight-v7";
+const CACHE = "lamplight-v8";
 const ASSETS = [
   "./",
   "./index.html",
+  "./app.css",
+  "./app.js",
+  "./explain.js",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",
+  "./vendor/pdf.min.js",
+  "./vendor/pdf.worker.min.js",
+  "./vendor/mammoth.min.js",
+  "./vendor/marked.min.js",
+  "./vendor/purify.min.js",
   "./vendor/jszip.min.js",
   "./fonts/AtkinsonHyperlegible-Regular.woff2",
   "./fonts/AtkinsonHyperlegible-Bold.woff2",
