@@ -1,11 +1,12 @@
 /* lamplight service worker v2 — offline cache, but always grab a fresh index.html when online */
-const CACHE = "lamplight-v4";
+const CACHE = "lamplight-v5";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./icon-192.png",
-  "./icon-512.png"
+  "./icon-512.png",
+  "./vendor/jszip.min.js"
 ];
 /* dictionary chunks: cached one by one so a single failure can't block install */
 const DICTS = [1,2,3,4,5,6].map((i) => "./dict" + i + ".json");

@@ -1444,7 +1444,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     <h1>A quiet place to read.</h1>
     <p>Drop a file anywhere on this page, or open one below.<br>Works fully offline — nothing you open leaves your device.</p>
     <button class="ctl primary" id="openBtn2" style="margin:0 auto;">Open a file</button>
-    <div class="formats">PDF · DOCX · TXT · MARKDOWN · HTML</div>
+    <div class="formats">PDF · EPUB · DOCX · TXT · MARKDOWN · HTML</div>
   </div>
   <div id="status"></div>
   <div id="docView"><article id="doc"></article></div>
@@ -1457,7 +1457,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   <button class="ctl" id="nextPg" title="Next page">›</button>
 </div>
 
-<input type="file" id="fileInput" accept=".pdf,.docx,.txt,.text,.md,.markdown,.html,.htm" hidden>
+<input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" hidden>
 
 <script>
 (function(){
@@ -1493,7 +1493,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     font:"serif", size:19, lh:1.75, width:720,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
-    mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48
+    mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
   };
   var renderGen = 0;
 
@@ -1754,7 +1754,9 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     return DOMPurify.sanitize(html, {
       USE_PROFILES: {html: true},
       FORBID_TAGS: ["style", "font"],
-      FORBID_ATTR: ["style", "color", "face", "size", "bgcolor", "align"]
+      FORBID_ATTR: ["style", "color", "face", "size", "bgcolor", "align"],
+      /* default list + blob: so images unpacked from an EPUB can be shown */
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|blob):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
     });
   }
   function openFile(file){
@@ -1765,9 +1767,10 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     window.scrollTo(0,0);
     document.body.classList.remove("hidebar");
     document.body.classList.remove("immersive");
-    state.pdfDoc = null;
+    state.pdfDoc = null; state.toc = null;
     state.page = 0; state.pdfPageNum = 1;
     renderGen++;
+    releaseEpubUrls();
 
     var fail = function(err){
       console.error(err);
@@ -1795,8 +1798,17 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
           setDocHtml(res.value);
         }).catch(fail);
 
-      } else if (ext === "doc" || ext === "rtf" || ext === "odt" || ext === "pages" || ext === "epub"){
-        status("." + ext + " isn't supported yet — export it as PDF or DOCX and open that instead.");
+      } else if (ext === "epub"){
+        status("Opening book…");
+        file.arrayBuffer().then(function(buf){
+          return openEpub(buf);
+        }).then(function(book){
+          if (book.title) $("#fname").textContent = book.title + (book.author ? " — " + book.author : "");
+          setDocHtml(book.html, {toc: book.toc, keepIds: true});
+        }).catch(fail);
+
+      } else if (ext === "doc" || ext === "rtf" || ext === "odt" || ext === "pages"){
+        status("." + ext + " isn't supported yet — export it as PDF, EPUB or DOCX and open that instead.");
 
       } else if (ext === "md" || ext === "markdown"){
         file.text().then(function(txt){
@@ -1875,10 +1887,212 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     each("[class],[id]", function(el){ el.removeAttribute("class"); el.removeAttribute("id"); });
     return root.innerHTML;
   }
-  function setDocHtml(html){
+  function setDocHtml(html, opts){
+    opts = opts || {};
+    state.toc = opts.toc || null;
     $("#doc").innerHTML = cleanHtml(html);
     show("doc");
     reflow();
+  }
+  /* internal links (EPUB footnotes, chapter links, Markdown anchors) stay inside the reader */
+  $("#doc").addEventListener("click", function(e){
+    var a = e.target.closest && e.target.closest("a[href]");
+    if (!a) return;
+    var href = a.getAttribute("href") || "";
+    if (href.charAt(0) !== "#"){
+      /* external links open in a new tab rather than replacing the reader */
+      if (/^(https?:|mailto:)/i.test(href)){ a.target = "_blank"; a.rel = "noopener"; return; }
+      e.preventDefault(); return;
+    }
+    e.preventDefault();
+    var id = decodeURIComponent(href.slice(1));
+    var el = document.getElementById(id) || $("#doc").querySelector('[name="' + CSS.escape(id) + '"]');
+    if (el) revealElement(el);
+  });
+  /* bring an element into view in either reading flow */
+  function revealElement(el){
+    if (state.mode !== "doc") return;
+    if (state.flow === "pages"){
+      var doc = $("#doc");
+      var docRect = doc.getBoundingClientRect(), r = el.getBoundingClientRect();
+      var offset = r.left - docRect.left;             /* distance inside the column strip */
+      gotoPage(Math.floor(offset / (state.colw + state.gap)));
+    } else {
+      var head = document.querySelector("header");
+      var y = el.getBoundingClientRect().top + window.scrollY - (head ? head.offsetHeight : 0) - 12;
+      window.scrollTo(0, Math.max(0, y));
+    }
+  }
+
+  /* ---------- epub: unzip, walk the spine, and render the chapters as one document ---------- */
+  var scriptsLoaded = {};
+  function loadScript(src){
+    if (scriptsLoaded[src]) return scriptsLoaded[src];
+    scriptsLoaded[src] = new Promise(function(resolve, reject){
+      var sc = document.createElement("script");
+      sc.src = src;
+      sc.onload = function(){ resolve(); };
+      sc.onerror = function(){ delete scriptsLoaded[src]; reject(new Error("Couldn't load " + src)); };
+      document.head.appendChild(sc);
+    });
+    return scriptsLoaded[src];
+  }
+  var epubUrls = [];
+  function releaseEpubUrls(){
+    epubUrls.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(_){} });
+    epubUrls = [];
+  }
+  function pathJoin(base, rel){
+    if (/^[a-z]+:/i.test(rel)) return rel;
+    rel = rel.replace(/^\.\//, "");
+    var parts = (base ? base.split("/").slice(0, -1) : []).concat(rel.split("/"));
+    var out = [];
+    parts.forEach(function(p){
+      if (p === "..") out.pop(); else if (p !== "." && p !== "") out.push(p);
+    });
+    return out.join("/");
+  }
+  function openEpub(buf){
+    return loadScript("./vendor/jszip.min.js").then(function(){
+      return JSZip.loadAsync(buf);
+    }).then(function(zip){
+      if (zip.file("META-INF/encryption.xml")) throw new Error("This book is protected (DRM), so it can't be opened here.");
+      var container = zip.file("META-INF/container.xml");
+      if (!container) throw new Error("Not a valid EPUB (no container.xml).");
+      return container.async("string").then(function(xml){
+        var cdoc = new DOMParser().parseFromString(xml, "application/xml");
+        var rf = cdoc.querySelector("rootfile");
+        var opfPath = rf && (rf.getAttribute("full-path") || "");
+        if (!opfPath || !zip.file(opfPath)) throw new Error("Not a valid EPUB (no package file).");
+        return zip.file(opfPath).async("string").then(function(opfXml){ return parseOpf(zip, opfPath, opfXml); });
+      });
+    });
+  }
+  function parseOpf(zip, opfPath, opfXml){
+    var opf = new DOMParser().parseFromString(opfXml, "application/xml");
+    var q = function(sel, root){ return Array.prototype.slice.call((root || opf).getElementsByTagName(sel)); };
+    var meta = function(name){ var el = q(name)[0] || q("dc:" + name)[0]; return el ? el.textContent.trim() : ""; };
+    var title = meta("title"), author = meta("creator");
+    var items = {}, navHref = null, ncxHref = null;
+    q("item").forEach(function(it){
+      var id = it.getAttribute("id"), href = pathJoin(opfPath, it.getAttribute("href") || "");
+      items[id] = { href: href, type: it.getAttribute("media-type") || "", props: it.getAttribute("properties") || "" };
+      if (/\bnav\b/.test(items[id].props)) navHref = href;
+      if (items[id].type === "application/x-dtbncx+xml") ncxHref = href;
+    });
+    var spineEl = q("spine")[0];
+    if (spineEl && spineEl.getAttribute("toc") && items[spineEl.getAttribute("toc")]) ncxHref = items[spineEl.getAttribute("toc")].href;
+    var spine = q("itemref").map(function(ir){
+      var it = items[ir.getAttribute("idref")];
+      return it ? { href: it.href, linear: ir.getAttribute("linear") !== "no" } : null;
+    }).filter(Boolean);
+    if (!spine.length) throw new Error("This EPUB has no readable chapters.");
+
+    /* stable anchor ids: one per file (+ its own ids inside) */
+    var fileKey = {}; spine.forEach(function(sp, i){ fileKey[sp.href] = "ep" + i; });
+    function anchorId(href, frag){ return (fileKey[href] || "ep-" + href.replace(/[^A-Za-z0-9]+/g, "-")) + (frag ? "-" + frag : ""); }
+
+    var resourceUrls = {};
+    function resourceUrl(path){
+      if (resourceUrls[path]) return resourceUrls[path];
+      var f = zip.file(path);
+      if (!f) return Promise.resolve(null);
+      var ext = (path.split(".").pop() || "").toLowerCase();
+      var mime = { png:"image/png", jpg:"image/jpeg", jpeg:"image/jpeg", gif:"image/gif", svg:"image/svg+xml", webp:"image/webp", bmp:"image/bmp", avif:"image/avif" }[ext] || "application/octet-stream";
+      resourceUrls[path] = f.async("blob").then(function(blob){
+        var url = URL.createObjectURL(new Blob([blob], { type: mime }));
+        epubUrls.push(url);
+        return url;
+      }).catch(function(){ return null; });
+      return resourceUrls[path];
+    }
+
+    releaseEpubUrls();
+    var jobs = spine.filter(function(sp){ return sp.linear || spine.length === 1; }).map(function(sp){
+      var f = zip.file(sp.href);
+      if (!f) return Promise.resolve("");
+      return f.async("string").then(function(src){ return chapterHtml(src, sp.href); });
+    });
+    function chapterHtml(src, href){
+      var doc = new DOMParser().parseFromString(src, "text/html");
+      var body = doc.body || doc.documentElement;
+      var base = href;
+      var waits = [];
+      /* svg image covers → plain images */
+      Array.prototype.slice.call(body.querySelectorAll("image")).forEach(function(im){
+        var src2 = im.getAttribute("xlink:href") || im.getAttribute("href") || "";
+        var img = doc.createElement("img");
+        img.setAttribute("src", src2);
+        var svg = im.closest("svg");
+        (svg || im).replaceWith(img);
+      });
+      Array.prototype.slice.call(body.querySelectorAll("img")).forEach(function(img){
+        var src2 = img.getAttribute("src") || "";
+        if (!src2 || /^(data:|https?:)/i.test(src2)){ return; }
+        var path = pathJoin(base, src2.split("#")[0]);
+        waits.push(resourceUrl(path).then(function(url){
+          if (url) img.setAttribute("src", url); else img.remove();
+        }));
+      });
+      /* keep the chapter's own ids reachable, prefixed so they can't collide with the app */
+      Array.prototype.slice.call(body.querySelectorAll("[id]")).forEach(function(el){
+        el.setAttribute("id", anchorId(href, el.getAttribute("id")));
+      });
+      Array.prototype.slice.call(body.querySelectorAll("a[href]")).forEach(function(a){
+        var h = a.getAttribute("href") || "";
+        if (/^(https?:|mailto:)/i.test(h)) return;
+        var parts = h.split("#"), target = parts[0] ? pathJoin(base, parts[0]) : href;
+        a.setAttribute("href", "#" + anchorId(target, parts[1] || ""));
+      });
+      Array.prototype.slice.call(body.querySelectorAll("script,style,link,iframe,object,embed,video,audio")).forEach(function(el){ el.remove(); });
+      return Promise.all(waits).then(function(){
+        return '<section class="ll-chapter" id="' + anchorId(href, "") + '">' + body.innerHTML + '</section>';
+      });
+    }
+    return Promise.all(jobs).then(function(chunks){
+      var html = chunks.join("\n");
+      var tocJob = navHref && zip.file(navHref) ? zip.file(navHref).async("string").then(function(src){ return tocFromNav(src, navHref); })
+                 : ncxHref && zip.file(ncxHref) ? zip.file(ncxHref).async("string").then(function(src){ return tocFromNcx(src, ncxHref); })
+                 : Promise.resolve([]);
+      return tocJob.catch(function(){ return []; }).then(function(toc){
+        return { html: html, title: title, author: author, toc: toc };
+      });
+    });
+    function tocFromNav(src, href){
+      var doc = new DOMParser().parseFromString(src, "text/html");
+      var nav = Array.prototype.slice.call(doc.querySelectorAll("nav")).filter(function(n){ return /toc/i.test(n.getAttribute("epub:type") || n.getAttribute("type") || ""); })[0] || doc.querySelector("nav");
+      var out = [];
+      if (!nav) return out;
+      (function walk(ol, level){
+        Array.prototype.slice.call(ol.children).forEach(function(li){
+          if (li.tagName !== "LI") return;
+          var a = li.querySelector(":scope > a[href], :scope > span");
+          if (a){
+            var h = a.getAttribute("href") || "", parts = h.split("#");
+            var target = parts[0] ? pathJoin(href, parts[0]) : href;
+            out.push({ title: a.textContent.replace(/\s+/g, " ").trim(), id: anchorId(target, parts[1] || ""), level: level });
+          }
+          var sub = li.querySelector(":scope > ol");
+          if (sub) walk(sub, level + 1);
+        });
+      })(nav.querySelector("ol") || doc.createElement("ol"), 1);
+      return out;
+    }
+    function tocFromNcx(src, href){
+      var doc = new DOMParser().parseFromString(src, "application/xml");
+      var out = [];
+      (function walk(parent, level){
+        Array.prototype.slice.call(parent.children).forEach(function(np){
+          if (np.localName !== "navPoint") return;
+          var label = np.getElementsByTagName("text")[0], content = np.getElementsByTagName("content")[0];
+          var h = content ? (content.getAttribute("src") || "") : "", parts = h.split("#");
+          var target = parts[0] ? pathJoin(href, parts[0]) : href;
+          out.push({ title: label ? label.textContent.replace(/\s+/g, " ").trim() : "", id: anchorId(target, parts[1] || ""), level: level });
+          walk(np, level + 1);
+        });
+      })(doc.getElementsByTagName("navMap")[0] || doc.documentElement, 1);
+      return out;
+    }
   }
 
   /* ---------- pdf rendering ---------- */
