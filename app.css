@@ -223,8 +223,10 @@
 
   /* text documents */
   #docView{display:none; max-width:calc(var(--w) + 2 * var(--margin)); margin:0 auto; padding:0 var(--margin);}
-  body.paged #docView{position:relative; overflow:hidden;}
-  body.paged.spread #docView{max-width:calc(2 * var(--w) + 48px + 2 * var(--margin));}
+  /* in Pages flow the margins narrow the view instead of padding it, so the column strip's
+     scrollable extent is exactly the strip and every page can be scrolled to its left edge */
+  body.paged #docView{position:relative; overflow:hidden; padding:0; width:calc(100% - 2 * var(--margin)); max-width:var(--w);}
+  body.paged.spread #docView{max-width:calc(2 * var(--w) + 48px);}
   #doc{
     font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
     overflow-wrap:break-word;
@@ -233,6 +235,7 @@
   #doc.hyphens{-webkit-hyphens:auto; hyphens:auto;}
   #doc.hyphens pre, #doc.hyphens code{-webkit-hyphens:none; hyphens:none;}
   body.paged #doc{height:100%; column-fill:auto;}
+  body.paged #doc::after{content:""; display:block; break-before:column; height:1px;}
   body.paged #doc img, body.paged #doc pre, body.paged #doc blockquote, body.paged #doc table{break-inside:avoid;}
   #doc h1,#doc h2,#doc h3,#doc h4{line-height:1.3; margin:1.6em 0 .55em; font-weight:700;}
   #doc h1{font-size:1.55em;} #doc h2{font-size:1.3em;} #doc h3{font-size:1.12em;} #doc h4{font-size:1em;}

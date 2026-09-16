@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.16-20";
+const VERSION = "2026.09.16-21";
 const CACHE = "lamplight-" + VERSION;
 const ASSETS = [
   "./",
@@ -28,10 +28,13 @@ const ASSETS = [
 /* dictionary chunks: cached one by one so a single failure can't block install */
 const DICTS = [1,2,3,4,5,6].map((i) => "./dict" + i + ".json");
 
+/* fetched past the HTTP cache, so a release never installs files a CDN or the browser still
+   held from the previous one */
+const fresh = (u) => new Request(u, { cache: "reload" });
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE).then((c) =>
-      c.addAll(ASSETS).then(() => Promise.all(DICTS.map((d) => c.add(d).catch(() => null))))
+      c.addAll(ASSETS.map(fresh)).then(() => Promise.all(DICTS.map((d) => c.add(fresh(d)).catch(() => null))))
     )
   );
 });
@@ -94,7 +97,8 @@ self.addEventListener("fetch", (e) => {
       const hit = await c.match(e.request, { ignoreSearch: true });
       /* the cached shell was stored under "./"; hand it back under the URL that was asked for
          (./?shared=1, ./?action=continue) so nothing downstream sees the wrong address */
-      if (hit) return isPage ? new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers }) : hit;
+      const asPage = (r) => new Response(r.body, { status: r.status, statusText: r.statusText, headers: r.headers });
+      if (hit) return isPage ? asPage(hit) : hit;
       try {
         const res = await fetch(e.request);
         if (res.ok && res.type === "basic") c.put(e.request, res.clone()).catch(() => null);
@@ -102,7 +106,7 @@ self.addEventListener("fetch", (e) => {
       } catch (err) {
         if (isPage) {
           const page = await c.match("./index.html");
-          if (page) return page;
+          if (page) return asPage(page);
         }
         throw err;
       }

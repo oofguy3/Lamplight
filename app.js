@@ -380,7 +380,10 @@
     var w = doc.getBoundingClientRect().width;
     state.colw = (w - (state.perPage - 1) * state.gap) / state.perPage;
     state.stride = state.colw + state.gap;
-    var cols = Math.max(1, Math.round((doc.scrollWidth + state.gap) / state.stride));
+    /* the strip ends with one empty column (#doc::after) so the last page can always be
+       scrolled to its left edge — an odd last column in a spread, or the view's right
+       margin, would otherwise leave it short; it is not counted as a page */
+    var cols = Math.max(1, Math.round((doc.scrollWidth + state.gap) / state.stride) - 1);
     state.totalPages = Math.max(1, Math.ceil(cols / state.perPage));
   }
   /* which page shows a given x offset inside the column strip */
@@ -397,7 +400,10 @@
     doc.style.transform = "";
   }
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
-  function gotoPage(n, animate){
+  /* show page n. `anchor` is the character the caller navigated to (a resume position, a
+     heading, a search hit, the place kept through a re-layout); without one the page's own
+     first character becomes the anchor. Re-layouts land on the page holding the anchor. */
+  function gotoPage(n, animate, anchor){
     n = Math.max(0, Math.min(n, state.totalPages - 1));
     var was = state.page;
     state.page = n;
@@ -405,12 +411,25 @@
     var smooth = animate && !(reduceMotion && reduceMotion.matches) && Math.abs(n - was) === 1;
     if (smooth && view.scrollTo) view.scrollTo({ left: left, behavior: "smooth" });
     else view.scrollLeft = left;
-    /* where this page starts, for the next re-layout — unless a font is still arriving,
-       in which case this layout is transient and the earlier note stays */
-    if (!(document.fonts && document.fonts.status === "loading")) state.pageOff = pageTopOffset();
+    state.pageOff = (typeof anchor === "number") ? anchor : pageTopOffset();
     updatePager(); updateProgress();
     Library.notePosition();
   }
+  /* the view is overflow:hidden, but focusing a link or the browser's own find can still scroll
+     it: bring the focused element onto a page, and snap any foreign scroll back to a page edge */
+  $("#docView").addEventListener("focusin", function(e){
+    if (state.mode === "doc" && state.flow === "pages" && e.target && e.target !== $("#docView")) revealElement(e.target);
+  });
+  (function(){
+    var view = $("#docView"), t = null;
+    function snap(){
+      if (state.mode !== "doc" || state.flow !== "pages" || !state.stride) return;
+      var want = state.page * (state.perPage || 1) * state.stride;
+      if (Math.abs(view.scrollLeft - want) > 2) gotoPage(Math.round(view.scrollLeft / ((state.perPage || 1) * state.stride)));
+    }
+    if ("onscrollend" in window) view.addEventListener("scrollend", snap);
+    else view.addEventListener("scroll", function(){ clearTimeout(t); t = setTimeout(snap, 160); });
+  })();
   /* first index in [lo, hi] whose measure is >= want; a measure < 0 means "no box, skip it" */
   function firstAtLeast(lo, hi, measure, want){
     var hit = -1;
@@ -447,7 +466,7 @@
   function relayoutDocPages(){
     var off = state.pageOff;
     layoutDocPages();
-    if (off === null || off === undefined || !revealOffset(off)) gotoPage(state.page);
+    if (typeof off !== "number" || !revealOffset(off)) gotoPage(state.page);
   }
   function relayoutPaged(){
     if (state.mode === "doc" && state.flow === "pages"){
@@ -633,6 +652,7 @@
           wrap.textContent = txt;
           $("#doc").innerHTML = "";
           $("#doc").appendChild(wrap);
+          Anchor.invalidate();
           show("doc");
           reflow();
           Library.docReady();
@@ -730,7 +750,7 @@
     }
     if (state.flow === "pages"){
       var docRect = $("#doc").getBoundingClientRect();
-      gotoPage(pageOfOffset(rect.left - docRect.left + 1));
+      gotoPage(pageOfOffset(rect.left - docRect.left + 1), false, off);
     } else {
       var headH = Library.headerHeight();
       var pad = (opts && opts.center) ? Math.round((window.innerHeight - headH) * 0.3) : 8;
@@ -745,7 +765,9 @@
       var doc = $("#doc");
       var docRect = doc.getBoundingClientRect(), r = el.getBoundingClientRect();
       var offset = r.left - docRect.left;             /* distance inside the column strip */
-      gotoPage(pageOfOffset(offset));
+      var first = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+      var anchor = first ? Anchor.offsetOf(first, 0) : null;
+      gotoPage(pageOfOffset(offset), false, anchor === null ? undefined : anchor);
     } else {
       var y = el.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 12;
       window.scrollTo(0, Math.max(0, y));
@@ -3560,7 +3582,7 @@
 
     function inMiddleBand(x){
       if (!document.body.classList.contains("paged")) return true;
-      var r = doc.getBoundingClientRect();
+      var r = $("#docView").getBoundingClientRect();      /* the strip itself is scrolled sideways */
       var f = (x - r.left) / r.width;
       return f >= 0.35 && f <= 0.65;
     }
