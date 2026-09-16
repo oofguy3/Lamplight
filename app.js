@@ -734,6 +734,7 @@
     $("#textHint").textContent = mode === "pdf"
       ? "A PDF is open — these apply to text documents. Use Zoom below for PDFs."
       : "Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).";
+    if (window.llStats) window.llStats.onMode(mode);
   }
   function status(msg){ $("#status").textContent = msg; show("status"); }
   $("#status").setAttribute("role", "status"); $("#status").setAttribute("aria-live", "polite");
@@ -3433,7 +3434,7 @@
         if (lastFrac !== null){
           var dt = now - lastT, dw = (frac - lastFrac) * docWords;
           /* count only steady forward reading: small steps, no long pauses */
-          if (dt > 0 && dt < 45000 && dw > 0 && dw < 400 && document.visibilityState === "visible"){ sample.words += dw; sample.ms += dt; }
+          if (dt > 0 && dt < 45000 && dw > 0 && dw < 400 && document.visibilityState === "visible"){ sample.words += dw; sample.ms += dt; Stats.noteWords(dw); }
         }
         var left = (1 - frac) * docWords / currentWpm();
         text = Math.round(frac * 100) + "%" + (docWords > 80 ? " \u00B7 " + fmt(left) : "");
@@ -3441,7 +3442,7 @@
         var pages = state.pdfDoc ? state.pdfDoc.numPages : 1, page = Library.currentPdfPage();
         if (lastFrac !== null){
           var dt2 = now - lastT, dp = (frac - lastFrac) * (pages - 1);
-          if (dt2 > 0 && dt2 < 120000 && dp > 0 && dp < 3 && document.visibilityState === "visible"){ sample.pages += dp; sample.pms += dt2; }
+          if (dt2 > 0 && dt2 < 120000 && dp > 0 && dp < 3 && document.visibilityState === "visible"){ sample.pages += dp; sample.pms += dt2; Stats.notePages(dp); }
         }
         var leftP = (pages - page) / currentPpm();
         text = "p. " + page + " / " + pages + (pages > 3 ? " \u00B7 " + fmt(leftP) : "");
@@ -3459,6 +3460,257 @@
       }, 1500);
     }
     return { tick: tick, wpm: currentWpm, ppm: currentPpm, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
+  })();
+
+  /* ============================================================
+     Reading stats — minutes, words and pages per day, a daily goal and
+     the streak of days it was kept. All of it stays on this device.
+     ============================================================ */
+  var Stats = (function(){
+    var KEY = "ll_stats", GOALS = [5, 10, 15, 20, 30, 45, 60], MAX_DAYS = 400, TICK = 15000, IDLE = 3 * 60000;
+    var WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var widget = $("#streak");
+    var data = load(), dirty = false, saveTimer = null, lastActive = 0, docKey = null, widgetHtml = "";
+
+    /* ---- days are keyed by the local date, built by hand (toISOString would shift them to UTC) ---- */
+    function pad(n){ return (n < 10 ? "0" : "") + n; }
+    function keyOf(d){ return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+    function dateOf(key){ var p = key.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+    function addDays(key, n){ var d = dateOf(key); d.setDate(d.getDate() + n); return keyOf(d); }
+    function todayKey(){ return keyOf(new Date()); }
+
+    /* ---- storage: one JSON record, saved at most every 5 s and when the page goes away ---- */
+    function fresh(){ return { v: 1, goal: 10, days: {}, books: {}, best: { streak: 0, day: "" }, notified: "" }; }
+    function num(x){ return typeof x === "number" && isFinite(x) && x > 0 ? x : 0; }
+    function load(){
+      var o = null, out = fresh();
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
+      if (!o || typeof o !== "object") return out;
+      if (GOALS.indexOf(o.goal) >= 0) out.goal = o.goal;
+      Object.keys(o.days && typeof o.days === "object" ? o.days : {}).forEach(function(k){
+        var d = o.days[k];
+        if (!/^\d{4}-\d\d-\d\d$/.test(k) || !d || typeof d !== "object") return;
+        out.days[k] = { ms: num(d.ms), words: num(d.words), pages: num(d.pages), docs: Array.isArray(d.docs) ? d.docs.filter(function(x){ return typeof x === "string"; }) : [] };
+      });
+      Object.keys(o.books && typeof o.books === "object" ? o.books : {}).forEach(function(k){
+        var b = o.books[k];
+        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), opened: Math.round(num(b.opened)), finished: !!b.finished };
+      });
+      if (o.best && typeof o.best === "object") out.best = { streak: Math.round(num(o.best.streak)), day: typeof o.best.day === "string" ? o.best.day : "" };
+      if (typeof o.notified === "string") out.notified = o.notified;
+      return out;
+    }
+    /* words and pages arrive in fractions; they are rounded on the way out, never in memory */
+    function tidy(k, v){ return k === "words" ? Math.round(v) : k === "pages" ? Math.round(v * 10) / 10 : v; }
+    function save(){
+      clearTimeout(saveTimer); saveTimer = null;
+      if (!dirty) return;
+      dirty = false;
+      var keys = Object.keys(data.days).sort();
+      while (keys.length > MAX_DAYS) delete data.days[keys.shift()];
+      Store.set(KEY, JSON.stringify(data, tidy));
+    }
+    function touch(){ dirty = true; if (!saveTimer) saveTimer = setTimeout(save, 5000); }
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "hidden") save(); renderWidget(); });
+    window.addEventListener("pagehide", save);
+
+    /* ---- records ---- */
+    function day(key){ return data.days[key] || (data.days[key] = { ms: 0, words: 0, pages: 0, docs: [] }); }
+    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, opened: 0, finished: false }); }
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    /* the open document belongs to today; an opening is counted once per open (the id arrives a moment after the file) */
+    function noteDoc(){
+      if (!docOpen()) return null;
+      var id = Library.currentId();
+      if (!id) return null;
+      var t = day(todayKey()), b = book(id);
+      if (t.docs.indexOf(id) < 0){ t.docs.push(id); touch(); }
+      if (id !== docKey){ docKey = id; b.opened++; touch(); }
+      return b;
+    }
+    function noteFinished(b){ if (b && !b.finished && readFrac() >= 0.98){ b.finished = true; touch(); } }
+    /* forward reading, as Progress measures it */
+    function noteWords(dw){ var b = noteDoc(); if (!b) return; day(todayKey()).words += dw; b.words += dw; lastActive = Date.now(); noteFinished(b); touch(); }
+    function notePages(dp){ var b = noteDoc(); if (!b) return; day(todayKey()).pages += dp; b.pages += dp; lastActive = Date.now(); noteFinished(b); touch(); }
+
+    /* ---- goal and streak ---- */
+    function met(key){ var d = data.days[key]; return !!d && d.ms >= data.goal * 60000; }
+    /* consecutive days up to today — or up to yesterday while today is still open: a streak lives until midnight */
+    function streak(){
+      var k = todayKey(), n = 0;
+      if (!met(k)) k = addDays(k, -1);
+      while (met(k)){ n++; k = addDays(k, -1); }
+      return n;
+    }
+    /* the longest run in what we still have on record; it never shrinks when old days are pruned */
+    function updateBest(){
+      var run = 0, prev = null, top = data.best.streak, last = data.best.day;
+      Object.keys(data.days).sort().forEach(function(k){
+        if (!met(k)){ run = 0; prev = null; return; }
+        run = prev && addDays(prev, 1) === k ? run + 1 : 1; prev = k;
+        if (run > top){ top = run; last = k; }
+      });
+      if (top !== data.best.streak || last !== data.best.day){ data.best = { streak: top, day: last }; touch(); }
+    }
+    function checkGoal(){
+      var k = todayKey();
+      updateBest();
+      if (met(k) && data.notified !== k){ data.notified = k; touch(); Marks.toast("Daily goal reached — " + streak() + "-day streak"); }
+    }
+
+    /* ---- active time: 15 s slices while a document is open, the page is visible, and the reader did something in the last 3 minutes
+       (read-aloud and auto-scroll count as doing something all the while) ---- */
+    function active(){ lastActive = Date.now(); }
+    ["scroll", "wheel", "keydown", "pointerdown", "touchstart"].forEach(function(ev){ window.addEventListener(ev, active, { passive: true, capture: true }); });
+    if (window.MutationObserver) new MutationObserver(active).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
+    document.addEventListener("ll:fileopened", function(){ docKey = null; active(); renderWidget(); });
+    function busy(){ return Speak.isPlaying() || (Auto.isOn() && !Auto.isPaused()); }
+    function tick(){
+      var now = Date.now();
+      if (docOpen() && document.visibilityState === "visible" && (busy() || now - lastActive <= IDLE)){
+        var b = noteDoc();
+        day(todayKey()).ms += TICK;
+        if (b){ b.ms += TICK; noteFinished(b); }
+        touch();
+        checkGoal();
+      }
+      renderWidget();
+      refreshPanel();
+    }
+    updateBest();      /* history brought in from another device or an older goal */
+    setInterval(tick, TICK);
+    function onMode(mode){
+      if (mode === "doc" || mode === "pdf"){ active(); if (!noteDoc()) setTimeout(noteDoc, 600); }
+      else docKey = null;
+      renderWidget();
+    }
+
+    /* ---- words ---- */
+    function mins(ms){ return Math.floor(ms / 60000); }
+    function dur(ms){ var m = mins(ms), h = Math.floor(m / 60); return h ? h + " h" + (m % 60 ? " " + (m % 60) + " min" : "") : m + " min"; }
+    function count(x){ return Math.round(x).toLocaleString(); }
+    function plural(c, one, many){ return c + " " + (c === 1 ? one : many); }
+    function dayLabel(key){ var d = dateOf(key); return WD[d.getDay()] + " " + d.getDate() + " " + MO[d.getMonth()]; }
+    function dayTitle(key){ var d = data.days[key]; return dayLabel(key) + " — " + mins(d ? d.ms : 0) + " min"; }
+    function weekStart(key){ return addDays(key, -((dateOf(key).getDay() + 6) % 7)); }
+    function sum(from, n){ var ms = 0; for (var i = 0; i < n; i++){ var d = data.days[addDays(from, i)]; if (d) ms += d.ms; } return ms; }
+    function hasReading(){ return Object.keys(data.days).some(function(k){ var d = data.days[k]; return d.ms > 0 || d.words > 0 || d.pages > 0; }); }
+    /* a row of lamp dots, one per day: lit when the goal was met, half-lit when there was some reading, today outlined */
+    function dots(n, decorative){
+      var k = todayKey(), h = '<span class="st-days"' + (decorative ? ' aria-hidden="true"' : '') + '>';
+      for (var i = n - 1; i >= 0; i--){
+        var key = addDays(k, -i), d = data.days[key];
+        var cls = "st-day" + (met(key) ? " lit" : d && (d.ms > 0 || d.words > 0 || d.pages > 0) ? " half" : "") + (i === 0 ? " today" : "");
+        h += '<span class="' + cls + '"' + (decorative ? '' : ' role="img" title="' + dayTitle(key) + '" aria-label="' + dayTitle(key) + '"') + '></span>';
+      }
+      return h + '</span>';
+    }
+
+    /* ---- start-screen widget: one calm line, only once there is something to say ---- */
+    function renderWidget(){
+      if (!widget) return;
+      var on = state.mode === "empty" && hasReading(), html = "";
+      if (on){
+        var s = streak(), t = data.days[todayKey()], parts = [];
+        if (s) parts.push(s + "-day streak");
+        parts.push(mins(t ? t.ms : 0) + " min today");
+        parts.push("goal " + data.goal + " min");
+        html = '<button type="button" class="st-widget" title="Reading stats"><span>' + parts.join(" · ") + '</span>' + dots(7, true) + '</button>';
+      }
+      widget.classList.toggle("show", on);
+      if (html !== widgetHtml){ widgetHtml = html; widget.innerHTML = html; }
+    }
+    if (widget) widget.addEventListener("click", function(e){ if (e.target.closest(".st-widget")) openPanel(); });
+
+    /* ---- panel ---- */
+    function row(k, v){ return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
+    function renderPanel(body, foot){
+      var k = todayKey(), t = data.days[k] || { ms: 0, words: 0, pages: 0 }, goalMs = data.goal * 60000, done = t.ms >= goalMs;
+      var s = streak(), left = Math.max(0, Math.ceil((goalMs - t.ms) / 60000)), h = "";
+      /* today */
+      var also = [plural(Math.round(t.words), "word", "words")];
+      if (t.pages >= 1) also.push(plural(Math.round(t.pages), "page", "pages"));
+      h += '<section class="st-sec"><div class="label">Today</div><div class="st-today">' +
+        '<div class="st-ring" style="--p:' + Math.min(100, Math.round(t.ms / goalMs * 100)) + '%" aria-hidden="true"></div>' +
+        '<div><div class="st-big">' + mins(t.ms) + '<span> of ' + data.goal + ' min</span></div>' +
+        '<div class="st-sub">' + (done ? "Goal reached" : plural(left, "minute", "minutes") + " to go") + ' · ' + also.join(" · ") + '</div></div></div></section>';
+      /* streak */
+      h += '<section class="st-sec"><div class="label">Streak</div>' + dots(14) +
+        '<div class="st-line">' + (s ? s + "-day streak" : "No streak yet") + (data.best.streak ? ' · best ' + plural(data.best.streak, "day", "days") : '') + '</div>' +
+        (done ? '' : '<div class="st-hint">Read ' + plural(left, "more minute", "more minutes") + ' today to ' + (s ? "keep it" : "start one") + '.</div>') + '</section>';
+      /* the last four weeks, a bar per day */
+      var max = data.goal, keys = [];
+      for (var i = 27; i >= 0; i--){ var kk = addDays(k, -i); keys.push(kk); if (data.days[kk]) max = Math.max(max, data.days[kk].ms / 60000); }
+      var ws = weekStart(k);
+      h += '<section class="st-sec"><div class="label">Last 4 weeks</div><div class="st-chart">' +
+        '<div class="st-goal" style="bottom:' + (data.goal / max * 100).toFixed(1) + '%"></div>' +
+        keys.map(function(key){
+          var m = data.days[key] ? data.days[key].ms / 60000 : 0, pct = m > 0 ? Math.max(3, m / max * 100) : 0;
+          return '<div class="st-bar' + (met(key) ? ' met' : '') + '" style="height:' + pct.toFixed(1) + '%" role="img" aria-label="' + dayTitle(key) + '"></div>';
+        }).join("") + '</div>' +
+        '<div class="st-line">This week ' + dur(sum(ws, 7)) + ' · last week ' + dur(sum(addDays(ws, -7), 7)) + '</div></section>';
+      /* all time */
+      var all = { ms: 0, words: 0, pages: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
+      dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; });
+      var finished = ids.filter(function(id){ return data.books[id].finished; }).length, first = dayKeys.length ? dateOf(dayKeys[0]) : null;
+      h += '<section class="st-sec"><div class="label">All time</div><dl class="st-grid">' +
+        row("Time read", dur(all.ms)) + row("Words", count(all.words)) + row("Pages", count(all.pages)) +
+        row("Documents opened", count(ids.length)) + row("Books finished", count(finished)) +
+        row("Average speed", Math.round(Progress.wpm()) + " words per minute") +
+        row("First day recorded", first ? first.getDate() + " " + MO[first.getMonth()] + " " + first.getFullYear() : "—") + '</dl></section>';
+      /* goal */
+      h += '<section class="st-sec"><div class="label">Daily goal</div><div class="chips st-goals" role="group" aria-label="Daily goal in minutes">' +
+        GOALS.map(function(g){ return '<button type="button" class="chip' + (g === data.goal ? ' on' : '') + '" data-goal="' + g + '" aria-pressed="' + (g === data.goal) + '" aria-label="' + plural(g, "minute", "minutes") + ' a day">' + g + '</button>'; }).join("") +
+        '</div><div class="hint">Minutes of reading a day. A day counts toward the streak once the goal is met.</div></section>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button type="button" class="chip" data-st="export">Export JSON</button><button type="button" class="chip" data-st="reset">Reset…</button>';
+    }
+    /* redraw in place: the scroll position and the focused chip survive the refresh */
+    function refreshPanel(){
+      if (!Side.is("stats")) return;
+      var body = Side.body, top = body.scrollTop, a = document.activeElement, sel = null;
+      if (a && (body.contains(a) || Side.foot.contains(a))) sel = a.dataset.goal ? '[data-goal="' + a.dataset.goal + '"]' : a.dataset.st ? '[data-st="' + a.dataset.st + '"]' : null;
+      Side.refresh("stats", renderPanel);
+      body.scrollTop = top;
+      var again = sel && (body.querySelector(sel) || Side.foot.querySelector(sel));
+      if (again) again.focus({ preventScroll: true });
+    }
+    function openPanel(){ Side.open("stats", "Reading stats", renderPanel); }
+    function setGoal(g){
+      if (GOALS.indexOf(g) < 0 || g === data.goal) return;
+      data.goal = g; dirty = true;
+      checkGoal(); save(); refreshPanel(); renderWidget();
+    }
+    function download(name, text, type){
+      var blob = new Blob([text], { type: type }), url = URL.createObjectURL(blob);
+      var a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
+    }
+    function exportJson(){
+      var out = { app: "Lamplight", exported: new Date().toISOString(), goal: data.goal, streak: streak(), best: data.best, days: data.days, books: data.books };
+      download("lamplight-stats.json", JSON.stringify(out, tidy, 2), "application/json");
+    }
+    function reset(){
+      if (!confirm("Clear all reading stats from this device? This can’t be undone.")) return;
+      data = fresh(); docKey = null; dirty = true;
+      save(); refreshPanel(); renderWidget();
+      Marks.toast("Reading stats cleared");
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("stats")) return;
+      var b = e.target.closest("button[data-goal]"); if (b) setGoal(+b.dataset.goal);
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("stats")) return;
+      var b = e.target.closest("button[data-st]"); if (!b) return;
+      if (b.dataset.st === "export") exportJson(); else reset();
+    });
+    Menu.add({ order: 61, label: "Reading stats", key: "G", run: openPanel });
+
+    function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); return o; }
+    /* for tests and other scripts */
+    window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save };
+    return { noteWords: noteWords, notePages: notePages, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
   })();
 
   /* ============================================================
@@ -3963,6 +4215,7 @@
     add("h", "Library / home", function(){ Library.home(); }, docOpen);
     add("i", "About this text", function(){ About.openPanel(); }, docOpen);
     add("?", "Keyboard shortcuts", function(){ openHelp(); });
+    add("g", "Reading stats", function(){ Stats.openPanel(); });
     var extra = [
       ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],
       ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
