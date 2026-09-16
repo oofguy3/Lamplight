@@ -766,8 +766,26 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     /* menus, sidebars, forms, media, scripts: nothing a reader needs */
     each("script,style,link,meta,noscript,template,iframe,object,embed,canvas,svg,math,video,audio,source,track," +
          "form,button,input,select,textarea,label,nav,aside,menu,dialog," +
-         "[role=navigation],[role=banner],[role=contentinfo],[role=complementary],[role=search],[aria-hidden=true],[hidden]",
+         "[role=navigation],[role=banner],[role=contentinfo],[role=complementary],[role=search]," +
+         "[role=dialog],[role=alertdialog],[role=alert],[role=menu],[role=menubar],[role=toolbar],[role=tooltip]," +
+         "[aria-hidden=true],[hidden]",
          function(el){ el.remove(); });
+    /* cookie banners, share bars, comment threads, ads… — recognised by their class/id names
+       (same idea as browser reader modes). Anything that looks like the article itself, or holds
+       most of the page's text, is always kept. */
+    each("[class*=editsection],[class*=noprint],[class~=sr-only],[class~=visually-hidden],[class~=screen-reader-text],[class~=catlinks]",
+         function(el){ el.remove(); });
+    var UNLIKELY = /-ad-|\bads?\b|advert|banner|breadcrumb|combx|comment|community|consent|cookie|disqus|gdpr|footer|header|legends|logo|menu|modal|newsletter|overlay|pager|pagination|popup|promo|related|remark|replies|rss|share|shoutbox|sidebar|skyscraper|social|sponsor|subscribe|supplemental|toolbar|widget|yom-remote/i;
+    var MAYBE = /\band\b|article|body|column|content|main|shadow|story|post|entry|text|page|chapter|book/i;
+    var totalText = (root.textContent || "").length;
+    each("[class],[id]", function(el){
+      if (!el.parentNode) return;
+      var hook = (el.getAttribute("class") || "") + " " + (el.getAttribute("id") || "");
+      if (!UNLIKELY.test(hook) || MAYBE.test(hook)) return;
+      if (/^(html|body|p|h[1-6]|li|td|th|em|strong|b|i|a|span|blockquote|pre|code|table)$/i.test(el.tagName)) return;
+      if ((el.textContent || "").length > totalText * 0.4) return;
+      el.remove();
+    });
     /* images stored online or in a sidecar folder can't load offline; keep their alt text */
     each("img", function(img){
       var src = img.getAttribute("src") || "";
