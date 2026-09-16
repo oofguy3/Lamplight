@@ -1446,6 +1446,30 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       transform:translateY(105%);}
   }
 
+  /* read aloud bar */
+  #tts{
+    position:fixed; left:0; right:0; bottom:0; z-index:16; display:none; align-items:center; gap:8px;
+    background:var(--panel); border-top:1px solid var(--line); padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    transition:background .35s ease, border-color .35s ease; font-family:var(--ui-font);
+  }
+  #tts.on{display:flex;}
+  body.paged #tts{bottom:var(--pagerH, 56px); padding-bottom:8px;}
+  #tts .ctl{min-width:38px; height:38px; padding:0 9px; font-size:15px;}
+  #tts label{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); flex:1; min-width:90px;}
+  #tts input[type=range]{flex:1; min-width:50px;}
+  #tts .val{min-width:34px;}
+  #tts select{
+    max-width:150px; min-width:0; padding:7px 8px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:12.5px; text-overflow:ellipsis;
+  }
+  #tts .tts-x{font-size:18px;}
+  @media (max-width:560px){
+    #tts{gap:5px; padding-left:8px; padding-right:8px;}
+    #tts select{max-width:96px; font-size:12px;}
+    #tts label{min-width:80px;}
+  }
+  ::highlight(ll-speak){background:color-mix(in srgb, var(--accent) 24%, transparent); color:inherit;}
+
   /* search */
   .find-row{display:flex; gap:6px; align-items:center; margin:2px 0 8px;}
   .find-row input{
@@ -1622,6 +1646,14 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   <div id="pdf"></div>
 </main>
 
+<div id="tts" role="region" aria-label="Read aloud">
+  <button class="ctl" id="ttsPrev" title="Previous sentence" aria-label="Previous sentence">‹</button>
+  <button class="ctl primary" id="ttsPlay" title="Play / pause" aria-label="Play">▶</button>
+  <button class="ctl" id="ttsNext" title="Next sentence" aria-label="Next sentence">›</button>
+  <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
+  <select id="ttsVoice" aria-label="Voice"></select>
+  <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading">×</button>
+</div>
 <div id="sideScrim"></div>
 <aside id="side" aria-hidden="true">
   <div class="side-head"><div class="side-title" id="sideTitle"></div><button class="side-x" id="sideClose" aria-label="Close">×</button></div>
@@ -1834,7 +1866,9 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var head = document.querySelector("header");
     var headH = document.body.classList.contains("immersive") ? 0 : head.offsetHeight;
     var pagerH = $("#pager").offsetHeight || 56;
-    return Math.max(160, window.innerHeight - headH - pagerH - 26);
+    document.documentElement.style.setProperty("--pagerH", pagerH + "px");
+    var ttsEl = $("#tts"), ttsH = ttsEl && ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
+    return Math.max(160, window.innerHeight - headH - pagerH - ttsH - 26);
   }
   function layoutDocPages(){
     var view = $("#docView"), doc = $("#doc");
@@ -1957,6 +1991,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     renderGen++;
     releaseEpubUrls();
     Search.reset();
+    Speak.stop();
 
     var fail = function(err){
       console.error(err);
@@ -3155,9 +3190,27 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   /* ============================================================
      Search inside the document (text documents and PDFs)
      ============================================================ */
+  /* text of a PDF page, cached per document (search and read-aloud share it) */
+  var PdfText = (function(){
+    var cache = null, cacheDoc = null;
+    function get(i){
+      var doc = state.pdfDoc;
+      if (!doc) return Promise.resolve("");
+      if (cacheDoc !== doc){ cache = new Array(doc.numPages); cacheDoc = doc; }
+      if (cache[i-1] !== undefined) return Promise.resolve(cache[i-1]);
+      return doc.getPage(i).then(function(pg){ return pg.getTextContent(); }).then(function(tc){
+        var s = "";
+        tc.items.forEach(function(it){ s += it.str + (it.hasEOL ? "\n" : " "); });
+        s = s.replace(/[ \t]+/g, " ");
+        if (cacheDoc === doc) cache[i-1] = s;
+        return s;
+      }).catch(function(){ return ""; });
+    }
+    return { get: get };
+  })();
+
   var Search = (function(){
     var query = "", results = [], cur = -1, gen = 0, input = null, listEl = null, statusEl = null;
-    var pdfText = null, pdfTextDoc = null;   /* [pageText] cache per pdf */
     var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     function rx(q){
@@ -3204,23 +3257,14 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       out.forEach(function(r){ r.where = sectionTitleFor(r.start); });
       return Promise.resolve(out);
     }
-    function pdfPageText(doc, i){
-      return doc.getPage(i).then(function(pg){ return pg.getTextContent(); }).then(function(tc){
-        var s = "";
-        tc.items.forEach(function(it){ s += it.str + (it.hasEOL ? "\n" : " "); });
-        return s.replace(/[ \t]+/g, " ");
-      }).catch(function(){ return ""; });
-    }
     function runPdf(q, myGen){
       var doc = state.pdfDoc;
-      if (pdfTextDoc !== doc){ pdfText = new Array(doc.numPages); pdfTextDoc = doc; }
       var out = [], i = 1;
       return new Promise(function(resolve){
         (function next(){
-          if (myGen !== gen){ resolve(null); return; }
+          if (myGen !== gen || state.pdfDoc !== doc){ resolve(null); return; }
           if (i > doc.numPages){ resolve(out); return; }
-          var have = pdfText[i-1] !== undefined ? Promise.resolve(pdfText[i-1]) : pdfPageText(doc, i).then(function(t){ pdfText[i-1] = t; return t; });
-          have.then(function(t){
+          PdfText.get(i).then(function(t){
             var re = rx(q), m;
             while ((m = re.exec(t)) && out.length < 500){
               out.push({ page: i, html: snippet(t, m.index, m.index + m[0].length), where: "Page " + i });
@@ -3303,6 +3347,202 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     });
     Menu.add({ order: 20, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, reset: reset, refresh: refresh, go: go, results: function(){ return results; } };
+  })();
+
+  /* ============================================================
+     Read aloud — Web Speech API, sentence by sentence
+     ============================================================ */
+  var Speak = (function(){
+    var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+    var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
+    var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
+    var rate = parseFloat(localStorage.getItem("ll_tts_rate") || "1") || 1;
+    var voiceName = localStorage.getItem("ll_tts_voice") || "";
+    var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
+    rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "\u00D7";
+
+    function voices(){ return supported ? speechSynthesis.getVoices() : []; }
+    function fillVoices(){
+      var vs = voices();
+      var lang = (document.documentElement.lang || "en").slice(0, 2).toLowerCase();
+      vs = vs.slice().sort(function(a, b){
+        var al = a.lang.slice(0, 2).toLowerCase() === lang ? 0 : 1, bl = b.lang.slice(0, 2).toLowerCase() === lang ? 0 : 1;
+        if (al !== bl) return al - bl;
+        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      voiceSel.innerHTML = vs.map(function(v){
+        return '<option value="' + v.name.replace(/"/g, "&quot;") + '"' + (v.name === voiceName ? ' selected' : '') + '>' + v.name.replace(/</g, "&lt;") + (v.localService ? "" : " (online)") + '</option>';
+      }).join("") || '<option value="">Default voice</option>';
+    }
+    if (supported){ fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
+    function currentVoice(){
+      var vs = voices(), name = voiceSel.value || voiceName;
+      return vs.filter(function(v){ return v.name === name; })[0] || null;
+    }
+
+    /* ---- sentence units ---- */
+    var SENT = /[^.!?\u2026]+[.!?\u2026]*["\u201d\u2019)]?\s*/g;
+    function splitLong(text, base, out){
+      /* keep utterances short: some engines cut off after ~15 seconds */
+      if (text.length <= 220){ out.push({ start: base, end: base + text.length, text: text }); return; }
+      var i = 0;
+      while (i < text.length){
+        var j = Math.min(text.length, i + 200);
+        if (j < text.length){ var k = text.lastIndexOf(" ", j); if (k > i + 60) j = k; }
+        out.push({ start: base + i, end: base + j, text: text.slice(i, j) });
+        i = j;
+      }
+    }
+    function unitsFromText(text, base, out){
+      /* paragraphs (blank lines) then sentences; offsets are relative to base */
+      var re = /\n[ \t]*\n/g, last = 0, m;
+      var paras = [];
+      while ((m = re.exec(text))){ paras.push([last, m.index]); last = m.index + m[0].length; }
+      paras.push([last, text.length]);
+      paras.forEach(function(p){
+        var seg = text.slice(p[0], p[1]);
+        SENT.lastIndex = 0;
+        var sm;
+        while ((sm = SENT.exec(seg))){
+          var t = sm[0], lead = t.length - t.replace(/^\s+/, "").length, trail = t.length - t.replace(/\s+$/, "").length;
+          var core = t.slice(lead, t.length - trail);
+          if (!/[A-Za-z0-9\u00C0-\u024F]/.test(core)) continue;
+          splitLong(core.replace(/\s+/g, " "), base + p[0] + sm.index + lead, out);
+          if (!t.length) SENT.lastIndex++;
+        }
+      });
+    }
+    function buildDocUnits(){
+      var doc = $("#doc"), out = [];
+      var SEL = "p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dt, dd, pre, figcaption, div.plain";
+      var blocks = Array.prototype.slice.call(doc.querySelectorAll(SEL)).filter(function(b){ return !b.querySelector(SEL); });
+      if (!blocks.length) blocks = [doc];
+      var nodes = Anchor.textNodes(), offsetOfNode = new Map(), sum = 0;
+      nodes.forEach(function(n){ offsetOfNode.set(n, sum); sum += n.length; });
+      blocks.forEach(function(b){
+        var w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT), n, first = null, text = "";
+        while ((n = w.nextNode())){ if (!first) first = n; text += n.textContent; }
+        if (!first || !text.trim()) return;
+        var base = offsetOfNode.get(first);
+        if (base === undefined) return;
+        unitsFromText(text, base, out);
+      });
+      return out;
+    }
+
+    /* ---- painting + revealing ---- */
+    function paint(u){
+      if (!hasHL) return;
+      CSS.highlights.delete("ll-speak");
+      if (!u || state.mode !== "doc") return;
+      var r = Anchor.rangeBetween(u.start, u.end);
+      if (r) CSS.highlights.set("ll-speak", new Highlight(r));
+    }
+    function ensureVisible(u){
+      if (state.mode !== "doc") return;
+      var r = Anchor.rangeAt(u.start); if (!r) return;
+      var rect = r.getBoundingClientRect();
+      if (state.flow === "pages"){
+        var v = $("#docView").getBoundingClientRect();
+        if (rect.left < v.left - 2 || rect.left > v.right) revealOffset(u.start);
+      } else {
+        var head = Library.headerHeight(), bottom = window.innerHeight - (bar.classList.contains("on") ? bar.offsetHeight : 0);
+        if (rect.top < head + 4 || rect.bottom > bottom - 10) revealOffset(u.start, { center: true });
+      }
+    }
+
+    /* ---- speaking ---- */
+    function speakCurrent(){
+      if (!units.length || idx < 0 || idx >= units.length){ finish(); return; }
+      var u = units[idx], myGen = ++gen;
+      try { speechSynthesis.cancel(); } catch(_){}
+      paint(u); ensureVisible(u);
+      if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
+      utter = new SpeechSynthesisUtterance(u.text);
+      utter.rate = rate;
+      var v = currentVoice(); if (v){ utter.voice = v; utter.lang = v.lang; }
+      utter.onend = function(){ if (myGen !== gen || !playing) return; idx++; if (idx < units.length) speakCurrent(); else finish(); };
+      utter.onerror = function(e){
+        if (myGen !== gen) return;
+        if (e.error === "interrupted" || e.error === "canceled") return;
+        Marks.toast("Speech stopped (" + (e.error || "error") + ")");
+        pause();
+      };
+      /* Chrome needs a fresh call after cancel() on some platforms */
+      setTimeout(function(){ if (myGen === gen && playing) speechSynthesis.speak(utter); }, 0);
+    }
+    function play(){
+      if (!units.length) return;
+      playing = true; playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause");
+      speakCurrent();
+    }
+    function pause(){
+      playing = false; gen++;
+      try { speechSynthesis.cancel(); } catch(_){}
+      playBtn.textContent = "\u25B6"; playBtn.setAttribute("aria-label", "Play");
+    }
+    function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); }
+    function stop(){
+      pause(); paint(null); active = false; units = []; idx = -1;
+      bar.classList.remove("on");
+      if (state.flow === "pages") relayoutPaged();
+    }
+    function startFrom(offset){
+      if (!supported){ Marks.toast("Read aloud isn\u2019t available in this browser"); return; }
+      if (state.mode !== "doc" && state.mode !== "pdf") return;
+      active = true; bar.classList.add("on"); fillVoices();
+      if (state.flow === "pages") relayoutPaged();
+      if (state.mode === "doc"){
+        units = buildDocUnits();
+        var off = typeof offset === "number" ? offset : (Library.topCharOffset() || 0);
+        idx = 0;
+        for (var i = 0; i < units.length; i++){ if (units[i].end > off){ idx = i; break; } }
+        if (!units.length){ Marks.toast("Nothing to read"); stop(); return; }
+        play();
+      } else {
+        var page = Library.currentPdfPage();
+        loadPdfUnits(page).then(function(){ if (!units.length){ Marks.toast("No text on this page"); stop(); return; } idx = 0; play(); });
+      }
+    }
+    function loadPdfUnits(page){
+      var doc = state.pdfDoc;
+      units = [];
+      var pages = [];
+      for (var p = page; p <= doc.numPages; p++) pages.push(p);
+      /* load the first page now, the rest while reading */
+      return PdfText.get(page).then(function(t){
+        unitsFromText(t, 0, units); units.forEach(function(u){ u.page = page; });
+        pdfUnitsDoc = doc;
+        var next = page + 1;
+        (function more(){
+          if (next > doc.numPages || state.pdfDoc !== doc || !active) return;
+          var pg = next++;
+          PdfText.get(pg).then(function(tt){
+            if (state.pdfDoc !== doc || !active) return;
+            var add = []; unitsFromText(tt, 0, add); add.forEach(function(u){ u.page = pg; });
+            units = units.concat(add);
+            setTimeout(more, 50);
+          });
+        })();
+      });
+    }
+
+    playBtn.addEventListener("click", function(){ if (playing) pause(); else play(); });
+    $("#ttsStop").addEventListener("click", stop);
+    $("#ttsPrev").addEventListener("click", function(){ if (!units.length) return; idx = Math.max(0, idx - 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
+    $("#ttsNext").addEventListener("click", function(){ if (!units.length) return; idx = Math.min(units.length - 1, idx + 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
+    rateEl.addEventListener("input", function(){
+      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "\u00D7"; localStorage.setItem("ll_tts_rate", String(rate));
+      if (playing) speakCurrent();
+    });
+    voiceSel.addEventListener("change", function(){ voiceName = voiceSel.value; localStorage.setItem("ll_tts_voice", voiceName); if (playing) speakCurrent(); });
+    window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} });
+
+    Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
+               show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
+    return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
+             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, supported: supported };
   })();
 
   Menu.add({ order: 90, sep: true });
@@ -3920,7 +4160,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
               '<div class="term">' + (/\s/.test(sentence) ? 'This sentence' : 'This word') + '</div></div>' +
               '<button class="x" aria-label="Close">×</button></div>' +
               '<div class="quote">' + esc(sentence) + '</div>' +
-              (currentSpan ? '<div class="acts" id="dictMarkActs"><button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button></div>' : '') +
+              (currentSpan ? '<div class="acts" id="dictMarkActs"><button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button></div>' : '') +
               '<div id="dictAi"></div>' +
               '<div id="dictExpl"><div class="note">Reading it…' +
               (DB ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
@@ -3929,6 +4169,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       var ma = inner.querySelector("#dictMarkActs");
       if (ma) ma.addEventListener("click", function(e){
         var b = e.target.closest("button"); if (!b || !window.__ll || !window.__ll.Marks) return;
+        if (b.dataset.m === "read"){ closeCard(); window.__ll.Speak.start(currentSpan.start); return; }
         var m = window.__ll.Marks.addHighlight(currentSpan.start, currentSpan.end);
         closeCard();
         if (m && b.dataset.m === "note") window.__ll.Marks.openPanel(m.key);
@@ -4276,7 +4517,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
+  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
