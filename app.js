@@ -55,21 +55,54 @@
     }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
+  /* Built-in themes. Every pair the reader meets (text, secondary text and accent on the page
+     and on the panel) is at least 4.5:1 — tests/themes.js audits this table. */
   var THEMES = {
+    /* light */
     day:   {name:"Day",    bg:"#EDEDE6", ink:"#1F2323", muted:"#646B68", panel:"#F5F5EF", line:"#D8D9CF", accent:"#2F6D5B"},
-    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#8D5A1D"},
+    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#86551A"},
     mist:  {name:"Mist",   bg:"#E7EBEE", ink:"#25303A", muted:"#5D6A76", panel:"#F0F3F5", line:"#D1D9DF", accent:"#3C6E93"},
-    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#AE4D5E"},
+    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#A8495A"},
+    paper:     {name:"Paper",     bg:"#FAFAF7", ink:"#141414", muted:"#5C5C58", panel:"#FFFFFF", line:"#E1E1DA", accent:"#BE2A24"},
+    parchment: {name:"Parchment", bg:"#F1E4C6", ink:"#2C2114", muted:"#67563A", panel:"#F7ECD4", line:"#DCCBA3", accent:"#8B2F2A"},
+    linen:     {name:"Linen",     bg:"#F3EFE6", ink:"#2B2A26", muted:"#65625A", panel:"#FAF8F1", line:"#DDD8CB", accent:"#5A6828"},
+    sage:      {name:"Sage",      bg:"#E3EADD", ink:"#1F2A22", muted:"#556358", panel:"#EDF2E8", line:"#CAD5C3", accent:"#A2502E"},
+    lavender:  {name:"Lavender",  bg:"#ECE7F4", ink:"#29233A", muted:"#605876", panel:"#F4F1FA", line:"#D6CFE4", accent:"#6A4DB5"},
+    sky:       {name:"Sky",       bg:"#E2EDF7", ink:"#17293A", muted:"#4F6274", panel:"#EEF5FB", line:"#C7D8E7", accent:"#2068A8"},
+    peach:     {name:"Peach",     bg:"#FBE7DA", ink:"#3B2A21", muted:"#765A4D", panel:"#FDF1E8", line:"#EBD1C0", accent:"#146C72"},
+    newsprint: {name:"Newsprint", bg:"#E3E2DC", ink:"#2B2B2B", muted:"#5E5E5B", panel:"#EBEAE5", line:"#CDCCC5", accent:"#A82424"},
+    mint:      {name:"Mint",      bg:"#DEF2E8", ink:"#153128", muted:"#48685C", panel:"#EAF7F0", line:"#C1DFD1", accent:"#0D7566"},
+    /* dark */
     dusk:  {name:"Dusk",   bg:"#14161B", ink:"#D6D3C8", muted:"#8E9088", panel:"#1B1E25", line:"#2A2E37", accent:"#D8A24A"},
     forest:{name:"Forest", bg:"#101711", ink:"#CDD8C6", muted:"#83907E", panel:"#161F17", line:"#263223", accent:"#7FB069"},
     ocean: {name:"Ocean",  bg:"#0D141E", ink:"#CBD5E1", muted:"#7E8CA0", panel:"#131C29", line:"#223042", accent:"#5C9CD6"},
     plum:  {name:"Plum",   bg:"#17101F", ink:"#D8CDE3", muted:"#91849F", panel:"#1E1628", line:"#2F2440", accent:"#A97FD6"},
     ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#7F7C72", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F"},
+    midnight:  {name:"Midnight",  bg:"#0B1126", ink:"#D8DDEE", muted:"#8F9AB9", panel:"#111A36", line:"#20294B", accent:"#9DB4FF"},
+    graphite:  {name:"Graphite",  bg:"#1E1F22", ink:"#D8D8D5", muted:"#9A9A96", panel:"#26272B", line:"#36373C", accent:"#74D0B8"},
+    ember:     {name:"Ember",     bg:"#1A1210", ink:"#EBDACD", muted:"#A68F80", panel:"#221815", line:"#3B2A22", accent:"#F2812E"},
+    moss:      {name:"Moss",      bg:"#161A10", ink:"#D7DBC2", muted:"#949B7F", panel:"#1D2215", line:"#303826", accent:"#B7C86A"},
+    cocoa:     {name:"Cocoa",     bg:"#1B1411", ink:"#E9DBCF", muted:"#A6958A", panel:"#241B17", line:"#3A2D27", accent:"#D8A067"},
+    slate:     {name:"Slate",     bg:"#1C2229", ink:"#D5DBE1", muted:"#8F9BA7", panel:"#242B33", line:"#353E48", accent:"#EF8C76"},
+    /* dim: for reading in the dark without a black screen */
+    candle:    {name:"Candle",    bg:"#2A1D14", ink:"#F0DDB4", muted:"#B39F80", panel:"#33251A", line:"#4C3A2A", accent:"#E9C46A"},
+    /* phosphor screens and pure black */
+    terminal:  {name:"Terminal",  bg:"#050805", ink:"#3FE86F", muted:"#2FA354", panel:"#0A110A", line:"#183018", accent:"#D9FF6E"},
+    amber:     {name:"Amber",     bg:"#0F0A03", ink:"#FFB000", muted:"#B98319", panel:"#17100A", line:"#302311", accent:"#FFDF70"},
+    noir:      {name:"Noir",      bg:"#000000", ink:"#C6C6C6", muted:"#8E8E8E", panel:"#0B0B0B", line:"#242424", accent:"#EDEDED"},
     /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
     hicon: {name:"Contrast",      bg:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", panel:"#FFFFFF", line:"#000000", accent:"#0033CC"},
     hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400"}
   };
-  var CYCLE = Object.keys(THEMES);
+  /* the chips and the day / night lists show the built-ins in three groups; the lamp cycles
+     them in the same order: lights, then darks, then high contrast */
+  var HICON = ["hicon", "hidark"];
+  function themeGroups(){
+    var light = [], dark = [];
+    Object.keys(THEMES).forEach(function(k){ if (HICON.indexOf(k) < 0) (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
+    return [{ id: "light", name: "Light", ids: light }, { id: "dark", name: "Dark", ids: dark }, { id: "hicon", name: "High contrast", ids: HICON }];
+  }
+  var CYCLE = themeGroups().reduce(function(all, g){ return all.concat(g.ids); }, []);
   /* system stacks: the plain choice in each group, and what a bundled family shows before it
      has loaded (or falls back to when it can't) */
   var STACKS = {
@@ -133,10 +166,14 @@
   var BG_SWATCHES = ["#F6F1E4","#EFEFE8","#EDE7F3","#E4EFE7","#FBEDE0","#E8EFF5",
                      "#14161B","#101711","#171021","#1A1310","#0D1420","#050506"];
   var ACC_SWATCHES = ["#D8A24A","#C96A4A","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7FB069","#C9A227"];
+  /* the single "Custom" theme of earlier versions; still read so a saved one carries over into `customs` */
+  var CUSTOM_DEFAULT = {bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true};
 
   var state = {
     theme:"day",
-    custom:{bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true},
+    custom:Object.assign({}, CUSTOM_DEFAULT),
+    /* saved custom themes {id, name, bg, ink, autoInk, accent, panel?, muted?}; "c:" + id selects one */
+    customs:[],
     font:"serif", size:19, lh:1.75, width:720, margin:0, justify:false, hyphens:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
     zoom:1, soften:true,
@@ -147,13 +184,40 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
     var loading = false;
     function save(){
       if (loading) return;
       var o = {};
       FIELDS.forEach(function(f){ o[f] = state[f]; });
       Store.set(KEY, JSON.stringify(o));
+    }
+    /* saved custom themes from storage: only well-formed entries with real colours are kept */
+    function validCustoms(list){
+      var out = [], seen = {};
+      if (!Array.isArray(list)) return out;
+      list.forEach(function(c){
+        if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id || typeof c.name !== "string" || seen[c.id]) return;
+        var bg = normHex(c.bg), accent = normHex(c.accent), ink = normHex(c.ink);
+        if (!bg || !accent) return;
+        var t = { id: c.id, name: c.name.trim().slice(0, 60) || "Custom", bg: bg, ink: ink || deriveInk(bg), autoInk: c.autoInk !== false || !ink, accent: accent };
+        if (normHex(c.panel)) t.panel = normHex(c.panel);
+        if (normHex(c.muted)) t.muted = normHex(c.muted);
+        seen[c.id] = true; out.push(t);
+      });
+      return out;
+    }
+    /* the single scratch "Custom" theme of earlier versions becomes a saved theme, once: afterwards
+       the scratch colours are back at their defaults and nothing points at "custom" any more */
+    function migrateCustom(){
+      var c = state.custom, d = CUSTOM_DEFAULT;
+      var used = state.theme === "custom" || state.autoDay === "custom" || state.autoNight === "custom" || c.autoInk !== d.autoInk ||
+        ["bg", "ink", "accent"].some(function(k){ return String(c[k]).toLowerCase() !== d[k]; });
+      if (!used) return;
+      var bg = normHex(c.bg), accent = normHex(c.accent), ink = normHex(c.ink), theme = null;
+      if (bg && accent) theme = "c:" + addCustom({ name: "My theme", bg: bg, ink: ink || deriveInk(bg), autoInk: c.autoInk !== false || !ink, accent: accent }).id;
+      ["theme", "autoDay", "autoNight"].forEach(function(k){ if (state[k] === "custom") state[k] = theme || (k === "autoNight" ? "dusk" : "day"); });
+      state.custom = Object.assign({}, d);
     }
     function load(){
       var o = null;
@@ -163,13 +227,15 @@
       FIELDS.forEach(function(f){
         if (o[f] === undefined || o[f] === null) return;
         if (f === "custom"){ if (typeof o.custom === "object") state.custom = Object.assign({}, state.custom, o.custom); return; }
+        if (f === "customs"){ state.customs = validCustoms(o.customs); return; }
         if (typeof state[f] === "number" && typeof o[f] !== "number") return;
         state[f] = o[f];
       });
-      if (!THEMES[state.theme] && state.theme !== "custom") state.theme = "day";
+      migrateCustom();
+      if (!resolveTheme(state.theme)) state.theme = "day";
       if (!/^(off|system|time)$/.test(state.auto)) state.auto = "off";
-      if (!THEMES[state.autoDay] && state.autoDay !== "custom") state.autoDay = "day";
-      if (!THEMES[state.autoNight] && state.autoNight !== "custom") state.autoNight = "dusk";
+      if (!resolveTheme(state.autoDay)) state.autoDay = "day";
+      if (!resolveTheme(state.autoNight)) state.autoNight = "dusk";
       if (!/^\d\d:\d\d$/.test(state.nightFrom)) state.nightFrom = "21:00";
       if (!/^\d\d:\d\d$/.test(state.nightTo)) state.nightTo = "07:00";
       if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
@@ -224,75 +290,219 @@
     var hs = hexToHsl(bg);
     return isDarkColor(bg) ? hslToHex(hs[0], 12, 86) : hslToHex(hs[0], 22, 13);
   }
-  function currentTheme(){
-    if (state.theme === "custom"){
-      var c = state.custom;
-      var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
-      return {
-        bg:c.bg, ink:ink, accent:c.accent,
-        panel: mix(c.bg, ink, 0.05),
-        line:  mix(c.bg, ink, 0.15),
-        muted: mix(ink, c.bg, 0.42)
-      };
-    }
-    return THEMES[state.theme];
+  /* WCAG contrast: relative luminance of sRGB, then (lighter + .05) / (darker + .05) */
+  function luminance(hex){
+    var c = hexToRgb(hex).map(function(v){ v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function contrast(a, b){
+    var x = luminance(a), y = luminance(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  /* "#abc" or "#aabbcc", with or without the hash → "#aabbcc"; anything else → null */
+  function normHex(v){
+    var m = /^\s*#?([0-9a-f]{3}|[0-9a-f]{6})\s*$/i.exec(typeof v === "string" ? v : "");
+    if (!m) return null;
+    var h = m[1].toLowerCase();
+    if (h.length === 3) h = h.split("").map(function(c){ return c + c; }).join("");
+    return "#" + h;
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+
+  /* ---------- themes: built-ins and the saved custom ones ---------- */
+  function isBuiltIn(theme){ return typeof theme === "string" && Object.prototype.hasOwnProperty.call(THEMES, theme); }
+  /* the saved custom theme a "c:" + id refers to, or null */
+  function customById(theme){
+    if (typeof theme !== "string" || theme.slice(0, 2) !== "c:") return null;
+    var id = theme.slice(2);
+    for (var i = 0; i < state.customs.length; i++) if (state.customs[i].id === id) return state.customs[i];
+    return null;
+  }
+  /* a custom theme's six colours: panel and secondary text are derived from the background and
+     the text unless the user picked them; the hairline always is */
+  function customColors(c){
+    var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
+    return {
+      name: c.name, bg: c.bg, ink: ink, accent: c.accent,
+      panel: c.panel || mix(c.bg, ink, 0.05),
+      line:  mix(c.bg, ink, 0.15),
+      muted: c.muted || deriveMuted(ink, c.bg)
+    };
+  }
+  /* secondary text: the text mixed towards the background, but no further than still reads on it */
+  function deriveMuted(ink, bg){
+    for (var t = 0.42; t > 0; t -= 0.03){ var m = mix(ink, bg, t); if (contrast(m, bg) >= 4.5) return m; }
+    return ink;
+  }
+  function resolveTheme(theme){
+    if (isBuiltIn(theme)) return THEMES[theme];
+    var c = customById(theme);
+    return c ? customColors(c) : null;
+  }
+  function currentTheme(){ return resolveTheme(state.theme) || THEMES.day; }
+  function newCustomId(){ var id; do { id = Math.random().toString(36).slice(2, 8); } while (!id || customById("c:" + id)); return id; }
+  function addCustom(t){ var c = Object.assign({ id: newCustomId() }, t); state.customs.push(c); return c; }
+  function copyCustom(c, name){
+    var t = { name: name, bg: c.bg, ink: c.ink, autoInk: c.autoInk, accent: c.accent };
+    if (c.panel) t.panel = c.panel;
+    if (c.muted) t.muted = c.muted;
+    return addCustom(t);
+  }
+  /* "Custom 1", "Custom 2"… (the first free number), or `base`, `base 2`, `base 3`… */
+  function customName(base){
+    var names = state.customs.map(function(c){ return c.name; }), n, i;
+    if (base){ n = base; i = 2; while (names.indexOf(n) >= 0) n = base + " " + (i++); return n; }
+    for (i = 1; ; i++) if (names.indexOf("Custom " + i) < 0) return "Custom " + i;
   }
 
   /* ---------- theme + type ---------- */
+  /* a chip's swatch: the theme's page colour with its accent as the lamp in the middle */
+  function swatchHtml(t){ return '<i style="--sw-bg:' + t.bg + ';--sw-acc:' + t.accent + '" aria-hidden="true"></i>'; }
+  function chipHtml(theme, t){ return '<button class="chip" data-theme="' + theme + '">' + swatchHtml(t) + escapeHtml(t.name) + '</button>'; }
   function buildThemeChips(){
     var html = "";
-    CYCLE.forEach(function(k){
-      html += '<button class="chip" data-theme="' + k + '"><i style="background:' + THEMES[k].accent + '"></i>' + THEMES[k].name + "</button>";
+    themeGroups().forEach(function(g){
+      html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="chips">' +
+        g.ids.map(function(k){ return chipHtml(k, THEMES[k]); }).join("") + '</div></div>';
     });
-    html += '<button class="chip" data-theme="custom"><i id="customDot" style="background:' + state.custom.accent + '"></i>Custom</button>';
+    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">Custom</div><div class="chips">' +
+      state.customs.map(function(c){ return chipHtml("c:" + c.id, customColors(c)); }).join("") +
+      '<button class="chip chip-new" data-new="1" title="Start a custom theme from the colours on screen">New…</button></div></div>';
     $("#themeChips").innerHTML = html;
   }
   function buildCustomUI(){
     $("#bgSwatches").innerHTML = BG_SWATCHES.map(function(c){
-      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Background ' + c + '"></button>';
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Background ' + c + '" aria-pressed="false"></button>';
     }).join("");
     $("#accSwatches").innerHTML = ACC_SWATCHES.map(function(c){
-      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Accent ' + c + '"></button>';
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Accent ' + c + '" aria-pressed="false"></button>';
     }).join("");
   }
-  function syncCustomUI(){
-    var c = state.custom;
-    var hs = hexToHsl(c.bg);
-    $("#cHue").value = hs[0]; $("#vHue").textContent = hs[0] + "°";
-    $("#cLit").value = hs[2]; $("#vLit").textContent = hs[2] + " %";
-    $("#autoInk").checked = c.autoInk;
-    $("#inkRow").style.display = c.autoInk ? "none" : "flex";
-    $("#cInk").value = c.autoInk ? deriveInk(c.bg) : c.ink;
-    $("#cAcc").value = c.accent;
-    document.querySelectorAll("#bgSwatches .sw").forEach(function(s){
-      s.classList.toggle("on", s.dataset.c.toLowerCase() === c.bg.toLowerCase());
-    });
-    document.querySelectorAll("#accSwatches .sw").forEach(function(s){
-      s.classList.toggle("on", s.dataset.c.toLowerCase() === c.accent.toLowerCase());
+  /* a colour picker and its hex field show the same colour; a derived colour is shown but not editable.
+     The hex field keeps what is being typed in it until it is left. */
+  function setPick(key, hex, auto){
+    var p = $("#c" + key), h = $("#h" + key);
+    p.value = hex; p.disabled = !!auto; h.disabled = !!auto;
+    if (document.activeElement !== h){ h.value = hex; h.classList.remove("bad"); h.removeAttribute("aria-invalid"); }
+  }
+  function markSwatches(sel, hex){
+    document.querySelectorAll(sel + " .sw").forEach(function(s){
+      var on = s.dataset.c.toLowerCase() === hex;
+      s.classList.toggle("on", on); s.setAttribute("aria-pressed", on ? "true" : "false");
     });
   }
+  /* the pickers, hex fields, auto boxes and swatch marks follow the theme (the sliders are left
+     alone, so dragging or stepping them is never undone by a rounding trip through hex) */
+  function syncPicks(c){
+    var t = customColors(c);
+    setPick("Bg", c.bg);
+    $("#autoInk").checked = !!c.autoInk; setPick("Ink", t.ink, c.autoInk);
+    setPick("Acc", c.accent);
+    $("#autoPanel").checked = !c.panel; setPick("Panel", t.panel, !c.panel);
+    $("#autoMuted").checked = !c.muted; setPick("Muted", t.muted, !c.muted);
+    markSwatches("#bgSwatches", c.bg); markSwatches("#accSwatches", c.accent);
+  }
+  /* the editor shows the saved custom theme that is selected */
+  function syncCustomUI(){
+    var c = customById(state.theme);
+    if (!c) return;
+    var hs = hexToHsl(c.bg);
+    $("#cName").textContent = c.name;
+    $("#cHue").value = hs[0]; $("#vHue").textContent = hs[0] + "°";
+    $("#cLit").value = hs[2]; $("#vLit").textContent = hs[2] + " %";
+    syncPicks(c);
+  }
+  /* the contrast meter: the pairs a reader meets, graded like WCAG (AA from 4.5:1, AAA from 7:1) */
+  var METER = [
+    { id: "ink",         what: "text",           fg: "ink",    on: "bg" },
+    { id: "muted",       what: "secondary text", fg: "muted",  on: "bg" },
+    { id: "accent",      what: "accent",         fg: "accent", on: "bg" },
+    { id: "accentPanel", what: "accent",         fg: "accent", on: "panel" }
+  ];
+  function grade(r){ return r >= 7 ? "AAA" : r >= 4.5 ? "AA" : "Low"; }
+  /* whether white or black is the better text colour on this background */
+  function lighterWins(bg){ return contrast(bg, "#ffffff") >= contrast(bg, "#000000"); }
+  function syncMeter(t){
+    var low = [];
+    METER.forEach(function(m){
+      var r = contrast(t[m.fg], t[m.on]), row = $('#cMeter [data-k="' + m.id + '"]');
+      row.classList.toggle("low", r < 4.5);
+      row.querySelector(".meter-bar i").style.width = Math.round(Math.min(1, Math.log(r) / Math.log(21)) * 100) + "%";
+      row.querySelector(".meter-n").textContent = r.toFixed(1) + ":1";
+      row.querySelector(".meter-badge").textContent = grade(r);
+      if (r < 4.5) low.push(m);
+    });
+    $("#cMeterSum").textContent = meterSummary(low, t);
+    $("#cFix").hidden = !low.length;
+  }
+  function meterSummary(low, t){
+    if (!low.length) return METER.every(function(m){ return contrast(t[m.fg], t[m.on]) >= 7; }) ? "All text is comfortably readable." : "All text is readable.";
+    var names = [], dir = lighterWins(t.bg) ? "lighter" : "darker";
+    low.forEach(function(m){ if (names.indexOf(m.what) < 0) names.push(m.what); });
+    var list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0];
+    var where = low.every(function(m){ return m.on === "panel"; }) ? "the panel" : "this background";
+    var fix = names.length > 1 ? dir + " colours" : (names[0] === "accent" ? "a " + dir + " accent" : dir + " " + names[0]);
+    return list.charAt(0).toUpperCase() + list.slice(1) + (names.length > 1 ? " are" : " is") + " hard to read on " + where + " — try " + fix + ".";
+  }
+  /* move a colour's lightness away from the background, hue and saturation kept, until it reads
+     on every surface it sits on; when no lightness manages that (a mid-grey background), the
+     one that comes closest is used */
+  function fixColor(hex, surfaces){
+    var worst = function(h){ return Math.min.apply(null, surfaces.map(function(s){ return contrast(h, s); })); };
+    if (worst(hex) >= 4.5) return hex;
+    var hs = hexToHsl(hex), best = hex, bestScore = worst(hex);
+    var dirs = lighterWins(surfaces[0]) ? [1, -1] : [-1, 1];
+    for (var d = 0; d < dirs.length; d++){
+      var step = dirs[d], l = hs[2];
+      while (l + step >= 0 && l + step <= 100){
+        l += step;
+        var out = hslToHex(hs[0], hs[1], l), score = worst(out);
+        if (score >= 4.5) return out;
+        if (score > bestScore){ best = out; bestScore = score; }
+      }
+    }
+    return best;
+  }
+  /* Fix contrast: only the colours the meter marks low change, and only in lightness. A derived
+     colour that is fixed becomes a picked one (the derived value was the problem). */
+  function fixContrast(){
+    var c = customById(state.theme);
+    if (!c) return;
+    var t = customColors(c);
+    if (contrast(t.ink, t.bg) < 4.5){ c.ink = fixColor(t.ink, [t.bg]); c.autoInk = false; t = customColors(c); }
+    if (contrast(t.muted, t.bg) < 4.5){ c.muted = fixColor(t.muted, [t.bg]); t = customColors(c); }
+    if (contrast(t.accent, t.bg) < 4.5 || contrast(t.accent, t.panel) < 4.5) c.accent = fixColor(t.accent, [t.bg, t.panel]);
+    syncCustomUI(); applyTheme();
+  }
   function applyTheme(){
-    var t = currentTheme();
+    var t = currentTheme(), custom = customById(state.theme);
     var r = document.documentElement.style;
     r.setProperty("--bg", t.bg);      r.setProperty("--ink", t.ink);
     r.setProperty("--muted", t.muted);r.setProperty("--panel", t.panel);
     r.setProperty("--line", t.line);  r.setProperty("--accent", t.accent);
     document.documentElement.style.colorScheme = isDarkColor(t.bg) ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && isDarkColor(t.bg));
-    document.querySelectorAll("#themeChips .chip").forEach(function(ch){
-      ch.classList.toggle("on", ch.dataset.theme === state.theme);
+    /* the installed app's title bar takes the panel colour */
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", t.panel);
+    document.querySelectorAll("#themeChips .chip[data-theme]").forEach(function(ch){
+      var on = ch.dataset.theme === state.theme;
+      ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      if (on && custom){ var sw = ch.querySelector("i"); sw.style.setProperty("--sw-bg", t.bg); sw.style.setProperty("--sw-acc", t.accent); }
     });
-    var dot = $("#customDot");
-    if (dot) dot.style.background = state.custom.accent;
-    $("#customRow").classList.toggle("show", state.theme === "custom");
-    /* live preview of the custom combo */
-    var ct = state.theme === "custom" ? t : currentTheme();
-    var pv = $("#cPrev");
-    pv.style.background = state.theme === "custom" ? t.bg : "transparent";
-    pv.style.color = t.ink;
-    pv.style.borderColor = t.line;
-    $("#cPrevAcc").style.color = t.accent;
+    $("#customRow").classList.toggle("show", !!custom);
+    if (custom) previewCustom(t);
     Prefs.save();
+  }
+  /* the preview and the meter show every colour of the theme being edited */
+  function previewCustom(t){
+    var pv = $("#cPrev"), strip = $("#cPrevPanel");
+    pv.style.background = t.bg; pv.style.color = t.ink; pv.style.borderColor = t.line;
+    strip.style.background = t.panel; strip.style.borderColor = t.line; strip.style.color = t.muted;
+    $("#cPrevPanelAcc").style.color = t.accent;
+    $("#cPrevAcc").style.color = t.accent;
+    $("#cPrevMuted").style.color = t.muted;
+    syncMeter(t);
   }
   /* ---------- automatic theme: system setting or a night schedule ---------- */
   var AutoTheme = (function(){
@@ -316,7 +526,10 @@
       document.querySelectorAll("#autoChips .chip").forEach(function(ch){ ch.classList.toggle("on", ch.dataset.auto === state.auto); });
       $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
-      var opts = CYCLE.map(function(k){ return '<option value="' + k + '">' + THEMES[k].name + '</option>'; }).join("") + '<option value="custom">Custom</option>';
+      var opts = themeGroups().map(function(g){
+        return '<optgroup label="' + g.name + '">' + g.ids.map(function(k){ return '<option value="' + k + '">' + THEMES[k].name + '</option>'; }).join("") + '</optgroup>';
+      }).join("");
+      if (state.customs.length) opts += '<optgroup label="Custom">' + state.customs.map(function(c){ return '<option value="c:' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join("") + '</optgroup>';
       if ($("#autoDay").innerHTML !== opts){ $("#autoDay").innerHTML = opts; $("#autoNight").innerHTML = opts; }
       $("#autoDay").value = state.autoDay; $("#autoNight").value = state.autoNight;
       $("#nightFrom").value = state.nightFrom; $("#nightTo").value = state.nightTo;
@@ -3532,55 +3745,117 @@
   $("#themeChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
     if (!ch) return;
-    state.theme = ch.dataset.theme;
-    if (state.theme === "custom") syncCustomUI();
-    applyTheme(); AutoTheme.userPicked(state.theme);
+    if (ch.dataset.new) createCustom(); else selectTheme(ch.dataset.theme);
   });
+  function selectTheme(theme){
+    state.theme = theme;
+    if (customById(theme)) syncCustomUI();
+    applyTheme(); AutoTheme.userPicked(theme);
+  }
+  /* the saved themes changed (new, renamed, copied or deleted): redraw the chips and the day / night lists */
+  function customsChanged(){ buildThemeChips(); AutoTheme.syncUI(); }
+  function focusChip(theme){ var ch = $('#themeChips .chip[data-theme="' + theme + '"]'); if (ch) ch.focus(); }
+  /* New…: a saved theme that starts from the colours on screen */
+  function createCustom(){
+    var t = currentTheme();
+    var c = addCustom({ name: customName(), bg: normHex(t.bg), ink: normHex(t.ink), autoInk: true, accent: normHex(t.accent) });
+    customsChanged(); selectTheme("c:" + c.id); focusChip("c:" + c.id);
+    return c;
+  }
 
-  /* custom theme controls */
+  /* ---- custom theme editor: every change applies at once and is saved with the theme ---- */
+  function editing(){ return customById(state.theme); }
+  function edited(){ syncCustomUI(); applyTheme(); }
+  $("#cRename").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    var name = prompt("Name for this theme", c.name);
+    if (name === null) return;
+    name = name.trim().slice(0, 60);
+    if (!name || name === c.name) return;
+    c.name = name; customsChanged(); edited();
+  });
+  $("#cDup").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    var d = copyCustom(c, customName(c.name + " copy"));
+    customsChanged(); selectTheme("c:" + d.id);
+    Marks.toast("Copied as “" + d.name + "”");
+  });
+  $("#cSaveAs").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    var name = prompt("Name for the new theme", customName());
+    if (name === null) return;
+    var d = copyCustom(c, name.trim().slice(0, 60) || customName());
+    customsChanged(); selectTheme("c:" + d.id);
+    Marks.toast("Saved as “" + d.name + "”");
+  });
+  $("#cDel").addEventListener("click", function(){
+    var c = editing(); if (!c) return;
+    if (!confirm("Delete the theme “" + c.name + "”?")) return;
+    state.customs.splice(state.customs.indexOf(c), 1);
+    var gone = "c:" + c.id, fallback = isDarkColor(c.bg) ? "dusk" : "day";
+    if (state.autoDay === gone) state.autoDay = "day";
+    if (state.autoNight === gone) state.autoNight = "dusk";
+    customsChanged(); selectTheme(fallback); focusChip(fallback);
+  });
+  /* background: quick swatches, the tint / brightness sliders, or any colour */
   $("#bgSwatches").addEventListener("click", function(e){
-    var s = e.target.closest(".sw");
-    if (!s) return;
-    state.custom.bg = s.dataset.c;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
+    var s = e.target.closest(".sw"), c = editing();
+    if (!s || !c) return;
+    c.bg = s.dataset.c.toLowerCase(); edited();
   });
   function bgFromSliders(){
+    var c = editing(); if (!c) return;
     var h = +$("#cHue").value, l = +$("#cLit").value;
-    var s = l > 55 ? 14 : 22;
-    state.custom.bg = hslToHex(h, s, l);
-    state.theme = "custom";
+    c.bg = hslToHex(h, l > 55 ? 14 : 22, l);
     $("#vHue").textContent = h + "°";
     $("#vLit").textContent = l + " %";
-    document.querySelectorAll("#bgSwatches .sw").forEach(function(x){ x.classList.remove("on"); });
-    applyTheme();
+    syncPicks(c); applyTheme();
   }
   $("#cHue").addEventListener("input", bgFromSliders);
   $("#cLit").addEventListener("input", bgFromSliders);
+  /* a picker and its hex field drive the same colour; a valid hex applies as it is typed */
+  function bindPick(key, set){
+    var p = $("#c" + key), h = $("#h" + key);
+    p.addEventListener("input", function(){ var c = editing(); if (!c) return; set(c, p.value); edited(); });
+    h.addEventListener("input", function(){
+      var c = editing(), v = normHex(h.value);
+      h.classList.toggle("bad", !v);
+      if (v) h.removeAttribute("aria-invalid"); else h.setAttribute("aria-invalid", "true");
+      if (c && v){ set(c, v); edited(); }
+    });
+    h.addEventListener("blur", function(){ var c = editing(); if (c) syncPicks(c); });
+  }
+  bindPick("Bg", function(c, v){ c.bg = v; });
+  bindPick("Ink", function(c, v){ c.ink = v; c.autoInk = false; });
+  bindPick("Acc", function(c, v){ c.accent = v; });
+  bindPick("Panel", function(c, v){ c.panel = v; });
+  bindPick("Muted", function(c, v){ c.muted = v; });
+  /* the automatic boxes: turning one off keeps the derived colour as the starting point */
   $("#autoInk").addEventListener("change", function(e){
-    state.custom.autoInk = e.target.checked;
-    if (!e.target.checked) state.custom.ink = $("#cInk").value;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
+    var c = editing(); if (!c) return;
+    c.autoInk = e.target.checked;
+    if (!c.autoInk) c.ink = $("#cInk").value;
+    edited();
   });
-  $("#cInk").addEventListener("input", function(e){
-    state.custom.ink = e.target.value;
-    state.custom.autoInk = false;
-    state.theme = "custom";
-    applyTheme();
+  $("#autoPanel").addEventListener("change", function(e){
+    var c = editing(); if (!c) return;
+    if (e.target.checked) delete c.panel; else c.panel = $("#cPanel").value;
+    edited();
+  });
+  $("#autoMuted").addEventListener("change", function(e){
+    var c = editing(); if (!c) return;
+    if (e.target.checked) delete c.muted; else c.muted = $("#cMuted").value;
+    edited();
   });
   $("#accSwatches").addEventListener("click", function(e){
-    var s = e.target.closest(".sw");
-    if (!s) return;
-    state.custom.accent = s.dataset.c;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
+    var s = e.target.closest(".sw"), c = editing();
+    if (!s || !c) return;
+    c.accent = s.dataset.c.toLowerCase(); edited();
   });
-  $("#cAcc").addEventListener("input", function(e){
-    state.custom.accent = e.target.value;
-    state.theme = "custom";
-    syncCustomUI(); applyTheme();
-  });
+  $("#cFix").addEventListener("click", fixContrast);
+  /* exposed for tests (not a public API) */
+  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
+    customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast };
 
   $("#flowChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");

@@ -120,33 +120,100 @@
     background:transparent; color:var(--ink); font-size:0.8438rem; cursor:pointer;
   }
   .chip.on{background:var(--accent); border-color:var(--accent); color:var(--panel); font-weight:600;}
+  /* theme swatch: the theme's page colour with its accent as the lamp in the middle; the colours
+     are kept under forced colours (they are the information), with a system-colour rim */
   .chip i{
-    display:inline-block; width:9px; height:9px; border-radius:50%;
-    margin-right:7px; vertical-align:0;
+    display:inline-block; width:15px; height:15px; border-radius:50%; margin-right:7px; vertical-align:-2px;
+    position:relative; background:var(--sw-bg, var(--accent)); forced-color-adjust:none;
+    box-shadow:inset 0 0 0 1px color-mix(in srgb, currentColor 32%, transparent);
   }
-  .chip.on i{outline:1.5px solid var(--panel); outline-offset:1px;}
+  .chip i::after{content:""; position:absolute; inset:4px; border-radius:50%; background:var(--sw-acc, var(--accent));}
+  .chip.on i{box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--panel) 60%, transparent);}
+  @media (forced-colors: active){
+    .chip i{outline:1px solid ButtonText; outline-offset:1px;}
+  }
 
   /* custom theme builder */
-  #customRow{display:none;}
+  #customRow{display:none; --warn:#c8372d;}
   #customRow.show{display:grid; gap:10px;}
+  /* theme chips in groups: light, dark, high contrast, custom */
+  #themeChips{display:grid; gap:10px;}
+  .chip-group{display:grid; gap:6px;}
+  .chip-group-label{font-size:0.6562rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);}
+  .chip-new{border-style:dashed;}
+  .cst-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-bottom:8px; border-bottom:1px solid var(--line);}
+  .cst-name{
+    flex:1; min-width:120px; font-family:var(--reader-font); font-style:italic; font-size:1.062rem;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .cst-acts{display:flex; gap:6px; flex-wrap:wrap;}
+  .cst-acts .chip{padding:7px 11px; font-size:0.7812rem;}
   .cst-label{
     font-size:0.6875rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
     color:var(--muted); margin-top:2px;
   }
   .sw-grid{display:flex; flex-wrap:wrap; gap:9px;}
   .sw{
-    width:32px; height:32px; border-radius:10px;
+    width:36px; height:36px; border-radius:10px;
     border:1px solid var(--line); cursor:pointer; padding:0;
   }
   .sw.on{outline:2.5px solid var(--accent); outline-offset:2px;}
-  .swatch{display:flex; align-items:center; gap:7px; font-size:0.8125rem; color:var(--muted);}
-  .swatch input[type=color]{
-    width:36px; height:36px; border:1px solid var(--line); border-radius:9px;
+  /* a colour picker with its hex field */
+  .cpick{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .cpick > label{font-size:0.8125rem; color:var(--muted); min-width:64px;}
+  .cpick-in{display:inline-flex; align-items:center; gap:6px;}
+  .cpick input[type=color]{
+    width:38px; height:38px; border:1px solid var(--line); border-radius:9px;
     padding:2px; background:transparent; cursor:pointer;
   }
+  .cpick input[type=color]:disabled{cursor:default; opacity:.55;}
+  .cpick .hex{
+    width:6.6em; height:38px; padding:0 9px; border:1px solid var(--line); border-radius:9px;
+    background:var(--bg); color:var(--ink); font-family:ui-monospace, Menlo, Consolas, monospace; font-size:0.8125rem;
+  }
+  .cpick .hex:disabled{opacity:.55;}
+  .cpick .hex.bad{border-color:var(--warn); box-shadow:inset 0 0 0 1px var(--warn);}
+  /* advanced: panel and secondary text */
+  .cst-adv{border:1px solid var(--line); border-radius:12px; padding:0 12px;}
+  .cst-adv summary{cursor:pointer; padding:10px 0; font-size:0.8438rem; color:var(--ink); border-radius:8px;}
+  .cst-adv summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .cst-adv[open] summary{border-bottom:1px solid var(--line); border-radius:0;}
+  .cst-adv-body{display:grid; gap:10px; padding:10px 0 12px;}
+  /* contrast meter: a ratio, a bar on a log scale with the AA mark, and a grade in words */
+  .cst-meter{display:grid; gap:8px;}
+  .meter{margin:0; display:grid; gap:4px;}
+  .meter-row{display:grid; grid-template-columns:minmax(150px, 1fr) minmax(170px, 2fr); align-items:center; gap:10px; padding:5px 8px; border-radius:8px;}
+  .meter-row dt{font-size:0.8125rem;}
+  .meter-row dd{margin:0; display:flex; align-items:center; gap:8px;}
+  .meter-bar{flex:1; min-width:60px; height:6px; border-radius:3px; position:relative; background:color-mix(in srgb, var(--ink) 12%, transparent);}
+  .meter-bar i{display:block; height:100%; width:0; border-radius:3px; background:var(--accent); transition:width .2s;}
+  .meter-bar::after{content:""; position:absolute; left:49.4%; top:-3px; bottom:-3px; width:1px; background:var(--muted);}
+  .meter-n{font-size:0.8125rem; font-variant-numeric:tabular-nums; min-width:52px; text-align:right;}
+  .meter-badge{
+    font-size:0.6562rem; font-weight:700; letter-spacing:.06em; padding:3px 7px; border-radius:999px;
+    border:1px solid var(--line); min-width:44px; text-align:center;
+  }
+  .meter-row.low{background:color-mix(in srgb, var(--warn) 14%, transparent);}
+  .meter-row.low .meter-badge{border-color:var(--warn);}
+  .meter-row.low .meter-bar i{background:var(--warn);}
+  .meter-sum{margin:0; font-size:0.8125rem;}
+  #cFix{justify-self:start;}
+  /* preview: the page, a strip of panel, a link and a line of secondary text */
   #cPrev{
-    border-radius:12px; padding:12px 14px; border:1px solid var(--line);
+    border-radius:12px; border:1px solid var(--line); overflow:hidden;
     font-family:var(--reader-font); font-size:0.9375rem; line-height:1.6;
+  }
+  #cPrev p{margin:0; padding:12px 14px 6px;}
+  .cprev-panel{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    padding:8px 14px; border-bottom:1px solid; font-family:var(--ui-font); font-size:0.75rem;
+  }
+  .cprev-mark{font-family:var(--reader-font); font-style:italic; font-size:1rem;}
+  .cprev-link{text-decoration:underline; text-underline-offset:2px;}
+  .cprev-muted{padding:0 14px 12px; font-family:var(--ui-font); font-size:0.75rem;}
+  @media (max-width:560px){
+    .meter-row{grid-template-columns:1fr; gap:4px;}
+    .cst-name{flex-basis:100%;}
   }
 
   .rowline{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
