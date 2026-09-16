@@ -2743,36 +2743,51 @@
       } catch(_){}
     }
 
-    /* ---------- dictionary data ---------- */
-    var DICT_PARTS = 6;
-    var DB = null, dbPromise = null;
-    function loadDict(){
-      if (DB) return Promise.resolve(DB);
-      if (dbPromise) return dbPromise;
-      var jobs = [];
-      for (var i = 1; i <= DICT_PARTS; i++){
-        jobs.push(
-          fetch("./dict" + i + ".json")
-            .then(function(r){ if(!r.ok) throw 0; return r.json(); })
-            .catch(function(){ return {}; })
-        );
-      }
-      dbPromise = Promise.all(jobs).then(function(parts){
-        DB = parts;               /* kept separate — merging 170k keys was the lag */
-        return parts;
-      });
-      return dbPromise;
+    /* ---------- dictionary data ----------
+       dict1–dict6.json are alphabetical ranges (dict-index.json holds the first key of
+       each), so a word tells us which chunk to fetch; chunks are loaded on demand and kept. */
+    var DICT_PARTS = 6, DB = {}, chunkJobs = {}, bounds = null, boundsJob = null;
+    function loadIndex(){
+      if (bounds) return Promise.resolve(bounds);
+      if (boundsJob) return boundsJob;
+      boundsJob = fetch("./dict-index.json").then(function(r){ if (!r.ok) throw 0; return r.json(); })
+        .then(function(j){ bounds = j.starts; DICT_PARTS = j.chunks || bounds.length; return bounds; })
+        .catch(function(){ bounds = ["-", "continuo", "grower", "neo-lamarckism", "scraggy", "vortex"]; return bounds; });
+      return boundsJob;
     }
-    /* warm it up quietly after boot so the first tap feels instant */
-    if (window.requestIdleCallback) requestIdleCallback(function(){ loadDict(); }, { timeout: 3000 });
-    else setTimeout(loadDict, 1200);
+    function chunkFor(w){
+      var i = 0;
+      for (var k = 1; k < bounds.length; k++){ if (w >= bounds[k]) i = k; }
+      return i + 1;
+    }
+    function loadChunk(i){
+      if (DB[i]) return Promise.resolve(DB[i]);
+      if (chunkJobs[i]) return chunkJobs[i];
+      chunkJobs[i] = fetch("./dict" + i + ".json").then(function(r){ if (!r.ok) throw 0; return r.json(); })
+        .catch(function(){ return {}; })
+        .then(function(part){ DB[i] = part; return part; });
+      return chunkJobs[i];
+    }
+    /* make sure every chunk these words live in is loaded, then return a synchronous finder */
+    function withWords(words){
+      return loadIndex().then(function(){
+        var need = {};
+        words.forEach(function(w){ if (w) need[chunkFor(String(w).toLowerCase())] = 1; });
+        return Promise.all(Object.keys(need).map(function(i){ return loadChunk(+i); }));
+      }).then(function(){ return find; });
+    }
+    function find(w){
+      if (!bounds) return null;
+      var part = DB[chunkFor(w)];
+      return part && part[w] ? part[w] : null;
+    }
+    function dictReady(){ return Object.keys(DB).length > 0; }
+    /* the index is tiny — fetch it when idle so the first tap only waits for one chunk */
+    if (window.requestIdleCallback) requestIdleCallback(function(){ loadIndex(); }, { timeout: 3000 });
+    else setTimeout(loadIndex, 1200);
 
     var IRREG = {"was":"be","were":"be","been":"be","am":"be","is":"be","are":"be","being":"be","had":"have","has":"have","having":"have","did":"do","does":"do","done":"do","went":"go","gone":"go","goes":"go","gave":"give","given":"give","took":"take","taken":"take","came":"come","became":"become","saw":"see","seen":"see","knew":"know","known":"know","got":"get","gotten":"get","made":"make","said":"say","thought":"think","told":"tell","found":"find","left":"leave","felt":"feel","kept":"keep","held":"hold","brought":"bring","bought":"buy","caught":"catch","taught":"teach","sought":"seek","fought":"fight","stood":"stand","understood":"understand","heard":"hear","led":"lead","meant":"mean","met":"meet","paid":"pay","ran":"run","sat":"sit","sold":"sell","sent":"send","spent":"spend","spoke":"speak","spoken":"speak","stole":"steal","stolen":"steal","swore":"swear","sworn":"swear","swam":"swim","swum":"swim","threw":"throw","thrown":"throw","wore":"wear","worn":"wear","won":"win","wrote":"write","written":"write","woke":"wake","woken":"wake","drew":"draw","drawn":"draw","drove":"drive","driven":"drive","drank":"drink","drunk":"drink","ate":"eat","eaten":"eat","fell":"fall","fallen":"fall","flew":"fly","flown":"fly","forgot":"forget","forgotten":"forget","froze":"freeze","frozen":"freeze","grew":"grow","grown":"grow","hid":"hide","hidden":"hide","hung":"hang","lain":"lie","laid":"lay","lost":"lose","rang":"ring","rung":"ring","rose":"rise","risen":"rise","rode":"ride","ridden":"ride","sang":"sing","sung":"sing","sank":"sink","sunk":"sink","shook":"shake","shaken":"shake","shone":"shine","shot":"shoot","slept":"sleep","slid":"slide","sprang":"spring","sprung":"spring","stuck":"stick","struck":"strike","strung":"string","swept":"sweep","swung":"swing","tore":"tear","torn":"tear","trod":"tread","trodden":"tread","wept":"weep","wrung":"wring","bent":"bend","bit":"bite","bitten":"bite","bled":"bleed","blew":"blow","blown":"blow","bred":"breed","broke":"break","broken":"break","built":"build","burnt":"burn","chose":"choose","chosen":"choose","clung":"cling","crept":"creep","dealt":"deal","dug":"dig","dreamt":"dream","fed":"feed","fled":"flee","flung":"fling","forbade":"forbid","forbidden":"forbid","knelt":"kneel","lent":"lend","lit":"light","leapt":"leap","learnt":"learn","shrank":"shrink","shrunk":"shrink","smelt":"smell","spelt":"spell","spilt":"spill","spat":"spit","spoilt":"spoil","spun":"spin","strode":"stride","strove":"strive","striven":"strive","swollen":"swell","wove":"weave","woven":"weave","withdrew":"withdraw","withdrawn":"withdraw","arose":"arise","arisen":"arise","bore":"bear","borne":"bear","beat":"beat","beaten":"beat","begun":"begin","began":"begin","bound":"bind","dwelt":"dwell","hewn":"hew","overcame":"overcome","shrunken":"shrink","children":"child","men":"man","women":"woman","feet":"foot","teeth":"tooth","geese":"goose","mice":"mouse","people":"person","lice":"louse","oxen":"ox","knives":"knife","wives":"wife","lives":"life","leaves":"leaf","halves":"half","shelves":"shelf","wolves":"wolf","thieves":"thief","calves":"calf","loaves":"loaf","selves":"self","scarves":"scarf","hooves":"hoof","elves":"elf","sheaves":"sheaf","criteria":"criterion","phenomena":"phenomenon","his":"he","him":"he","her":"she","hers":"she","its":"it","their":"they","them":"they","theirs":"they","our":"we","ours":"we","us":"we","mine":"I","your":"you","yours":"you"};
 
-    function findIn(parts, w){
-      for (var i = 0; i < parts.length; i++){ if (parts[i][w]) return parts[i][w]; }
-      return null;
-    }
 
     /* Webster lists inflected forms as bare cross-references ("of Give",
        "pl. of Child"). Those are useless in a card, so prefer a real entry. */
@@ -2803,10 +2818,11 @@
 
     function lookupLocal(word){
       var w = word.toLowerCase().replace(/[’]/g, "'");
-      return loadDict().then(function(parts){
-        var tries = variants(w), fallback = null;
+      var tries = variants(w);
+      return withWords(tries).then(function(){
+        var fallback = null;
         for (var i = 0; i < tries.length; i++){
-          var e = findIn(parts, tries[i]);
+          var e = find(tries[i]);
           if (!e) continue;
           if (!isStub(e)) return { word: tries[i], entry: e };
           if (!fallback) fallback = { word: tries[i], entry: e };
@@ -2872,7 +2888,7 @@
 
     function defineWord(term){
       inner.innerHTML = '<div class="note">Looking up “' + esc(term) + '”…' +
-        (DB ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
+        (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
       openCard();
       lookupLocal(term).then(function(res){
         if (res){ renderWord(term, res); return; }
@@ -2945,12 +2961,12 @@
       }
       return h;
     }
-    function renderKeywords(r, parts){
+    function renderKeywords(r){
       var list = [];
       r.keywords.forEach(function(k){
         var tries = [k.lemma, k.word.toLowerCase()].concat(variants(k.word.toLowerCase()));
         for (var i = 0; i < tries.length; i++){
-          var e = findIn(parts, tries[i]);
+          var e = find(tries[i]);
           if (!e || isStub(e)) continue;
           var sense = window.llExplain.bestSense(e, k.pos, window.llExplain.rank);
           var m = (sense && sense.m) || e.m[0];
@@ -2978,7 +2994,7 @@
               (currentSpan ? '<div class="acts" id="dictMarkActs"><button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button></div>' : '') +
               '<div id="dictAi"></div>' +
               '<div id="dictExpl"><div class="note">Reading it…' +
-              (DB ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
+              (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
       inner.innerHTML = h;
       inner.querySelector(".x").addEventListener("click", closeCard);
       var ma = inner.querySelector("#dictMarkActs");
@@ -2994,12 +3010,14 @@
       renderAiButton(sentence);
 
       var box = inner.querySelector("#dictExpl");
-      Promise.all([loadDict(), window.__ll.need(["explain"])]).then(function(r){
-        var parts = r[0];
+      /* chunks for every word in the sentence (plus irregular base forms, which can start with another letter) */
+      var words = (sentence.toLowerCase().match(/[a-z\u00C0-\u024F'\u2019-]+/g) || []).map(function(w){ return w.replace(/[\u2019]/g, "'"); });
+      var extra = [];
+      words.forEach(function(w){ if (IRREG[w]) extra.push(IRREG[w]); variants(w).forEach(function(v){ extra.push(v); }); });
+      Promise.all([withWords(words.concat(extra)), window.__ll.need(["explain"])]).then(function(){
         if (currentSentence !== sentence) return;
-        var find = function(w){ return findIn(parts, w); };
         var r = window.llExplain.explain(sentence, find, window.llExplain.rank);
-        box.innerHTML = renderExplain(r) + renderKeywords(r, parts) +
+        box.innerHTML = renderExplain(r) + renderKeywords(r) +
           (navigator.onLine ? '' : '<div class="note">Offline — explained with the built-in dictionary only.</div>');
       }).catch(function(err){
         console.error(err);
@@ -3329,7 +3347,7 @@
     if (doc) mo.observe(doc, { childList: true });
 
     /* for tests and other modules */
-    window.llDict = { explainSentence: explainSentence, defineWord: defineWord, loadDict: loadDict, lookupLocal: lookupLocal };
+    window.llDict = { explainSentence: explainSentence, defineWord: defineWord, lookupLocal: lookupLocal, withWords: withWords, find: find, loaded: function(){ return Object.keys(DB).map(Number); } };
   })();
 
   /* exposed for tests and other scripts (not a public API) */
