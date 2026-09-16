@@ -1399,6 +1399,100 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     body > main{padding:20px 14px 90px;}
     body.paged main{padding:12px 12px 0;}
   }
+  @media (max-width:400px){
+    .bar{gap:4px; padding:9px 8px;}
+    .ctl{min-width:36px; height:38px; padding:0 8px; font-size:13px;}
+    .wordmark{font-size:16px;}
+  }
+
+  /* ---------- "more" menu ---------- */
+  #moreWrap{position:relative;}
+  #moreMenu{
+    position:absolute; right:0; top:calc(100% + 6px); z-index:30; min-width:210px;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.22); padding:6px; display:none;
+  }
+  #moreMenu.open{display:block; animation:drop .18s ease;}
+  #moreMenu button{
+    display:flex; width:100%; align-items:center; gap:10px; text-align:left;
+    padding:9px 10px; border:0; border-radius:8px; background:transparent; color:var(--ink);
+    font-size:14px; cursor:pointer;
+  }
+  #moreMenu button:hover, #moreMenu button:focus-visible{background:color-mix(in srgb, var(--accent) 12%, transparent); outline:none;}
+  #moreMenu button[disabled]{opacity:.4; cursor:default;}
+  #moreMenu .sep{height:1px; background:var(--line); margin:5px 4px;}
+  #moreMenu kbd{margin-left:auto; font-family:var(--ui-font); font-size:11px; color:var(--muted);}
+
+  /* ---------- side panel (contents, marks, search…) ---------- */
+  #sideScrim{position:fixed; inset:0; z-index:44; background:rgba(0,0,0,.18); display:none;}
+  #sideScrim.on{display:block;}
+  #side{
+    position:fixed; top:0; right:0; bottom:0; z-index:45; width:min(380px, 100%);
+    background:var(--panel); color:var(--ink); border-left:1px solid var(--line);
+    box-shadow:-10px 0 40px rgba(0,0,0,.2); display:flex; flex-direction:column;
+    transform:translateX(105%); visibility:hidden; transition:transform .26s ease, visibility 0s linear .26s;
+    font-family:var(--ui-font);
+  }
+  #side.open{transform:none; visibility:visible; transition:transform .26s ease, visibility 0s;}
+  #side .side-head{display:flex; align-items:center; gap:10px; padding:14px 14px 10px 18px; border-bottom:1px solid var(--line);}
+  #side .side-title{flex:1; font-family:var(--reader-font); font-size:19px;}
+  #side .side-x{border:0; background:transparent; color:var(--muted); font-size:24px; line-height:1; cursor:pointer; padding:4px 6px;}
+  #side .side-body{flex:1; overflow-y:auto; overscroll-behavior:contain; padding:10px 14px max(18px, env(safe-area-inset-bottom));}
+  #side .side-foot{display:flex; gap:8px; flex-wrap:wrap; padding:10px 14px max(12px, env(safe-area-inset-bottom)); border-top:1px solid var(--line);}
+  #side .side-foot .chip{font-size:12.5px; padding:7px 12px;}
+  #side .empty-note{color:var(--muted); font-size:13.5px; padding:22px 6px; text-align:center; line-height:1.5;}
+  @media (max-width:560px){
+    #side{top:auto; left:0; width:100%; max-height:78vh; border-left:0; border-top:1px solid var(--line); border-radius:16px 16px 0 0;
+      transform:translateY(105%);}
+  }
+
+  #toast{
+    position:fixed; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px);
+    z-index:70; background:var(--ink); color:var(--bg); padding:9px 16px; border-radius:999px; font-size:13.5px;
+    font-family:var(--ui-font); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+  }
+  #toast.on{opacity:1; transform:translateX(-50%);}
+  /* marks: highlights in the text, and the list in the panel */
+  #doc mark.ll-mark{
+    background:color-mix(in srgb, var(--accent) 32%, transparent); color:inherit; border-radius:2px;
+    padding:.05em 0; box-decoration-break:clone; -webkit-box-decoration-break:clone; cursor:pointer;
+  }
+  #doc mark.ll-mark[data-color="sun"]{background:color-mix(in srgb, #E8C547 42%, transparent);}
+  #doc mark.ll-mark[data-color="leaf"]{background:color-mix(in srgb, #7FB069 40%, transparent);}
+  #doc mark.ll-mark[data-color="rose"]{background:color-mix(in srgb, #E07A9A 36%, transparent);}
+  #doc mark.ll-mark.noted{border-bottom:2px dotted var(--accent);}
+  .mark-item{
+    padding:10px 10px 9px; border:1px solid var(--line); border-radius:10px; margin:0 0 8px; cursor:pointer;
+    transition:border-color .2s;
+  }
+  .mark-item:hover{border-color:var(--accent);}
+  .mark-item .mark-kind{font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:8px;}
+  .mark-item .mark-kind span{margin-left:auto; color:var(--muted); font-weight:500; letter-spacing:0; text-transform:none; font-size:11.5px;}
+  .mark-item .mark-text{font-family:var(--reader-font); font-size:14.5px; line-height:1.45; margin:5px 0 0;}
+  .mark-item .mark-text.q{border-left:3px solid color-mix(in srgb, var(--accent) 50%, transparent); padding-left:9px;}
+  .mark-item .mark-text.q[data-color="sun"]{border-left-color:#E8C547;}
+  .mark-item .mark-text.q[data-color="leaf"]{border-left-color:#7FB069;}
+  .mark-item .mark-text.q[data-color="rose"]{border-left-color:#E07A9A;}
+  .mark-item .mark-note{font-size:13.5px; line-height:1.45; margin:6px 0 0; color:var(--ink); white-space:pre-wrap;}
+  .mark-item .mark-note:empty{display:none;}
+  .mark-item .mark-acts{display:flex; gap:4px; margin-top:7px; flex-wrap:wrap;}
+  .mark-item .mark-acts button, #markPop button{
+    border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:999px;
+    font-size:12px; padding:4px 10px; cursor:pointer; font-family:var(--ui-font);
+  }
+  .mark-item .mark-acts button:hover, #markPop button:hover{border-color:var(--accent);}
+  .mark-item textarea{
+    width:100%; min-height:70px; margin-top:6px; padding:8px 10px; border:1px solid var(--line); border-radius:8px;
+    background:var(--bg); color:var(--ink); font-family:var(--ui-font); font-size:13.5px; resize:vertical;
+  }
+  #markPop{
+    position:fixed; z-index:58; display:none; gap:4px; padding:5px; border-radius:999px;
+    background:var(--panel); border:1px solid var(--line); box-shadow:0 6px 20px rgba(0,0,0,.22);
+  }
+  #markPop.on{display:flex;}
+  #markPop .dot{width:22px; height:22px; border-radius:50%; border:1px solid var(--line); padding:0; cursor:pointer;}
+  #markPop .dot.accent{background:var(--accent);} #markPop .dot.sun{background:#E8C547;} #markPop .dot.leaf{background:#7FB069;} #markPop .dot.rose{background:#E07A9A;}
+
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}
   }
@@ -1416,6 +1510,10 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     <button class="ctl" id="bigger" title="Larger text / zoom in">A+</button>
     <button class="ctl" id="lamp" title="Switch theme"><span class="bulb"></span></button>
     <button class="ctl" id="gear" title="Reading settings">Aa</button>
+    <div id="moreWrap">
+      <button class="ctl" id="more" title="More" aria-haspopup="menu" aria-expanded="false">⋯</button>
+      <div id="moreMenu" role="menu"></div>
+    </div>
     <button class="ctl primary" id="openBtn">Open</button>
   </div>
 </header>
@@ -1488,6 +1586,14 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   <div id="docView"><article id="doc"></article></div>
   <div id="pdf"></div>
 </main>
+
+<div id="sideScrim"></div>
+<aside id="side" aria-hidden="true">
+  <div class="side-head"><div class="side-title" id="sideTitle"></div><button class="side-x" id="sideClose" aria-label="Close">×</button></div>
+  <div class="side-body" id="sideBody"></div>
+  <div class="side-foot" id="sideFoot"></div>
+</aside>
+<div id="markPop"></div>
 
 <div id="pager">
   <button class="ctl" id="prevPg" title="Previous page">‹</button>
@@ -1960,6 +2066,21 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var el = document.getElementById(id) || $("#doc").querySelector('[name="' + CSS.escape(id) + '"]');
     if (el) revealElement(el);
   });
+  /* scroll / page to a character offset in the text (see Anchor) */
+  function revealOffset(off){
+    if (state.mode !== "doc") return false;
+    var r = Anchor.rangeAt(off);
+    if (!r) return false;
+    var rect = r.getBoundingClientRect();
+    if (state.flow === "pages"){
+      var docRect = $("#doc").getBoundingClientRect();
+      gotoPage(Math.floor((rect.left - docRect.left + 1) / (state.colw + state.gap)));
+    } else {
+      var head = document.querySelector("header");
+      window.scrollTo(0, Math.max(0, rect.top + window.scrollY - (document.body.classList.contains("immersive") ? 0 : head.offsetHeight) - 8));
+    }
+    return true;
+  }
   /* bring an element into view in either reading flow */
   function revealElement(el){
     if (state.mode !== "doc") return;
@@ -2228,8 +2349,108 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
      Library — files you have opened, kept on this device (IndexedDB),
      with the last reading position per document.
      ============================================================ */
+  /* character offsets inside #doc — a layout-independent way to point at a spot in the text */
+  var Anchor = {
+    textNodes: function(root){
+      var out = [], w = document.createTreeWalker(root || $("#doc"), NodeFilter.SHOW_TEXT);
+      var n; while ((n = w.nextNode())) out.push(n);
+      return out;
+    },
+    offsetOf: function(node, off){
+      var nodes = Anchor.textNodes(), sum = 0;
+      for (var i = 0; i < nodes.length; i++){
+        if (nodes[i] === node) return sum + off;
+        sum += nodes[i].length;
+      }
+      return null;
+    },
+    /* (node, offset) for a character offset; boundary offsets belong to the following node */
+    point: function(off, preferEnd){
+      var nodes = Anchor.textNodes(), sum = 0;
+      for (var i = 0; i < nodes.length; i++){
+        var len = nodes[i].length;
+        if (off < sum + len || (preferEnd && off === sum + len) || (i === nodes.length - 1 && off <= sum + len)){
+          if (!/\S/.test(nodes[i].textContent) && i < nodes.length - 1 && !preferEnd){ sum += len; continue; }
+          return { node: nodes[i], offset: Math.max(0, Math.min(len, off - sum)) };
+        }
+        sum += len;
+      }
+      return null;
+    },
+    rangeAt: function(off){
+      var p = Anchor.point(off);
+      if (!p) return null;
+      var r = document.createRange();
+      var o = Math.min(p.offset, Math.max(0, p.node.length - 1));
+      r.setStart(p.node, o); r.setEnd(p.node, Math.min(p.node.length, o + 1));
+      return r;
+    },
+    rangeBetween: function(start, end){
+      var a = Anchor.point(start), b = Anchor.point(end, true);
+      if (!a || !b) return null;
+      var r = document.createRange();
+      r.setStart(a.node, a.offset); r.setEnd(b.node, b.offset);
+      return r;
+    },
+    textLength: function(){ return $("#doc").textContent.length; }
+  };
+
+  /* ---------- side panel: contents, marks, search share one drawer ---------- */
+  var Side = (function(){
+    var el = $("#side"), scrim = $("#sideScrim"), body = $("#sideBody"), foot = $("#sideFoot"), title = $("#sideTitle");
+    var current = null, onClose = null;
+    function open(name, ttl, render, closeFn){
+      current = name; onClose = closeFn || null;
+      title.textContent = ttl;
+      body.innerHTML = ""; foot.innerHTML = ""; foot.style.display = "none";
+      render(body, foot);
+      if (foot.children.length) foot.style.display = "flex";
+      el.classList.add("open"); scrim.classList.add("on"); el.setAttribute("aria-hidden", "false");
+      $("#moreMenu").classList.remove("open");
+    }
+    function close(){
+      if (!current) return;
+      var fn = onClose; current = null; onClose = null;
+      el.classList.remove("open"); scrim.classList.remove("on"); el.setAttribute("aria-hidden", "true");
+      if (fn) fn();
+    }
+    scrim.addEventListener("click", close);
+    $("#sideClose").addEventListener("click", close);
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape" && current) close(); });
+    return { open: open, close: close, is: function(name){ return current === name; }, body: body, foot: foot,
+             refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; } } };
+  })();
+
+  /* ---------- "more" menu: features register their entries here ---------- */
+  var Menu = (function(){
+    var items = [], btn = $("#more"), menu = $("#moreMenu");
+    function add(item){ items.push(item); }
+    function render(){
+      menu.innerHTML = "";
+      items.forEach(function(it){
+        if (it.sep){ var d = document.createElement("div"); d.className = "sep"; menu.appendChild(d); return; }
+        if (it.show && !it.show()) return;
+        var b = document.createElement("button");
+        b.type = "button"; b.setAttribute("role", "menuitem");
+        b.innerHTML = '<span>' + (typeof it.label === "function" ? it.label() : it.label) + '</span>' + (it.key ? '<kbd>' + it.key + '</kbd>' : '');
+        if (it.enabled && !it.enabled()) b.disabled = true;
+        b.addEventListener("click", function(){ close(); it.run(); });
+        menu.appendChild(b);
+      });
+      /* drop a trailing / doubled separator */
+      var kids = Array.prototype.slice.call(menu.children);
+      kids.forEach(function(k, i){ if (k.className === "sep" && (i === kids.length - 1 || i === 0 || (kids[i+1] && kids[i+1].className === "sep"))) k.remove(); });
+    }
+    function open(){ render(); menu.classList.add("open"); btn.setAttribute("aria-expanded", "true"); document.body.classList.remove("hidebar"); }
+    function close(){ menu.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); }
+    btn.addEventListener("click", function(e){ e.stopPropagation(); if (menu.classList.contains("open")) close(); else open(); });
+    document.addEventListener("click", function(e){ if (!e.target.closest("#moreWrap")) close(); });
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape") close(); });
+    return { add: add, close: close };
+  })();
+
   var Library = (function(){
-    var DB_NAME = "lamplight", DB_VERSION = 1;
+    var DB_NAME = "lamplight", DB_VERSION = 2;
     var dbp = null, books = [], positions = {}, current = null, pending = null, saveTimer = null, titleQueue = null;
     var ready = { doc: false, pdfPages: {} };
 
@@ -2245,6 +2466,10 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
             st.createIndex("opened", "opened");
           }
           if (!d.objectStoreNames.contains("positions")) d.createObjectStore("positions", { keyPath: "id" });
+          if (!d.objectStoreNames.contains("marks")){
+            var mk = d.createObjectStore("marks", { keyPath: "key" });
+            mk.createIndex("doc", "doc");
+          }
         };
         req.onsuccess = function(){ resolve(req.result); };
         req.onerror = function(){ reject(req.error); };
@@ -2295,36 +2520,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       var head = document.querySelector("header");
       return document.body.classList.contains("immersive") ? 0 : (head ? head.offsetHeight : 0);
     }
-    function textNodes(root){
-      var out = [], w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      var n; while ((n = w.nextNode())) out.push(n);
-      return out;
-    }
-    function charOffsetOf(node, off){
-      var nodes = textNodes($("#doc")), sum = 0;
-      for (var i = 0; i < nodes.length; i++){
-        if (nodes[i] === node) return sum + off;
-        sum += nodes[i].length;
-      }
-      return null;
-    }
-    function rangeAtOffset(off){
-      var nodes = textNodes($("#doc")), sum = 0;
-      for (var i = 0; i < nodes.length; i++){
-        var len = nodes[i].length;
-        /* a boundary offset belongs to the start of the next node, and whitespace-only
-           nodes between blocks have no usable position of their own */
-        if (off < sum + len || (i === nodes.length - 1 && off <= sum + len)){
-          if (!/\S/.test(nodes[i].textContent) && i < nodes.length - 1){ sum += len; continue; }
-          var r = document.createRange();
-          var o = Math.max(0, Math.min(len - 1, off - sum));
-          r.setStart(nodes[i], o); r.setEnd(nodes[i], Math.min(len, o + 1));
-          return r;
-        }
-        sum += len;
-      }
-      return null;
-    }
+    var charOffsetOf = Anchor.offsetOf, rangeAtOffset = Anchor.rangeAt;
     function topCharOffset(){
       var docEl = $("#doc");
       if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
@@ -2390,19 +2586,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       var pos = pending;
       if (state.mode === "doc" && pos.mode === "doc" && ready.doc){
         pending = null;
-        if (pos.off !== null && pos.off !== undefined){
-          var r = rangeAtOffset(pos.off);
-          if (r){
-            var rect = r.getBoundingClientRect();
-            if (state.flow === "pages"){
-              var docRect = $("#doc").getBoundingClientRect();
-              gotoPage(Math.floor((rect.left - docRect.left + 1) / (state.colw + state.gap)));
-            } else {
-              window.scrollTo(0, Math.max(0, rect.top + window.scrollY - headerHeight() - 8));
-            }
-            return;
-          }
-        }
+        if (pos.off !== null && pos.off !== undefined && revealOffset(pos.off)) return;
         if (pos.frac){
           if (state.flow === "pages") gotoPage(Math.round(pos.frac * (state.totalPages - 1)));
           else { var h = document.documentElement; window.scrollTo(0, pos.frac * (h.scrollHeight - h.clientHeight)); }
@@ -2427,8 +2611,10 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     function onOpen(file, opts){
       current = null; pending = null; titleQueue = null; ready = { doc: false, pdfPages: {} };
       clearTimeout(saveTimer);
+      Marks.setDoc(null);
       loaded.then(function(){ return idFor(file); }).then(function(id){
         current = id;
+        Marks.setDoc(id, file.name);
         var pos = positions[id];
         if (pos && !opts.fresh){ pending = pos; tryRestore(); }
         var existing = books.filter(function(b){ return b.id === id; })[0];
@@ -2448,7 +2634,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       var b = books.filter(function(x){ return x.id === current; })[0];
       if (b && b.title !== title){ b.title = title; tx("books", "readwrite", function(st){ st.put(b); }).catch(function(){}); render(); }
     }
-    function docReady(){ ready.doc = true; ready.pdfPages = {}; tryRestore(); }
+    function docReady(){ ready.doc = true; ready.pdfPages = {}; tryRestore(); Marks.docReady(); }
     function pdfReady(){ tryRestore(); }
     function pdfPageReady(n){ ready.pdfPages[n] = true; tryRestore(); }
 
@@ -2495,6 +2681,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       books = []; positions = {};
       tx("books", "readwrite", function(st){ st.clear(); }).catch(function(){});
       tx("positions", "readwrite", function(st){ st.clear(); }).catch(function(){});
+      tx("marks", "readwrite", function(st){ st.clear(); }).catch(function(){});
       render(); show("empty");
     });
     function openId(id){
@@ -2507,6 +2694,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     function remove(id){
       books = books.filter(function(x){ return x.id !== id; });
       delete positions[id];
+      Marks.forget(id);
       tx("books", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       tx("positions", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       if (current === id) current = null;
@@ -2526,11 +2714,290 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       render();
     }
 
-    return { onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
+    return { tx: tx, headerHeight: headerHeight, topCharOffset: topCharOffset, currentPdfPage: currentPdfPage,
+             onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
              flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render,
              ready: loaded, currentId: function(){ return current; }, positionFor: function(id){ return positions[id]; },
              _debug: function(){ return { pending: pending, ready: ready, current: current }; } };
   })();
+
+  /* ============================================================
+     Marks — highlights, bookmarks and notes, per document, exportable
+     ============================================================ */
+  var Marks = (function(){
+    var docId = null, docName = "", list = [], loaded = false, rendered = false, loadGen = 0;
+    var COLORS = ["accent", "sun", "leaf", "rose"];
+    var pop = $("#markPop"), popKey = null;
+
+    function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function pctOf(m){
+      if (m.pdfPage && state.pdfDoc) return Math.round(((m.pdfPage - 1) / Math.max(1, state.pdfDoc.numPages - 1)) * 100);
+      if (typeof m.start === "number"){ var total = Anchor.textLength() || 1; return Math.round((m.start / total) * 100); }
+      return m.pct || 0;
+    }
+    function sortKey(m){ return typeof m.start === "number" ? m.start : (m.pdfPage || 0) * 1e9; }
+
+    /* ---- storage ---- */
+    function setDoc(id, name){
+      docId = id; docName = name || docName; list = []; loaded = false; rendered = false;
+      var gen = ++loadGen;
+      if (!id) return;
+      Library.tx("marks", "readonly", function(st){ return st.index("doc").getAll(id); }).then(function(rows){
+        if (gen !== loadGen) return;
+        list = (rows || []).sort(function(a, b){ return sortKey(a) - sortKey(b); });
+        loaded = true;
+        if (state.mode === "doc") apply();
+        if (Side.is("marks")) openPanel();
+      }).catch(function(){ loaded = true; });
+    }
+    function save(m){ Library.tx("marks", "readwrite", function(st){ st.put(m); }).catch(function(){}); }
+    function del(m){ Library.tx("marks", "readwrite", function(st){ st.delete(m.key); }).catch(function(){}); }
+    function forget(id){ Library.tx("marks", "readwrite", function(st){
+      var idx = st.index("doc").openKeyCursor(IDBKeyRange.only(id));
+      idx.onsuccess = function(){ var c = idx.result; if (c){ st.delete(c.primaryKey); c.continue(); } };
+    }).catch(function(){}); }
+
+    /* ---- drawing highlights in the text ---- */
+    function unwrapAll(){
+      var doc = $("#doc");
+      Array.prototype.slice.call(doc.querySelectorAll("mark.ll-mark")).forEach(function(mk){
+        var p = mk.parentNode; while (mk.firstChild) p.insertBefore(mk.firstChild, mk); p.removeChild(mk);
+      });
+      doc.normalize();
+    }
+    function wrap(m){
+      var nodes = Anchor.textNodes(), sum = 0;
+      for (var i = 0; i < nodes.length; i++){
+        var n = nodes[i], len = n.length, a = Math.max(0, m.start - sum), b = Math.min(len, m.end - sum);
+        sum += len;
+        if (b <= a || !/\S/.test(n.textContent.slice(a, b))) continue;
+        var target = n;
+        if (b < len) target.splitText(b);
+        if (a > 0) target = target.splitText(a);
+        var mk = document.createElement("mark");
+        mk.className = "ll-mark" + (m.note ? " noted" : "");
+        mk.dataset.key = m.key; if (m.color && m.color !== "accent") mk.dataset.color = m.color;
+        target.parentNode.insertBefore(mk, target); mk.appendChild(target);
+      }
+    }
+    function apply(){
+      if (state.mode !== "doc") return;
+      unwrapAll();
+      list.forEach(function(m){ if (m.kind === "highlight" && typeof m.start === "number") wrap(m); });
+      rendered = true;
+    }
+    function docReady(){ rendered = false; if (loaded) apply(); }
+
+    /* ---- creating marks ---- */
+    function textOf(start, end){
+      var r = Anchor.rangeBetween(start, end);
+      return r ? r.toString().replace(/\s+/g, " ").trim() : "";
+    }
+    function addHighlight(start, end, note, color){
+      if (!docId || state.mode !== "doc" || !(end > start)) return null;
+      var m = { key: docId + ":" + uid(), doc: docId, kind: "highlight", start: start, end: end, text: textOf(start, end).slice(0, 2000), note: note || "", color: color || "accent", created: Date.now() };
+      list.push(m); list.sort(function(a, b){ return sortKey(a) - sortKey(b); });
+      save(m); apply(); refreshPanel();
+      return m;
+    }
+    function selectionOffsets(){
+      var sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+      var r = sel.getRangeAt(0);
+      function pt(container, offset, isEnd){
+        if (container.nodeType === 3) return Anchor.offsetOf(container, offset);
+        var kids = container.childNodes, node = isEnd ? kids[offset - 1] : kids[offset];
+        if (!node) return isEnd ? null : null;
+        var w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), t = null, last = null;
+        while ((t = w.nextNode())){ if (!isEnd) return Anchor.offsetOf(t, 0); last = t; }
+        return last ? Anchor.offsetOf(last, last.length) : null;
+      }
+      var doc = $("#doc");
+      if (!doc.contains(r.startContainer) || !doc.contains(r.endContainer)) return null;
+      var a = pt(r.startContainer, r.startOffset, false), b = pt(r.endContainer, r.endOffset, true);
+      if (a === null || b === null || b <= a) return null;
+      return { start: a, end: b };
+    }
+    function highlightSelection(note){
+      var o = selectionOffsets();
+      if (!o) return null;
+      var m = addHighlight(o.start, o.end, note);
+      try { window.getSelection().removeAllRanges(); } catch(_){}
+      return m;
+    }
+    function addBookmark(){
+      if (!docId || (state.mode !== "doc" && state.mode !== "pdf")) return null;
+      var m = { key: docId + ":" + uid(), doc: docId, kind: "bookmark", note: "", created: Date.now() };
+      if (state.mode === "pdf"){
+        m.pdfPage = Library.currentPdfPage();
+        m.label = "Page " + m.pdfPage;
+        if (list.some(function(x){ return x.kind === "bookmark" && x.pdfPage === m.pdfPage; })) { toast("Already bookmarked"); return null; }
+      } else {
+        var off = Library.topCharOffset();
+        if (off === null){ toast("Couldn't find the spot"); return null; }
+        m.start = off; m.end = off;
+        var r = Anchor.rangeBetween(off, Math.min(Anchor.textLength(), off + 160));
+        var words = (r ? r.toString() : "").replace(/\s+/g, " ").trim().split(" ").slice(0, 9).join(" ");
+        m.label = words ? "\u201C" + words + "\u2026\u201D" : Math.round(readFrac() * 100) + "%";
+        if (list.some(function(x){ return x.kind === "bookmark" && Math.abs((x.start || 0) - off) < 40; })) { toast("Already bookmarked"); return null; }
+      }
+      m.pct = pctOf(m);
+      list.push(m); list.sort(function(a, b){ return sortKey(a) - sortKey(b); });
+      save(m); refreshPanel();
+      toast("Bookmarked");
+      return m;
+    }
+    function remove(m){
+      list = list.filter(function(x){ return x !== m; });
+      del(m); if (m.kind === "highlight") apply(); refreshPanel(); hidePop();
+    }
+    function setNote(m, note){ m.note = note || ""; m.updated = Date.now(); save(m); if (m.kind === "highlight") apply(); refreshPanel(); }
+    function setColor(m, color){ m.color = color; save(m); apply(); refreshPanel(); }
+    function reveal(m){
+      Side.close();
+      if (m.pdfPage && state.mode === "pdf"){
+        if (state.flow === "pages"){ state.pdfPageNum = m.pdfPage; renderPdfSingle(); }
+        else { var c = $("#pdf").querySelector('canvas[data-page="' + m.pdfPage + '"]'); if (c) window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 6)); }
+      } else if (typeof m.start === "number") revealOffset(m.start);
+    }
+
+    /* ---- small toast ---- */
+    var toastEl = null, toastTimer = null;
+    function toast(msg){
+      if (!toastEl){ toastEl = document.createElement("div"); toastEl.id = "toast"; toastEl.setAttribute("role", "status"); document.body.appendChild(toastEl); }
+      toastEl.textContent = msg; toastEl.classList.add("on");
+      clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove("on"); }, 1800);
+    }
+
+    /* ---- popover on a highlight ---- */
+    function hidePop(){ pop.classList.remove("on"); popKey = null; }
+    function showPop(mk){
+      var m = list.filter(function(x){ return x.key === mk.dataset.key; })[0];
+      if (!m) return;
+      popKey = m.key;
+      pop.innerHTML = '<button data-act="note">' + (m.note ? "Edit note" : "Note") + '</button>' +
+        COLORS.map(function(c){ return '<button class="dot ' + c + '" data-color="' + c + '" title="' + c + '" aria-label="Colour ' + c + '"></button>'; }).join("") +
+        '<button data-act="remove">Remove</button>';
+      pop.classList.add("on");
+      var r = mk.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+      var x = Math.min(Math.max(8, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 8);
+      var y = r.top - ph - 8; if (y < 8) y = r.bottom + 8;
+      pop.style.left = x + "px"; pop.style.top = y + "px";
+    }
+    pop.addEventListener("click", function(e){
+      var b = e.target.closest("button"); if (!b) return;
+      var m = list.filter(function(x){ return x.key === popKey; })[0]; if (!m) return;
+      if (b.dataset.color){ setColor(m, b.dataset.color); hidePop(); }
+      else if (b.dataset.act === "remove") remove(m);
+      else if (b.dataset.act === "note"){ hidePop(); openPanel(m.key); }
+    });
+    $("#doc").addEventListener("click", function(e){
+      var mk = e.target.closest && e.target.closest("mark.ll-mark");
+      if (!mk){ hidePop(); return; }
+      e.stopImmediatePropagation(); e.preventDefault();
+      if (popKey === mk.dataset.key) hidePop(); else showPop(mk);
+    }, true);
+    document.addEventListener("click", function(e){ if (!e.target.closest("#markPop") && !e.target.closest("mark.ll-mark")) hidePop(); });
+    window.addEventListener("scroll", hidePop, { passive: true });
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape") hidePop(); });
+
+    /* ---- panel ---- */
+    function refreshPanel(){ if (Side.is("marks")) Side.refresh("marks", renderPanel); }
+    var editKey = null;
+    function renderPanel(body, foot){
+      if (!list.length){
+        body.innerHTML = '<div class="empty-note">No bookmarks or highlights yet.<br>' +
+          (state.mode === "pdf" ? 'Use \u201CBookmark here\u201D in the \u22EF menu to mark a page.' :
+           'Select text and choose Highlight, or hold a sentence and tap Highlight. \u201CBookmark here\u201D in the \u22EF menu marks your spot.') + '</div>';
+        return;
+      }
+      var h = "";
+      list.forEach(function(m){
+        var pct = pctOf(m);
+        h += '<div class="mark-item" data-key="' + esc(m.key) + '">' +
+          '<div class="mark-kind">' + (m.kind === "bookmark" ? "Bookmark" : "Highlight") + '<span>' + (m.pdfPage ? "page " + m.pdfPage : pct + "%") + '</span></div>';
+        if (m.kind === "bookmark") h += '<div class="mark-text">' + esc(m.label || "") + '</div>';
+        else h += '<div class="mark-text q" data-color="' + esc(m.color || "accent") + '">' + esc(m.text || "") + '</div>';
+        if (editKey === m.key) h += '<textarea data-note="' + esc(m.key) + '" placeholder="Your note\u2026">' + esc(m.note || "") + '</textarea>';
+        else h += '<div class="mark-note">' + esc(m.note || "") + '</div>';
+        h += '<div class="mark-acts">' +
+          (editKey === m.key ? '<button data-act="savenote">Save note</button><button data-act="cancel">Cancel</button>'
+                             : '<button data-act="note">' + (m.note ? "Edit note" : "Add note") + '</button>') +
+          '<button data-act="del">Delete</button></div></div>';
+      });
+      body.innerHTML = h;
+      var ta = body.querySelector("textarea"); if (ta){ ta.focus(); ta.selectionStart = ta.value.length; }
+      foot.innerHTML = '<button class="chip" data-exp="md">Export Markdown</button><button class="chip" data-exp="json">Export JSON</button><button class="chip" data-exp="copy">Copy as text</button>';
+    }
+    function openPanel(focusKey){
+      editKey = focusKey || null;
+      Side.open("marks", "Bookmarks & notes", renderPanel, function(){ editKey = null; });
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("marks")) return;
+      var item = e.target.closest(".mark-item"); if (!item) return;
+      var m = list.filter(function(x){ return x.key === item.dataset.key; })[0]; if (!m) return;
+      var b = e.target.closest("button");
+      if (!b){ if (!e.target.closest("textarea")) reveal(m); return; }
+      var act = b.dataset.act;
+      if (act === "del"){ remove(m); }
+      else if (act === "note"){ editKey = m.key; refreshPanel(); }
+      else if (act === "cancel"){ editKey = null; refreshPanel(); }
+      else if (act === "savenote"){ var ta = item.querySelector("textarea"); editKey = null; setNote(m, ta ? ta.value.trim() : ""); }
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("marks")) return;
+      var b = e.target.closest("button[data-exp]"); if (!b) return;
+      exportMarks(b.dataset.exp);
+    });
+
+    /* ---- export ---- */
+    function baseName(){ return (docName || "document").replace(/\.[^.]+$/, ""); }
+    function toMarkdown(){
+      var out = ["# " + ($("#fname").textContent || docName), "", "_Exported from Lamplight on " + new Date().toLocaleString() + "_", ""];
+      var bms = list.filter(function(m){ return m.kind === "bookmark"; }), his = list.filter(function(m){ return m.kind === "highlight"; });
+      if (bms.length){
+        out.push("## Bookmarks", "");
+        bms.forEach(function(m){ out.push("- " + (m.pdfPage ? "Page " + m.pdfPage : pctOf(m) + "%") + " \u2014 " + (m.label || "") + (m.note ? "  \n  " + m.note.replace(/\n/g, "  \n  ") : "")); });
+        out.push("");
+      }
+      if (his.length){
+        out.push("## Highlights", "");
+        his.forEach(function(m){
+          out.push("> " + (m.text || "").replace(/\n/g, " "), "");
+          if (m.note) out.push(m.note, "");
+          out.push("<sub>" + pctOf(m) + "%</sub>", "");
+        });
+      }
+      return out.join("\n");
+    }
+    function toJSON(){
+      return JSON.stringify({ document: { name: docName, title: $("#fname").textContent, id: docId }, exported: new Date().toISOString(),
+        marks: list.map(function(m){ var o = {}; Object.keys(m).forEach(function(k){ if (k !== "doc") o[k] = m[k]; }); o.percent = pctOf(m); return o; }) }, null, 2);
+    }
+    function download(name, text, type){
+      var blob = new Blob([text], { type: type }), url = URL.createObjectURL(blob);
+      var a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
+    }
+    function exportMarks(fmt){
+      if (fmt === "md") download(baseName() + "-notes.md", toMarkdown(), "text/markdown");
+      else if (fmt === "json") download(baseName() + "-notes.json", toJSON(), "application/json");
+      else if (navigator.clipboard) navigator.clipboard.writeText(toMarkdown()).then(function(){ toast("Copied"); }, function(){ toast("Couldn\u2019t copy"); });
+    }
+
+    Menu.add({ sep: true });
+    Menu.add({ label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+
+    return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, addHighlight: addHighlight, highlightSelection: highlightSelection,
+             selectionOffsets: selectionOffsets, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
+             toMarkdown: toMarkdown, toJSON: toJSON };
+  })();
+
+  Menu.add({ sep: true });
+  Menu.add({ label: "Library", run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
 
   /* ---------- wiring ---------- */
   $("#openBtn").addEventListener("click", function(){ $("#fileInput").click(); });
@@ -2853,12 +3320,14 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       "}",
       "#dictCard .act.go{background:var(--accent); border-color:var(--accent); color:var(--panel);}",
       "#dictPill{",
-      "  position:fixed; z-index:58; display:none; padding:7px 14px; border-radius:999px;",
+      "  position:fixed; z-index:58; display:none; gap:2px; padding:3px; border-radius:999px;",
       "  border:1px solid var(--accent); background:var(--accent); color:var(--panel);",
-      "  font-family:var(--ui-font); font-size:13px; font-weight:600; cursor:pointer;",
+      "  font-family:var(--ui-font); font-size:13px; font-weight:600;",
       "  box-shadow:0 4px 16px rgba(0,0,0,.25);",
       "}",
-      "#dictPill.on{display:block;}",
+      "#dictPill.on{display:flex;}",
+      "#dictPill button{border:0; background:transparent; color:inherit; font:inherit; padding:5px 11px; border-radius:999px; cursor:pointer;}",
+      "#dictPill button:hover{background:rgba(0,0,0,.16);}",
       "@media (min-width:820px){",
       "  #dictCard{left:auto; right:22px; bottom:22px; width:440px;",
       "    border-radius:16px; border:1px solid var(--line); max-height:70vh;}",
@@ -2873,7 +3342,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     document.body.appendChild(scrim);
     document.body.appendChild(card);
     var inner = card.querySelector(".inner");
-    var pill = document.createElement("button"); pill.id = "dictPill"; pill.type = "button";
+    var pill = document.createElement("div"); pill.id = "dictPill";
+    pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="mark">Highlight</button>';
     document.body.appendChild(pill);
 
     var openedAt = 0;
@@ -3054,7 +3524,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     }
 
     /* ---------- sentence explaining (offline, rule-based — see llExplain) ---------- */
-    var currentSentence = null;
+    var currentSentence = null, currentSpan = null;
 
     function kindLabel(c){
       var first = "";
@@ -3132,19 +3602,29 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       return h + '</div>';
     }
 
-    function explainSentence(sentence){
+    function explainSentence(sentence, span){
       sentence = String(sentence || "").replace(/\s+/g, " ").trim();
       if (!sentence) return;
       currentSentence = sentence;
+      currentSpan = (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
       var h = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw">' +
               '<div class="term">' + (/\s/.test(sentence) ? 'This sentence' : 'This word') + '</div></div>' +
               '<button class="x" aria-label="Close">×</button></div>' +
               '<div class="quote">' + esc(sentence) + '</div>' +
+              (currentSpan ? '<div class="acts" id="dictMarkActs"><button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button></div>' : '') +
               '<div id="dictAi"></div>' +
               '<div id="dictExpl"><div class="note">Reading it…' +
               (DB ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
       inner.innerHTML = h;
       inner.querySelector(".x").addEventListener("click", closeCard);
+      var ma = inner.querySelector("#dictMarkActs");
+      if (ma) ma.addEventListener("click", function(e){
+        var b = e.target.closest("button"); if (!b || !window.__ll || !window.__ll.Marks) return;
+        var m = window.__ll.Marks.addHighlight(currentSpan.start, currentSpan.end);
+        closeCard();
+        if (m && b.dataset.m === "note") window.__ll.Marks.openPanel(m.key);
+        else if (m) window.__ll.Marks.toast("Highlighted");
+      });
       openCard();
       renderAiButton(sentence);
 
@@ -3302,16 +3782,30 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 
       var parts = full.match(/[^.!?…]+[.!?…]*["”’]?\s*/g) || [full];
       pos = 0;
+      var s = full;
       for (var k = 0; k < parts.length; k++){
         var end = pos + parts[k].length;
         if (collapsedAt <= end || k === parts.length - 1){
-          var s = parts[k].trim();
+          s = parts[k].trim();
           if (s.length < 12 && parts[k+1]) s = (s + " " + parts[k+1]).trim();
-          return s;
+          break;
         }
         pos = end;
       }
-      return full;
+      /* locate the sentence in the raw text so it can be highlighted */
+      var res = { text: s, start: null, end: null };
+      try {
+        var words = s.split(" ").filter(Boolean).map(function(w){ return w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); });
+        var re = new RegExp(words.join("\\s+"));
+        var mm = re.exec(raw.slice(pStart));
+        if (mm){
+          var walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+          var first = walker.nextNode();
+          var base = first ? window.__ll.Anchor.offsetOf(first, 0) : null;
+          if (base !== null){ res.start = base + pStart + mm.index; res.end = res.start + mm[0].length; }
+        }
+      } catch(_){}
+      return res;
     }
 
     /* ---------- gestures ---------- */
@@ -3350,7 +3844,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
           held = true;
           if (navigator.vibrate) navigator.vibrate(12);
           var s = sentenceAt(tX, tY);
-          if (s) explainSentence(s);
+          if (s) explainSentence(s.text, s);
         }, 480);
       }, { passive: true });
 
@@ -3367,7 +3861,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
         if (dictMode !== "tap") return;
         if (held){ held = false; e.stopPropagation(); return; }
         if (moved) return;
-        if (e.target.closest && e.target.closest("a")) return;
+        if (e.target.closest && (e.target.closest("a") || e.target.closest("mark.ll-mark"))) return;
         if (selectionText()) return;              /* a drag-selection is handled by the pill */
         if (!inMiddleBand(e.clientX)) return;
         var w = wordAt(e.clientX, e.clientY);
@@ -3381,24 +3875,25 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       doc.addEventListener("contextmenu", function(e){
         if (dictMode === "off") return;
         var sel = selectionText();
-        var s = sel || sentenceAt(e.clientX, e.clientY);
-        if (s){ e.preventDefault(); lookupText(s); }
+        if (sel){ e.preventDefault(); lookupText(sel, window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null); return; }
+        var s = sentenceAt(e.clientX, e.clientY);
+        if (s){ e.preventDefault(); explainSentence(s.text, s); }
       });
     }
 
     /* selected text (mouse drag, or the native handles when the dictionary is off):
        a small floating button offers to define one word or explain a longer selection */
-    function lookupText(s){
+    function lookupText(s, off){
       var words = s.split(/\s+/).filter(Boolean);
       if (words.length === 1) defineWord(words[0].replace(/^[^A-Za-zÀ-ɏ]+|[^A-Za-zÀ-ɏ]+$/g, "") || words[0]);
-      else explainSentence(s);
+      else explainSentence(s, off);
     }
     function hidePill(){ pill.classList.remove("on"); }
     function updatePill(){
       var s = selectionText();
       if (!s || card.classList.contains("open")){ hidePill(); return; }
       var words = s.split(/\s+/).length;
-      pill.textContent = words > 1 ? "Explain" : "Define";
+      pill.querySelector("[data-act=lookup]").textContent = words > 1 ? "Explain" : "Define";
       var rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
       if (!rect || (!rect.width && !rect.height)){ hidePill(); return; }
       pill.classList.add("on");
@@ -3414,10 +3909,16 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       selTimer = setTimeout(updatePill, 180);
     });
     pill.addEventListener("mousedown", function(e){ e.preventDefault(); });
-    pill.addEventListener("click", function(){
+    pill.addEventListener("click", function(e){
+      var b = e.target.closest("button"); if (!b) return;
       var s = selectionText();
+      if (b.dataset.act === "mark"){
+        if (window.Marks_highlightSelection) window.Marks_highlightSelection();
+        hidePill(); return;
+      }
+      var off = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
       hidePill();
-      if (s) lookupText(s);
+      if (s) lookupText(s, off);
     });
     window.addEventListener("scroll", hidePill, { passive: true });
     window.addEventListener("resize", hidePill);
@@ -3466,7 +3967,9 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { state: state, Library: Library, openFile: openFile, show: show };
+  window.__ll = { state: state, Library: Library, Marks: Marks, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
+  window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
+  window.Marks_selectionOffsets = Marks.selectionOffsets;
 
   /* ---------- boot ---------- */
   buildThemeChips();
