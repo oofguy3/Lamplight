@@ -2,6 +2,12 @@
 (function(){
   "use strict";
   var $ = function(s){ return document.querySelector(s); };
+  /* localStorage can throw (Safari with all cookies blocked, some private modes); treat it as optional */
+  var Store = {
+    get: function(k){ try { return localStorage.getItem(k); } catch(_){ return null; } },
+    set: function(k, v){ try { localStorage.setItem(k, v); } catch(_){} },
+    remove: function(k){ try { localStorage.removeItem(k); } catch(_){} }
+  };
 
   /* parsers are separate files, fetched the first time a file type needs them
      (and precached by the service worker so that still works offline) */
@@ -93,11 +99,11 @@
       if (loading) return;
       var o = {};
       FIELDS.forEach(function(f){ o[f] = state[f]; });
-      try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(_){}
+      Store.set(KEY, JSON.stringify(o));
     }
     function load(){
       var o = null;
-      try { o = JSON.parse(localStorage.getItem(KEY) || "null"); } catch(_){}
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
       if (!o || typeof o !== "object") return;
       loading = true;
       FIELDS.forEach(function(f){
@@ -1614,11 +1620,24 @@
       var r = sel.getRangeAt(0);
       function pt(container, offset, isEnd){
         if (container.nodeType === 3) return Anchor.offsetOf(container, offset);
-        var kids = container.childNodes, node = isEnd ? kids[offset - 1] : kids[offset];
-        if (!node) return isEnd ? null : null;
-        var w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), t = null, last = null;
-        while ((t = w.nextNode())){ if (!isEnd) return Anchor.offsetOf(t, 0); last = t; }
-        return last ? Anchor.offsetOf(last, last.length) : null;
+        /* the boundary sits between an element's children: for a start take the first text
+           inside the next child, for an end the last text inside the previous one; an
+           empty element or a boundary at the very edge walks on to the neighbouring text */
+        var kids = container.childNodes, i = isEnd ? offset - 1 : offset;
+        while (i >= 0 && i < kids.length){
+          var k = kids[i];
+          if (k.nodeType === 3) return Anchor.offsetOf(k, isEnd ? k.length : 0);
+          var w = document.createTreeWalker(k, NodeFilter.SHOW_TEXT), t = null, last = null;
+          while ((t = w.nextNode())){ if (!isEnd) return Anchor.offsetOf(t, 0); last = t; }
+          if (last) return Anchor.offsetOf(last, last.length);
+          i += isEnd ? -1 : 1;
+        }
+        /* the boundary is at the container's own edge: use the text just outside it */
+        var w2 = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT), t2;
+        w2.currentNode = container;
+        if (isEnd){ while ((t2 = w2.previousNode())){ if (!container.contains(t2)) return Anchor.offsetOf(t2, t2.length); } }
+        else { while ((t2 = w2.nextNode())){ if (!container.contains(t2)) return Anchor.offsetOf(t2, 0); } }
+        return null;
       }
       var doc = $("#doc");
       if (!doc.contains(r.startContainer) || !doc.contains(r.endContainer)) return null;
@@ -1894,14 +1913,21 @@
           '<span class="toc-t">' + esc(e.title) + '</span>' + (e.page ? '<span class="toc-p">' + e.page + '</span>' : '') + '</div>';
       }).join("");
       var c = body.querySelector(".toc-item.cur"); if (c) c.scrollIntoView({ block: "center" });
-      body.onclick = function(ev){
-        var it = ev.target.closest(".toc-item"); if (!it) return;
-        var e = entries[+it.dataset.i]; if (!e) return;
-        Side.close();
-        if (e.el) revealElement(e.el); else if (e.page) goPdfPage(e.page);
-      };
-      body.onkeydown = function(ev){ if (ev.key === "Enter" || ev.key === " "){ var it = ev.target.closest(".toc-item"); if (it){ ev.preventDefault(); it.click(); } } };
+      shown = entries;
     }
+    /* one delegated pair of listeners on the shared panel body, live only while contents is open */
+    var shown = null;
+    Side.body.addEventListener("click", function(ev){
+      if (!Side.is("toc") || !shown) return;
+      var it = ev.target.closest(".toc-item"); if (!it) return;
+      var e = shown[+it.dataset.i]; if (!e) return;
+      Side.close();
+      if (e.el) revealElement(e.el); else if (e.page) goPdfPage(e.page);
+    });
+    Side.body.addEventListener("keydown", function(ev){
+      if (!Side.is("toc") || (ev.key !== "Enter" && ev.key !== " ")) return;
+      var it = ev.target.closest(".toc-item"); if (it){ ev.preventDefault(); it.click(); }
+    });
     function render(body, foot){
       if (state.mode === "pdf"){
         body.innerHTML = '<div class="empty-note">Reading the outline\u2026</div>';
@@ -1914,7 +1940,7 @@
         renderList(body, docEntries());
       }
     }
-    function openPanel(){ Side.open("toc", "Contents", render); }
+    function openPanel(){ Side.open("toc", "Contents", render, function(){ shown = null; }); }
     Menu.add({ order: 10, label: "Contents", key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, entries: docEntries, pdfEntries: pdfEntries, goPdfPage: goPdfPage };
   })();
@@ -2096,8 +2122,8 @@
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
     var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
-    var rate = parseFloat(localStorage.getItem("ll_tts_rate") || "1") || 1;
-    var voiceName = localStorage.getItem("ll_tts_voice") || "";
+    var rate = parseFloat(Store.get("ll_tts_rate") || "1") || 1;
+    var voiceName = Store.get("ll_tts_voice") || "";
     var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
     rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "\u00D7";
 
@@ -2276,10 +2302,10 @@
     $("#ttsPrev").addEventListener("click", function(){ if (!units.length) return; idx = Math.max(0, idx - 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
     $("#ttsNext").addEventListener("click", function(){ if (!units.length) return; idx = Math.min(units.length - 1, idx + 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
     rateEl.addEventListener("input", function(){
-      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "\u00D7"; localStorage.setItem("ll_tts_rate", String(rate));
+      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "\u00D7"; Store.set("ll_tts_rate", String(rate));
       if (playing) speakCurrent();
     });
-    voiceSel.addEventListener("change", function(){ voiceName = voiceSel.value; localStorage.setItem("ll_tts_voice", voiceName); if (playing) speakCurrent(); });
+    voiceSel.addEventListener("change", function(){ voiceName = voiceSel.value; Store.set("ll_tts_voice", voiceName); if (playing) speakCurrent(); });
     window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} });
 
     Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
@@ -2293,8 +2319,8 @@
      ============================================================ */
   var Progress = (function(){
     var el = $("#progressInfo"), hideTimer = null;
-    var wpm = parseFloat(localStorage.getItem("ll_wpm") || "0") || 0;    /* words per minute (text) */
-    var ppm = parseFloat(localStorage.getItem("ll_ppm") || "0") || 0;    /* pages per minute (pdf) */
+    var wpm = parseFloat(Store.get("ll_wpm") || "0") || 0;    /* words per minute (text) */
+    var ppm = parseFloat(Store.get("ll_ppm") || "0") || 0;    /* pages per minute (pdf) */
     var PRIOR_WPM = 230, PRIOR_PPM = 0.5, sample = { words: 0, ms: 0, pages: 0, pms: 0 };
     var docWords = 0, docLen = 0, lastFrac = null, lastT = 0, lastTick = 0, docKey = null;
     function countWords(){
@@ -2364,8 +2390,8 @@
     function maybeStore(){
       clearTimeout(storeTimer);
       storeTimer = setTimeout(function(){
-        if (sample.ms > 60000 && sample.words > 300){ wpm = currentWpm(); localStorage.setItem("ll_wpm", wpm.toFixed(0)); }
-        if (sample.pms > 60000 && sample.pages > 3){ ppm = currentPpm(); localStorage.setItem("ll_ppm", ppm.toFixed(2)); }
+        if (sample.ms > 60000 && sample.words > 300){ wpm = currentWpm(); Store.set("ll_wpm", wpm.toFixed(0)); }
+        if (sample.pms > 60000 && sample.pages > 3){ ppm = currentPpm(); Store.set("ll_ppm", ppm.toFixed(2)); }
       }, 1500);
     }
     return { tick: tick, wpm: currentWpm, ppm: currentPpm, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
@@ -2406,7 +2432,7 @@
      ============================================================ */
   var Auto = (function(){
     var bar = $("#autoBar"), speedEl = $("#autoSpeed"), playBtn = $("#autoPlay");
-    var on = false, paused = false, mult = parseFloat(localStorage.getItem("ll_autoscroll") || "1") || 1, raf = null, lastT = 0, acc = 0, pageTimer = null;
+    var on = false, paused = false, mult = parseFloat(Store.get("ll_autoscroll") || "1") || 1, raf = null, lastT = 0, acc = 0, pageTimer = null;
     function pxPerSec(){
       /* base speed from the measured reading rate: words per second × height per word */
       var lineH = state.size * state.lh;
@@ -2453,8 +2479,8 @@
     function resume(){ paused = false; playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause"); run(); }
     playBtn.addEventListener("click", function(){ if (paused) resume(); else pause(); });
     $("#autoStop").addEventListener("click", stop);
-    $("#autoSlower").addEventListener("click", function(){ mult = Math.max(0.3, +(mult - 0.1).toFixed(1)); label(); localStorage.setItem("ll_autoscroll", String(mult)); if (on && !paused) run(); });
-    $("#autoFaster").addEventListener("click", function(){ mult = Math.min(4, +(mult + 0.1).toFixed(1)); label(); localStorage.setItem("ll_autoscroll", String(mult)); if (on && !paused) run(); });
+    $("#autoSlower").addEventListener("click", function(){ mult = Math.max(0.3, +(mult - 0.1).toFixed(1)); label(); Store.set("ll_autoscroll", String(mult)); if (on && !paused) run(); });
+    $("#autoFaster").addEventListener("click", function(){ mult = Math.min(4, +(mult + 0.1).toFixed(1)); label(); Store.set("ll_autoscroll", String(mult)); if (on && !paused) run(); });
     /* a wheel or touch pauses so the reader can take over */
     window.addEventListener("wheel", function(){ if (on && !paused) pause(); }, { passive: true });
     document.addEventListener("touchstart", function(e){ if (on && !paused && !e.target.closest("#autoBar")) pause(); }, { passive: true });
@@ -2472,9 +2498,9 @@
      ============================================================ */
   var Tabs = (function(){
     var KEY = "ll_tabs", tabs = [], activeId = null, strip = $("#tabs");
-    try { tabs = JSON.parse(localStorage.getItem(KEY) || "[]"); if (!Array.isArray(tabs)) tabs = []; } catch(_){ tabs = []; }
+    try { tabs = JSON.parse(Store.get(KEY) || "[]"); if (!Array.isArray(tabs)) tabs = []; } catch(_){ tabs = []; }
     tabs = tabs.filter(function(t){ return t && t.id && t.name; }).map(function(t){ return { id: t.id, name: t.name, file: null }; });
-    function save(){ try { localStorage.setItem(KEY, JSON.stringify(tabs.map(function(t){ return { id: t.id, name: t.name }; }))); } catch(_){} }
+    function save(){ try { Store.set(KEY, JSON.stringify(tabs.map(function(t){ return { id: t.id, name: t.name }; }))); } catch(_){} }
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     function render(){
       strip.classList.toggle("on", tabs.length >= 2);
@@ -2879,7 +2905,7 @@
     var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
     var LS_KEY  = "ll_apikey";
     var AI_MODEL = "claude-sonnet-5";
-    var dictMode = localStorage.getItem(LS_MODE) || "tap";
+    var dictMode = Store.get(LS_MODE) || "tap";
 
     /* ---------- styles ---------- */
     var css = document.createElement("style");
@@ -3076,8 +3102,8 @@
       if (DB[i]) return Promise.resolve(DB[i]);
       if (chunkJobs[i]) return chunkJobs[i];
       chunkJobs[i] = fetch("./dict" + i + ".json").then(function(r){ if (!r.ok) throw 0; return r.json(); })
-        .catch(function(){ return {}; })
-        .then(function(part){ DB[i] = part; return part; });
+        .then(function(part){ DB[i] = part; return part; })
+        .catch(function(){ chunkJobs[i] = null; return {}; });   /* not kept: the next lookup tries again */
       return chunkJobs[i];
     }
     /* make sure every chunk these words live in is loaded, then return a synchronous finder */
@@ -3344,8 +3370,8 @@
       if (!navigator.onLine){ aiBox.innerHTML = ""; return; }
       aiBox.innerHTML = '<div class="acts"><button class="act go" id="dictAiBtn">Explain with AI</button></div>';
       aiBox.querySelector("#dictAiBtn").addEventListener("click", function(){
-        var key = localStorage.getItem(LS_KEY) || "";
-        if (!key){ if (!askForKey(true)) return; key = localStorage.getItem(LS_KEY) || ""; if (!key) return; }
+        var key = Store.get(LS_KEY) || "";
+        if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
         explainWithAI(sentence, key, aiBox);
       });
     }
@@ -3385,18 +3411,18 @@
         if (currentSentence !== sentence) return;
         aiBox.innerHTML = '<div class="note">Couldn’t get an explanation (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
           '<div class="acts"><button class="act" id="dictAiRetry">Try again</button><button class="act" id="dictAiKey">Change key</button></div>';
-        aiBox.querySelector("#dictAiRetry").addEventListener("click", function(){ explainWithAI(sentence, localStorage.getItem(LS_KEY) || "", aiBox); });
-        aiBox.querySelector("#dictAiKey").addEventListener("click", function(){ if (askForKey(true)) explainWithAI(sentence, localStorage.getItem(LS_KEY) || "", aiBox); });
+        aiBox.querySelector("#dictAiRetry").addEventListener("click", function(){ explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
+        aiBox.querySelector("#dictAiKey").addEventListener("click", function(){ if (askForKey(true)) explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
       });
     }
     window.addEventListener("online", function(){ if (currentSentence && card.classList.contains("open")) renderAiButton(currentSentence); });
     window.addEventListener("offline", function(){ var b = inner.querySelector("#dictAiBtn"); if (b) b.parentNode.removeChild(b); });
 
     function askForKey(keepOpen){
-      var k = prompt("Paste an Anthropic API key to enable “Explain with AI”.\n\nIt is stored only on this device and is sent only to api.anthropic.com when you press the button. Leave blank to remove it.", localStorage.getItem(LS_KEY) || "");
+      var k = prompt("Paste an Anthropic API key to enable “Explain with AI”.\n\nIt is stored only on this device and is sent only to api.anthropic.com when you press the button. Leave blank to remove it.", Store.get(LS_KEY) || "");
       if (k === null) return false;
       k = k.trim();
-      if (k) localStorage.setItem(LS_KEY, k); else localStorage.removeItem(LS_KEY);
+      if (k) Store.set(LS_KEY, k); else Store.remove(LS_KEY);
       if (!keepOpen) closeCard();
       return !!k;
     }
@@ -3644,7 +3670,7 @@
       g.querySelectorAll("#dictChips .chip").forEach(function(c){
         c.addEventListener("click", function(){
           dictMode = c.dataset.dm;
-          localStorage.setItem(LS_MODE, dictMode);
+          Store.set(LS_MODE, dictMode);
           syncChips(); applyMode();
         });
       });
@@ -3671,7 +3697,7 @@
   /* ---------- boot ---------- */
   Prefs.load();
   /* first run on a device that asks for more contrast: start with the high-contrast theme */
-  if (!localStorage.getItem("ll_prefs") && window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){
+  if (!Store.get("ll_prefs") && window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){
     state.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "hidark" : "hicon";
   }
   headVar();
@@ -3747,10 +3773,10 @@
   /* ask the browser to keep our storage (library, positions, notes) out of automatic eviction */
   if (navigator.storage && navigator.storage.persist){
     var askPersist = function(){
-      if (localStorage.getItem("ll_persist") === "granted") return;
+      if (Store.get("ll_persist") === "granted") return;
       navigator.storage.persisted().then(function(p){
-        if (p){ localStorage.setItem("ll_persist", "granted"); return; }
-        return navigator.storage.persist().then(function(ok){ localStorage.setItem("ll_persist", ok ? "granted" : "denied"); });
+        if (p){ Store.set("ll_persist", "granted"); return; }
+        return navigator.storage.persist().then(function(ok){ Store.set("ll_persist", ok ? "granted" : "denied"); });
       }).catch(function(){});
     };
     /* best asked once something is worth keeping: the first time a file is opened */

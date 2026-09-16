@@ -72,7 +72,7 @@ workers/                the DOCX worker
 fonts/                  Atkinson Hyperlegible
 ```
 
-Opening `index.html` straight from a folder (`file://`) also works for reading; only the offline install is unavailable there.
+Opening `index.html` straight from a folder (`file://`) works for reading, but browsers block `fetch()` on `file://` URLs, so the offline dictionary (and the service worker) are only available when the folder is served over HTTP(S).
 
 ### Explain with AI (optional)
 
