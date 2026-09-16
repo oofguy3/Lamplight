@@ -1286,6 +1286,11 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 
   .rowline{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
   .rowline label{font-size:13px; color:var(--muted); min-width:64px;}
+  .rowline .sel{
+    padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:13px; min-width:0;
+  }
+  .rowline label.check{min-width:0;}
   input[type=range]{flex:1; min-width:140px; accent-color:var(--accent);}
   .val{font-size:12.5px; color:var(--muted); min-width:52px; text-align:right; font-variant-numeric:tabular-nums;}
   .check{display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ink); cursor:pointer;}
@@ -1354,6 +1359,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   /* text documents */
   #docView{display:none; max-width:calc(var(--w) + 2 * var(--margin)); margin:0 auto; padding:0 var(--margin);}
   body.paged #docView{position:relative; overflow:hidden;}
+  body.paged.spread #docView{max-width:calc(2 * var(--w) + 48px + 2 * var(--margin));}
   #doc{
     font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
     overflow-wrap:break-word;
@@ -1388,6 +1394,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     transition:filter .35s ease;
   }
   body.paged #pdf canvas{margin-bottom:0;}
+  body.paged #pdf.spread{display:flex; justify-content:center; align-items:flex-start; gap:18px;}
+  body.paged #pdf.spread canvas{margin:0;}
   body.soften #pdf canvas{filter:invert(.93) hue-rotate(180deg);}
 
   /* page-turn bar */
@@ -1629,11 +1637,27 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
         <button class="chip" data-flow="pages">Pages</button>
       </div>
       <div class="hint">Scroll: the top bar hides while you read and comes back when you scroll up. Pages: tap the edges or swipe to turn — tap the middle to hide or show the bars.</div>
+      <div class="rowline">
+        <label class="check"><input type="checkbox" id="cSpread" checked>Two pages side by side on wide screens</label>
+        <label class="check"><input type="checkbox" id="cWake" checked>Keep the screen awake while reading</label>
+      </div>
     </div>
 
     <div class="group">
       <div class="label">Theme</div>
       <div class="chips" id="themeChips"></div>
+      <div class="rowline"><label>Auto</label>
+        <div class="chips" id="autoChips">
+          <button class="chip" data-auto="off">Manual</button>
+          <button class="chip" data-auto="system">Follow system</button>
+          <button class="chip" data-auto="time">By time</button>
+        </div>
+      </div>
+      <div id="autoRow" style="display:none;">
+        <div class="rowline"><label for="autoDay">Day</label><select id="autoDay" class="sel"></select><label for="autoNight">Night</label><select id="autoNight" class="sel"></select></div>
+        <div class="rowline" id="autoTimes"><label for="nightFrom">Night from</label><input type="time" id="nightFrom" class="sel" value="21:00"><label for="nightTo">until</label><input type="time" id="nightTo" class="sel" value="07:00"></div>
+        <div class="hint" id="autoHint"></div>
+      </div>
       <div id="customRow">
         <div class="cst-label">Background</div>
         <div class="sw-grid" id="bgSwatches"></div>
@@ -1761,6 +1785,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     theme:"day",
     custom:{bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true},
     font:"serif", size:19, lh:1.75, width:720, margin:0, justify:false, hyphens:false,
+    auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
     mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
@@ -1769,7 +1794,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
     var loading = false;
     function save(){
       if (loading) return;
@@ -1789,6 +1814,11 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
         state[f] = o[f];
       });
       if (!THEMES[state.theme] && state.theme !== "custom") state.theme = "day";
+      if (!/^(off|system|time)$/.test(state.auto)) state.auto = "off";
+      if (!THEMES[state.autoDay] && state.autoDay !== "custom") state.autoDay = "day";
+      if (!THEMES[state.autoNight] && state.autoNight !== "custom") state.autoNight = "dusk";
+      if (!/^\d\d:\d\d$/.test(state.nightFrom)) state.nightFrom = "21:00";
+      if (!/^\d\d:\d\d$/.test(state.nightTo)) state.nightTo = "07:00";
       if (!FONTS[state.font]) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
@@ -1911,6 +1941,71 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     $("#cPrevAcc").style.color = t.accent;
     Prefs.save();
   }
+  /* ---------- automatic theme: system setting or a night schedule ---------- */
+  var AutoTheme = (function(){
+    var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null, timer = null;
+    function minutes(t){ var m = /^(\d\d):(\d\d)$/.exec(t || ""); return m ? (+m[1]) * 60 + (+m[2]) : 0; }
+    function isNight(){
+      if (state.auto === "system") return !!(mq && mq.matches);
+      if (state.auto === "time"){
+        var d = new Date(), now = d.getHours() * 60 + d.getMinutes(), a = minutes(state.nightFrom), b = minutes(state.nightTo);
+        return a <= b ? (now >= a && now < b) : (now >= a || now < b);
+      }
+      return null;
+    }
+    function wanted(){ var n = isNight(); return n === null ? null : (n ? state.autoNight : state.autoDay); }
+    function apply(){
+      var t = wanted();
+      if (t && t !== state.theme){ state.theme = t; applyTheme(); }
+      syncUI();
+    }
+    function syncUI(){
+      document.querySelectorAll("#autoChips .chip").forEach(function(ch){ ch.classList.toggle("on", ch.dataset.auto === state.auto); });
+      $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
+      $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
+      var opts = CYCLE.map(function(k){ return '<option value="' + k + '">' + THEMES[k].name + '</option>'; }).join("") + '<option value="custom">Custom</option>';
+      if ($("#autoDay").innerHTML !== opts){ $("#autoDay").innerHTML = opts; $("#autoNight").innerHTML = opts; }
+      $("#autoDay").value = state.autoDay; $("#autoNight").value = state.autoNight;
+      $("#nightFrom").value = state.nightFrom; $("#nightTo").value = state.nightTo;
+      var n = isNight();
+      $("#autoHint").textContent = n === null ? "" : (n ? "It\u2019s night now \u2014 using the night theme." : "It\u2019s day now \u2014 using the day theme.") +
+        (state.auto === "system" ? " Follows your device\u2019s light / dark setting." : "") + " Picking a theme above changes the " + (n ? "night" : "day") + " theme.";
+    }
+    /* the user picked a theme by hand: keep auto on, but remember it for the current period */
+    function userPicked(theme){
+      var n = isNight();
+      if (n === null) return;
+      if (n) state.autoNight = theme; else state.autoDay = theme;
+      syncUI(); Prefs.save();
+    }
+    if (mq){ (mq.addEventListener ? mq.addEventListener("change", apply) : mq.addListener(apply)); }
+    timer = setInterval(function(){ if (state.auto === "time") apply(); }, 30000);
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") apply(); });
+    $("#autoChips").addEventListener("click", function(e){
+      var ch = e.target.closest(".chip"); if (!ch) return;
+      state.auto = ch.dataset.auto; Prefs.save(); apply();
+    });
+    $("#autoDay").addEventListener("change", function(e){ state.autoDay = e.target.value; Prefs.save(); apply(); });
+    $("#autoNight").addEventListener("change", function(e){ state.autoNight = e.target.value; Prefs.save(); apply(); });
+    $("#nightFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); apply(); });
+    $("#nightTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); apply(); });
+    return { apply: apply, userPicked: userPicked, isNight: isNight, syncUI: syncUI };
+  })();
+
+  /* ---------- keep the screen on while a document is open ---------- */
+  var Wake = (function(){
+    var lock = null, wanted = false;
+    function request(){
+      if (!wanted || !state.wake || !("wakeLock" in navigator) || document.visibilityState !== "visible" || lock) return;
+      navigator.wakeLock.request("screen").then(function(l){ lock = l; l.addEventListener("release", function(){ lock = null; }); }).catch(function(){});
+    }
+    function release(){ if (lock){ var l = lock; lock = null; l.release().catch(function(){}); } }
+    function set(v){ wanted = v; if (v) request(); else release(); }
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") request(); });
+    $("#cWake").addEventListener("change", function(e){ state.wake = e.target.checked; Prefs.save(); if (state.wake) request(); else release(); });
+    return { set: set, active: function(){ return !!lock; } };
+  })();
+
   function applyType(){
     var r = document.documentElement.style;
     r.setProperty("--fs", state.size + "px");
@@ -1941,6 +2036,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   function show(mode){
     state.mode = mode;
     if (mode === "doc" || mode === "pdf") state.opening = false;
+    Wake.set(mode === "doc" || mode === "pdf");
     $("#empty").style.display  = mode === "empty"  ? "block" : "none";
     $("#library").classList.toggle("show", mode === "empty" && Library.count() > 0);
     $("#docView").style.display= mode === "doc"    ? "block" : "none";
@@ -1972,16 +2068,24 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var ttsEl = $("#tts"), ttsH = ttsEl && ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
     return Math.max(160, window.innerHeight - headH - pagerH - ttsH - 26);
   }
+  function spreadOn(){ return state.spread !== false && window.innerWidth >= 1000; }
   function layoutDocPages(){
     var view = $("#docView"), doc = $("#doc");
     view.style.height = availHeight() + "px";
-    state.colw = view.clientWidth;
+    state.perPage = spreadOn() ? 2 : 1;
+    document.body.classList.toggle("spread", state.perPage === 2);
+    state.colw = state.perPage === 2 ? Math.floor((view.clientWidth - state.gap) / 2) : view.clientWidth;
     doc.style.columnWidth = state.colw + "px";
     doc.style.columnGap = state.gap + "px";
-    state.totalPages = Math.max(1, Math.ceil(doc.scrollWidth / (state.colw + state.gap)));
+    var cols = Math.max(1, Math.ceil(doc.scrollWidth / (state.colw + state.gap)));
+    state.totalPages = Math.max(1, Math.ceil(cols / state.perPage));
   }
+  /* which page shows a given x offset inside the column strip */
+  function pageOfOffset(x){ return Math.floor(x / (state.colw + state.gap) / (state.perPage || 1)); }
   function exitDocPages(){
     var view = $("#docView"), doc = $("#doc");
+    document.body.classList.remove("spread");
+    state.perPage = 1;
     view.style.height = "";
     doc.style.columnWidth = "";
     doc.style.columnGap = "";
@@ -1990,7 +2094,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   function gotoPage(n){
     n = Math.max(0, Math.min(n, state.totalPages - 1));
     state.page = n;
-    $("#doc").style.transform = "translateX(" + (-n * (state.colw + state.gap)) + "px)";
+    $("#doc").style.transform = "translateX(" + (-n * (state.perPage || 1) * (state.colw + state.gap)) + "px)";
     updatePager(); updateProgress();
     Library.notePosition();
   }
@@ -2049,14 +2153,17 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     if (!pagedActive()) return;
     if (state.mode === "doc"){ gotoPage(state.page + dir); }
     else {
-      var n = state.pdfPageNum + dir;
-      if (n >= 1 && n <= state.pdfDoc.numPages){ state.pdfPageNum = n; renderPdfSingle(); }
+      var step = state.perPage || 1;
+      var n = state.pdfPageNum + dir * step;
+      if (n < 1) n = 1;
+      if (n > state.pdfDoc.numPages) return;
+      if (n !== state.pdfPageNum){ state.pdfPageNum = n; renderPdfSingle(); }
     }
   }
   function updatePager(){
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
-    else if (state.pdfDoc){ cur = state.pdfPageNum; total = state.pdfDoc.numPages; }
+    else if (state.pdfDoc){ cur = state.pdfPageNum; total = state.pdfDoc.numPages; if (state.perPage === 2 && state.flow === "pages" && cur < total) cur = cur + "\u2013" + (cur + 1); }
     else { cur = 1; total = 1; }
     $("#pgInfo").textContent = cur + " / " + total;
   }
@@ -2250,7 +2357,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var rect = r.getBoundingClientRect();
     if (state.flow === "pages"){
       var docRect = $("#doc").getBoundingClientRect();
-      gotoPage(Math.floor((rect.left - docRect.left + 1) / (state.colw + state.gap)));
+      gotoPage(pageOfOffset(rect.left - docRect.left + 1));
     } else {
       var head = document.querySelector("header");
       var headH = document.body.classList.contains("immersive") ? 0 : head.offsetHeight;
@@ -2266,7 +2373,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       var doc = $("#doc");
       var docRect = doc.getBoundingClientRect(), r = el.getBoundingClientRect();
       var offset = r.left - docRect.left;             /* distance inside the column strip */
-      gotoPage(Math.floor(offset / (state.colw + state.gap)));
+      gotoPage(pageOfOffset(offset));
     } else {
       var head = document.querySelector("header");
       var y = el.getBoundingClientRect().top + window.scrollY - (head ? head.offsetHeight : 0) - 12;
@@ -2460,6 +2567,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var holder = $("#pdf");
     holder.style.height = "";
     holder.innerHTML = "";
+    holder.classList.remove("spread");
+    state.perPage = 1;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     doc.getPage(1).then(function(page){
       var vp1 = page.getViewport({scale:1});
@@ -2496,20 +2605,29 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     holder.style.height = availH + "px";
     var n = Math.max(1, Math.min(state.pdfPageNum, doc.numPages));
     state.pdfPageNum = n;
-    doc.getPage(n).then(function(page){
+    var two = spreadOn() && doc.numPages > 1;
+    state.perPage = two ? 2 : 1;
+    var nums = two ? [n, n + 1].filter(function(k){ return k <= doc.numPages; }) : [n];
+    Promise.all(nums.map(function(k){ return doc.getPage(k); })).then(function(pages){
       if (gen !== renderGen) return;
-      var base = page.getViewport({scale:1});
-      var fit = Math.min(contentWidth() / base.width, (availH - 14) / base.height);
-      var scale = Math.max(0.3, fit) * state.zoom;
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
-      var vp = page.getViewport({scale: scale * dpr});
-      var canvas = document.createElement("canvas");
-      canvas.width = vp.width; canvas.height = vp.height;
-      canvas.style.width = Math.floor(vp.width / dpr) + "px";
-      return page.render({canvasContext: canvas.getContext("2d"), viewport: vp}).promise.then(function(){
+      var widthEach = two ? (contentWidth() - 18) / 2 : contentWidth();
+      var fit = Infinity;
+      pages.forEach(function(page){ var base = page.getViewport({scale:1}); fit = Math.min(fit, widthEach / base.width, (availH - 14) / base.height); });
+      var scale = Math.max(0.3, fit) * state.zoom;
+      var canvases = pages.map(function(page, i){
+        var vp = page.getViewport({scale: scale * dpr});
+        var canvas = document.createElement("canvas");
+        canvas.width = vp.width; canvas.height = vp.height;
+        canvas.style.width = Math.floor(vp.width / dpr) + "px";
+        canvas.dataset.page = nums[i];
+        return { canvas: canvas, job: page.render({canvasContext: canvas.getContext("2d"), viewport: vp}).promise };
+      });
+      return Promise.all(canvases.map(function(c){ return c.job; })).then(function(){
         if (gen !== renderGen) return;
         holder.innerHTML = "";
-        holder.appendChild(canvas);
+        holder.classList.toggle("spread", two);
+        canvases.forEach(function(c){ holder.appendChild(c.canvas); });
         updatePager(); updateProgress();
         Library.pdfReady();
       });
@@ -3250,7 +3368,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
         var r = e.el.getBoundingClientRect();
         if (state.flow === "pages"){
           var docRect = $("#doc").getBoundingClientRect();
-          var col = Math.floor((r.left - docRect.left + 1) / (state.colw + state.gap));
+          var col = pageOfOffset(r.left - docRect.left + 1);
           if (col <= state.page) cur = i;
         } else if (r.top <= line) cur = i;
       });
@@ -3855,7 +3973,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   $("#lamp").addEventListener("click", function(){
     var idx = CYCLE.indexOf(state.theme);
     state.theme = CYCLE[(idx + 1) % CYCLE.length];
-    applyTheme();
+    applyTheme(); AutoTheme.userPicked(state.theme);
   });
   $("#gear").addEventListener("click", function(){
     document.body.classList.remove("hidebar");
@@ -3867,7 +3985,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     if (!ch) return;
     state.theme = ch.dataset.theme;
     if (state.theme === "custom") syncCustomUI();
-    applyTheme();
+    applyTheme(); AutoTheme.userPicked(state.theme);
   });
 
   /* custom theme controls */
@@ -3931,6 +4049,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   $("#rM").addEventListener("input",   function(e){ state.margin = +e.target.value; applyType(); });
   $("#cJustify").addEventListener("change", function(e){ state.justify = e.target.checked; applyType(); });
   $("#cHyphens").addEventListener("change", function(e){ state.hyphens = e.target.checked; applyType(); });
+  $("#cSpread").addEventListener("change", function(e){ state.spread = e.target.checked; Prefs.save(); relayoutPaged(); });
 
   $("#rZoom").addEventListener("input", function(e){
     state.zoom = (+e.target.value) / 100;
@@ -4804,7 +4923,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
+  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
@@ -4821,6 +4940,9 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   });
   applyTheme();
   applyType();
+  $("#cSpread").checked = state.spread !== false;
+  $("#cWake").checked = state.wake !== false;
+  AutoTheme.apply();
   show("empty");
 
   /* offline install: only active when hosted (https), harmless as a local file */
