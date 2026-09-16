@@ -256,6 +256,14 @@
     border-radius:4px; box-shadow:0 2px 14px rgba(0,0,0,.22);
     transition:filter .35s ease;
   }
+  /* scroll flow: a placeholder per page, filled in when it comes near the screen */
+  #pdf .pdf-page{
+    margin:0 auto 18px; max-width:100%; border-radius:4px; box-shadow:0 2px 14px rgba(0,0,0,.22);
+    background:#fff; overflow:hidden;
+  }
+  #pdf .pdf-page canvas{margin:0; box-shadow:none; border-radius:0;}
+  body.soften #pdf .pdf-page{filter:invert(.93) hue-rotate(180deg);}
+  body.soften #pdf .pdf-page canvas{filter:none;}
   body.paged #pdf canvas{margin-bottom:0;}
   body.paged #pdf.spread{display:flex; justify-content:center; align-items:flex-start; gap:18px;}
   body.paged #pdf.spread canvas{margin:0;}

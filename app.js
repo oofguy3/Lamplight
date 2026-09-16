@@ -439,6 +439,7 @@
       gotoPage(Math.round(frac * (state.totalPages - 1)));
     if (f === "scroll")
       requestAnimationFrame(function(){
+        if (state.mode === "pdf"){ Toc.goPdfPage(state.pdfPageNum); return; }
         var h = document.documentElement;
         window.scrollTo(0, frac * (h.scrollHeight - h.clientHeight));
       });
@@ -869,38 +870,92 @@
     if (state.flow === "pages") renderPdfSingle();
     else renderPdfScroll();
   }
+  /* scroll flow: one placeholder per page, sized from the page's own dimensions; pages are
+     rendered only while near the viewport and released again when far away, so a 300-page
+     PDF costs a handful of bitmaps rather than hundreds. Re-rendering (zoom, resize) keeps the
+     page that was in view. */
+  var pdfObserver = null;
   function renderPdfScroll(){
     var gen = ++renderGen;
     var doc = state.pdfDoc;
     var holder = $("#pdf");
+    var keep = holder.querySelector(".pdf-page") ? Library.currentPdfPage() : null;
+    if (pdfObserver){ pdfObserver.disconnect(); pdfObserver = null; }
     holder.style.height = "";
     holder.innerHTML = "";
     holder.classList.remove("spread");
     state.perPage = 1;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    doc.getPage(1).then(function(page){
-      var vp1 = page.getViewport({scale:1});
+    doc.getPage(1).then(function(page1){
+      if (gen !== renderGen) return;
+      var vp1 = page1.getViewport({scale:1});
       state.fitScale = Math.max(0.4, Math.min(contentWidth() / vp1.width, 2.5));
       var scale = state.fitScale * state.zoom;
-      var i = 1;
-      (function next(){
-        if (gen !== renderGen || i > doc.numPages) return;
-        doc.getPage(i).then(function(pg){
+      var sizes = {}, wraps = [];
+      function sizeOf(i){ return sizes[i] || { w: vp1.width * scale, h: vp1.height * scale }; }
+      for (var i = 1; i <= doc.numPages; i++){
+        var wrap = document.createElement("div");
+        wrap.className = "pdf-page"; wrap.dataset.page = i;
+        wrap.style.width = Math.floor(sizeOf(i).w) + "px"; wrap.style.height = Math.floor(sizeOf(i).h) + "px";
+        wrap.setAttribute("aria-label", "Page " + i);
+        holder.appendChild(wrap); wraps.push(wrap);
+      }
+      var rendering = {}, pages = {};
+      function getPage(i){ return pages[i] || (pages[i] = (i === 1 ? Promise.resolve(page1) : doc.getPage(i))); }
+      function render(i){
+        var wrap = wraps[i-1];
+        if (!wrap || wrap.dataset.done === "1" || rendering[i]) return;
+        rendering[i] = true;
+        getPage(i).then(function(pg){
           if (gen !== renderGen) return;
           var vp = pg.getViewport({scale: scale * dpr});
+          var css = pg.getViewport({scale: scale});
+          sizes[i] = { w: css.width, h: css.height };
+          wrap.style.width = Math.floor(css.width) + "px"; wrap.style.height = Math.floor(css.height) + "px";
           var canvas = document.createElement("canvas");
           canvas.width = vp.width; canvas.height = vp.height;
-          canvas.style.width = Math.floor(vp.width / dpr) + "px";
-          holder.appendChild(canvas);
-          canvas.dataset.page = i;
-          return pg.render({canvasContext: canvas.getContext("2d"), viewport: vp}).promise;
-        }).then(function(){
-          if (gen === renderGen) Library.pdfPageReady(i);
-          i++; next();
+          canvas.style.width = Math.floor(css.width) + "px"; canvas.style.height = Math.floor(css.height) + "px";
+          return pg.render({canvasContext: canvas.getContext("2d"), viewport: vp}).promise.then(function(){
+            if (gen !== renderGen) return;
+            wrap.innerHTML = ""; wrap.appendChild(canvas); wrap.dataset.done = "1";
+            rendering[i] = false;
+            Library.pdfPageReady(i);
+          });
         }).catch(function(err){
-          if (gen === renderGen) status("PDF rendering failed. " + (err && err.message ? err.message : ""));
+          rendering[i] = false;
+          if (gen === renderGen) console.warn("page " + i + " failed to render", err);
         });
-      })();
+      }
+      function release(i){
+        var wrap = wraps[i-1];
+        if (!wrap || wrap.dataset.done !== "1") return;
+        var c = wrap.querySelector("canvas");
+        if (c){ c.width = 0; c.height = 0; }
+        wrap.innerHTML = ""; wrap.dataset.done = "0";
+      }
+      /* real page sizes, fetched in the background so the scrollbar settles quickly */
+      (function measure(i){
+        if (gen !== renderGen || i > doc.numPages) return;
+        var batch = [];
+        for (var k = i; k < i + 8 && k <= doc.numPages; k++) batch.push(k);
+        Promise.all(batch.map(function(k){ return getPage(k).then(function(pg){ var v = pg.getViewport({scale: scale}); sizes[k] = { w: v.width, h: v.height }; }); })).then(function(){
+          if (gen !== renderGen) return;
+          batch.forEach(function(k){ var w = wraps[k-1]; if (w.dataset.done !== "1"){ w.style.width = Math.floor(sizes[k].w) + "px"; w.style.height = Math.floor(sizes[k].h) + "px"; } });
+          setTimeout(function(){ measure(i + 8); }, 0);
+        });
+      })(1);
+      if ("IntersectionObserver" in window){
+        pdfObserver = new IntersectionObserver(function(entries){
+          entries.forEach(function(en){
+            var i = +en.target.dataset.page;
+            if (en.isIntersecting) render(i); else release(i);
+          });
+        }, { rootMargin: "150% 0px 150% 0px" });
+        wraps.forEach(function(w){ pdfObserver.observe(w); });
+      } else {
+        for (var j = 1; j <= doc.numPages; j++) render(j);
+      }
+      if (keep){ var w = wraps[keep-1]; if (w) window.scrollTo(0, Math.max(0, w.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 6)); }
     }).catch(function(err){
       if (gen === renderGen) status("PDF rendering failed. " + (err && err.message ? err.message : ""));
     });
@@ -1156,9 +1211,9 @@
     function currentPdfPage(){
       if (state.flow === "pages") return state.pdfPageNum;
       /* the page that fills the upper part of the screen (a sliver of the previous one doesn't count) */
-      var head = headerHeight(), line = head + (window.innerHeight - head) * 0.4, canvases = $("#pdf").querySelectorAll("canvas");
-      for (var i = 0; i < canvases.length; i++){
-        if (canvases[i].getBoundingClientRect().bottom > line) return +canvases[i].dataset.page || (i + 1);
+      var head = headerHeight(), line = head + (window.innerHeight - head) * 0.4, pages = $("#pdf").querySelectorAll(".pdf-page");
+      for (var i = 0; i < pages.length; i++){
+        if (pages[i].getBoundingClientRect().bottom > line) return +pages[i].dataset.page || (i + 1);
       }
       return state.pdfPageNum || 1;
     }
@@ -1208,10 +1263,9 @@
         if (state.flow === "pages"){
           pending = null;
           if (state.pdfPageNum !== n){ state.pdfPageNum = n; renderPdfSingle(); }
-        } else if (ready.pdfPages[n]){
-          pending = null;
-          var c = $("#pdf").querySelector('canvas[data-page="' + n + '"]');
-          if (c) window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - headerHeight() - 6));
+        } else {
+          var c = $("#pdf").querySelector('.pdf-page[data-page="' + n + '"]');
+          if (c){ pending = null; window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - headerHeight() - 6)); }
         }
       } else if (!state.opening && (state.mode === "status" || state.mode === "empty")){
         /* opening failed — nothing to restore */
@@ -1486,7 +1540,7 @@
       Side.close();
       if (m.pdfPage && state.mode === "pdf"){
         if (state.flow === "pages"){ state.pdfPageNum = m.pdfPage; renderPdfSingle(); }
-        else { var c = $("#pdf").querySelector('canvas[data-page="' + m.pdfPage + '"]'); if (c) window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 6)); }
+        else { var c = $("#pdf").querySelector('.pdf-page[data-page="' + m.pdfPage + '"]'); if (c) window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 6)); }
       } else if (typeof m.start === "number") revealOffset(m.start);
     }
 
@@ -1680,9 +1734,8 @@
       n = Math.max(1, Math.min(n, state.pdfDoc.numPages));
       if (state.flow === "pages"){ state.pdfPageNum = n; renderPdfSingle(); }
       else {
-        var c = $("#pdf").querySelector('canvas[data-page="' + n + '"]');
+        var c = $("#pdf").querySelector('.pdf-page[data-page="' + n + '"]');
         if (c) window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 6));
-        else Marks.toast("Page " + n + " is still rendering");
       }
     }
     function currentIndex(entries){
