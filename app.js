@@ -17,7 +17,8 @@
     marked:  ["./vendor/marked.min.js"],
     purify:  ["./vendor/purify.min.js"],
     jszip:   ["./vendor/jszip.min.js"],
-    explain: ["./explain.js"]
+    explain: ["./explain.js"],
+    morph:   ["./morph.js"]
   };
   function need(names){
     var files = [];
@@ -4375,6 +4376,21 @@
       "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
       "#dictCard .brk i{color:var(--muted); font-style:italic;}",
+      /* word parts: a row of tiles, one per prefix / root / suffix, joined by plus signs */
+      "#dictCard .parts{display:flex; flex-wrap:wrap; align-items:stretch; gap:6px 4px; margin:2px 0 6px;}",
+      "#dictCard .part{",
+      "  display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:12em;",
+      "  padding:6px 9px 7px; border-radius:10px; border:1px solid var(--line);",
+      "  background:var(--panel); font:inherit; color:var(--ink); text-align:left;",
+      "}",
+      "#dictCard button.part{cursor:pointer; border-color:color-mix(in srgb, var(--accent) 45%, var(--line));}",
+      "#dictCard button.part:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      "#dictCard .part .pt{font-family:var(--reader-font); font-size:1.0625rem; line-height:1.2; font-weight:600;}",
+      "#dictCard .part .pk{font-size:0.7812rem; line-height:1.3; color:var(--accent); margin-top:1px;}",
+      "#dictCard .part .pm{font-size:0.7812rem; line-height:1.35; margin-top:2px;}",
+      "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
+      "#dictCard .plus{align-self:center; color:var(--muted); font-size:0.9375rem; padding:0 1px;}",
+      "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
       "#dictCard .clause{",
       "  padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;",
       "}",
@@ -4616,6 +4632,75 @@
       }
       inner.innerHTML = h;
       inner.querySelector(".x").addEventListener("click", closeCard);
+      renderParts(term, res);
+    }
+
+    /* ---------- word parts (prefix / root / suffix, see llMorph) ----------
+       Drawn under the definition once morph.js and the chunks for the possible stems are
+       in; the definition itself never waits for it. */
+    var partsToken = 0;
+    function shortDef(entry){
+      var m = null;
+      if (window.llExplain){
+        var best = window.llExplain.bestSense(entry, null, window.llExplain.rank);
+        if (best) m = best.m;
+      }
+      if (!m){
+        for (var i = 0; i < entry.m.length; i++) if (entry.m[i].p){ m = entry.m[i]; break; }
+        m = m || entry.m[0];
+      }
+      var d = window.llExplain ? window.llExplain.cleanDef(m.d, m.p) : String(m.d || "").replace(/\s+/g, " ").trim();
+      if (d.length > 60) d = d.slice(0, 57).replace(/\s+\S*$/, "") + "…";
+      return d;
+    }
+    /* what the analyser is told about a dictionary word: a short definition, its parts of
+       speech, and whether some senses (Webster's) carry no tag at all */
+    function partLookup(w){
+      var tries = IRREG[w] ? [w, IRREG[w]] : [w];
+      for (var i = 0; i < tries.length; i++){
+        var e = find(tries[i]);
+        if (!e || isStub(e)) continue;
+        var pos = [], open = false;
+        e.m.forEach(function(m){ if (m.p){ if (pos.indexOf(m.p) < 0) pos.push(m.p); } else open = true; });
+        return { d: shortDef(e), pos: pos, open: open, obscure: !pos.length };
+      }
+      return null;
+    }
+    function renderParts(term, res){
+      var token = ++partsToken;
+      var words = [term.toLowerCase().replace(/[’]/g, "'")];
+      if (res && res.word && words.indexOf(res.word) < 0) words.push(res.word);
+      need(["morph"]).then(function(){
+        var cands = [];
+        words.forEach(function(w){ cands = cands.concat(window.llMorph.candidates(w)); });
+        return withWords(cands.concat(cands.map(function(c){ return IRREG[c]; })));
+      }).then(function(){
+        if (token !== partsToken || !card.classList.contains("open")) return;
+        var r = null;
+        for (var i = 0; i < words.length && !r; i++) r = window.llMorph.analyse(words[i], partLookup);
+        if (!r) return;
+        var h = '<div class="sec">Word parts</div><div class="parts">';
+        r.parts.forEach(function(p, i){
+          if (i) h += '<span class="plus" aria-hidden="true">+</span>';
+          /* a base is shown as the word it is (hurry, not the hurri- of "unhurried") */
+          var tile = '<span class="pt">' + esc(p.kind === "base" && p.word ? p.word : p.text) + '</span><small class="pk">' + esc(p.kind) + '</small>' +
+                     (p.meaning ? '<span class="pm">' + esc(p.meaning) + '</span>' : '') +
+                     (p.origin ? '<i class="po">' + esc(p.origin) + '</i>' : '');
+          if (p.kind === "base" && p.word) h += '<button type="button" class="part" data-w="' + esc(p.word) + '" title="Look up “' + esc(p.word) + '”">' + tile + '</button>';
+          else h += '<span class="part"' + (p.origin ? ' title="' + esc(p.origin) + '"' : '') + '>' + tile + '</span>';
+        });
+        h += '</div>';
+        if (r.gloss) h += '<div class="gloss">so: ' + esc(r.gloss) + '</div>';
+        if (r.confidence < 0.5) h += '<div class="note">A guess from the spelling.</div>';
+        var box = document.createElement("div");
+        box.className = "wordparts";
+        box.innerHTML = h;
+        box.addEventListener("click", function(e){
+          var b = e.target.closest("button.part");
+          if (b) defineWord(b.dataset.w);
+        });
+        inner.appendChild(box);
+      }).catch(function(err){ console.warn("Word parts unavailable", err); });
     }
 
     function defineWord(term){
