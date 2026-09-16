@@ -1118,12 +1118,13 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       "  border-top:1px solid var(--line);",
       "  border-radius:16px 16px 0 0;",
       "  box-shadow:0 -10px 40px rgba(0,0,0,.28);",
-      "  transform:translateY(110%); transition:transform .24s ease;",
+      "  transform:translateY(110%); visibility:hidden;",
+      "  transition:transform .24s ease, visibility 0s linear .24s;",
       "  max-height:62vh; overflow-y:auto; overscroll-behavior:contain;",
       "  padding:0 0 max(16px, env(safe-area-inset-bottom));",
       "  font-family:var(--ui-font);",
       "}",
-      "#dictCard.open{transform:none;}",
+      "#dictCard.open{transform:none; visibility:visible; transition:transform .24s ease, visibility 0s;}",
       "#dictCard .grab{",
       "  width:40px; height:4px; border-radius:999px; background:var(--line);",
       "  margin:9px auto 4px;",
@@ -1186,12 +1187,14 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     document.body.appendChild(card);
     var inner = card.querySelector(".inner");
 
-    function openCard(){ scrim.classList.add("on"); card.classList.add("open"); }
+    var openedAt = 0;
+    function openCard(){ openedAt = Date.now(); scrim.classList.add("on"); card.classList.add("open"); }
     function closeCard(){
       scrim.classList.remove("on"); card.classList.remove("open");
       clearHit();
     }
-    scrim.addEventListener("click", closeCard);
+    /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
+    scrim.addEventListener("click", function(){ if (Date.now() - openedAt > 400) closeCard(); });
     card.querySelector(".grab").addEventListener("click", closeCard);
     document.addEventListener("keydown", function(e){
       if (e.key === "Escape") closeCard();
