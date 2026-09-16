@@ -3365,7 +3365,9 @@
      installs in the background; when it is ready we offer a reload rather than
      switching under the reader's feet. */
   var Updates = (function(){
-    var reg = null, toastEl = null, reloading = false;
+    var reg = null, toastEl = null, reloading = false, wantReload = false;
+    /* a first install claims the page too (clients.claim) — that must not reload it */
+    var hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
     function toast(){
       if (toastEl) return;
       toastEl = document.createElement("div");
@@ -3373,6 +3375,7 @@
       toastEl.innerHTML = '<span>A new version of Lamplight is ready.</span><button type="button" id="updateReload">Reload</button><button type="button" id="updateLater" aria-label="Later">\u00D7</button>';
       document.body.appendChild(toastEl);
       toastEl.querySelector("#updateReload").addEventListener("click", function(){
+        wantReload = true;
         if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
         else location.reload();
       });
@@ -3396,7 +3399,7 @@
         document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") r.update().catch(function(){}); });
       }).catch(function(){});
       navigator.serviceWorker.addEventListener("controllerchange", function(){
-        if (reloading) return;
+        if (reloading || !(hadController || wantReload)) { hadController = true; return; }
         reloading = true;
         Library.flush();
         location.reload();
