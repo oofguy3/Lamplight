@@ -13,19 +13,20 @@
 <link rel="stylesheet" href="./app.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to the document</a>
 
-<div id="progress"></div>
+<div id="progress" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100"></div>
 
 <header>
   <div class="bar">
     <div class="wordmark" id="wordmark" title="Library" role="button" tabindex="0">lamp<span>light</span></div>
     <div id="fname"></div>
-    <button class="ctl" id="smaller" title="Smaller text / zoom out">A−</button>
-    <button class="ctl" id="bigger" title="Larger text / zoom in">A+</button>
-    <button class="ctl" id="lamp" title="Switch theme"><span class="bulb"></span></button>
-    <button class="ctl" id="gear" title="Reading settings">Aa</button>
+    <button class="ctl" id="smaller" title="Smaller text / zoom out" aria-label="Smaller text or zoom out">A−</button>
+    <button class="ctl" id="bigger" title="Larger text / zoom in" aria-label="Larger text or zoom in">A+</button>
+    <button class="ctl" id="lamp" title="Switch theme" aria-label="Switch to the next theme"><span class="bulb" aria-hidden="true"></span></button>
+    <button class="ctl" id="gear" title="Reading settings" aria-label="Reading settings" aria-expanded="false" aria-controls="sheet">Aa</button>
     <div id="moreWrap">
-      <button class="ctl" id="more" title="More" aria-haspopup="menu" aria-expanded="false">⋯</button>
+      <button class="ctl" id="more" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="false">⋯</button>
       <div id="moreMenu" role="menu"></div>
     </div>
     <button class="ctl primary" id="openBtn">Open</button>
@@ -33,7 +34,7 @@
   <div id="tabs" role="tablist" aria-label="Open documents"></div>
 </header>
 
-<div id="sheet">
+<div id="sheet" aria-hidden="true" aria-label="Reading settings">
   <div class="sheet-inner">
     <div class="group">
       <div class="label">Reading</div>
@@ -108,7 +109,7 @@
   </div>
 </div>
 
-<main>
+<main id="main" tabindex="-1">
   <div id="empty">
     <h1>A quiet place to read.</h1>
     <p>Drop a file anywhere on this page, or open one below.<br>Works fully offline — nothing you open leaves your device.</p>
@@ -142,7 +143,7 @@
   <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading">×</button>
 </div>
 <div id="sideScrim"></div>
-<aside id="side" aria-hidden="true">
+<aside id="side" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sideTitle">
   <div class="side-head"><div class="side-title" id="sideTitle"></div><button class="side-x" id="sideClose" aria-label="Close">×</button></div>
   <div class="side-body" id="sideBody"></div>
   <div class="side-foot" id="sideFoot"></div>
@@ -150,9 +151,9 @@
 <div id="markPop"></div>
 
 <div id="pager">
-  <button class="ctl" id="prevPg" title="Previous page">‹</button>
-  <span id="pgInfo">1 / 1</span>
-  <button class="ctl" id="nextPg" title="Next page">›</button>
+  <button class="ctl" id="prevPg" title="Previous page" aria-label="Previous page">‹</button>
+  <span id="pgInfo" aria-live="polite">1 / 1</span>
+  <button class="ctl" id="nextPg" title="Next page" aria-label="Next page">›</button>
 </div>
 
 <input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" multiple hidden>

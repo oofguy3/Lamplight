@@ -58,7 +58,10 @@
     forest:{name:"Forest", bg:"#101711", ink:"#CDD8C6", muted:"#83907E", panel:"#161F17", line:"#263223", accent:"#7FB069"},
     ocean: {name:"Ocean",  bg:"#0D141E", ink:"#CBD5E1", muted:"#7E8CA0", panel:"#131C29", line:"#223042", accent:"#5C9CD6"},
     plum:  {name:"Plum",   bg:"#17101F", ink:"#D8CDE3", muted:"#91849F", panel:"#1E1628", line:"#2F2440", accent:"#A97FD6"},
-    ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#77746A", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F"}
+    ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#77746A", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F"},
+    /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
+    hicon: {name:"Contrast",      bg:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", panel:"#FFFFFF", line:"#000000", accent:"#0033CC"},
+    hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400"}
   };
   var CYCLE = Object.keys(THEMES);
   var FONTS = {
@@ -298,7 +301,7 @@
 
   function applyType(){
     var r = document.documentElement.style;
-    r.setProperty("--fs", state.size + "px");
+    r.setProperty("--fsN", String(state.size));
     r.setProperty("--lh", String(state.lh));
     r.setProperty("--w", state.width + "px");
     r.setProperty("--reader-font", FONTS[state.font] || FONTS.serif);
@@ -342,6 +345,7 @@
       : "Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).";
   }
   function status(msg){ $("#status").textContent = msg; show("status"); }
+  $("#status").setAttribute("role", "status"); $("#status").setAttribute("aria-live", "polite");
 
   /* ---------- paged reading ---------- */
   function pagedActive(){
@@ -985,21 +989,29 @@
   /* ---------- side panel: contents, marks, search share one drawer ---------- */
   var Side = (function(){
     var el = $("#side"), scrim = $("#sideScrim"), body = $("#sideBody"), foot = $("#sideFoot"), title = $("#sideTitle");
-    var current = null, onClose = null;
+    var current = null, onClose = null, opener = null;
     function open(name, ttl, render, closeFn){
       current = name; onClose = closeFn || null;
+      opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#more");
       title.textContent = ttl;
       body.innerHTML = ""; foot.innerHTML = ""; foot.style.display = "none";
       render(body, foot);
       if (foot.children.length) foot.style.display = "flex";
       el.classList.add("open"); scrim.classList.add("on"); el.setAttribute("aria-hidden", "false");
       $("#moreMenu").classList.remove("open");
+      /* move focus into the panel; the first control if there is one, else the heading */
+      setTimeout(function(){
+        var first = body.querySelector("input, [tabindex='0'], button");
+        (first || $("#sideClose")).focus({ preventScroll: true });
+      }, 60);
     }
     function close(){
       if (!current) return;
       var fn = onClose; current = null; onClose = null;
       el.classList.remove("open"); scrim.classList.remove("on"); el.setAttribute("aria-hidden", "true");
       if (fn) fn();
+      if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+      opener = null;
     }
     scrim.addEventListener("click", close);
     $("#sideClose").addEventListener("click", close);
@@ -2414,7 +2426,9 @@
   });
   $("#gear").addEventListener("click", function(){
     document.body.classList.remove("hidebar");
-    $("#sheet").classList.toggle("open");
+    var open = $("#sheet").classList.toggle("open");
+    $("#gear").setAttribute("aria-expanded", open ? "true" : "false");
+    $("#sheet").setAttribute("aria-hidden", open ? "false" : "true");
   });
 
   $("#themeChips").addEventListener("click", function(e){
@@ -2549,12 +2563,61 @@
   }, {passive:true});
 
   document.addEventListener("keydown", function(e){
-    if (e.key === "Escape"){ $("#sheet").classList.remove("open"); return; }
-    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if (e.key === "Escape"){ $("#sheet").classList.remove("open"); $("#gear").setAttribute("aria-expanded", "false"); return; }
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
     if (!pagedActive()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " "){ e.preventDefault(); turn(1); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp"){ e.preventDefault(); turn(-1); }
+    else if (e.key === "Home"){ e.preventDefault(); if (state.mode === "doc") gotoPage(0); else { state.pdfPageNum = 1; renderPdfSingle(); } }
+    else if (e.key === "End"){ e.preventDefault(); if (state.mode === "doc") gotoPage(state.totalPages - 1); else { state.pdfPageNum = state.pdfDoc.numPages; renderPdfSingle(); } }
   });
+
+  /* ---------- keyboard shortcuts (single keys, when nothing is being typed) ---------- */
+  var Keys = (function(){
+    var list = [];
+    function add(key, label, run, when){ list.push({ key: key, label: label, run: run, when: when }); }
+    function typing(e){ return /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable; }
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    add("o", "Open a file", function(){ $("#fileInput").click(); });
+    add("s", "Reading settings", function(){ $("#gear").click(); });
+    add("t", "Next theme", function(){ $("#lamp").click(); });
+    add("+", "Larger text / zoom in", function(){ bump(1); }, docOpen);
+    add("-", "Smaller text / zoom out", function(){ bump(-1); }, docOpen);
+    add("p", "Switch scroll / pages", function(){ setFlow(state.flow === "pages" ? "scroll" : "pages"); }, docOpen);
+    add("/", "Search in the document", function(){ Search.openPanel(); }, docOpen);
+    add("c", "Contents", function(){ Toc.openPanel(); }, docOpen);
+    add("b", "Bookmark here", function(){ Marks.addBookmark(); }, docOpen);
+    add("n", "Bookmarks & notes", function(){ Marks.openPanel(); }, docOpen);
+    add("r", "Read aloud (start / stop)", function(){ if (Speak.isActive()) Speak.stop(); else Speak.start(); }, docOpen);
+    add("l", "Reading ruler", function(){ Ruler.toggle(); }, docOpen);
+    add("a", "Auto-scroll (start / stop)", function(){ if (Auto.isOn()) Auto.stop(); else Auto.start(); }, docOpen);
+    add("h", "Library / home", function(){ Library.home(); }, docOpen);
+    add("?", "Keyboard shortcuts", function(){ openHelp(); });
+    var extra = [
+      ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],
+      ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Ctrl/\u2318+W", "Close tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
+      ["Esc", "Close panels and cards"], ["Right-click a sentence", "Explain it (desktop)"], ["Hold a sentence", "Explain it (touch)"]
+    ];
+    function openHelp(){
+      Side.open("keys", "Keyboard shortcuts", function(body){
+        var h = '<div class="keys">';
+        list.forEach(function(k){ h += '<div class="key-row"><kbd>' + k.key.replace("<", "&lt;") + '</kbd><span>' + k.label + '</span></div>'; });
+        extra.forEach(function(x){ h += '<div class="key-row"><kbd>' + x[0] + '</kbd><span>' + x[1] + '</span></div>'; });
+        body.innerHTML = h + '</div>';
+      });
+    }
+    document.addEventListener("keydown", function(e){
+      if (e.ctrlKey || e.metaKey || e.altKey || typing(e)) return;
+      if (e.key === "Escape") return;
+      var key = e.key === "=" ? "+" : e.key;
+      var hit = list.filter(function(k){ return k.key === key; })[0];
+      if (!hit || (hit.when && !hit.when())) return;
+      e.preventDefault();
+      hit.run();
+    });
+    Menu.add({ order: 80, label: "Keyboard shortcuts", key: "?", run: openHelp, show: function(){ return window.matchMedia ? !window.matchMedia("(pointer: coarse)").matches : true; } });
+    return { openHelp: openHelp, list: function(){ return list; } };
+  })();
 
   var rz = null;
   window.addEventListener("resize", function(){
@@ -2644,77 +2707,77 @@
       "  flex:none; width:38px; height:38px; border-radius:50%;",
       "  display:flex; align-items:center; justify-content:center;",
       "  background:color-mix(in srgb, var(--accent) 22%, transparent);",
-      "  color:var(--accent); font-size:19px; margin-top:2px;",
+      "  color:var(--accent); font-size:1.188rem; margin-top:2px;",
       "}",
       "#dictCard .hw{flex:1; min-width:0;}",
       "#dictCard .term{",
-      "  font-family:var(--reader-font); font-size:20px; line-height:1.25;",
+      "  font-family:var(--reader-font); font-size:1.25rem; line-height:1.25;",
       "  word-break:break-word;",
       "}",
-      "#dictCard .ipa{color:var(--muted); font-size:15px; font-weight:400;}",
+      "#dictCard .ipa{color:var(--muted); font-size:0.9375rem; font-weight:400;}",
       "#dictCard .x{",
       "  flex:none; border:0; background:transparent; color:var(--muted);",
-      "  font-size:22px; line-height:1; padding:4px 2px 4px 8px; cursor:pointer;",
+      "  font-size:1.375rem; line-height:1; padding:4px 2px 4px 8px; cursor:pointer;",
       "}",
       "#dictCard .senses{margin:10px 0 2px; display:grid; gap:9px;}",
-      "#dictCard .sense{font-size:15px; line-height:1.5;}",
+      "#dictCard .sense{font-size:0.9375rem; line-height:1.5;}",
       "#dictCard .pos{",
       "  color:var(--accent); font-style:italic; margin-right:7px;",
       "}",
       "#dictCard .syn{",
-      "  display:block; margin-top:3px; font-size:12.5px; color:var(--muted);",
+      "  display:block; margin-top:3px; font-size:0.7812rem; color:var(--muted);",
       "}",
       "#dictCard .quote{",
-      "  font-family:var(--reader-font); font-size:15.5px; line-height:1.55;",
+      "  font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55;",
       "  padding:10px 12px; margin:4px 0 12px;",
       "  border-left:3px solid var(--accent);",
       "  background:color-mix(in srgb, var(--accent) 8%, transparent);",
       "  border-radius:0 8px 8px 0;",
       "}",
-      "#dictCard .note{color:var(--muted); font-size:12.5px; padding:2px 0 6px;}",
+      "#dictCard .note{color:var(--muted); font-size:0.7812rem; padding:2px 0 6px;}",
       "#dictCard .sec{",
-      "  font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;",
+      "  font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;",
       "  color:var(--muted); margin:14px 0 6px;",
       "}",
       "#dictCard .sec:first-child{margin-top:4px;}",
       "#dictCard .brk{display:grid; gap:7px; margin-top:2px;}",
-      "#dictCard .brk div{font-size:14px; line-height:1.45;}",
+      "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
       "#dictCard .brk i{color:var(--muted); font-style:italic;}",
       "#dictCard .clause{",
       "  padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;",
       "}",
-      "#dictCard .clause .ctext{font-family:var(--reader-font); font-size:15px; line-height:1.45;}",
+      "#dictCard .clause .ctext{font-family:var(--reader-font); font-size:0.9375rem; line-height:1.45;}",
       "#dictCard .clause .ckind{",
-      "  display:inline-block; font-size:11px; color:var(--accent); font-weight:600;",
+      "  display:inline-block; font-size:0.6875rem; color:var(--accent); font-weight:600;",
       "  letter-spacing:.04em; margin:0 0 4px;",
       "}",
       "#dictCard .roles{display:flex; flex-wrap:wrap; gap:5px 6px; margin-top:7px;}",
       "#dictCard .role{",
-      "  font-size:12.5px; line-height:1.35; padding:4px 8px; border-radius:8px;",
+      "  font-size:0.7812rem; line-height:1.35; padding:4px 8px; border-radius:8px;",
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
       "#dictCard .role b{",
-      "  display:block; font-size:10px; font-weight:700; letter-spacing:.08em;",
+      "  display:block; font-size:0.625rem; font-weight:700; letter-spacing:.08em;",
       "  text-transform:uppercase; color:var(--muted); margin-bottom:1px;",
       "}",
-      "#dictCard .tense{font-size:12.5px; color:var(--muted); margin-top:7px; line-height:1.4;}",
+      "#dictCard .tense{font-size:0.7812rem; color:var(--muted); margin-top:7px; line-height:1.4;}",
       "#dictCard .tense b{color:var(--ink); font-weight:600;}",
       "#dictCard .plain{",
-      "  font-family:var(--reader-font); font-size:15.5px; line-height:1.55;",
+      "  font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55;",
       "  padding:8px 0 2px;",
       "}",
-      "#dictCard .ai{font-size:15px; line-height:1.55; white-space:pre-wrap; padding:2px 0 4px;}",
+      "#dictCard .ai{font-size:0.9375rem; line-height:1.55; white-space:pre-wrap; padding:2px 0 4px;}",
       "#dictCard .acts{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 2px;}",
       "#dictCard .act{",
       "  padding:7px 13px; border-radius:999px; border:1px solid var(--line);",
-      "  background:transparent; color:var(--ink); font-size:13px; cursor:pointer;",
+      "  background:transparent; color:var(--ink); font-size:0.8125rem; cursor:pointer;",
       "}",
       "#dictCard .act.go{background:var(--accent); border-color:var(--accent); color:var(--panel);}",
       "#dictPill{",
       "  position:fixed; z-index:58; display:none; gap:2px; padding:3px; border-radius:999px;",
       "  border:1px solid var(--accent); background:var(--accent); color:var(--panel);",
-      "  font-family:var(--ui-font); font-size:13px; font-weight:600;",
+      "  font-family:var(--ui-font); font-size:0.8125rem; font-weight:600;",
       "  box-shadow:0 4px 16px rgba(0,0,0,.25);",
       "}",
       "#dictPill.on{display:flex;}",
@@ -2738,11 +2801,19 @@
     pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="mark">Highlight</button>';
     document.body.appendChild(pill);
 
-    var openedAt = 0;
-    function openCard(){ openedAt = Date.now(); scrim.classList.add("on"); card.classList.add("open"); hidePill(); }
+    var openedAt = 0, cardOpener = null;
+    card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "false"); card.setAttribute("aria-label", "Dictionary"); card.tabIndex = -1;
+    function openCard(){
+      openedAt = Date.now(); scrim.classList.add("on"); card.classList.add("open"); hidePill();
+      if (!cardOpener) cardOpener = document.activeElement;
+      setTimeout(function(){ if (card.classList.contains("open")) card.focus({ preventScroll: true }); }, 60);
+    }
     function closeCard(){
+      var wasOpen = card.classList.contains("open");
       scrim.classList.remove("on"); card.classList.remove("open");
       clearHit();
+      if (wasOpen && cardOpener && cardOpener.focus && document.contains(cardOpener) && cardOpener !== document.body) cardOpener.focus({ preventScroll: true });
+      cardOpener = null;
     }
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
     scrim.addEventListener("click", function(){ if (Date.now() - openedAt > 400) closeCard(); });
@@ -3386,6 +3457,10 @@
 
   /* ---------- boot ---------- */
   Prefs.load();
+  /* first run on a device that asks for more contrast: start with the high-contrast theme */
+  if (!localStorage.getItem("ll_prefs") && window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){
+    state.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "hidark" : "hicon";
+  }
   headVar();
   buildThemeChips();
   buildCustomUI();
