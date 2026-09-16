@@ -1,0 +1,54 @@
+name: Deploy to GitHub Pages and run Lighthouse
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the static files parse
+        run: |
+          node -e "for (const f of ['app.js','explain.js','sw.js','workers/docx-worker.js']) new Function(require('fs').readFileSync(f,'utf8')); console.log('scripts parse')"
+          node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8')); JSON.parse(require('fs').readFileSync('dict-index.json','utf8')); console.log('json ok')"
+      - name: Stage the site (everything except repo housekeeping)
+        run: |
+          mkdir -p _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'docs' --exclude 'README.md' --exclude 'lighthouserc.json' ./ _site/
+          du -sh _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  lighthouse:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lighthouse on the deployed site
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: ${{ needs.deploy.outputs.page_url || 'https://oofguy3.github.io/Lamplight/' }}
+          configPath: ./lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: false
