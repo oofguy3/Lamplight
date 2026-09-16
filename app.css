@@ -167,6 +167,30 @@
     max-height:110px; overflow:hidden;
   }
 
+  /* ---------- fonts ---------- */
+  #fontSel{flex:1 1 150px; max-width:300px;}
+  #fontSel:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  /* the browse panel: one button per family, its name set in the face itself */
+  .font-set{display:grid; gap:2px;}
+  .font-group{
+    font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); padding:14px 6px 6px;
+  }
+  .font-set:first-child .font-group{padding-top:4px;}
+  .font-item{
+    display:block; width:100%; text-align:left; padding:8px 10px; border:1px solid transparent; border-radius:10px;
+    background:transparent; color:var(--ink); cursor:pointer; font-family:var(--ui-font); transition:border-color .2s;
+  }
+  .font-item:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .font-item[aria-pressed="true"]{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent);}
+  .font-item .font-name{display:block; font-size:1.125rem; line-height:1.3;}
+  .font-item[aria-pressed="true"] .font-name::after{content:"\2713"; font-family:var(--ui-font); font-size:.8em; color:var(--accent); margin-left:8px;}
+  .font-item .font-note{display:block; font-size:0.75rem; line-height:1.4; color:var(--muted); margin-top:1px;}
+  @media (forced-colors: active){
+    .font-item{border-color:ButtonText;}
+    .font-item[aria-pressed="true"]{border-width:2px; border-color:Highlight;}
+  }
+
   /* ---------- content ---------- */
   body > main{padding:26px 18px 90px;}
   body.paged main{padding:14px 14px 0;}

@@ -70,12 +70,66 @@
     hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400"}
   };
   var CYCLE = Object.keys(THEMES);
-  var FONTS = {
+  /* system stacks: the plain choice in each group, and what a bundled family shows before it
+     has loaded (or falls back to when it can't) */
+  var STACKS = {
     serif: "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif",
     sans:  "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
-    mono:  "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace",
-    hyper: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    mono:  "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace"
   };
+  /* a bundled face: fonts/<file>.woff2 at one weight (a range for variable fonts) and style.
+     A family's first file is its regular face, the only one a preview needs. */
+  function fontFile(file, weight, style){ return { url: "./fonts/" + file + ".woff2", weight: weight, style: style || "normal" }; }
+  /* the type catalogue, in menu order. Families with files are bundled and fetched the first
+     time they are chosen or previewed (see Fonts), so this table costs nothing at load; system
+     entries have no files. The old ids (serif, sans, mono, hyper) keep their stacks. */
+  var FONTS = {
+    /* easy reading */
+    dyslexic:    { name: "OpenDyslexic", group: "easy", stack: "'OpenDyslexic', " + STACKS.sans, note: "weighted letter bottoms and wide spacing help letters stay put",
+                   files: [fontFile("opendyslexic-latin-400-normal", "400"), fontFile("opendyslexic-latin-700-normal", "700"), fontFile("opendyslexic-latin-400-italic", "400", "italic"), fontFile("opendyslexic-latin-700-italic", "700", "italic")] },
+    lexend:      { name: "Lexend", group: "easy", stack: "'Lexend', " + STACKS.sans, note: "wide, even shapes shown to raise reading speed",
+                   files: [fontFile("lexend-latin-wght-normal", "100 900")] },
+    hyper:       { name: "Atkinson Hyperlegible", group: "easy", stack: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", note: "designed for low vision readers" },   /* its @font-face rules are in app.css */
+    andika:      { name: "Andika", group: "easy", stack: "'Andika', " + STACKS.sans, note: "clear letterforms for beginning readers",
+                   files: [fontFile("andika-latin-400-normal", "400"), fontFile("andika-latin-700-normal", "700"), fontFile("andika-latin-400-italic", "400", "italic")] },
+    /* serif */
+    serif:       { name: "Georgia", group: "serif", stack: STACKS.serif, note: "the classic screen serif, on nearly every device" },
+    palatino:    { name: "Palatino", group: "serif", stack: "'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', serif", note: "a calligraphic book face, where the device has it" },
+    times:       { name: "Times", group: "serif", stack: "'Times New Roman', Times, 'Nimbus Roman', serif", note: "the newspaper serif everyone knows" },
+    literata:    { name: "Literata", group: "serif", stack: "'Literata', " + STACKS.serif, note: "made for e-reading",
+                   files: [fontFile("literata-latin-wght-normal", "200 900"), fontFile("literata-latin-wght-italic", "200 900", "italic")] },
+    sourceserif: { name: "Source Serif", family: "Source Serif 4", group: "serif", stack: "'Source Serif 4', " + STACKS.serif, note: "a sturdy, open text serif",
+                   files: [fontFile("source-serif-4-latin-wght-normal", "200 900"), fontFile("source-serif-4-latin-wght-italic", "200 900", "italic")] },
+    lora:        { name: "Lora", group: "serif", stack: "'Lora', " + STACKS.serif, note: "brushed curves with a modern feel",
+                   files: [fontFile("lora-latin-wght-normal", "400 700"), fontFile("lora-latin-wght-italic", "400 700", "italic")] },
+    merriweather:{ name: "Merriweather", group: "serif", stack: "'Merriweather', " + STACKS.serif, note: "large x-height, pleasant on screens",
+                   files: [fontFile("merriweather-latin-wght-normal", "300 900"), fontFile("merriweather-latin-wght-italic", "300 900", "italic")] },
+    garamond:    { name: "EB Garamond", group: "serif", stack: "'EB Garamond', " + STACKS.serif, note: "a faithful old-style Garamond",
+                   files: [fontFile("eb-garamond-latin-wght-normal", "400 800"), fontFile("eb-garamond-latin-wght-italic", "400 800", "italic")] },
+    crimson:     { name: "Crimson Pro", group: "serif", stack: "'Crimson Pro', " + STACKS.serif, note: "an old-style face in the spirit of printed books",
+                   files: [fontFile("crimson-pro-latin-wght-normal", "200 900"), fontFile("crimson-pro-latin-wght-italic", "200 900", "italic")] },
+    baskerville: { name: "Libre Baskerville", group: "serif", stack: "'Libre Baskerville', " + STACKS.serif, note: "a Baskerville tuned for reading on screens",
+                   files: [fontFile("libre-baskerville-latin-400-normal", "400"), fontFile("libre-baskerville-latin-700-normal", "700"), fontFile("libre-baskerville-latin-400-italic", "400", "italic")] },
+    bitter:      { name: "Bitter", group: "serif", stack: "'Bitter', " + STACKS.serif, note: "a slab serif, solid at any size",
+                   files: [fontFile("bitter-latin-wght-normal", "100 900")] },
+    /* sans */
+    sans:        { name: "System sans", group: "sans", stack: STACKS.sans, note: "whatever your device uses for its own text" },
+    helvetica:   { name: "Helvetica / Arial", group: "sans", stack: "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif", note: "neutral and familiar" },
+    verdana:     { name: "Verdana", group: "sans", stack: "Verdana, 'DejaVu Sans', Geneva, sans-serif", note: "wide and generous, made for small screens" },
+    inter:       { name: "Inter", group: "sans", stack: "'Inter', " + STACKS.sans, note: "a clean interface sans with tall letters",
+                   files: [fontFile("inter-latin-wght-normal", "100 900")] },
+    plex:        { name: "IBM Plex Sans", group: "sans", stack: "'IBM Plex Sans', " + STACKS.sans, note: "a warm, even sans with a slight edge",
+                   files: [fontFile("ibm-plex-sans-latin-wght-normal", "100 700"), fontFile("ibm-plex-sans-latin-wght-italic", "100 700", "italic")] },
+    nunito:      { name: "Nunito", group: "sans", stack: "'Nunito', " + STACKS.sans, note: "rounded and soft on the eye",
+                   files: [fontFile("nunito-latin-wght-normal", "200 1000")] },
+    /* mono */
+    mono:        { name: "System mono", group: "mono", stack: STACKS.mono, note: "fixed width, for code and plain text" },
+    jetbrains:   { name: "JetBrains Mono", group: "mono", stack: "'JetBrains Mono', " + STACKS.mono, note: "a tall, open monospace made for long reads",
+                   files: [fontFile("jetbrains-mono-latin-wght-normal", "100 800")] },
+    plexmono:    { name: "IBM Plex Mono", group: "mono", stack: "'IBM Plex Mono', " + STACKS.mono, note: "a typewriter-flavoured monospace",
+                   files: [fontFile("ibm-plex-mono-latin-400-normal", "400"), fontFile("ibm-plex-mono-latin-700-normal", "700")] }
+  };
+  var FONT_GROUPS = [{ id: "easy", name: "Easy reading" }, { id: "serif", name: "Serif" }, { id: "sans", name: "Sans" }, { id: "mono", name: "Mono" }];
   var BG_SWATCHES = ["#F6F1E4","#EFEFE8","#EDE7F3","#E4EFE7","#FBEDE0","#E8EFF5",
                      "#14161B","#101711","#171021","#1A1310","#0D1420","#050506"];
   var ACC_SWATCHES = ["#D8A24A","#C96A4A","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7FB069","#C9A227"];
@@ -118,7 +172,7 @@
       if (!THEMES[state.autoNight] && state.autoNight !== "custom") state.autoNight = "dusk";
       if (!/^\d\d:\d\d$/.test(state.nightFrom)) state.nightFrom = "21:00";
       if (!/^\d\d:\d\d$/.test(state.nightTo)) state.nightTo = "07:00";
-      if (!FONTS[state.font]) state.font = "serif";
+      if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
       if (state.flow !== "pages") state.flow = "scroll";
@@ -306,15 +360,16 @@
   })();
 
   function applyType(){
-    var r = document.documentElement.style;
+    var r = document.documentElement.style, font = FONTS[state.font] || FONTS.serif;
     r.setProperty("--fsN", String(state.size));
     r.setProperty("--lh", String(state.lh));
     r.setProperty("--w", state.width + "px");
-    r.setProperty("--reader-font", FONTS[state.font] || FONTS.serif);
+    /* the stack goes in at once (its system fallback shows first); a bundled family is fetched
+       on first use and swaps in when it lands, and the loadingdone listener re-lays-out Pages flow */
+    r.setProperty("--reader-font", font.stack);
     r.setProperty("--margin", (state.margin || 0) + "px");
-    document.querySelectorAll("#fontChips .chip").forEach(function(ch){
-      ch.classList.toggle("on", ch.dataset.font === state.font);
-    });
+    Fonts.use(state.font);
+    Fonts.syncUI();
     $("#doc").classList.toggle("justify", !!state.justify);
     $("#doc").classList.toggle("hyphens", !!state.hyphens);
     $("#cJustify").checked = !!state.justify;
@@ -327,6 +382,126 @@
     if (state.mode === "doc" && state.flow === "pages") relayoutDocPages();
     Prefs.save();
   }
+
+  /* ---------- fonts: bundled families load on demand, plus the browse panel ---------- */
+  var Fonts = (function(){
+    var SYSTEM = { easy: "sans", serif: "serif", sans: "sans", mono: "mono" };   /* the stack each group falls back to */
+    var faces = {};        /* file url → promise of its face, once requested */
+    var failed = {};       /* font id → true after a fetch failed (forgotten when we come back online) */
+    var listEl = null, watcher = null;
+    function ids(group){ return Object.keys(FONTS).filter(function(id){ return FONTS[id].group === group; }); }
+    function familyOf(f){ return f.family || f.name; }
+
+    /* one face. The FontFace API says when it has landed or failed; without it an @font-face
+       rule does the same job, though it can't report a failure */
+    function addFace(family, file){
+      if (faces[file.url]) return faces[file.url];
+      var p;
+      if (window.FontFace && document.fonts && document.fonts.add){
+        var face = new FontFace(family, "url(" + file.url + ")", { weight: file.weight, style: file.style, display: "swap" });
+        document.fonts.add(face);
+        p = face.load().then(function(){ return face; }, function(err){ document.fonts.delete(face); delete faces[file.url]; throw err; });
+      } else {
+        var st = $("#fontFaces");
+        if (!st){ st = document.createElement("style"); st.id = "fontFaces"; document.head.appendChild(st); }
+        st.appendChild(document.createTextNode("@font-face{font-family:'" + family + "'; src:url('" + file.url + "') format('woff2'); font-weight:" + file.weight + "; font-style:" + file.style + "; font-display:swap;}"));
+        p = Promise.resolve(null);
+      }
+      faces[file.url] = p;
+      return p;
+    }
+    /* a whole family, or just its regular face for a preview. Only the regular face is
+       essential: a bold or italic that fails to arrive is synthesised by the browser */
+    function load(id, previewOnly){
+      var f = FONTS[id];
+      if (!f || !f.files) return Promise.resolve([]);
+      var files = previewOnly ? f.files.slice(0, 1) : f.files;
+      return Promise.all(files.map(function(file, i){
+        var p = addFace(familyOf(f), file);
+        return i ? p.catch(function(){ return null; }) : p;
+      }));
+    }
+    function fallback(f){ document.documentElement.style.setProperty("--reader-font", STACKS[SYSTEM[f.group]]); }
+    /* the chosen family: fetched the first time it is used. If that fails (first use while
+       offline — the service worker normally holds every file) the group's system face is read
+       in instead, and the family is tried again once the connection is back */
+    function use(id){
+      var f = FONTS[id];
+      if (!f || !f.files) return;
+      if (failed[id]){ fallback(f); return; }
+      load(id).catch(function(){
+        failed[id] = true;
+        if (state.font !== id) return;
+        fallback(f);
+        Marks.toast("Font not available offline");
+      });
+    }
+    window.addEventListener("online", function(){ failed = {}; if (FONTS[state.font]) use(state.font); });
+    /* true once a bundled family's regular face is in and ready */
+    function loaded(id){
+      var f = FONTS[id], ok = false;
+      if (!f || !f.files || !document.fonts) return false;
+      document.fonts.forEach(function(face){ if (face.status === "loaded" && face.family.replace(/^["']|["']$/g, "") === familyOf(f)) ok = true; });
+      return ok;
+    }
+
+    /* the grouped select in the sheet */
+    var sel = $("#fontSel");
+    FONT_GROUPS.forEach(function(g){
+      var og = document.createElement("optgroup"); og.label = g.name;
+      ids(g.id).forEach(function(id){ var o = document.createElement("option"); o.value = id; o.textContent = FONTS[id].name; og.appendChild(o); });
+      sel.appendChild(og);
+    });
+    function syncUI(){
+      var f = FONTS[state.font] || FONTS.serif;
+      sel.value = state.font;
+      sel.title = f.name + " — " + f.note;
+      if (listEl) Array.prototype.forEach.call(listEl.querySelectorAll(".font-item"), function(b){ b.setAttribute("aria-pressed", b.dataset.font === state.font ? "true" : "false"); });
+    }
+
+    /* the browse panel: every family by group, each name set in the face itself */
+    function item(id){
+      var f = FONTS[id];
+      return '<button class="font-item" data-font="' + id + '" aria-pressed="' + (id === state.font) + '">' +
+        '<span class="font-name" style="font-family:' + f.stack.replace(/"/g, "&quot;") + '">' + f.name + '</span>' +
+        '<span class="font-note">' + f.note + '</span></button>';
+    }
+    function render(body){
+      var h = '<div class="font-list">';
+      FONT_GROUPS.forEach(function(g){
+        h += '<div class="font-set" role="group" aria-labelledby="fontGroup-' + g.id + '"><div class="font-group" id="fontGroup-' + g.id + '">' + g.name + '</div>';
+        ids(g.id).forEach(function(id){ h += item(id); });
+        h += '</div>';
+      });
+      body.innerHTML = h + '</div>';
+      listEl = body.firstChild;
+      listEl.addEventListener("click", function(e){
+        var b = e.target.closest(".font-item");
+        if (!b) return;
+        state.font = b.dataset.font;
+        applyType();
+      });
+      /* a bundled family's preview is fetched only once its row comes into view, so opening
+         the panel doesn't pull every font at once */
+      var rows = Array.prototype.filter.call(listEl.querySelectorAll(".font-item"), function(b){ return !!FONTS[b.dataset.font].files; });
+      if (window.IntersectionObserver){
+        watcher = new IntersectionObserver(function(entries){
+          entries.forEach(function(en){
+            if (!en.isIntersecting) return;
+            watcher.unobserve(en.target);
+            load(en.target.dataset.font, true).catch(function(){});
+          });
+        }, { root: body, rootMargin: "80px 0px" });
+        rows.forEach(function(b){ watcher.observe(b); });
+      } else rows.forEach(function(b){ load(b.dataset.font, true).catch(function(){}); });
+    }
+    function closed(){ if (watcher) watcher.disconnect(); watcher = null; listEl = null; }
+    function openPanel(){ Side.open("fonts", "Fonts", render, closed); }
+
+    /* for tests and other modules */
+    window.llFonts = { load: load, loaded: loaded, use: use, openPanel: openPanel, catalogue: FONTS, groups: FONT_GROUPS };
+    return { use: use, load: load, loaded: loaded, syncUI: syncUI, openPanel: openPanel };
+  })();
 
   /* ---------- view switching ---------- */
   function show(mode){
@@ -2757,12 +2932,8 @@
     var ch = e.target.closest(".chip");
     if (ch) setFlow(ch.dataset.flow);
   });
-  document.querySelectorAll("#fontChips .chip").forEach(function(ch){
-    ch.addEventListener("click", function(){
-      state.font = ch.dataset.font;
-      applyType();
-    });
-  });
+  $("#fontSel").addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
+  $("#fontBrowse").addEventListener("click", Fonts.openPanel);
   $("#rSize").addEventListener("input", function(e){ state.size = +e.target.value; applyType(); });
   $("#rLh").addEventListener("input",  function(e){ state.lh   = +e.target.value; applyType(); });
   $("#rW").addEventListener("input",   function(e){ state.width= +e.target.value; applyType(); });
