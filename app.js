@@ -767,8 +767,12 @@
     epubUrls.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(_){} });
     epubUrls = [];
   }
+  /* resolve an href from the OPF, a nav document or a chapter against the file it came
+     from; hrefs are URLs (percent-encoded), zip entry names are plain text */
   function pathJoin(base, rel){
     if (/^[a-z]+:/i.test(rel)) return rel;
+    rel = rel.split("?")[0];
+    try { rel = decodeURIComponent(rel); } catch(_){}
     rel = rel.replace(/^\.\//, "");
     var parts = (base ? base.split("/").slice(0, -1) : []).concat(rel.split("/"));
     var out = [];
@@ -816,6 +820,7 @@
     /* stable anchor ids: one per file (+ its own ids inside) */
     var fileKey = {}; spine.forEach(function(sp, i){ fileKey[sp.href] = "ep" + i; });
     function anchorId(href, frag){ return (fileKey[href] || "ep-" + href.replace(/[^A-Za-z0-9]+/g, "-")) + (frag ? "-" + frag : ""); }
+    function frag(f){ if (!f) return ""; try { return decodeURIComponent(f); } catch(_){ return f; } }
 
     var resourceUrls = {};
     function resourceUrl(path){
@@ -867,7 +872,7 @@
         var h = a.getAttribute("href") || "";
         if (/^(https?:|mailto:)/i.test(h)) return;
         var parts = h.split("#"), target = parts[0] ? pathJoin(base, parts[0]) : href;
-        a.setAttribute("href", "#" + anchorId(target, parts[1] || ""));
+        a.setAttribute("href", "#" + anchorId(target, frag(parts[1])));
       });
       Array.prototype.slice.call(body.querySelectorAll("script,style,link,iframe,object,embed,video,audio")).forEach(function(el){ el.remove(); });
       return Promise.all(waits).then(function(){
@@ -895,7 +900,7 @@
           if (a){
             var h = a.getAttribute("href") || "", parts = h.split("#");
             var target = parts[0] ? pathJoin(href, parts[0]) : href;
-            out.push({ title: a.textContent.replace(/\s+/g, " ").trim(), id: anchorId(target, parts[1] || ""), level: level });
+            out.push({ title: a.textContent.replace(/\s+/g, " ").trim(), id: anchorId(target, frag(parts[1])), level: level });
           }
           var sub = li.querySelector(":scope > ol");
           if (sub) walk(sub, level + 1);
@@ -912,7 +917,7 @@
           var label = np.getElementsByTagName("text")[0], content = np.getElementsByTagName("content")[0];
           var h = content ? (content.getAttribute("src") || "") : "", parts = h.split("#");
           var target = parts[0] ? pathJoin(href, parts[0]) : href;
-          out.push({ title: label ? label.textContent.replace(/\s+/g, " ").trim() : "", id: anchorId(target, parts[1] || ""), level: level });
+          out.push({ title: label ? label.textContent.replace(/\s+/g, " ").trim() : "", id: anchorId(target, frag(parts[1])), level: level });
           walk(np, level + 1);
         });
       })(doc.getElementsByTagName("navMap")[0] || doc.documentElement, 1);
