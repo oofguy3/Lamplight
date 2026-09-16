@@ -34,7 +34,7 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
 **Keeping your place**
 - **Library**: every file you open is kept on the device with its progress; reopen and you are exactly where you left off — across font, width and flow changes.
 - **Highlights, bookmarks and notes**, exportable as Markdown or JSON.
-- **Tabs** for several open documents (Ctrl/⌘+Tab, Ctrl/⌘+W).
+- **Tabs** for several open documents (Ctrl/⌘+Tab switches; × closes).
 - **Contents** panel: PDF outline, EPUB navigation or document headings. **Search** inside the document, PDFs included.
 
 **Reading aids**

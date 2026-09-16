@@ -480,12 +480,18 @@
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|blob):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
     });
   }
+  /* every open gets a generation number; a newer open (or going home / closing the tab)
+     makes an older, still-loading one give up instead of overwriting the screen */
+  var openGen = 0;
+  function abandonOpen(){ openGen++; state.opening = false; }
   function openFile(file, opts){
     if (!file) return;
     opts = opts || {};
     try { document.dispatchEvent(new CustomEvent("ll:fileopened")); } catch(_){}
     var ext = (file.name.split(".").pop() || "").toLowerCase();
-    Library.onOpen(file, opts);
+    var gen = ++openGen;
+    var live = function(){ return gen === openGen; };
+    Library.onOpen(file, opts, live);
     $("#fname").textContent = file.name;
     document.title = file.name + " — lamplight";
     window.scrollTo(0,0);
@@ -501,6 +507,7 @@
     Auto.stop();
 
     var fail = function(err){
+      if (!live()) return;
       console.error(err);
       state.opening = false;
       status("Couldn't open “" + file.name + "”. " + (err && err.message ? err.message : ""));
@@ -513,6 +520,7 @@
         needPdf().then(function(){ return file.arrayBuffer(); }).then(function(buf){
           return pdfjsLib.getDocument({data: buf}).promise;
         }).then(function(doc){
+          if (!live()){ try { doc.destroy(); } catch(_){} return; }
           state.pdfDoc = doc;
           state.zoom = 1;
           $("#rZoom").value = 100; $("#vZoom").textContent = "100 %";
@@ -523,6 +531,7 @@
       } else if (ext === "docx"){
         status("Opening document…");
         Promise.all([need(["purify"]), docxToHtml(file)]).then(function(r){
+          if (!live()) return;
           setDocHtml(r[1]);
         }).catch(fail);
 
@@ -531,6 +540,7 @@
         need(["jszip", "purify"]).then(function(){ return file.arrayBuffer(); }).then(function(buf){
           return openEpub(buf);
         }).then(function(book){
+          if (!live()){ releaseEpubUrls(); return; }
           if (book.title){
             $("#fname").textContent = book.title + (book.author ? " — " + book.author : "");
             Library.setTitle(book.title + (book.author ? " — " + book.author : ""));
@@ -544,17 +554,20 @@
 
       } else if (ext === "md" || ext === "markdown"){
         need(["marked", "purify"]).then(function(){ return file.text(); }).then(function(txt){
+          if (!live()) return;
           setDocHtml(marked.parse(txt));
         }).catch(fail);
 
       } else if (ext === "html" || ext === "htm"){
         status("Opening page…");
         need(["purify"]).then(function(){ return file.text(); }).then(function(txt){
+          if (!live()) return;
           setDocHtml(readerHtml(txt));
         }).catch(fail);
 
       } else {
         file.text().then(function(txt){
+          if (!live()) return;
           var wrap = document.createElement("div");
           wrap.className = "plain";
           wrap.textContent = txt;
@@ -1207,11 +1220,12 @@
     }
 
     /* ---- hooks called by the reader ---- */
-    function onOpen(file, opts){
+    function onOpen(file, opts, live){
       current = null; pending = null; titleQueue = null; ready = { doc: false, pdfPages: {} };
       clearTimeout(saveTimer);
       Marks.setDoc(null);
       loaded.then(function(){ return idFor(file); }).then(function(id){
+        if (live && !live()) return;          /* another file was opened meanwhile */
         current = id;
         Marks.setDoc(id, file.name);
         Tabs.noteOpen(id, file.name, file);
@@ -1287,6 +1301,7 @@
     $("#libClear").addEventListener("click", function(){
       if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device?")) return;
       books = []; positions = {};
+      Tabs.clear();
       tx("books", "readwrite", function(st){ st.clear(); }).catch(function(){});
       tx("positions", "readwrite", function(st){ st.clear(); }).catch(function(){});
       tx("marks", "readwrite", function(st){ st.clear(); }).catch(function(){});
@@ -1312,6 +1327,8 @@
     }
     function home(){
       flush();
+      abandonOpen();
+      Speak.stop(); Auto.stop(); Ruler.set(false); Side.close();
       if (state.mode === "doc" || state.mode === "pdf"){
         document.body.classList.remove("hidebar", "immersive");
         window.scrollTo(0, 0);
@@ -2302,6 +2319,7 @@
       if (i < 0) return;
       var wasActive = tabs[i].id === activeId;
       tabs.splice(i, 1); save();
+      if (wasActive) abandonOpen();
       if (wasActive){
         if (tabs.length){ activate(tabs[Math.min(i, tabs.length - 1)].id); }
         else { activeId = null; Library.home(); }
@@ -2309,6 +2327,7 @@
       render();
     }
     function drop(id){ var i = tabs.findIndex(function(x){ return x.id === id; }); if (i >= 0){ tabs.splice(i, 1); save(); render(); } }
+    function clear(){ tabs = []; activeId = null; save(); render(); }
     /* add files without opening them (multi-select / multi-drop) */
     function addFiles(files){
       Array.prototype.forEach.call(files, function(f){
@@ -2327,6 +2346,7 @@
       var t = e.target.closest(".tab"); if (!t) return;
       if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(t.dataset.id); }
       if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); close(t.dataset.id); }
+      if (e.key === "w" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); close(t.dataset.id); }
     });
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && e.key === "Tab" && tabs.length > 1){
@@ -2335,12 +2355,9 @@
         var n = (i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length;
         activate(tabs[n].id);
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "w" || e.key === "W") && activeId && (state.mode === "doc" || state.mode === "pdf")){
-        e.preventDefault(); close(activeId);
-      }
     });
     render();
-    return { noteOpen: noteOpen, activate: activate, close: close, drop: drop, addFiles: addFiles, setName: setName, list: function(){ return tabs; }, active: function(){ return activeId; }, render: render };
+    return { noteOpen: noteOpen, activate: activate, close: close, drop: drop, clear: clear, addFiles: addFiles, setName: setName, list: function(){ return tabs; }, active: function(){ return activeId; }, render: render };
   })();
 
   /* open one or many files: the first shows, the rest become tabs */
@@ -2595,7 +2612,7 @@
     add("?", "Keyboard shortcuts", function(){ openHelp(); });
     var extra = [
       ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],
-      ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Ctrl/\u2318+W", "Close tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
+      ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
       ["Esc", "Close panels and cards"], ["Right-click a sentence", "Explain it (desktop)"], ["Hold a sentence", "Explain it (touch)"]
     ];
     function openHelp(){
