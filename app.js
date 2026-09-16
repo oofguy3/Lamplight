@@ -318,10 +318,7 @@
     $("#vLh").textContent   = state.lh.toFixed(2);
     $("#vW").textContent    = state.width + " px";
     $("#vM").textContent    = (state.margin || 0) + " px";
-    if (state.mode === "doc" && state.flow === "pages"){
-      layoutDocPages();
-      gotoPage(state.page);
-    }
+    if (state.mode === "doc" && state.flow === "pages") relayoutDocPages();
     Prefs.save();
   }
 
@@ -402,12 +399,53 @@
     var smooth = animate && !(reduceMotion && reduceMotion.matches) && Math.abs(n - was) === 1;
     if (smooth && view.scrollTo) view.scrollTo({ left: left, behavior: "smooth" });
     else view.scrollLeft = left;
+    /* where this page starts, for the next re-layout — unless a font is still arriving,
+       in which case this layout is transient and the earlier note stays */
+    if (!(document.fonts && document.fonts.status === "loading")) state.pageOff = pageTopOffset();
     updatePager(); updateProgress();
     Library.notePosition();
   }
+  /* first index in [lo, hi] whose measure is >= want; a measure < 0 means "no box, skip it" */
+  function firstAtLeast(lo, hi, measure, want){
+    var hit = -1;
+    while (lo <= hi){
+      var mid = (lo + hi) >> 1, k = mid, c = -1;
+      while (k <= hi && (c = measure(k)) < 0) k++;
+      if (k > hi){ hi = mid - 1; continue; }
+      if (c >= want){ hit = k; hi = mid - 1; } else lo = k + 1;
+    }
+    return hit;
+  }
+  /* the first character on the current page, read off the layout itself (hit testing
+     fails when the settings sheet or the read-aloud bar covers the page) */
+  function pageTopOffset(){
+    if (state.mode !== "doc" || state.flow !== "pages" || !state.stride) return null;
+    var nodes = Anchor.textNodes();
+    if (!nodes.length) return null;
+    var left = $("#doc").getBoundingClientRect().left, want = state.page * (state.perPage || 1), r = document.createRange();
+    function col(x){ return Math.floor((x - left + 0.5) / state.stride); }
+    function endCol(i){ r.selectNodeContents(nodes[i]); var b = r.getBoundingClientRect(); return (b.width || b.height) ? col(b.right - 1) : -1; }
+    var ni = firstAtLeast(0, nodes.length - 1, endCol, want);
+    if (ni < 0) return null;
+    var n = nodes[ni];
+    var ci = firstAtLeast(0, n.length - 1, function(i){
+      r.setStart(n, i); r.setEnd(n, i + 1);
+      var b = r.getBoundingClientRect();
+      return (b.width || b.height) ? col((b.left + b.right) / 2) : -1;
+    }, want);
+    return Anchor.offsetOf(n, ci < 0 ? 0 : ci);
+  }
+  /* lay the columns out again and land on the page that now holds what was at the top.
+     The offset was noted when the page was last shown, so it predates whatever changed
+     the layout (a new text size, a resize, a font that just arrived). */
+  function relayoutDocPages(){
+    var off = state.pageOff;
+    layoutDocPages();
+    if (off === null || off === undefined || !revealOffset(off)) gotoPage(state.page);
+  }
   function relayoutPaged(){
     if (state.mode === "doc" && state.flow === "pages"){
-      layoutDocPages(); gotoPage(state.page);
+      relayoutDocPages();
     } else if (state.mode === "pdf" && state.flow === "pages" && state.pdfDoc){
       renderPdfSingle();
     }
@@ -439,6 +477,7 @@
   function setFlow(f){
     if (f === state.flow) return;
     var frac = readFrac();
+    var off = state.mode === "doc" ? (state.flow === "pages" ? pageTopOffset() : Library.topCharOffset()) : null;
     state.flow = f;
     document.querySelectorAll("#flowChips .chip").forEach(function(ch){
       ch.classList.toggle("on", ch.dataset.flow === f);
@@ -448,11 +487,12 @@
       state.pdfPageNum = Math.round(frac * (state.pdfDoc.numPages - 1)) + 1;
     document.body.classList.remove("hidebar");
     reflow();
-    if (state.mode === "doc" && f === "pages")
+    if (state.mode === "doc" && f === "pages" && (off === null || !revealOffset(off)))
       gotoPage(Math.round(frac * (state.totalPages - 1)));
     if (f === "scroll")
       requestAnimationFrame(function(){
         if (state.mode === "pdf"){ Toc.goPdfPage(state.pdfPageNum); return; }
+        if (off !== null && revealOffset(off)) return;
         var h = document.documentElement;
         window.scrollTo(0, frac * (h.scrollHeight - h.clientHeight));
       });
@@ -677,6 +717,11 @@
     var r = Anchor.rangeAt(off);
     if (!r) return false;
     var rect = r.getBoundingClientRect();
+    /* a collapsed space has no box: step on to the next character that has one */
+    for (var k = 1; !(rect.width || rect.height) && k <= 12; k++){
+      var r2 = Anchor.rangeAt(off + k); if (!r2) break;
+      rect = r2.getBoundingClientRect();
+    }
     if (state.flow === "pages"){
       var docRect = $("#doc").getBoundingClientRect();
       gotoPage(pageOfOffset(rect.left - docRect.left + 1));
@@ -1227,6 +1272,7 @@
     var charOffsetOf = Anchor.offsetOf, rangeAtOffset = Anchor.rangeAt;
     function topCharOffset(){
       var docEl = $("#doc");
+      if (state.mode === "doc" && state.flow === "pages"){ var po = pageTopOffset(); if (po !== null) return po; }
       if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
       var view = state.flow === "pages" ? $("#docView").getBoundingClientRect() : docEl.getBoundingClientRect();
       var y0 = state.flow === "pages" ? view.top + 4 : Math.max(view.top, headerHeight()) + 6;
@@ -2775,10 +2821,18 @@
   window.addEventListener("resize", function(){
     clearTimeout(rz);
     rz = setTimeout(function(){
-      if (state.mode === "doc" && state.flow === "pages"){ layoutDocPages(); gotoPage(state.page); }
+      if (state.mode === "doc" && state.flow === "pages") relayoutDocPages();
       else if (state.mode === "pdf" && state.pdfDoc){ renderPdf(); }
     }, 350);
   });
+  /* a web font or an image arriving after the first layout changes where the pages break */
+  var lateLayout = null;
+  function relayoutLater(){
+    clearTimeout(lateLayout);
+    lateLayout = setTimeout(function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); }, 80);
+  }
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", relayoutLater);
+  $("#doc").addEventListener("load", function(e){ if (e.target && e.target.tagName === "IMG") relayoutLater(); }, true);
 
   /* scroll: progress bar + auto-hiding top bar.
      Down past a bit -> bar hides. Up a decent amount (or near the top) -> bar returns. */
