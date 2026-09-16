@@ -6,7 +6,7 @@
   /* parsers are separate files, fetched the first time a file type needs them
      (and precached by the service worker so that still works offline) */
   var LIBS = {
-    pdf:     ["./vendor/pdf.min.js", "./vendor/pdf.worker.min.js"],   /* worker runs on the main thread for now (globalThis.pdfjsWorker) */
+    pdf:     ["./vendor/pdf.min.js"],   /* parsing runs in vendor/pdf.worker.min.js, a real Web Worker (see needPdf) */
     mammoth: ["./vendor/mammoth.min.js"],
     marked:  ["./vendor/marked.min.js"],
     purify:  ["./vendor/purify.min.js"],
@@ -17,6 +17,36 @@
     var files = [];
     names.forEach(function(n){ (LIBS[n] || []).forEach(function(f){ if (files.indexOf(f) < 0) files.push(f); }); });
     return files.reduce(function(p, f){ return p.then(function(){ return loadScript(f); }); }, Promise.resolve());
+  }
+  /* pdf.js with its parser in a Web Worker; falls back to the main thread where workers can't run (file://) */
+  function needPdf(){
+    return need(["pdf"]).then(function(){
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc && !globalThis.pdfjsWorker){
+        if (window.Worker && location.protocol !== "file:") pdfjsLib.GlobalWorkerOptions.workerSrc = "./vendor/pdf.worker.min.js";
+        else return loadScript("./vendor/pdf.worker.min.js");
+      }
+    });
+  }
+  /* DOCX → HTML in a dedicated worker (mammoth is 640 KB of parsing); main thread as a fallback */
+  function docxToHtml(file){
+    var onMain = function(){
+      return need(["mammoth"]).then(function(){ return file.arrayBuffer(); })
+        .then(function(buf){ return mammoth.convertToHtml({arrayBuffer: buf}); }).then(function(res){ return res.value; });
+    };
+    if (!window.Worker || location.protocol === "file:") return onMain();
+    return file.arrayBuffer().then(function(buf){
+      return new Promise(function(resolve, reject){
+        var w;
+        try { w = new Worker("./workers/docx-worker.js"); } catch(err){ reject(err); return; }
+        var done = false;
+        w.onmessage = function(e){
+          done = true; w.terminate();
+          if (e.data && e.data.error) reject(new Error(e.data.error)); else resolve(e.data.html);
+        };
+        w.onerror = function(e){ if (done) return; done = true; w.terminate(); reject(new Error((e && e.message) || "worker failed")); };
+        w.postMessage({ buf: buf }, [buf]);
+      });
+    }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
   var THEMES = {
@@ -476,7 +506,7 @@
     try{
       if (ext === "pdf"){
         status("Opening PDF…");
-        need(["pdf"]).then(function(){ return file.arrayBuffer(); }).then(function(buf){
+        needPdf().then(function(){ return file.arrayBuffer(); }).then(function(buf){
           return pdfjsLib.getDocument({data: buf}).promise;
         }).then(function(doc){
           state.pdfDoc = doc;
@@ -488,10 +518,8 @@
 
       } else if (ext === "docx"){
         status("Opening document…");
-        need(["mammoth", "purify"]).then(function(){ return file.arrayBuffer(); }).then(function(buf){
-          return mammoth.convertToHtml({arrayBuffer: buf});
-        }).then(function(res){
-          setDocHtml(res.value);
+        Promise.all([need(["purify"]), docxToHtml(file)]).then(function(r){
+          setDocHtml(r[1]);
         }).catch(fail);
 
       } else if (ext === "epub"){

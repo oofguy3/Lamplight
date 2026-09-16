@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything, fresh index.html when online.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.16-10";
+const VERSION = "2026.09.16-11";
 const CACHE = "lamplight-" + VERSION;
 const ASSETS = [
   "./",
@@ -19,6 +19,7 @@ const ASSETS = [
   "./vendor/marked.min.js",
   "./vendor/purify.min.js",
   "./vendor/jszip.min.js",
+  "./workers/docx-worker.js",
   "./fonts/AtkinsonHyperlegible-Regular.woff2",
   "./fonts/AtkinsonHyperlegible-Bold.woff2",
   "./fonts/AtkinsonHyperlegible-Italic.woff2",
