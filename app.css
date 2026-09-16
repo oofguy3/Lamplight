@@ -1,5 +1,5 @@
   :root{
-    --bg:#EDEDE6; --ink:#1F2323; --muted:#6C7370; --panel:#F5F5EF;
+    --bg:#EDEDE6; --ink:#1F2323; --muted:#646B68; --panel:#F5F5EF;
     --line:#D8D9CF; --accent:#2F6D5B;
     --fsN:19; --fs:calc(var(--fsN) * 1rem / 16); --lh:1.75; --w:720px; --margin:0px;
     --reader-font: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;

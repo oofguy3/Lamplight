@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Lamplight — a quiet offline reader for PDF, EPUB, DOCX, TXT, Markdown and HTML, with a built-in dictionary and sentence explainer.">
 <meta name="theme-color" content="#14161B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -71,10 +72,10 @@
         <div class="rowline"><label for="cLit">Bright</label><input type="range" id="cLit" min="3" max="97" step="1" value="10"><span class="val" id="vLit">10 %</span></div>
         <div class="cst-label">Text color</div>
         <label class="check"><input type="checkbox" id="autoInk" checked>Automatic — always readable</label>
-        <div class="rowline" id="inkRow" style="display:none;"><span class="swatch"><input type="color" id="cInk" value="#e7e2d6">Pick text color</span></div>
+        <div class="rowline" id="inkRow" style="display:none;"><span class="swatch"><input type="color" id="cInk" value="#e7e2d6" aria-label="Text colour">Pick text color</span></div>
         <div class="cst-label">Accent</div>
         <div class="sw-grid" id="accSwatches"></div>
-        <div class="rowline"><span class="swatch"><input type="color" id="cAcc" value="#e0a458">Or pick any accent</span></div>
+        <div class="rowline"><span class="swatch"><input type="color" id="cAcc" value="#e0a458" aria-label="Accent colour">Or pick any accent</span></div>
         <div id="cPrev">The lamp hums quietly. <em>She turns the page anyway</em> — one more chapter, she tells herself, <span id="cPrevAcc">just one more</span>.</div>
       </div>
     </div>

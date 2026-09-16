@@ -50,15 +50,15 @@
   }
 
   var THEMES = {
-    day:   {name:"Day",    bg:"#EDEDE6", ink:"#1F2323", muted:"#6C7370", panel:"#F5F5EF", line:"#D8D9CF", accent:"#2F6D5B"},
-    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#8B7A58", panel:"#F0E7D2", line:"#D6C7A4", accent:"#96601F"},
-    mist:  {name:"Mist",   bg:"#E7EBEE", ink:"#25303A", muted:"#6B7885", panel:"#F0F3F5", line:"#D1D9DF", accent:"#3C6E93"},
-    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#96796F", panel:"#F9EFEC", line:"#E3CFC9", accent:"#AE4D5E"},
+    day:   {name:"Day",    bg:"#EDEDE6", ink:"#1F2323", muted:"#646B68", panel:"#F5F5EF", line:"#D8D9CF", accent:"#2F6D5B"},
+    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#8D5A1D"},
+    mist:  {name:"Mist",   bg:"#E7EBEE", ink:"#25303A", muted:"#5D6A76", panel:"#F0F3F5", line:"#D1D9DF", accent:"#3C6E93"},
+    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#AE4D5E"},
     dusk:  {name:"Dusk",   bg:"#14161B", ink:"#D6D3C8", muted:"#8E9088", panel:"#1B1E25", line:"#2A2E37", accent:"#D8A24A"},
     forest:{name:"Forest", bg:"#101711", ink:"#CDD8C6", muted:"#83907E", panel:"#161F17", line:"#263223", accent:"#7FB069"},
     ocean: {name:"Ocean",  bg:"#0D141E", ink:"#CBD5E1", muted:"#7E8CA0", panel:"#131C29", line:"#223042", accent:"#5C9CD6"},
     plum:  {name:"Plum",   bg:"#17101F", ink:"#D8CDE3", muted:"#91849F", panel:"#1E1628", line:"#2F2440", accent:"#A97FD6"},
-    ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#77746A", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F"},
+    ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#7F7C72", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F"},
     /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
     hicon: {name:"Contrast",      bg:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", panel:"#FFFFFF", line:"#000000", accent:"#0033CC"},
     hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400"}
@@ -189,10 +189,10 @@
   }
   function buildCustomUI(){
     $("#bgSwatches").innerHTML = BG_SWATCHES.map(function(c){
-      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Background ' + c + '"></button>';
     }).join("");
     $("#accSwatches").innerHTML = ACC_SWATCHES.map(function(c){
-      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+      return '<button class="sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '" aria-label="Accent ' + c + '"></button>';
     }).join("");
   }
   function syncCustomUI(){
@@ -1855,7 +1855,7 @@
       }
     }
     function render(body, foot){
-      body.innerHTML = '<div class="find-row"><input type="search" id="findInput" placeholder="Find in this ' + (state.mode === "pdf" ? "PDF" : "document") + '\u2026" autocomplete="off" spellcheck="false">' +
+      body.innerHTML = '<div class="find-row"><input type="search" id="findInput" aria-label="Find in this document" placeholder="Find in this ' + (state.mode === "pdf" ? "PDF" : "document") + '\u2026" autocomplete="off" spellcheck="false">' +
         '<button class="ctl" id="findPrev" title="Previous match" aria-label="Previous match">\u2039</button><button class="ctl" id="findNext" title="Next match" aria-label="Next match">\u203A</button></div>' +
         '<div class="find-status" id="findStatus" aria-live="polite"></div><div id="findList"></div>';
       input = body.querySelector("#findInput"); listEl = body.querySelector("#findList"); statusEl = body.querySelector("#findStatus");
