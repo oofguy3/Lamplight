@@ -1168,10 +1168,15 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   :root{
     --bg:#EDEDE6; --ink:#1F2323; --muted:#6C7370; --panel:#F5F5EF;
     --line:#D8D9CF; --accent:#2F6D5B;
-    --fs:19px; --lh:1.75; --w:720px;
+    --fs:19px; --lh:1.75; --w:720px; --margin:0px;
     --reader-font: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
     --ui-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
+  /* Atkinson Hyperlegible (Braille Institute, SIL Open Font License) — bundled for offline use */
+  @font-face{font-family:'Atkinson Hyperlegible'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Regular.woff2') format('woff2');}
+  @font-face{font-family:'Atkinson Hyperlegible'; font-style:normal; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Bold.woff2') format('woff2');}
+  @font-face{font-family:'Atkinson Hyperlegible'; font-style:italic; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Italic.woff2') format('woff2');}
+  @font-face{font-family:'Atkinson Hyperlegible'; font-style:italic; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-BoldItalic.woff2') format('woff2');}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0; padding:0;}
   body{
@@ -1347,12 +1352,15 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   #status{max-width:var(--w); margin:30px auto; text-align:center; color:var(--muted); font-size:14px; display:none;}
 
   /* text documents */
-  #docView{display:none; max-width:var(--w); margin:0 auto;}
+  #docView{display:none; max-width:calc(var(--w) + 2 * var(--margin)); margin:0 auto; padding:0 var(--margin);}
   body.paged #docView{position:relative; overflow:hidden;}
   #doc{
     font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
     overflow-wrap:break-word;
   }
+  #doc.justify p, #doc.justify li, #doc.justify blockquote, #doc.justify dd, #doc.justify .plain{text-align:justify;}
+  #doc.hyphens{-webkit-hyphens:auto; hyphens:auto;}
+  #doc.hyphens pre, #doc.hyphens code{-webkit-hyphens:none; hyphens:none;}
   body.paged #doc{
     height:100%; column-fill:auto;
     transition:transform .22s ease;
@@ -1611,15 +1619,21 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       <div class="rowline"><label for="rSize">Size</label><input type="range" id="rSize" min="14" max="28" step="1" value="19"><span class="val" id="vSize">19 px</span></div>
       <div class="rowline"><label for="rLh">Spacing</label><input type="range" id="rLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="vLh">1.75</span></div>
       <div class="rowline"><label for="rW">Width</label><input type="range" id="rW" min="320" max="960" step="20" value="720"><span class="val" id="vW">720 px</span></div>
+      <div class="rowline"><label for="rM">Margins</label><input type="range" id="rM" min="0" max="64" step="4" value="0"><span class="val" id="vM">0 px</span></div>
       <div class="rowline"><label>Font</label>
         <div class="chips" id="fontChips">
           <button class="chip" data-font="serif">Serif</button>
           <button class="chip" data-font="sans">Sans</button>
           <button class="chip" data-font="mono">Mono</button>
+          <button class="chip" data-font="hyper" title="Atkinson Hyperlegible — designed for low vision readers">Hyperlegible</button>
         </div>
       </div>
+      <div class="rowline">
+        <label class="check"><input type="checkbox" id="cJustify">Justify text</label>
+        <label class="check"><input type="checkbox" id="cHyphens">Hyphenate</label>
+      </div>
       <div id="typePreview">The lamp hums quietly as she turns the page — this is exactly how your book will look.</div>
-      <div class="hint" id="textHint">Applies to text documents (DOCX, TXT, Markdown, HTML).</div>
+      <div class="hint" id="textHint">Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).</div>
     </div>
 
     <div class="group">
@@ -1692,7 +1706,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   var FONTS = {
     serif: "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif",
     sans:  "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
-    mono:  "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace"
+    mono:  "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace",
+    hyper: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
   };
   var BG_SWATCHES = ["#F6F1E4","#EFEFE8","#EDE7F3","#E4EFE7","#FBEDE0","#E8EFF5",
                      "#14161B","#101711","#171021","#1A1310","#0D1420","#050506"];
@@ -1701,12 +1716,43 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   var state = {
     theme:"day",
     custom:{bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true},
-    font:"serif", size:19, lh:1.75, width:720,
+    font:"serif", size:19, lh:1.75, width:720, margin:0, justify:false, hyphens:false,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
     mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
   };
   var renderGen = 0;
+
+  /* ---------- remembered reading settings ---------- */
+  var Prefs = (function(){
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften"];
+    var loading = false;
+    function save(){
+      if (loading) return;
+      var o = {};
+      FIELDS.forEach(function(f){ o[f] = state[f]; });
+      try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(_){}
+    }
+    function load(){
+      var o = null;
+      try { o = JSON.parse(localStorage.getItem(KEY) || "null"); } catch(_){}
+      if (!o || typeof o !== "object") return;
+      loading = true;
+      FIELDS.forEach(function(f){
+        if (o[f] === undefined || o[f] === null) return;
+        if (f === "custom"){ if (typeof o.custom === "object") state.custom = Object.assign({}, state.custom, o.custom); return; }
+        if (typeof state[f] === "number" && typeof o[f] !== "number") return;
+        state[f] = o[f];
+      });
+      if (!THEMES[state.theme] && state.theme !== "custom") state.theme = "day";
+      if (!FONTS[state.font]) state.font = "serif";
+      state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
+      state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
+      if (state.flow !== "pages") state.flow = "scroll";
+      loading = false;
+    }
+    return { save: save, load: load };
+  })();
 
   /* ---------- color helpers ---------- */
   function hexToRgb(h){
@@ -1819,23 +1865,32 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     pv.style.color = t.ink;
     pv.style.borderColor = t.line;
     $("#cPrevAcc").style.color = t.accent;
+    Prefs.save();
   }
   function applyType(){
     var r = document.documentElement.style;
     r.setProperty("--fs", state.size + "px");
     r.setProperty("--lh", String(state.lh));
     r.setProperty("--w", state.width + "px");
-    r.setProperty("--reader-font", FONTS[state.font]);
+    r.setProperty("--reader-font", FONTS[state.font] || FONTS.serif);
+    r.setProperty("--margin", (state.margin || 0) + "px");
     document.querySelectorAll("#fontChips .chip").forEach(function(ch){
       ch.classList.toggle("on", ch.dataset.font === state.font);
     });
+    $("#doc").classList.toggle("justify", !!state.justify);
+    $("#doc").classList.toggle("hyphens", !!state.hyphens);
+    $("#cJustify").checked = !!state.justify;
+    $("#cHyphens").checked = !!state.hyphens;
+    $("#rSize").value = state.size; $("#rLh").value = state.lh; $("#rW").value = state.width; $("#rM").value = state.margin || 0;
     $("#vSize").textContent = state.size + " px";
     $("#vLh").textContent   = state.lh.toFixed(2);
     $("#vW").textContent    = state.width + " px";
+    $("#vM").textContent    = (state.margin || 0) + " px";
     if (state.mode === "doc" && state.flow === "pages"){
       layoutDocPages();
       gotoPage(state.page);
     }
+    Prefs.save();
   }
 
   /* ---------- view switching ---------- */
@@ -1854,7 +1909,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     $("#textGroup").classList.toggle("dim", mode === "pdf");
     $("#textHint").textContent = mode === "pdf"
       ? "A PDF is open — these apply to text documents. Use Zoom below for PDFs."
-      : "Applies to text documents (DOCX, TXT, Markdown, HTML).";
+      : "Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).";
   }
   function status(msg){ $("#status").textContent = msg; show("status"); }
 
@@ -1930,6 +1985,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     document.querySelectorAll("#flowChips .chip").forEach(function(ch){
       ch.classList.toggle("on", ch.dataset.flow === f);
     });
+    Prefs.save();
     if (state.mode === "pdf" && state.pdfDoc && f === "pages")
       state.pdfPageNum = Math.round(frac * (state.pdfDoc.numPages - 1)) + 1;
     document.body.classList.remove("hidebar");
@@ -3645,6 +3701,9 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   $("#rSize").addEventListener("input", function(e){ state.size = +e.target.value; applyType(); });
   $("#rLh").addEventListener("input",  function(e){ state.lh   = +e.target.value; applyType(); });
   $("#rW").addEventListener("input",   function(e){ state.width= +e.target.value; applyType(); });
+  $("#rM").addEventListener("input",   function(e){ state.margin = +e.target.value; applyType(); });
+  $("#cJustify").addEventListener("change", function(e){ state.justify = e.target.checked; applyType(); });
+  $("#cHyphens").addEventListener("change", function(e){ state.hyphens = e.target.checked; applyType(); });
 
   $("#rZoom").addEventListener("input", function(e){
     state.zoom = (+e.target.value) / 100;
@@ -4523,9 +4582,11 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   window.Marks_selectionOffsets = Marks.selectionOffsets;
 
   /* ---------- boot ---------- */
+  Prefs.load();
   buildThemeChips();
   buildCustomUI();
   syncCustomUI();
+  $("#softenPdf").checked = !!state.soften;
   document.querySelectorAll("#flowChips .chip").forEach(function(ch){
     ch.classList.toggle("on", ch.dataset.flow === state.flow);
   });
