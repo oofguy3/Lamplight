@@ -1454,6 +1454,41 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       transform:translateY(105%);}
   }
 
+  /* progress readout (percent + time left) */
+  #progressInfo{
+    position:fixed; right:12px; z-index:39; top:calc(var(--headH, 61px) + 8px);
+    background:var(--panel); color:var(--muted); border:1px solid var(--line); border-radius:999px;
+    padding:4px 10px; font-family:var(--ui-font); font-size:11.5px; font-variant-numeric:tabular-nums;
+    opacity:0; pointer-events:none; transition:opacity .3s ease, background .35s ease;
+  }
+  #progressInfo.on{opacity:1;}
+  body.hidebar:not(.paged) #progressInfo{top:8px;}
+  body.paged #progressInfo{top:auto; bottom:calc(var(--pagerH, 56px) + 8px); right:12px;}
+
+  /* reading ruler: the line under the pointer stays clear, the rest is dimmed */
+  #ruler{position:fixed; inset:0; z-index:19; pointer-events:none; display:none;}
+  #ruler.on{display:block;}
+  #ruler .rt, #ruler .rb{position:absolute; left:0; right:0; background:color-mix(in srgb, var(--bg) 62%, transparent); transition:none;}
+  #ruler .rt{top:0;} #ruler .rb{bottom:0;}
+  #ruler .rl{position:absolute; left:0; right:0; height:0; border-top:1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-bottom:1px solid color-mix(in srgb, var(--accent) 40%, transparent);}
+  #ruler .grip{
+    position:absolute; right:10px; width:38px; height:22px; margin-top:-11px; border-radius:11px; pointer-events:auto; cursor:grab;
+    background:var(--panel); border:1px solid var(--line); display:none;
+  }
+  @media (pointer: coarse){ #ruler .grip{display:block;} }
+
+  /* auto-scroll control */
+  #autoBar{
+    position:fixed; right:12px; bottom:max(14px, env(safe-area-inset-bottom)); z-index:17; display:none; align-items:center; gap:4px;
+    background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:4px; box-shadow:0 6px 20px rgba(0,0,0,.2); font-family:var(--ui-font);
+  }
+  #autoBar.on{display:flex;}
+  #autoBar button{min-width:34px; height:34px; border:0; border-radius:999px; background:transparent; color:var(--ink); font-size:15px; cursor:pointer;}
+  #autoBar button:hover{background:color-mix(in srgb, var(--accent) 12%, transparent);}
+  #autoBar .speed{font-size:12px; color:var(--muted); min-width:52px; text-align:center; font-variant-numeric:tabular-nums;}
+  body.paged #autoBar{bottom:calc(var(--pagerH, 56px) + 10px);}
+  body.tts-on #autoBar{bottom:calc(var(--ttsH, 56px) + 10px);}
+
   /* read aloud bar */
   #tts{
     position:fixed; left:0; right:0; bottom:0; z-index:16; display:none; align-items:center; gap:8px;
@@ -1660,6 +1695,15 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   <div id="pdf"></div>
 </main>
 
+<div id="progressInfo" aria-live="off"></div>
+<div id="ruler" aria-hidden="true"><div class="rt"></div><div class="rl"></div><div class="rb"></div><div class="grip"></div></div>
+<div id="autoBar" role="region" aria-label="Auto-scroll">
+  <button id="autoSlower" title="Slower" aria-label="Slower">−</button>
+  <span class="speed" id="autoSpeed">1.0×</span>
+  <button id="autoFaster" title="Faster" aria-label="Faster">+</button>
+  <button id="autoPlay" title="Pause / resume" aria-label="Pause">❚❚</button>
+  <button id="autoStop" title="Stop auto-scroll" aria-label="Stop">×</button>
+</div>
 <div id="tts" role="region" aria-label="Read aloud">
   <button class="ctl" id="ttsPrev" title="Previous sentence" aria-label="Previous sentence">‹</button>
   <button class="ctl primary" id="ttsPlay" title="Play / pause" aria-label="Play">▶</button>
@@ -1917,7 +1961,10 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   function pagedActive(){
     return state.flow === "pages" && (state.mode === "doc" || state.mode === "pdf");
   }
+  function headVar(){ var head = document.querySelector("header"); if (head) document.documentElement.style.setProperty("--headH", head.offsetHeight + "px"); }
+  window.addEventListener("resize", headVar);
   function availHeight(){
+    headVar();
     var head = document.querySelector("header");
     var headH = document.body.classList.contains("immersive") ? 0 : head.offsetHeight;
     var pagerH = $("#pager").offsetHeight || 56;
@@ -2015,6 +2062,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   }
   function updateProgress(){
     if (!pagedActive()) return;
+    Progress.tick();
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
     else { cur = state.pdfPageNum; total = state.pdfDoc ? state.pdfDoc.numPages : 1; }
@@ -2048,6 +2096,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     releaseEpubUrls();
     Search.reset();
     Speak.stop();
+    Auto.stop();
 
     var fail = function(err){
       console.error(err);
@@ -3542,12 +3591,15 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     function stop(){
       pause(); paint(null); active = false; units = []; idx = -1;
       bar.classList.remove("on");
+      document.body.classList.remove("tts-on");
       if (state.flow === "pages") relayoutPaged();
     }
     function startFrom(offset){
       if (!supported){ Marks.toast("Read aloud isn\u2019t available in this browser"); return; }
       if (state.mode !== "doc" && state.mode !== "pdf") return;
       active = true; bar.classList.add("on"); fillVoices();
+      document.body.classList.add("tts-on");
+      document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
       if (state.flow === "pages") relayoutPaged();
       if (state.mode === "doc"){
         units = buildDocUnits();
@@ -3599,6 +3651,181 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
     return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
              units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, supported: supported };
+  })();
+
+  /* ============================================================
+     Reading progress + time left, from your measured reading speed
+     ============================================================ */
+  var Progress = (function(){
+    var el = $("#progressInfo"), hideTimer = null;
+    var wpm = parseFloat(localStorage.getItem("ll_wpm") || "0") || 0;    /* words per minute (text) */
+    var ppm = parseFloat(localStorage.getItem("ll_ppm") || "0") || 0;    /* pages per minute (pdf) */
+    var PRIOR_WPM = 230, PRIOR_PPM = 0.5, sample = { words: 0, ms: 0, pages: 0, pms: 0 };
+    var docWords = 0, docLen = 0, lastFrac = null, lastT = 0, lastTick = 0, docKey = null;
+    function countWords(){
+      var t = $("#doc").textContent;
+      docLen = t.length;
+      docWords = (t.match(/\S+/g) || []).length;
+    }
+    function currentWpm(){
+      /* blend a prior with what has been measured; measurements dominate after a few hundred words */
+      var measured = sample.ms > 20000 ? sample.words / (sample.ms / 60000) : null;
+      var base = wpm || PRIOR_WPM;
+      if (measured === null) return base;
+      var w = Math.min(1, sample.words / 1500);
+      return base * (1 - w) + measured * w;
+    }
+    function currentPpm(){
+      var measured = sample.pms > 20000 ? sample.pages / (sample.pms / 60000) : null;
+      var base = ppm || PRIOR_PPM;
+      if (measured === null) return base;
+      var w = Math.min(1, sample.pages / 15);
+      return base * (1 - w) + measured * w;
+    }
+    function fmt(min){
+      if (!isFinite(min) || min < 0) return "";
+      if (min < 1) return "under a minute left";
+      if (min < 60) return Math.round(min) + " min left";
+      var h = Math.floor(min / 60), m = Math.round(min % 60);
+      return h + " h" + (m ? " " + m + " min" : "") + " left";
+    }
+    function show(text){
+      el.textContent = text; el.classList.add("on");
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(function(){ el.classList.remove("on"); }, 2600);
+    }
+    function tick(){
+      if (state.mode !== "doc" && state.mode !== "pdf") return;
+      var now = Date.now();
+      if (now - lastTick < 250) return;
+      lastTick = now;
+      var key = (Library.currentId() || "") + ":" + state.mode;
+      if (key !== docKey){ docKey = key; lastFrac = null; if (state.mode === "doc") countWords(); }
+      var frac = Math.max(0, Math.min(1, readFrac()));
+      var text;
+      if (state.mode === "doc"){
+        if (docLen !== $("#doc").textContent.length) countWords();
+        if (lastFrac !== null){
+          var dt = now - lastT, dw = (frac - lastFrac) * docWords;
+          /* count only steady forward reading: small steps, no long pauses */
+          if (dt > 0 && dt < 45000 && dw > 0 && dw < 400 && document.visibilityState === "visible"){ sample.words += dw; sample.ms += dt; }
+        }
+        var left = (1 - frac) * docWords / currentWpm();
+        text = Math.round(frac * 100) + "%" + (docWords > 80 ? " \u00B7 " + fmt(left) : "");
+      } else {
+        var pages = state.pdfDoc ? state.pdfDoc.numPages : 1, page = Library.currentPdfPage();
+        if (lastFrac !== null){
+          var dt2 = now - lastT, dp = (frac - lastFrac) * (pages - 1);
+          if (dt2 > 0 && dt2 < 120000 && dp > 0 && dp < 3 && document.visibilityState === "visible"){ sample.pages += dp; sample.pms += dt2; }
+        }
+        var leftP = (pages - page) / currentPpm();
+        text = "p. " + page + " / " + pages + (pages > 3 ? " \u00B7 " + fmt(leftP) : "");
+      }
+      lastFrac = frac; lastT = now;
+      show(text);
+      maybeStore();
+    }
+    var storeTimer = null;
+    function maybeStore(){
+      clearTimeout(storeTimer);
+      storeTimer = setTimeout(function(){
+        if (sample.ms > 60000 && sample.words > 300){ wpm = currentWpm(); localStorage.setItem("ll_wpm", wpm.toFixed(0)); }
+        if (sample.pms > 60000 && sample.pages > 3){ ppm = currentPpm(); localStorage.setItem("ll_ppm", ppm.toFixed(2)); }
+      }, 1500);
+    }
+    return { tick: tick, wpm: currentWpm, ppm: currentPpm, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
+  })();
+
+  /* ============================================================
+     Reading ruler — a clear band on the current line, the rest dimmed
+     ============================================================ */
+  var Ruler = (function(){
+    var el = $("#ruler"), top = el.querySelector(".rt"), bottom = el.querySelector(".rb"), line = el.querySelector(".rl"), grip = el.querySelector(".grip");
+    var on = false, y = null, coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    function bandHeight(){ return Math.round(state.size * state.lh * 2.2); }
+    function place(){
+      if (!on) return;
+      var h = bandHeight();
+      if (y === null) y = Math.round(Library.headerHeight() + (window.innerHeight - Library.headerHeight()) * 0.38);
+      var y0 = Math.max(0, y - h / 2), y1 = Math.min(window.innerHeight, y0 + h);
+      top.style.height = y0 + "px"; bottom.style.height = (window.innerHeight - y1) + "px";
+      line.style.top = y0 + "px"; line.style.height = (y1 - y0) + "px";
+      grip.style.top = y + "px";
+    }
+    function set(v){ on = v; el.classList.toggle("on", on); if (on) place(); }
+    function toggle(){ set(!on); if (on) Marks.toast(coarse ? "Drag the handle to move the ruler" : "The ruler follows your mouse"); }
+    document.addEventListener("mousemove", function(e){ if (on && !coarse){ y = e.clientY; place(); } });
+    var dragging = false;
+    grip.addEventListener("touchstart", function(){ dragging = true; }, { passive: true });
+    grip.addEventListener("touchmove", function(e){ if (dragging && e.touches.length){ y = e.touches[0].clientY; place(); } }, { passive: true });
+    grip.addEventListener("touchend", function(){ dragging = false; });
+    grip.addEventListener("mousedown", function(e){ dragging = true; e.preventDefault(); });
+    document.addEventListener("mouseup", function(){ dragging = false; });
+    window.addEventListener("resize", place);
+    Menu.add({ order: 50, label: function(){ return on ? "Hide reading ruler" : "Reading ruler"; }, key: "L", run: toggle, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    return { toggle: toggle, set: set, isOn: function(){ return on; }, place: place };
+  })();
+
+  /* ============================================================
+     Auto-scroll (scroll flow) / timed page turns (pages flow)
+     ============================================================ */
+  var Auto = (function(){
+    var bar = $("#autoBar"), speedEl = $("#autoSpeed"), playBtn = $("#autoPlay");
+    var on = false, paused = false, mult = parseFloat(localStorage.getItem("ll_autoscroll") || "1") || 1, raf = null, lastT = 0, acc = 0, pageTimer = null;
+    function pxPerSec(){
+      /* base speed from the measured reading rate: words per second × height per word */
+      var lineH = state.size * state.lh;
+      var colW = Math.min(state.width, $("#docView").clientWidth || state.width);
+      var wordsPerLine = Math.max(4, colW / (state.size * 0.5) / 6);   /* ~6 characters per word incl. the space */
+      return (Progress.wpm() / 60) / wordsPerLine * lineH * mult;
+    }
+    function label(){ speedEl.textContent = mult.toFixed(1) + "\u00D7"; }
+    function step(t){
+      if (!on || paused) return;
+      if (lastT){ acc += pxPerSec() * (t - lastT) / 1000; }
+      lastT = t;
+      if (acc >= 1){
+        var d = Math.floor(acc); acc -= d;
+        var h = document.documentElement, before = h.scrollTop;
+        window.scrollBy(0, d);
+        if (h.scrollTop === before && before + h.clientHeight >= h.scrollHeight - 2){ stop(); Marks.toast("End of document"); return; }
+      }
+      raf = requestAnimationFrame(step);
+    }
+    function schedulePage(){
+      clearTimeout(pageTimer);
+      if (!on || paused || state.flow !== "pages") return;
+      var words = Math.max(40, Progress.docWords() / Math.max(1, state.totalPages));
+      var secs = state.mode === "pdf" ? 60 / Math.max(0.2, Progress.ppm()) : words / (Progress.wpm() / 60);
+      pageTimer = setTimeout(function(){
+        if (!on || paused) return;
+        var atEnd = state.mode === "doc" ? state.page >= state.totalPages - 1 : state.pdfPageNum >= (state.pdfDoc ? state.pdfDoc.numPages : 1);
+        if (atEnd){ stop(); Marks.toast("End of document"); return; }
+        turn(1); schedulePage();
+      }, secs * 1000 / mult);
+    }
+    function run(){
+      cancelAnimationFrame(raf); lastT = 0; acc = 0;
+      if (state.flow === "pages") schedulePage(); else raf = requestAnimationFrame(step);
+    }
+    function start(){
+      if (state.mode !== "doc" && state.mode !== "pdf") return;
+      on = true; paused = false; bar.classList.add("on"); label(); playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause");
+      run();
+    }
+    function stop(){ on = false; paused = false; cancelAnimationFrame(raf); clearTimeout(pageTimer); bar.classList.remove("on"); }
+    function pause(){ paused = true; cancelAnimationFrame(raf); clearTimeout(pageTimer); playBtn.textContent = "\u25B6"; playBtn.setAttribute("aria-label", "Resume"); }
+    function resume(){ paused = false; playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause"); run(); }
+    playBtn.addEventListener("click", function(){ if (paused) resume(); else pause(); });
+    $("#autoStop").addEventListener("click", stop);
+    $("#autoSlower").addEventListener("click", function(){ mult = Math.max(0.3, +(mult - 0.1).toFixed(1)); label(); localStorage.setItem("ll_autoscroll", String(mult)); if (on && !paused) run(); });
+    $("#autoFaster").addEventListener("click", function(){ mult = Math.min(4, +(mult + 0.1).toFixed(1)); label(); localStorage.setItem("ll_autoscroll", String(mult)); if (on && !paused) run(); });
+    /* a wheel or touch pauses so the reader can take over */
+    window.addEventListener("wheel", function(){ if (on && !paused) pause(); }, { passive: true });
+    document.addEventListener("touchstart", function(e){ if (on && !paused && !e.target.closest("#autoBar")) pause(); }, { passive: true });
+    document.addEventListener("visibilitychange", function(){ if (on && document.visibilityState === "hidden") pause(); });
+    Menu.add({ order: 51, label: function(){ return on ? "Stop auto-scroll" : "Auto-scroll"; }, key: "A", run: function(){ if (on) stop(); else start(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    return { start: start, stop: stop, pause: pause, resume: resume, isOn: function(){ return on; }, isPaused: function(){ return paused; }, pxPerSec: pxPerSec, mult: function(){ return mult; } };
   })();
 
   Menu.add({ order: 90, sep: true });
@@ -3790,6 +4017,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     var h = document.documentElement;
     var max = h.scrollHeight - h.clientHeight;
     $("#progress").style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+    Progress.tick();
 
     if (state.mode !== "doc" && state.mode !== "pdf") return;
     Library.notePosition();
@@ -4576,13 +4804,14 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
+  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
 
   /* ---------- boot ---------- */
   Prefs.load();
+  headVar();
   buildThemeChips();
   buildCustomUI();
   syncCustomUI();
