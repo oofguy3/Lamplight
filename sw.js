@@ -1,5 +1,5 @@
 /* lamplight service worker v2 — offline cache, but always grab a fresh index.html when online */
-const CACHE = "lamplight-v6";
+const CACHE = "lamplight-v7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -28,14 +28,39 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== "lamplight-share").map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
+
+  /* Web Share Target: files shared to Lamplight arrive here as a POST; stash them in a
+     cache and send the app to ./?shared=N, where it picks them up */
+  if (e.request.method === "POST" && url.pathname.endsWith("/share")) {
+    e.respondWith(
+      (async () => {
+        let n = 0;
+        try {
+          const fd = await e.request.formData();
+          const files = fd.getAll("file").filter((f) => f && typeof f.arrayBuffer === "function");
+          const c = await caches.open("lamplight-share");
+          await Promise.all(files.map((f, i) =>
+            c.put("./share-file-" + i, new Response(f, { headers: { "Content-Type": f.type || "application/octet-stream", "X-Name": encodeURIComponent(f.name || "shared") } }))
+          ));
+          n = files.length;
+          const q = new URLSearchParams({ shared: String(n) });
+          for (const k of ["title", "text", "url"]) { const v = fd.get(k); if (v && typeof v === "string") q.set(k, v); }
+          return Response.redirect("./?" + q.toString(), 303);
+        } catch (err) {
+          return Response.redirect("./?shared=0", 303);
+        }
+      })()
+    );
+    return;
+  }
+  if (e.request.method !== "GET") return;
   const isPage =
     e.request.mode === "navigate" ||
     url.pathname.endsWith("/") ||

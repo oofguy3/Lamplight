@@ -2,15 +2,122 @@
   "id": "./",
   "name": "Lamplight",
   "short_name": "Lamplight",
-  "description": "A quiet offline reader for PDF, DOCX, TXT, Markdown and HTML — with themes, page mode and custom colors.",
-  "start_url": "./",
+  "description": "A quiet offline reader for PDF, EPUB, DOCX, TXT, Markdown and HTML — with a built-in dictionary, sentence explainer, themes, page mode and custom colors.",
+  "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",
   "background_color": "#14161B",
   "theme_color": "#14161B",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "./?open=files",
+      "accept": {
+        "application/pdf": [
+          ".pdf"
+        ],
+        "application/epub+zip": [
+          ".epub"
+        ],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+          ".docx"
+        ],
+        "text/plain": [
+          ".txt",
+          ".text"
+        ],
+        "text/markdown": [
+          ".md",
+          ".markdown"
+        ],
+        "text/html": [
+          ".html",
+          ".htm"
+        ]
+      }
+    }
+  ],
+  "share_target": {
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": [
+            "application/pdf",
+            ".pdf",
+            "application/epub+zip",
+            ".epub",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".docx",
+            "text/plain",
+            ".txt",
+            "text/markdown",
+            ".md",
+            "text/html",
+            ".html",
+            ".htm"
+          ]
+        }
+      ]
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Continue reading",
+      "short_name": "Continue",
+      "description": "Reopen the last book where you left off",
+      "url": "./?action=continue",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Library",
+      "short_name": "Library",
+      "description": "Your recent files",
+      "url": "./?action=library",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "categories": [
+    "books",
+    "education",
+    "productivity"
   ]
 }

@@ -1226,6 +1226,23 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   .ctl:hover{border-color:var(--accent);}
   .ctl.primary{background:var(--accent); border-color:var(--accent); color:var(--panel);}
 
+  /* open documents as tabs (shown when more than one is open) */
+  #tabs{
+    display:none; gap:4px; padding:0 10px 8px; max-width:1100px; margin:0 auto; overflow-x:auto; scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  #tabs::-webkit-scrollbar{display:none;}
+  #tabs.on{display:flex;}
+  .tab{
+    display:inline-flex; align-items:center; gap:6px; flex:none; max-width:220px;
+    padding:5px 6px 5px 11px; border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--muted);
+    font-family:var(--ui-font); font-size:12.5px; cursor:pointer; white-space:nowrap;
+  }
+  .tab.on{color:var(--ink); border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent);}
+  .tab .tab-name{overflow:hidden; text-overflow:ellipsis; max-width:170px;}
+  .tab .tab-x{border:0; background:transparent; color:inherit; font-size:15px; line-height:1; padding:2px 5px; border-radius:50%; cursor:pointer; opacity:.7;}
+  .tab .tab-x:hover{opacity:1; background:color-mix(in srgb, var(--ink) 10%, transparent);}
+
   /* the lamp — theme cycle button */
   #lamp .bulb{
     width:14px; height:14px; border-radius:50%;
@@ -1626,6 +1643,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
     </div>
     <button class="ctl primary" id="openBtn">Open</button>
   </div>
+  <div id="tabs" role="tablist" aria-label="Open documents"></div>
 </header>
 
 <div id="sheet">
@@ -1750,7 +1768,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   <button class="ctl" id="nextPg" title="Next page">›</button>
 </div>
 
-<input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" hidden>
+<input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" multiple hidden>
 
 <script>
 (function(){
@@ -2241,6 +2259,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
           if (book.title){
             $("#fname").textContent = book.title + (book.author ? " — " + book.author : "");
             Library.setTitle(book.title + (book.author ? " — " + book.author : ""));
+            Tabs.setName(Library.currentId(), book.title + (book.author ? " — " + book.author : ""));
           }
           setDocHtml(book.html, {toc: book.toc, keepIds: true});
         }).catch(fail);
@@ -2911,6 +2930,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       loaded.then(function(){ return idFor(file); }).then(function(id){
         current = id;
         Marks.setDoc(id, file.name);
+        Tabs.noteOpen(id, file.name, file);
         var pos = positions[id];
         if (pos && !opts.fresh){ pending = pos; tryRestore(); }
         var existing = books.filter(function(b){ return b.id === id; })[0];
@@ -2923,6 +2943,14 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
           if (!existing){ books.splice(books.indexOf(rec), 1); }
         }).then(render);
       }).catch(function(err){ console.warn("library", err); });
+    }
+    function remember(file, id){
+      loaded.then(function(){
+        if (books.some(function(b){ return b.id === id; })) return;
+        var rec = { id: id, name: file.name, type: typeOf(file.name), size: file.size, added: Date.now(), opened: Date.now() - 1, blob: file };
+        books.push(rec); books.sort(function(a, b){ return (b.opened || 0) - (a.opened || 0); });
+        tx("books", "readwrite", function(st){ st.put(rec); }).then(render).catch(function(){});
+      });
     }
     function setTitle(title){
       if (!title) return;
@@ -2991,6 +3019,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       books = books.filter(function(x){ return x.id !== id; });
       delete positions[id];
       Marks.forget(id);
+      Tabs.drop(id);
       tx("books", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       tx("positions", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       if (current === id) current = null;
@@ -3010,7 +3039,8 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
       render();
     }
 
-    return { tx: tx, headerHeight: headerHeight, topCharOffset: topCharOffset, currentPdfPage: currentPdfPage,
+    return { tx: tx, headerHeight: headerHeight, topCharOffset: topCharOffset, currentPdfPage: currentPdfPage, idFor: idFor, openId: openId,
+             books: function(){ return books; }, remember: remember,
              onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
              flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render,
              ready: loaded, currentId: function(){ return current; }, positionFor: function(id){ return positions[id]; },
@@ -3949,11 +3979,102 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   Menu.add({ order: 90, sep: true });
   Menu.add({ order: 91, label: "Library", run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
 
+  /* ============================================================
+     Tabs — several open documents; switching re-renders from the library copy
+     and resumes at the saved position
+     ============================================================ */
+  var Tabs = (function(){
+    var KEY = "ll_tabs", tabs = [], activeId = null, strip = $("#tabs");
+    try { tabs = JSON.parse(localStorage.getItem(KEY) || "[]"); if (!Array.isArray(tabs)) tabs = []; } catch(_){ tabs = []; }
+    tabs = tabs.filter(function(t){ return t && t.id && t.name; }).map(function(t){ return { id: t.id, name: t.name, file: null }; });
+    function save(){ try { localStorage.setItem(KEY, JSON.stringify(tabs.map(function(t){ return { id: t.id, name: t.name }; }))); } catch(_){} }
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function render(){
+      strip.classList.toggle("on", tabs.length >= 2);
+      strip.innerHTML = tabs.map(function(t){
+        return '<div class="tab' + (t.id === activeId ? ' on' : '') + '" role="tab" tabindex="0" aria-selected="' + (t.id === activeId) + '" data-id="' + esc(t.id) + '" title="' + esc(t.name) + '">' +
+          '<span class="tab-name">' + esc(t.name) + '</span><button class="tab-x" data-x="' + esc(t.id) + '" aria-label="Close ' + esc(t.name) + '">\u00D7</button></div>';
+      }).join("");
+      var on = strip.querySelector(".tab.on"); if (on) on.scrollIntoView({ inline: "nearest", block: "nearest" });
+      if (state.flow === "pages" && (state.mode === "doc" || state.mode === "pdf")) relayoutPaged();
+    }
+    function noteOpen(id, name, file){
+      var t = tabs.filter(function(x){ return x.id === id; })[0];
+      if (!t){ t = { id: id, name: name, file: file }; tabs.push(t); }
+      else { t.file = file || t.file; if (name) t.name = name; }
+      activeId = id; save(); render();
+    }
+    function setName(id, name){ var t = tabs.filter(function(x){ return x.id === id; })[0]; if (t && name){ t.name = name; save(); render(); } }
+    function activate(id){
+      var t = tabs.filter(function(x){ return x.id === id; })[0];
+      if (!t) return;
+      if (t.id === activeId && (state.mode === "doc" || state.mode === "pdf")) return;
+      Library.flush();
+      if (t.file){ openFile(t.file, { fromTab: true }); }
+      else Library.openId(id);
+    }
+    function close(id){
+      var i = tabs.findIndex(function(x){ return x.id === id; });
+      if (i < 0) return;
+      var wasActive = tabs[i].id === activeId;
+      tabs.splice(i, 1); save();
+      if (wasActive){
+        if (tabs.length){ activate(tabs[Math.min(i, tabs.length - 1)].id); }
+        else { activeId = null; Library.home(); }
+      }
+      render();
+    }
+    function drop(id){ var i = tabs.findIndex(function(x){ return x.id === id; }); if (i >= 0){ tabs.splice(i, 1); save(); render(); } }
+    /* add files without opening them (multi-select / multi-drop) */
+    function addFiles(files){
+      Array.prototype.forEach.call(files, function(f){
+        Library.idFor(f).then(function(id){
+          if (!tabs.some(function(x){ return x.id === id; })){ tabs.push({ id: id, name: f.name, file: f }); save(); render(); }
+          /* make sure it is in the library too */
+          Library.remember(f, id);
+        });
+      });
+    }
+    strip.addEventListener("click", function(e){
+      var x = e.target.closest(".tab-x"); if (x){ e.stopPropagation(); close(x.dataset.x); return; }
+      var t = e.target.closest(".tab"); if (t) activate(t.dataset.id);
+    });
+    strip.addEventListener("keydown", function(e){
+      var t = e.target.closest(".tab"); if (!t) return;
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(t.dataset.id); }
+      if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); close(t.dataset.id); }
+    });
+    document.addEventListener("keydown", function(e){
+      if ((e.ctrlKey || e.metaKey) && e.key === "Tab" && tabs.length > 1){
+        e.preventDefault();
+        var i = tabs.findIndex(function(x){ return x.id === activeId; });
+        var n = (i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length;
+        activate(tabs[n].id);
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "w" || e.key === "W") && activeId && (state.mode === "doc" || state.mode === "pdf")){
+        e.preventDefault(); close(activeId);
+      }
+    });
+    render();
+    return { noteOpen: noteOpen, activate: activate, close: close, drop: drop, addFiles: addFiles, setName: setName, list: function(){ return tabs; }, active: function(){ return activeId; }, render: render };
+  })();
+
+  /* open one or many files: the first shows, the rest become tabs */
+  function openFiles(files){
+    var list = Array.prototype.slice.call(files || []).filter(Boolean);
+    if (!list.length) return;
+    openFile(list[0]);
+    if (list.length > 1){
+      /* keep the tabs in the order the files were chosen */
+      Library.idFor(list[0]).then(function(id){ Tabs.noteOpen(id, list[0].name, list[0]); Tabs.addFiles(list.slice(1)); });
+    }
+  }
+
   /* ---------- wiring ---------- */
   $("#openBtn").addEventListener("click", function(){ $("#fileInput").click(); });
   $("#openBtn2").addEventListener("click", function(){ $("#fileInput").click(); });
   $("#fileInput").addEventListener("change", function(e){
-    openFile(e.target.files[0]);
+    openFiles(e.target.files);
     e.target.value = "";
   });
 
@@ -3965,8 +4086,52 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   document.addEventListener("drop", function(e){
     e.preventDefault();
     $("#empty").classList.remove("drag");
-    if (e.dataTransfer.files && e.dataTransfer.files.length) openFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length) openFiles(e.dataTransfer.files);
   });
+
+  /* ---------- launched from the OS: "Open with", the share sheet, shortcuts ---------- */
+  var Launch = (function(){
+    var params = new URLSearchParams(location.search);
+    function clean(){ try { history.replaceState(null, "", location.pathname); } catch(_){} }
+    function sharedFiles(){
+      if (!("caches" in window)) return Promise.resolve([]);
+      return caches.open("lamplight-share").then(function(c){
+        return c.keys().then(function(keys){
+          return Promise.all(keys.map(function(req){
+            return c.match(req).then(function(res){
+              var name = decodeURIComponent(res.headers.get("X-Name") || "shared.txt");
+              return res.blob().then(function(blob){ return new File([blob], name, { type: res.headers.get("Content-Type") || blob.type }); });
+            });
+          })).then(function(files){ return caches.delete("lamplight-share").then(function(){ return files; }); });
+        });
+      }).catch(function(){ return []; });
+    }
+    function boot(){
+      if ("launchQueue" in window && window.launchQueue.setConsumer){
+        window.launchQueue.setConsumer(function(launchParams){
+          if (!launchParams.files || !launchParams.files.length) return;
+          Promise.all(launchParams.files.map(function(h){ return h.getFile ? h.getFile() : null; })).then(function(files){ openFiles(files.filter(Boolean)); });
+        });
+      }
+      var action = params.get("action");
+      if (params.has("shared")){
+        clean();
+        sharedFiles().then(function(files){
+          if (files.length) openFiles(files);
+          else if (params.get("text") || params.get("url")){
+            var txt = [params.get("title"), params.get("text"), params.get("url")].filter(Boolean).join("\n");
+            openFile(new File([txt], (params.get("title") || "Shared text") + ".txt", { type: "text/plain" }));
+          }
+        });
+      } else if (action === "continue"){
+        clean();
+        Library.ready.then(function(){ var b = Library.books()[0]; if (b) Library.openId(b.id); });
+      } else if (action || params.has("open") || params.has("source")){
+        clean();
+      }
+    }
+    return { boot: boot };
+  })();
 
   $("#wordmark").addEventListener("click", function(){ Library.home(); });
   $("#wordmark").addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " "){ e.preventDefault(); Library.home(); } });
@@ -4923,7 +5088,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Anchor: Anchor, Side: Side, openFile: openFile, show: show, revealOffset: revealOffset };
+  window.__ll = { state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
@@ -4944,6 +5109,7 @@ return i=this.parent.children.indexOf(this),removed=this.parent.children.splice(
   $("#cWake").checked = state.wake !== false;
   AutoTheme.apply();
   show("empty");
+  Launch.boot();
 
   /* offline install: only active when hosted (https), harmless as a local file */
   if ("serviceWorker" in navigator && location.protocol === "https:"){
