@@ -4766,6 +4766,19 @@
       "#dictCard .tr-out{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 4px; overflow-wrap:break-word;}",
       "#dictCard .tr-out[dir=rtl]{text-align:right;}",
       "#dictCard .tr-eng{color:var(--muted); font-size:0.7812rem; padding:0 0 4px;}",
+      /* simplify: the plainer text, each change dotted in the accent colour with a tap-to-show note */
+      "#dictCard .simple{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:4px 0 2px;}",
+      "#dictCard .chg{",
+      "  display:inline; font:inherit; color:inherit; background:transparent; border:0; padding:0; margin:0;",
+      "  cursor:pointer; border-radius:2px; text-decoration:underline dotted var(--accent);",
+      "  text-decoration-thickness:2px; text-underline-offset:3px;",
+      "}",
+      "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 16%, transparent);}",
+      "#dictCard .chgnote{",
+      "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
+      "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--muted);",
+      "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
+      "}",
       "#dictCard .clause{",
       "  padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;",
       "}",
@@ -4820,7 +4833,7 @@
     document.body.appendChild(card);
     var inner = card.querySelector(".inner");
     var pill = document.createElement("div"); pill.id = "dictPill";
-    pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="mark">Highlight</button><button type="button" data-act="translate">Translate</button>';
+    pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="simplify">Simplify</button><button type="button" data-act="mark">Highlight</button><button type="button" data-act="translate">Translate</button>';
     document.body.appendChild(pill);
 
     var openedAt = 0, cardOpener = null;
@@ -5190,7 +5203,8 @@
               '<button class="x" aria-label="Close">×</button></div>' +
               '<div class="quote">' + esc(sentence) + '</div>' +
               '<div class="tr-slot" data-kind="sentence"></div>' +
-              (currentSpan ? '<div class="acts" id="dictMarkActs"><button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button></div>' : '') +
+              '<div class="acts" id="dictMarkActs"><button class="act" data-m="simplify">Simplify</button>' +
+              (currentSpan ? '<button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button>' : '') + '</div>' +
               '<div id="dictAi"></div>' +
               '<div id="dictExpl"><div class="note">Reading it…' +
               (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
@@ -5198,7 +5212,9 @@
       inner.querySelector(".x").addEventListener("click", closeCard);
       var ma = inner.querySelector("#dictMarkActs");
       if (ma) ma.addEventListener("click", function(e){
-        var b = e.target.closest("button"); if (!b || !window.__ll || !window.__ll.Marks) return;
+        var b = e.target.closest("button"); if (!b) return;
+        if (b.dataset.m === "simplify"){ renderSimplify(sentence, currentSpan); return; }
+        if (!window.__ll || !window.__ll.Marks) return;
         if (b.dataset.m === "read"){ closeCard(); window.__ll.Speak.start(currentSpan.start); return; }
         var m = window.__ll.Marks.addHighlight(currentSpan.start, currentSpan.end);
         closeCard();
@@ -5224,6 +5240,185 @@
         box.innerHTML = '<div class="note">Couldn’t analyse this sentence.</div>';
       });
     }
+
+    /* ---------- simplify: a plainer version of the selected sentence(s), offline (see llExplain.simplify) ----------
+       Drawn in the same card: the original, the plainer text with every change dotted (a tap
+       shows what it was and why), a summary line, and Copy / Read aloud / Highlight / AI actions. */
+    var simpToken = 0, simpUtter = null;
+    /* the dictionary chunks the simplifier needs: every word with its variants and base forms,
+       then the synonyms those entries list (the swap rule reads their entries too) */
+    function simplifyWords(text){
+      var words = (text.toLowerCase().match(/[a-zÀ-ɏ'’-]+/g) || []).map(function(w){ return w.replace(/[’]/g, "'"); });
+      var all = [];
+      words.forEach(function(w){ all.push(w); if (IRREG[w]) all.push(IRREG[w]); variants(w).forEach(function(v){ all.push(v); }); });
+      return withWords(all).then(function(){
+        var syns = [];
+        all.forEach(function(w){
+          var e = find(w);
+          if (e) e.m.forEach(function(m){ (m.s || []).forEach(function(s){ if (/^[a-z]+$/.test(s)) syns.push(s); }); });
+        });
+        return withWords(syns);
+      });
+    }
+    function simplifyText(text){
+      return Promise.all([simplifyWords(text), window.__ll.need(["explain"])]).then(function(){
+        return window.llExplain.simplify(text, find, window.llExplain.rank);
+      });
+    }
+    function stopSimpleSpeech(){
+      if (!simpUtter) return;
+      simpUtter = null;
+      try { speechSynthesis.cancel(); } catch(_){}
+      var b = inner.querySelector("#simpRead");
+      if (b){ b.textContent = "Read aloud"; b.setAttribute("aria-pressed", "false"); }
+    }
+    /* closing the card (any way) stops a reading of the simpler text */
+    new MutationObserver(function(){ if (!card.classList.contains("open")) stopSimpleSpeech(); }).observe(card, { attributes: true, attributeFilter: ["class"] });
+    function simpleSummary(changes){
+      var swaps = 0, phrases = 0, active = 0, splits = 0;
+      changes.forEach(function(c){
+        if (c.why === "rarer word") swaps++;
+        else if (c.why === "shorter phrase" || c.why === "idiom") phrases++;
+        else if (c.why === "passive to active") active++;
+        else if (c.why === "split long sentence") splits++;
+      });
+      var parts = [];
+      function count(k, one, many){ if (k) parts.push(k + " " + (k === 1 ? one : many)); }
+      count(swaps, "word swapped", "words swapped");
+      count(phrases, "phrase shortened", "phrases shortened");
+      count(active, "sentence turned active", "sentences turned active");
+      count(splits, "sentence split", "sentences split");
+      return parts.length ? parts.join(" · ") : "Nothing to simplify — this is already plain.";
+    }
+    function renderSimplify(text, span){
+      text = String(text || "").replace(/\s+/g, " ").trim();
+      if (!text) return;
+      var token = ++simpToken;
+      stopSimpleSpeech();
+      currentSentence = null; currentSpan = null;      /* a late explain result must not draw over this card */
+      var sp = (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
+      inner.innerHTML = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw"><div class="term">Simpler</div></div>' +
+        '<button class="x" aria-label="Close">×</button></div>' +
+        '<div class="quote">' + esc(text) + '</div>' +
+        '<div id="simpBody"><div class="note">Making it plainer…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
+      inner.querySelector(".x").addEventListener("click", closeCard);
+      openCard();
+      simplifyText(text).then(function(r){
+        if (token !== simpToken) return;
+        drawSimple(r, text, sp);
+      }).catch(function(err){
+        console.error(err);
+        if (token !== simpToken) return;
+        inner.querySelector("#simpBody").innerHTML = '<div class="note">Couldn’t simplify this.</div>';
+      });
+    }
+    function drawSimple(r, text, sp){
+      var body = inner.querySelector("#simpBody"), out = r.text, h = '<div class="simple">', pos = 0;
+      r.changes.forEach(function(c){
+        h += esc(out.slice(pos, c.start)) +
+             '<button type="button" class="chg" aria-expanded="false" title="was: ' + esc(c.from) + '" data-from="' + esc(c.from) + '" data-why="' + esc(c.why) + '">' +
+             esc(out.slice(c.start, c.end)) + '</button>';
+        pos = c.end;
+      });
+      h += esc(out.slice(pos)) + '</div>' +
+           '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes)) + '</div>' +
+           '<div class="acts" id="simpActs"><button class="act" data-s="copy">Copy</button>' +
+           ("speechSynthesis" in window ? '<button class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
+           (sp ? '<button class="act" data-s="hl">Highlight</button>' : '') +
+           (navigator.onLine ? '<button class="act go" data-s="ai">Simplify with AI</button>' : '') + '</div>' +
+           '<div id="simpAi"></div>' +
+           (navigator.onLine ? '' : '<div class="note">Offline — simplified with the built-in dictionary only.</div>');
+      body.innerHTML = h;
+      body.addEventListener("click", function(e){
+        var chg = e.target.closest("button.chg");
+        if (chg){ toggleChangeNote(chg); return; }
+        var b = e.target.closest("#simpActs button"); if (!b) return;
+        var act = b.dataset.s;
+        if (act === "copy") copySimple(out);
+        else if (act === "read") readSimple(out, b);
+        else if (act === "hl"){
+          var m = window.__ll && window.__ll.Marks ? window.__ll.Marks.addHighlight(sp.start, sp.end) : null;
+          closeCard();
+          if (m) window.__ll.Marks.toast("Highlighted");
+        } else if (act === "ai"){
+          var key = Store.get(LS_KEY) || "";
+          if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
+          simplifyWithAI(text, key, inner.querySelector("#simpAi"));
+        }
+      });
+    }
+    /* a tap on a changed word shows (or hides) what it was and why it changed */
+    function toggleChangeNote(chg){
+      var open = chg.getAttribute("aria-expanded") === "true", next = chg.nextSibling;
+      if (next && next.nodeType === 1 && next.classList.contains("chgnote")) next.parentNode.removeChild(next);
+      chg.setAttribute("aria-expanded", open ? "false" : "true");
+      if (open) return;
+      var note = document.createElement("span");
+      note.className = "chgnote";
+      note.textContent = "was “" + chg.dataset.from + "” — " + chg.dataset.why;
+      chg.parentNode.insertBefore(note, chg.nextSibling);
+    }
+    function copySimple(s){
+      var done = function(){ if (window.__ll && window.__ll.Marks) window.__ll.Marks.toast("Copied"); };
+      var fallback = function(){
+        var ta = document.createElement("textarea");
+        ta.value = s; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch(_){}
+        document.body.removeChild(ta);
+        done();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).then(done, fallback);
+      else fallback();
+    }
+    /* one plain utterance in the narrator's voice at the saved rate; the button toggles to Stop */
+    function readSimple(s, btn){
+      if (simpUtter){ stopSimpleSpeech(); return; }
+      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
+      if (window.__ll && window.__ll.Speak && window.__ll.Speak.isPlaying()) window.__ll.Speak.pause();
+      var u = new SpeechSynthesisUtterance(s);
+      var name = Store.get("ll_tts_voice") || "", vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
+      for (var i = 0; i < vs.length; i++) if (vs[i].name === name){ u.voice = vs[i]; break; }
+      u.rate = Math.min(2, Math.max(0.5, parseFloat(Store.get("ll_tts_rate") || "1") || 1));
+      u.onend = u.onerror = function(){ if (simpUtter === u){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); } };
+      simpUtter = u; btn.textContent = "Stop"; btn.setAttribute("aria-pressed", "true");
+      try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch(_){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); }
+    }
+    function simplifyWithAI(text, apiKey, aiBox){
+      var token = simpToken;
+      aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
+      var prompt = "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; " +
+        "do not add anything. Reply with the rewritten text only.\n\n" + text;
+      fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({ model: AI_MODEL, max_tokens: 600, messages: [{ role: "user", content: prompt }] })
+      })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        if (token !== simpToken) return;
+        var j = res.j;
+        if (!res.ok) throw new Error((j && j.error && j.error.message) || "the request failed");
+        var txt = (j.content || []).map(function(c){ return c.text || ""; }).join("").trim();
+        if (!txt) throw new Error("empty reply");
+        aiBox.innerHTML = '<div class="sec">Rewritten by Claude</div><div class="ai"></div>';
+        aiBox.querySelector(".ai").textContent = txt;
+      })
+      .catch(function(err){
+        if (token !== simpToken) return;
+        aiBox.innerHTML = '<div class="note">Couldn’t get a rewrite (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
+          '<div class="acts"><button class="act" id="simpAiRetry">Try again</button><button class="act" id="simpAiKey">Change key</button></div>';
+        aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
+        aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
+      });
+    }
+    /* for tests and other modules */
+    window.llSimplify = { render: renderSimplify, simplify: simplifyText };
 
     /* ---------- optional: explain with AI (online + your own key) ---------- */
     function renderAiButton(sentence){
@@ -5478,6 +5673,7 @@
       if (!s || card.classList.contains("open")){ hidePill(); return; }
       var words = s.split(/\s+/).length;
       pill.querySelector("[data-act=lookup]").textContent = words > 1 ? "Explain" : "Define";
+      pill.querySelector("[data-act=simplify]").style.display = words >= 3 ? "" : "none";   /* a plainer version needs a sentence */
       var rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
       if (!rect || (!rect.width && !rect.height)){ hidePill(); return; }
       pill.classList.add("on");
@@ -5499,6 +5695,10 @@
       if (b.dataset.act === "mark"){
         if (window.Marks_highlightSelection) window.Marks_highlightSelection();
         hidePill(); return;
+      }
+      if (b.dataset.act === "simplify"){
+        var so = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
+        hidePill(); if (s) renderSimplify(s, so); return;
       }
       var off = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
       hidePill();
