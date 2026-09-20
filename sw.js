@@ -10,6 +10,7 @@ const ASSETS = [
   "./app.js",
   "./explain.js",
   "./morph.js",
+  "./translate.js",
   "./manifest.webmanifest",
   "./dict-index.json",
   "./icon-192.png",

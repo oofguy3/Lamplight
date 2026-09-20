@@ -654,6 +654,34 @@
     .about-scale{background:ButtonText; forced-color-adjust:none;}
     .about-scale i{background:Highlight; border-color:Canvas; forced-color-adjust:none;}
   }
+  /* ---------- translation ---------- */
+  /* the progress pill while a document is being translated (translate.js); the inline
+     translations themselves are styled inside their shadow roots */
+  #trStatus{
+    position:fixed; left:50%; bottom:max(66px, calc(env(safe-area-inset-bottom) + 66px)); transform:translateX(-50%); z-index:57;
+    display:none; align-items:center; gap:10px; max-width:calc(100% - 24px);
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:999px; padding:6px 7px 6px 14px;
+    font-family:var(--ui-font); font-size:0.8125rem; font-variant-numeric:tabular-nums; box-shadow:0 6px 20px rgba(0,0,0,.2);
+    transition:background .35s ease, border-color .35s ease;
+  }
+  #trStatus.on{display:flex;}
+  #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #trStatus .tr-x{
+    flex:none; border:1px solid var(--line); background:transparent; color:var(--accent); border-radius:999px;
+    padding:5px 11px; font-family:var(--ui-font); font-size:0.75rem; font-weight:600; cursor:pointer;
+  }
+  #trStatus .tr-x:hover{border-color:var(--accent);}
+  body.paged #trStatus{bottom:calc(var(--pagerH, 56px) + 14px);}
+  body.tts-on #trStatus{bottom:calc(var(--ttsH, 56px) + 14px);}
+  #trGroup .rowline .sel{max-width:100%;}
+  #trGroup .hint{line-height:1.45;}
+  #trGroup .hint .tr-status{display:block; color:var(--ink); margin-bottom:2px;}
+  /* bilingual printing: the translations keep a readable grey on paper */
+  @media print{ .ll-tr{color:#333;} }
+  @media (forced-colors: active){
+    #trStatus{border-color:ButtonText;}
+    #trStatus .tr-x{border-color:ButtonText;}
+  }
   #updateToast{
     position:fixed; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:71;
     display:flex; align-items:center; gap:10px; background:var(--ink); color:var(--bg); padding:9px 10px 9px 16px;
