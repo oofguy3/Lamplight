@@ -1,6 +1,7 @@
 /* "About this text": the panel opens on `i` with the counts, the reading level and the hardest
-   words; a word opens the dictionary; PDFs work; the syllable and sentence heuristics; a
-   200 000-word text is counted without freezing the page; screenshots at two widths and themes. */
+   words; a word opens the dictionary; PDFs work; another file or tab closes the panel (and drops
+   a count under way); the syllable and sentence heuristics; a 200 000-word text is counted
+   without freezing the page; screenshots at two widths and themes. */
 const path = require("path");
 const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
 const SHOTS = process.env.ABOUT_SHOTS || path.join(require("os").tmpdir(), "lamplight-about-shots");
@@ -98,6 +99,38 @@ const num = (s) => parseFloat(String(s || "").replace(/,/g, ""));
   await page.keyboard.press("i");
   await page.waitForTimeout(60);
   R.check("cached result draws at once", await page.evaluate(() => !!document.querySelector("#sideBody .about-tile") && !document.getElementById("aboutStatus")));
+
+  /* 4b. another document replaces the text: the panel closes rather than keep the old numbers */
+  const mdWords = num((await tiles(page))["Words"]);
+  const sideOpen = () => page.$eval("#side", (s) => s.classList.contains("open"));
+  const aboutName = () => page.$eval("#sideBody .about-name", (e) => e.textContent);
+  await openFixture(page, "sample.txt");
+  R.check("opening another file closes the panel", !(await sideOpen()));
+  await openAbout(page);
+  t = await tiles(page);
+  R.check("the panel then counts the new document", (await aboutName()) === "sample.txt" && num(t["Words"]) > 200 && num(t["Words"]) !== mdWords, (await aboutName()) + " " + JSON.stringify(t));
+  /* the same on a tab switch (both files are open now) */
+  await page.keyboard.press("Control+Tab");
+  await page.waitForFunction(() => /sample\.md/.test(document.title), null, { timeout: 15000 });
+  R.check("switching tabs closes the panel", !(await sideOpen()));
+  await openAbout(page);
+  t = await tiles(page);
+  R.check("reopened, it counts the tab's document", (await aboutName()) === "sample.md" && num(t["Words"]) === mdWords, (await aboutName()) + " " + t["Words"]);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  /* a count still under way is dropped when the document changes: a long text, then a switch mid-count */
+  const para = "The lamp hums quietly as she turns the page. Nobody could have predicted the extraordinary consequences of that small, deliberate decision.\n\n";
+  await page.setInputFiles("#fileInput", { name: "long.txt", mimeType: "text/plain", buffer: Buffer.from(para.repeat(Math.ceil(1.8e6 / para.length))) });
+  await page.waitForFunction(() => document.getElementById("docView").style.display === "block" && document.getElementById("doc").textContent.length > 1e6, null, { timeout: 30000 });
+  await page.waitForTimeout(300);
+  await page.keyboard.press("i");
+  const counting = await page.waitForFunction(() => /Counting words/.test((document.getElementById("aboutStatus") || {}).textContent || ""), null, { timeout: 10000 }).then(() => true, () => false);
+  await page.setInputFiles("#fileInput", path.join(__dirname, "fixtures", "sample.md"));
+  await page.waitForFunction(() => /sample\.md/.test(document.title) && document.getElementById("doc").textContent.length < 20000, null, { timeout: 15000 });
+  await page.waitForTimeout(1500);
+  R.check("a count under way is dropped when another file opens", counting && !(await sideOpen()) && !(await page.evaluate(() => !!document.querySelector("#sideBody .about-tile"))), "counting=" + counting);
+  await openAbout(page);
+  R.check("afterwards the panel shows the new document", (await aboutName()) === "sample.md" && num((await tiles(page))["Words"]) === mdWords, (await aboutName()) + " " + (await tiles(page))["Words"]);
   await page.keyboard.press("Escape");
   R.check("no page errors (markdown)", !(page._errors || []).length, (page._errors || []).join(" | "));
   await page.close();

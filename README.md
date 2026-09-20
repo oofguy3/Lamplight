@@ -1,6 +1,6 @@
 # Lamplight
 
-**A quiet, offline-first reader for PDF, EPUB, DOCX, TXT, Markdown and HTML — with a built-in dictionary, word parts, a sentence explainer and a read-aloud voice that all work without an internet connection.**
+**A quiet, offline-first reader for PDF, EPUB, DOCX, TXT, Markdown and HTML — with a built-in dictionary, word parts, a sentence explainer and simplifier, translation, and a read-aloud voice that all work without an internet connection.**
 
 Lamplight is a progressive web app made of plain static files: no server, no accounts, no build step. Everything you open stays on your device.
 
@@ -31,6 +31,11 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
   &nbsp;&nbsp;
   <img src="docs/screenshots/stats.png" alt="The Reading stats panel: today's minutes, the streak, four weeks of bars" width="410">
 </p>
+<p align="center">
+  <img src="docs/screenshots/translate.png" alt="A document translated into Spanish, each paragraph's translation shown beneath it" width="410">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/simplify.png" alt="The Simpler card: a sentence rewritten in plainer words with the swapped words underlined" width="410">
+</p>
 
 ## Features
 
@@ -41,12 +46,16 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
 - A **custom theme editor**: colour pickers with hex fields for the background, text, accent and (under Advanced) the panel and secondary text, quick swatches and tint / brightness sliders, a **live contrast meter** that rates every pairing AAA / AA / Low and can fix a failing colour in one tap, and **as many saved custom themes as you like** (rename, duplicate, save as new, delete). The installed app's title bar follows the theme.
 - **Twenty-four fonts** in four groups — easy reading (**OpenDyslexic**, **Lexend**, **Atkinson Hyperlegible**, **Andika**), serif (Georgia, Palatino, Times, Literata, Source Serif, Lora, Merriweather, EB Garamond, Crimson Pro, Libre Baskerville, Bitter), sans (system, Helvetica / Arial, Verdana, Inter, IBM Plex Sans, Nunito) and mono (system, JetBrains Mono, IBM Plex Mono). Sixteen families are bundled as compact woff2 files and **loaded only when chosen**; the *Browse fonts…* panel shows each name in its own face. Text size, line spacing, column width, margins, justification and hyphenation; every size is in `rem`, so the phone's font-size setting scales the whole app.
 - PDF zoom, and "soften" for PDF pages in dark themes.
+- **Zen mode** (`z`): only the text and the thin progress line, fullscreen where the browser allows it; Escape or `z` brings everything back.
+- **Print**: a print stylesheet turns any text document into clean black-on-white pages (title line, link addresses, highlights kept as a grey wash); PDFs open in a new tab for the browser's own print.
 
 **Understanding the text**
 - **Tap a word** for its meaning from the built-in 170 000-entry dictionary (with an online fallback when a word is missing and you are online).
 - **Word parts** under every definition: the word broken into **prefix, root and suffix** with the meaning and origin of each part and a plain "so: not able to be broken" reading — from tables of 111 prefixes, 97 suffixes and endings and 357 Latin, Greek and Old English roots (`morph.js`, loaded on demand). Tapping a base looks it up in turn.
 - **Hold a sentence** (right-click on desktop, or select text) for an offline **Explain** card: the sentence split into clauses, who / did what / to whom, where and when, the tense with a one-line meaning, phrasal verbs and idioms found in the dictionary, and the sentence rewritten in plainer words. Key words are glossed underneath.
 - **About this text** (`i`): word, unique-word and sentence counts, reading time at your own speed, **reading level** (Flesch reading ease with a plain-English band, Flesch–Kincaid grade and age, Coleman–Liau as a second opinion), vocabulary richness, dialogue share, and the **thirty hardest words** in the document — tap one for its definition or find it in the text. Works for PDFs too.
+- **Simplify** any selected sentence or passage (the pill's *Simplify* button, or from the Explain card): an offline, rule-based rewrite that swaps rarer words for common ones, replaces idioms and wordy phrases, splits over-long sentences and turns clear passives into actives, with every change underlined and explained ("was 'extraordinary' — rarer word") so nothing is hidden; copy it, hear it read aloud, or ask for an AI rewrite with your key.
+- **Translate** a tapped word, a selected sentence, or the **whole document** into any of 36 languages. Three engines, used in this order: the browser's **built-in on-device translator** (Chrome and Edge; private, free, and offline once its language pack is downloaded), your own **Anthropic API key**, or the free **MyMemory** web service for single words and sentences. A translated document shows each paragraph's translation beneath it without touching the original text, so highlights, search, positions and read aloud keep working; translations are cached on the device, so a translated book reopens translated, even offline.
 - Optional **Explain with AI** button (shown only when online) using an Anthropic API key you paste into settings; the key stays in local storage.
 
 **Keeping your place**
@@ -57,7 +66,7 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
 - **Reading stats and streaks** (`g`): minutes, words and pages per day, a daily goal you choose, the current and longest **streak** of days you kept it, four weeks of bars, all-time totals and your measured reading speed. The start screen shows your streak; everything can be exported as JSON or reset.
 
 **Reading aids**
-- **Read aloud** (Web Speech API) sentence by sentence, with the voices on your device grouped into **women's and men's voices**, a **separate voice for dialogue** (by default the other voice, so quoted speech is easy to tell from narration) and **expression read off the text**: questions lift, exclamations quicken, ellipses and paragraph ends pause, headings slow down, and "whispered" / "shouted" / "sighed" around a quote change how it is spoken. Off, Natural or Dramatic.
+- **Read aloud** (Web Speech API) sentence by sentence, with the voices on your device grouped into **women's and men's voices**, a **separate voice for dialogue** (by default the other voice, so quoted speech is easy to tell from narration) and **expression read off the text**: questions lift, exclamations quicken, ellipses and paragraph ends pause, headings slow down, and "whispered" / "shouted" / "sighed" around a quote change how it is spoken. Off, Natural or Dramatic. **Lock-screen and headphone controls** (play, pause, previous and next sentence) through the Media Session API, and a **sleep timer** that stops at the end of the sentence after 15 to 60 minutes or at the end of the chapter.
 - Reading **ruler**, **auto-scroll** at your pace (timed page turns in Pages flow), and a progress readout with **time left** from your measured reading speed.
 - Screen wake lock while reading; keyboard shortcuts (`?` shows them all); works with reduced-motion and forced-colour settings.
 
@@ -84,6 +93,7 @@ index.html              the shell
 app.js  app.css         the reader
 explain.js              the offline sentence explainer
 morph.js                word parts: prefixes, roots and suffixes with meanings
+translate.js            translation engines, the bilingual page view and its cache
 sw.js                   service worker (bump VERSION on every release)
 manifest.webmanifest    PWA manifest
 dict1–6.json, dict-index.json   the offline dictionary (alphabetical chunks + index)
@@ -101,11 +111,11 @@ Settings → Dictionary → *Anthropic API key…* Paste a key from https://cons
 
 ## Keyboard shortcuts
 
-`o` open · `s` settings · `t` next theme · `+` / `−` text size or zoom · `p` scroll / pages · `/` or Ctrl+F search · `c` contents · `b` bookmark here · `n` bookmarks & notes · `r` read aloud · `l` reading ruler · `a` auto-scroll · `i` about this text · `g` reading stats · `h` library · `?` this list · arrows / PgUp / PgDn / Space turn pages, Home / End first / last page · Esc closes anything.
+`o` open · `s` settings · `t` next theme · `+` / `−` text size or zoom · `p` scroll / pages · `/` or Ctrl+F search · `c` contents · `b` bookmark here · `n` bookmarks & notes · `r` read aloud · `l` reading ruler · `a` auto-scroll · `z` zen mode · `i` about this text · `g` reading stats · `h` library · `?` this list · arrows / PgUp / PgDn / Space turn pages, Home / End first / last page · Esc closes anything.
 
 ## Privacy
 
-Files, positions, highlights and notes live in your browser's IndexedDB; settings, saved themes and reading stats in local storage. Nothing is uploaded anywhere. The only network requests the app makes are for its own files (cached after the first visit), the free `api.dictionaryapi.dev` lookup when a word is not in the offline dictionary and you are online, and — only if you set a key and press the button — the Anthropic API. Read aloud uses the speech voices installed on your device; some browsers list "online" voices that the browser itself fetches.
+Files, positions, highlights, notes and cached translations live in your browser's IndexedDB; settings, saved themes and reading stats in local storage. Nothing is uploaded anywhere. The only network requests the app makes are for its own files (cached after the first visit), the free `api.dictionaryapi.dev` lookup when a word is not in the offline dictionary and you are online, and — only when you press the button — the Anthropic API (with your key) or MyMemory (`api.mymemory.translated.net`, which receives the word or sentence you translate). The built-in translator runs on your device. Read aloud uses the speech voices installed on your device; some browsers list "online" voices that the browser itself fetches.
 
 ## Development
 
@@ -125,7 +135,7 @@ NODE_PATH=$(npm root -g) node tests/themes.js       # contrast audit of every bu
 NODE_PATH=$(npm root -g) node tests/wordparts.js    # 300 word decompositions (node only)
 ```
 
-plus `themes-browser.js`, `fonts.js`, `speak.js` (with a stubbed speech engine), `wordparts-browser.js`, `about.js` and `stats.js` (with Playwright's fake clock) for the newer features. Each script starts its own server on a free port and exits non-zero on failure.
+plus `themes-browser.js`, `fonts.js`, `speak.js` (with a stubbed speech engine and media session), `wordparts-browser.js`, `about.js`, `stats.js` (with Playwright's fake clock), `zen.js`, `print.js` (print media emulation), `translate.js` (stubbed translator, MyMemory and Anthropic routes) and `simplify.js` for the newer features. Each script starts its own server on a free port and exits non-zero on failure.
 
 The `explain.js` analyser is rule-based: a tokeniser that splits contractions, a part-of-speech tagger that combines the dictionary with built-in word lists, clause splitting on conjunctions, subordinators and relative pronouns, and a small grammar for verb groups (tense, aspect, modals, passives, questions and imperatives). It runs in well under a millisecond per sentence. `morph.js` works the same way: tables of affixes and bound roots, spelling repairs (a dropped *e*, a doubled consonant, *y* to *i*), and a scorer that prefers readings whose parts are all known and leaves common words alone.
 

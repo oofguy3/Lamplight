@@ -253,6 +253,8 @@
   .font-item .font-name{display:block; font-size:1.125rem; line-height:1.3;}
   .font-item[aria-pressed="true"] .font-name::after{content:"\2713"; font-family:var(--ui-font); font-size:.8em; color:var(--accent); margin-left:8px;}
   .font-item .font-note{display:block; font-size:0.75rem; line-height:1.4; color:var(--muted); margin-top:1px;}
+  /* on the tinted rows the muted note slips under 4.5:1 on most themes; ink keeps it readable */
+  .font-item:hover .font-note, .font-item[aria-pressed="true"] .font-note{color:var(--ink);}
   @media (forced-colors: active){
     .font-item{border-color:ButtonText;}
     .font-item[aria-pressed="true"]{border-width:2px; border-color:Highlight;}
@@ -431,6 +433,16 @@
     .wordmark{font-size:1rem;}
   }
 
+  /* ---------- zen mode ---------- */
+  /* only the text and the 3px progress line; the read-aloud bar stays because the reader chose it */
+  body.zen > header, body.zen #sheet, body.zen #pager, body.zen #progressInfo, body.zen #streak{display:none !important;}
+  /* with the bar gone the text meets the top of a phone's screen: keep it under the notch */
+  body.zen main{padding-top:max(14px, env(safe-area-inset-top));}
+  /* the pager is gone, so what sat above it sits at the bottom edge */
+  body.zen.paged #autoBar{bottom:max(14px, env(safe-area-inset-bottom));}
+  body.zen.paged.tts-on #autoBar{bottom:calc(var(--ttsH, 56px) + 10px);}
+  body.zen.paged #tts{bottom:0; padding-bottom:calc(8px + env(safe-area-inset-bottom));}
+
   /* ---------- "more" menu ---------- */
   #moreWrap{position:relative;}
   #moreMenu{
@@ -517,6 +529,7 @@
   body.paged #tts{bottom:var(--pagerH, 56px); padding-bottom:8px;}
   #tts .ctl{min-width:38px; height:38px; padding:0 9px; font-size:0.9375rem;}
   #tts [hidden]{display:none;}
+  #tts .tts-break{display:none;}
   #tts label{display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--muted); flex:1; min-width:90px; min-height:36px;}
   #tts input[type=range]{flex:1; min-width:50px;}
   #tts .val{min-width:34px;}
@@ -528,26 +541,34 @@
   #tts .tts-sex{min-width:36px; padding:0 7px; font-size:1.0625rem; font-weight:400; line-height:1;}
   #tts .tts-sex.on{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}
   #tts .tts-voices{font-size:0.8125rem; padding:0 11px; white-space:nowrap;}
+  /* the sleep timer, while one is set ("Stops in 12 min"); it opens the voices panel */
+  #tts .tts-sleep{font-size:0.75rem; font-weight:500; padding:0 10px; gap:0.3em; white-space:nowrap; background:color-mix(in srgb, var(--accent) 12%, transparent); font-variant-numeric:tabular-nums;}
   #tts .tts-x{font-size:1.125rem;}
   /* in scroll flow the last lines must clear the bar (two rows on a phone) */
   body.tts-on:not(.paged) > main{padding-bottom:calc(var(--ttsH, 56px) + 40px);}
-  @media (max-width:560px){
-    /* two rows: the buttons, then speed and voice */
-    #tts{flex-wrap:wrap; gap:6px 5px; padding-left:8px; padding-right:8px;}
-    #tts::after{content:""; order:1; flex-basis:100%; height:0;}
-    #tts .tts-x{margin-left:auto;}
-    #tts label, #tts select{order:2;}
-    #tts label{min-width:0; flex:1 1 140px;}
-    #tts select{max-width:none; flex:1 1 110px; font-size:0.75rem;}
-  }
+  /* one row when everything fits, else two: the buttons, then speed, voice and ×. measure()
+     sets the class below 720px (the ♀ ♂ Voices… buttons take the slack under that) and whenever
+     the speed control would overflow its row, as it does up to ~830px with the sleep timer
+     showing. The break marker sets where the wrap falls, so the DOM order, which keyboards and
+     screen readers follow, is the visual order in both layouts */
+  #tts.tts-wrap{flex-wrap:wrap; gap:6px 5px; padding-left:8px; padding-right:8px;}
+  #tts.tts-wrap .tts-break{display:block; flex-basis:100%; height:0;}
+  #tts.tts-wrap .tts-x{margin-left:auto;}
+  #tts.tts-wrap label{min-width:0; flex:1 1 140px;}
+  #tts.tts-wrap select{max-width:none; flex:1 1 110px; font-size:0.75rem;}
   @media (max-width:400px){
     #tts .ctl{min-width:36px; padding:0 7px;}
     #tts .tts-sex{min-width:34px; padding:0 5px;}
+    #tts .tts-sleep{padding:0 7px; font-size:0.7188rem;}
+    #tts #ttsSleepW{display:none;}   /* just "12 min": the first row is full */
   }
-  /* the voices panel (narrator, dialogue voice, expression, pitch) */
-  .tts-panel{display:grid; gap:12px; padding-top:4px;}
-  .tts-panel .sel{flex:1; min-width:0; max-width:100%;}
+  /* the voices panel (narrator, dialogue voice, expression, pitch, sleep timer). The single
+     column is minmax(0,1fr), not auto, so a long Windows voice name shrinks the select instead
+     of widening the rows past the drawer */
+  .tts-panel{display:grid; grid-template-columns:minmax(0,1fr); gap:12px; padding-top:4px;}
+  .tts-panel .sel{flex:1; min-width:0; max-width:100%; text-overflow:ellipsis;}
   .tts-panel .hint{margin-top:-4px; line-height:1.45;}
+  .tts-panel .tts-sleep-chips .chip{padding:7px 11px; font-size:0.7812rem;}
   ::highlight(ll-speak){background:color-mix(in srgb, var(--accent) 24%, transparent); color:inherit;}
   ::highlight(ll-speak-dialogue){background:color-mix(in srgb, var(--accent) 12%, transparent); color:inherit; text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 65%, transparent);}
 
@@ -633,6 +654,34 @@
     .about-scale{background:ButtonText; forced-color-adjust:none;}
     .about-scale i{background:Highlight; border-color:Canvas; forced-color-adjust:none;}
   }
+  /* ---------- translation ---------- */
+  /* the progress pill while a document is being translated (translate.js); the inline
+     translations themselves are styled inside their shadow roots */
+  #trStatus{
+    position:fixed; left:50%; bottom:max(66px, calc(env(safe-area-inset-bottom) + 66px)); transform:translateX(-50%); z-index:57;
+    display:none; align-items:center; gap:10px; max-width:calc(100% - 24px);
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:999px; padding:6px 7px 6px 14px;
+    font-family:var(--ui-font); font-size:0.8125rem; font-variant-numeric:tabular-nums; box-shadow:0 6px 20px rgba(0,0,0,.2);
+    transition:background .35s ease, border-color .35s ease;
+  }
+  #trStatus.on{display:flex;}
+  #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #trStatus .tr-x{
+    flex:none; border:1px solid var(--line); background:transparent; color:var(--accent); border-radius:999px;
+    padding:5px 11px; font-family:var(--ui-font); font-size:0.75rem; font-weight:600; cursor:pointer;
+  }
+  #trStatus .tr-x:hover{border-color:var(--accent);}
+  body.paged #trStatus{bottom:calc(var(--pagerH, 56px) + 14px);}
+  body.tts-on #trStatus{bottom:calc(var(--ttsH, 56px) + 14px);}
+  #trGroup .rowline .sel{max-width:100%;}
+  #trGroup .hint{line-height:1.45;}
+  #trGroup .hint .tr-status{display:block; color:var(--ink); margin-bottom:2px;}
+  /* bilingual printing: the translations keep a readable grey on paper */
+  @media print{ .ll-tr{color:#333;} }
+  @media (forced-colors: active){
+    #trStatus{border-color:ButtonText;}
+    #trStatus .tr-x{border-color:ButtonText;}
+  }
   #updateToast{
     position:fixed; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:71;
     display:flex; align-items:center; gap:10px; background:var(--ink); color:var(--bg); padding:9px 10px 9px 16px;
@@ -692,4 +741,40 @@
 
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}
+  }
+
+  /* ---------- print ---------- */
+  /* the title line at the top of a printout (Print fills it on beforeprint); never on screen */
+  #printHead{display:none;}
+  @media print{
+    @page{margin:20mm 18mm;}
+    /* the text, not the reader: black on white whatever the theme, nothing fixed or sticky,
+       and no viewport-high body (Pages flow) to cut the printout off at one page */
+    html, body{background:#fff !important; color:#000 !important; height:auto !important; min-height:0 !important; overflow:visible !important;}
+    *{transition:none !important; animation:none !important;}
+    header, #sheet, #pager, #tts, #autoBar, #side, #sideScrim, #dictCard, #dictScrim, #dictPill, #markPop, #progress, #progressInfo,
+    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #pdf, .skip{display:none !important;}
+    body > main{padding:0 !important;}
+    #docView{display:block !important; position:static !important; width:auto !important; max-width:none !important; height:auto !important; overflow:visible !important; padding:0 !important; margin:0 !important;}
+    /* Pages flow sets the columns and the height inline, so these need !important: one long column again */
+    #doc{
+      column-count:auto !important; columns:auto !important; column-width:auto !important; column-gap:normal !important; column-fill:auto !important;
+      height:auto !important; transform:none !important; color:#000; background:#fff;
+      font-family:var(--reader-font); font-size:11pt; line-height:1.5;
+    }
+    #doc::after{display:none !important; content:none !important;}
+    #doc h1, #doc h2, #doc h3, #doc h4{break-after:avoid; page-break-after:avoid;}
+    #doc img, #doc figure, #doc table, #doc pre, #doc blockquote{break-inside:avoid; page-break-inside:avoid;}
+    #doc a{color:#000; text-decoration:underline;}
+    /* the address after a link, only when it leads out to the web */
+    #doc a[href^="http://"]::after, #doc a[href^="https://"]::after{content:" (" attr(href) ")"; font-size:.8em; color:#555; overflow-wrap:anywhere;}
+    /* highlights keep a grey wash and a rule underneath, so they survive a greyscale printer */
+    #doc mark.ll-mark{background:#e2e2e2 !important; color:#000; border-bottom:1px solid #666; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    #doc mark.ll-mark.noted{border-bottom:2px dotted #666;}
+    #doc blockquote{color:#333; border-left-color:#999;}
+    #doc pre{background:#fff; border-color:#bbb; white-space:pre-wrap;}
+    #doc hr{border-top-color:#999;}
+    #doc th, #doc td{border-color:#999;}
+    #printHead{display:block; font-family:var(--ui-font); font-size:9pt; color:#555; border-bottom:1px solid #ccc; padding-bottom:4pt; margin-bottom:1em;}
+    #printHead:empty{display:none;}
   }

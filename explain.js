@@ -148,11 +148,13 @@
   /* ---------- tokeniser (splits contractions) ---------- */
   var TOK = /[A-Za-zÀ-ɏ]+(?:['’][A-Za-z]+)?(?:-[A-Za-zÀ-ɏ]+)*|\d+(?:[.,:]\d+)*(?:st|nd|rd|th)?|[^\sA-Za-zÀ-ɏ\d]/g;
   function tokenize(s){
-    var toks = [], m;
-    function push(l, w, glued){ toks.push({ w: w, l: l, glued: !!glued, punct: !glued && !/^[A-Za-zÀ-ɏ\d]/.test(w) }); }
+    var toks = [], m, at = 0;
+    /* s / e: where the token sits in the source string (both halves of a contraction share the span) */
+    function push(l, w, glued){ toks.push({ w: w, l: l, glued: !!glued, punct: !glued && !/^[A-Za-zÀ-ɏ\d]/.test(w), s: at, e: at + m[0].length }); }
     TOK.lastIndex = 0;
     while ((m = TOK.exec(s))){
       var w = m[0], l = lower(w);
+      at = m.index;
       if (/^[A-Za-z]/.test(w) && l.indexOf("'") > 0){
         var stem = l.split("'")[0], suf = l.split("'")[1], W = w.slice(0, stem.length);
         if (l === "can't"){ push("can", W.slice(0,3)); push("not", "not", true); continue; }
@@ -188,7 +190,7 @@
     });
     return o;
   }
-  function isVerbBase(L, dict){ return !!(VERBS[L] || IRR[L] || posOf(dict(L)).verb); }
+  function isVerbBase(L, dict){ return !!(VERBS[L] || IRR[L] || Object.prototype.hasOwnProperty.call(FORMAL.verb, L) || posOf(dict(L)).verb); }
 
   function candidates(t, i, toks, dict){
     var w = t.l, c = {};
@@ -545,7 +547,8 @@
     var wh = null;
     if (cl.kind === "main" && start < n && toks[start].tag === "WH"){ wh = toks[start]; start++; }
     var rel = cl.kind === "rel" ? toks.filter(function(t){ return t.tag === "REL"; })[0] : null;
-    var res = { text: text(toks), kind: cl.kind, label: cl.label, conj: cl.conj, sub: subToks.length ? text(subToks) : null, subject: null, verb: null, object: null, extras: [], tense: null, negative: false };
+    var res = { text: text(toks), kind: cl.kind, label: cl.label, conj: cl.conj, sub: subToks.length ? text(subToks) : null, subject: null, verb: null, object: null, extras: [], tense: null, negative: false,
+                span: [toks[0].i, toks[n-1].i], pos: null };   /* span / pos: token indices, for the simplifier */
 
     /* verb group */
     var v0 = -1;
@@ -706,10 +709,11 @@
     if (passive && main.forms.ing) passive = false;
     if (passive && posOf(dict(main.l)).adjective && !isVerbBase(main.lemma, dict)) passive = false;
     res.passive = passive;
+    res.pos = { subj: subjToks.length ? [subjToks[0].i, subjToks[subjToks.length-1].i] : null, verb: [group[0].i, group[group.length-1].i], main: main ? main.i : -1, agent: null };
     pieces.forEach(function(x){
       if (x.used) return;
       if (x.kind === "pp"){
-        if (passive && x.prep === "by"){ res.agent = text(x.toks.slice(1)); return; }
+        if (passive && x.prep === "by"){ res.agent = text(x.toks.slice(1)); res.pos.agent = [x.toks[0].i, x.toks[x.toks.length-1].i]; return; }
         res.extras.push({ label: ppLabel(x, dict), text: text(x.toks) });
       } else if (x.kind === "adv"){
         var a = x.toks[0];
@@ -966,22 +970,28 @@
     }
     return d;
   }
+  /* the plain wording of an idiom / phrasal verb (t = its first token): a short synonym of the
+     best sense when there is one, otherwise that sense's definition */
+  function exprText(e, t, toks, dict, rank){
+    var sense = bestSense(e.entry, e.entry.m[0].p, rank);
+    var rep = sense ? sense.d : e.text;
+    /* prefer a plain one-word synonym of that sense */
+    var syn = null; ((sense && sense.m.s) || []).forEach(function(s){ if (s.indexOf(" ") < 0 && rank(s) <= 3000 && !GENERIC[s] && !syn) syn = s; });
+    if (syn && (!sense || sense.d.split(" ").length > 2)) rep = syn;
+    if (e.entry.m[0].p === "verb" && t.tag === "VERB" && t.form && t.form !== "base") rep = inflectPhrase(rep, t.form);
+    var endTok = toks.filter(function(x){ return x.i === e.end; })[0];
+    var nextTok = toks[toks.indexOf(endTok) + 1];
+    /* avoid "…insisting on on the clock" */
+    if (nextTok && !nextTok.punct && new RegExp("\\s" + nextTok.l + "$").test(rep)) rep = rep.replace(new RegExp("\\s" + nextTok.l + "$"), "");
+    return { text: rep, synonym: !!syn && rep === syn };
+  }
   function plainRewrite(toks, exprs, dict, rank){
     var out = [], i = 0, exprAt = {};
     exprs.forEach(function(e){ if (!e.split && e.kind !== "compound term" && e.kind !== "possible idiom") exprAt[e.start] = e; });
     while (i < toks.length){
       var t = toks[i], e = exprAt[t.i];
       if (e){
-        var sense = bestSense(e.entry, e.entry.m[0].p, rank);
-        var rep = sense ? sense.d : e.text;
-        /* prefer a plain one-word synonym of that sense */
-        var syn = null; ((sense && sense.m.s) || []).forEach(function(s){ if (s.indexOf(" ") < 0 && rank(s) <= 3000 && !GENERIC[s] && !syn) syn = s; });
-        if (syn && (!sense || sense.d.split(" ").length > 2)) rep = syn;
-        if (e.entry.m[0].p === "verb" && t.tag === "VERB" && t.form && t.form !== "base") rep = inflectPhrase(rep, t.form);
-        var endTok = toks.filter(function(x){ return x.i === e.end; })[0];
-        var nextTok = toks[toks.indexOf(endTok) + 1];
-        /* avoid "…insisting on on the clock" */
-        if (nextTok && !nextTok.punct && new RegExp("\\s" + nextTok.l + "$").test(rep)) rep = rep.replace(new RegExp("\\s" + nextTok.l + "$"), "");
+        var rep = exprText(e, t, toks, dict, rank).text;
         out.push({ w: rep, cap: isCap(t.w) && i === 0 });
         while (i < toks.length && toks[i].i <= e.end) i++;
         continue;
@@ -1019,6 +1029,421 @@
   var RANK = {};
   EASY_WORDS.split(" ").forEach(function(w, i){ RANK[w] = i + 1; });
   function rank(w){ return RANK[w] || Infinity; }
+
+  /* ---------- simplify ----------
+     A plainer version of one or more sentences, built as edits on the original text so that
+     spelling, spacing, quotes and contractions stay exactly as written: wordy phrases and
+     formal words from a small table, the idioms plainRewrite knows, rare words that have a
+     clearly plainer synonym, a "was … by …" passive turned round, and a long sentence split at
+     a joining word. Every edit carries its reason, and nothing inside quotation marks changes
+     except a rare word. */
+
+  /* wordy phrases, matched on the words as written; a leading ~ marks a verb that may be
+     inflected ("made a decision" → "decided") */
+  var WORDY = [
+    ["in order to", "to"], ["in order that", "so that"], ["so as to", "to"],
+    ["due to the fact that", "because"], ["owing to the fact that", "because"], ["on account of the fact that", "because"],
+    ["in light of the fact that", "because"], ["in view of the fact that", "because"], ["for the reason that", "because"],
+    ["by virtue of the fact that", "because"],
+    ["despite the fact that", "although"], ["in spite of the fact that", "although"], ["regardless of the fact that", "although"],
+    ["notwithstanding the fact that", "although"],
+    ["as a consequence of", "because of"], ["as a result of", "because of"], ["on account of", "because of"], ["by virtue of", "because of"],
+    ["by reason of", "because of"], ["in consequence of", "because of"], ["for the purpose of", "for"],
+    ["at this point in time", "now"], ["at this moment in time", "now"], ["at the present time", "now"], ["at the present moment", "now"],
+    ["at that point in time", "then"], ["in the near future", "soon"], ["in the not too distant future", "soon"], ["at an early date", "soon"],
+    ["until such time as", "until"], ["in the event that", "if"], ["in the absence of", "without"],
+    ["a large number of", "many"], ["a great number of", "many"], ["a considerable number of", "many"], ["a great many", "many"],
+    ["a great deal of", "a lot of"], ["a small number of", "a few"], ["a sufficient number of", "enough"], ["a number of", "some"],
+    ["the vast majority of", "most of"], ["the majority of", "most of"], ["a majority of", "most of"], ["in the majority of cases", "usually"],
+    ["in most cases", "usually"], ["in many cases", "often"], ["in some cases", "sometimes"], ["in excess of", "more than"],
+    ["prior to", "before"], ["in advance of", "before"], ["previous to", "before"], ["subsequent to", "after"], ["at the conclusion of", "at the end of"],
+    ["in the course of", "during"], ["during the course of", "during"], ["for the duration of", "during"],
+    ["with regard to", "about"], ["with regards to", "about"], ["in regard to", "about"], ["with respect to", "about"], ["in relation to", "about"],
+    ["in reference to", "about"], ["in connection with", "about"], ["as regards", "about"], ["pertaining to", "about"],
+    ["the question as to whether", "whether"], ["the question of whether", "whether"], ["as to whether", "whether"], ["whether or not", "whether"],
+    ["in the vicinity of", "near"], ["in close proximity to", "near"], ["adjacent to", "next to"], ["by means of", "by"],
+    ["on a daily basis", "every day"], ["on a weekly basis", "every week"], ["on a monthly basis", "every month"], ["on a regular basis", "regularly"],
+    ["at all times", "always"], ["at no time", "never"], ["in a timely manner", "quickly"],
+    ["with the exception of", "except"], ["each and every", "every"], ["any and all", "all"], ["first and foremost", "first"], ["in the first instance", "first"],
+    ["one and the same", "the same"],
+    ["is able to", "can"], ["are able to", "can"], ["am able to", "can"], ["was able to", "could"], ["were able to", "could"],
+    ["is unable to", "cannot"], ["are unable to", "cannot"], ["am unable to", "cannot"], ["was unable to", "could not"], ["were unable to", "could not"],
+    ["has the ability to", "can"], ["have the ability to", "can"], ["had the ability to", "could"],
+    ["is of the opinion that", "thinks that"], ["are of the opinion that", "think that"], ["am of the opinion that", "think that"],
+    ["was of the opinion that", "thought that"], ["were of the opinion that", "thought that"],
+    ["is in possession of", "has"], ["are in possession of", "have"], ["was in possession of", "had"], ["were in possession of", "had"],
+    ["~make a decision", "~decide"], ["~come to a decision", "~decide"], ["~reach a decision", "~decide"], ["~arrive at a decision", "~decide"],
+    ["~come to the conclusion", "~conclude"], ["~reach the conclusion", "~conclude"], ["~arrive at the conclusion", "~conclude"], ["~reach a conclusion", "~conclude"],
+    ["~come to an agreement", "~agree"], ["~reach an agreement", "~agree"],
+    ["~take into consideration", "~consider"], ["~take into account", "~consider"], ["~give consideration to", "~consider"],
+    ["~make an attempt", "~try"], ["~make an effort", "~try"], ["~make use of", "~use"], ["~make mention of", "~mention"], ["~make reference to", "~mention"],
+    ["~make an inquiry", "~ask"], ["~make inquiries", "~ask"], ["~give rise to", "~cause"], ["~put an end to", "~end"], ["~bring to an end", "~end"], ["~come to an end", "~end"],
+    ["~have a tendency to", "~tend to"], ["~have a discussion about", "~discuss"], ["~have a conversation with", "~talk with"],
+    ["~conduct an investigation into", "~investigate"], ["~carry out an investigation into", "~investigate"]
+  ].map(function(p){ return { from: p[0].replace(/^~/, "").split(" "), to: p[1].replace(/^~/, ""), verb: p[0].charAt(0) === "~" }; })
+   .sort(function(a, b){ return b.from.length - a.from.length; });   /* longest match first */
+
+  /* formal words with an everyday equivalent, by part of speech (verbs and nouns by lemma;
+     a noun may give "one|many") */
+  var FORMAL = {
+    verb: { commence:"begin", utilise:"use", utilize:"use", endeavour:"try", endeavor:"try", terminate:"end", purchase:"buy", obtain:"get", acquire:"get",
+      require:"need", demonstrate:"show", indicate:"show", ascertain:"find out", depart:"leave", assist:"help", attempt:"try", cease:"stop", conceal:"hide",
+      comprehend:"understand", construct:"build", desire:"want", enquire:"ask", inquire:"ask", inform:"tell", modify:"change", notify:"tell",
+      permit:"allow", possess:"have", reside:"live", retain:"keep", select:"choose", perceive:"see", recollect:"remember", ascend:"climb", descend:"go down",
+      accompany:"go with", dispatch:"send", transmit:"send", summon:"call", assemble:"gather", converse:"talk", beseech:"beg", entreat:"beg",
+      relinquish:"give up", vanquish:"defeat" },
+    noun: { assistance:"help", residence:"home", individual:"person|people", remainder:"rest", commencement:"beginning", termination:"end",
+      utilisation:"use", utilization:"use", endeavour:"effort", endeavor:"effort", objective:"goal", location:"place", magnitude:"size", velocity:"speed",
+      component:"part", expenditure:"spending", alteration:"change", countenance:"face", physician:"doctor", apparel:"clothes|clothes", dwelling:"home",
+      abode:"home", conflagration:"fire", sustenance:"food", beverage:"drink", automobile:"car", astonishment:"surprise", amazement:"surprise",
+      melancholy:"sadness", felicity:"happiness", affliction:"suffering", perspiration:"sweat", recollection:"memory" },
+    adj: { sufficient:"enough", numerous:"many", additional:"extra", initial:"first", subsequent:"later", prior:"earlier", insufficient:"not enough",
+      adequate:"enough", inadequate:"not enough", enormous:"huge", immense:"huge", melancholy:"sad", weary:"tired", amiable:"friendly",
+      extraordinary:"unusual", remarkable:"unusual", principal:"main", sole:"only", vacant:"empty", prodigious:"huge" },
+    adv: { exceedingly:"very", tolerably:"fairly", remarkably:"very", approximately:"about", frequently:"often", consequently:"so", subsequently:"later",
+      additionally:"also", furthermore:"also", moreover:"also", nevertheless:"still", nonetheless:"still", therefore:"so",
+      hitherto:"until now", forthwith:"at once", henceforth:"from now on", hither:"here", thither:"there", nigh:"near", precisely:"exactly",
+      lastly:"finally", alternatively:"instead", peculiarly:"particularly", alfresco:"outside" },
+    link: { whilst:"while", amongst:"among", notwithstanding:"despite", regarding:"about", concerning:"about" }
+  };
+  var POSN = { NOUN: "noun", VERB: "verb", ADJ: "adjective", ADV: "adverb" };
+  /* a table entry by word — "constructor" and friends must not find Object.prototype */
+  function own(o, k){ return Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined; }
+  var NATION = /^(american|british|english|french|german|spanish|italian|russian|chinese|japanese|indian|irish|scottish|welsh|european|african|asian|christian|jewish|muslim|roman|greek|victorian|dutch|swiss|swedish|polish|turkish|arab|persian|latin)$/;
+  var ABBR = set("mr mrs ms dr st prof sr jr vs etc e.g i.e mt fig vol pp inc ltd a.m p.m u.s u.k no");
+  /* everyday words the frequency list ranks high because they are also names */
+  var NAMEY = set("harry smith mike jack tom bill bob frank pat dick sue ray rob art will grant sherry brandy ruby rose amber pearl daisy lily may june april august carol joy grace faith hope victor dean earl duke roman bush wood woods green brown black white gray grey young king knight cook baker carter mason taylor turner walker ward warren wells west york chase lane hill dale glen rich guy jay drew chuck jimmy tony mac");
+
+  /* the input as sentences: [{ s, e }] over the text; abbreviations, initials and decimals
+     do not end one, and a closing quote after the full stop stays with its sentence */
+  function splitSentences(text){
+    var out = [], re = /[.!?…]+[”’"')\]]*(?=\s|$)/g, m, last = 0;
+    while ((m = re.exec(text))){
+      var end = m.index + m[0].length;
+      var before = text.slice(last, m.index), lastWord = (before.match(/(\S+)$/) || ["", ""])[1].toLowerCase().replace(/^[("“‘]+/, "");
+      if (m[0].charAt(0) === "." && m[0].length === 1 && (ABBR[lastWord] || /^[a-z]$/.test(lastWord) || /^\d+$/.test(lastWord))) continue;
+      var rest = text.slice(end).replace(/^\s+/, "");
+      if (rest && !/^[“"‘'(\[A-ZÀ-Þ0-9]/.test(rest)) continue;
+      if (/[A-Za-zÀ-ɏ0-9]/.test(text.slice(last, end))) out.push({ s: last, e: end });
+      last = end;
+    }
+    if (/[A-Za-zÀ-ɏ0-9]/.test(text.slice(last))) out.push({ s: last, e: text.length });
+    out.forEach(function(sp){
+      var seg = text.slice(sp.s, sp.e);
+      sp.s += seg.length - seg.replace(/^\s+/, "").length;
+      sp.e -= seg.length - seg.replace(/\s+$/, "").length;
+    });
+    return out;
+  }
+
+  /* which tokens sit inside quotation marks */
+  function markQuotes(toks){
+    var closer = null;
+    toks.forEach(function(t){
+      if (t.punct){
+        if (!closer && /^[“«‘]$/.test(t.w)) closer = { "“": "”", "«": "»", "‘": "’" }[t.w];
+        else if (!closer && t.w === '"') closer = '"';
+        else if (closer && t.w === closer) closer = null;
+        return;
+      }
+      t.q = !!closer;
+    });
+  }
+  /* does token i start a sentence, or quoted speech, or follow a colon / dash? */
+  function initialAt(toks, i){
+    var j = i - 1, seen = "";
+    while (j >= 0 && toks[j].punct){ seen += toks[j].w; j--; }
+    if (j < 0) return true;
+    return /[“"‘«.!?:;—–(]/.test(seen);
+  }
+  /* an -ed verb is a past participle after have / be, otherwise the past tense */
+  function verbForm(t, toks){
+    var f = t.form || "base";
+    if (f !== "ed") return f;
+    var j = t.i - 1;
+    while (j >= 0 && (toks[j].tag === "ADV" || toks[j].tag === "NEG")) j--;
+    var p = toks[j];
+    return (p && p.tag === "AUX" && (HAVE[p.l] || BE[p.l])) ? "pp" : "past";
+  }
+  function article(word){
+    var w = word.toLowerCase();
+    if (/^(hour|honest|honour|honor|heir)/.test(w)) return "an";
+    if (/^[aeiou]/.test(w) && !/^(uni|use|usu|eu|one|ou)/.test(w)) return "an";
+    return "a";
+  }
+  function decap(text, tok){
+    var tg = tok.tag;
+    if (/^(DET|PRON|PRONO|NUM|POSS)$/.test(tg) || (tg === "ADJ" && !NATION.test(tok.l))) return text.charAt(0).toLowerCase() + text.slice(1);
+    return text;
+  }
+  /* a spelling variant or the same word family is not a simpler word */
+  function sameFamily(a, b){
+    if (a === b) return true;
+    if (a.length >= 5 && b.length >= 5 && a.slice(0, 4) === b.slice(0, 4)) return true;
+    if (Math.abs(a.length - b.length) > 2) return false;
+    var d = 0, i = 0, j = 0;
+    while (i < a.length && j < b.length){
+      if (a.charAt(i) === b.charAt(j)){ i++; j++; continue; }
+      d++; if (d > 2) return false;
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+    }
+    return d + (a.length - i) + (b.length - j) <= 2;
+  }
+  function simpleEdit(src, s, e, to, why){ return { s: s, e: e, parts: [{ text: to, from: src.slice(s, e), why: why }] }; }
+
+  /* a formal word from the table, in the right part of speech and inflected back; a target that
+     only fits some positions ("enough" after the verb, "very" before an adjective, "have" never
+     in the passive) is used only there */
+  function formalSwap(t, toks){
+    var w = t.l, lem = t.lemma || w, v, next = toks[t.i + 1], to;
+    if (t.tag === "VERB" && own(FORMAL.verb, lem)){
+      var form = verbForm(t, toks);
+      if (form === "pp" && /^(have|go|live|talk)\b/.test(FORMAL.verb[lem])){
+        var p = t.i - 1;
+        while (p >= 0 && (toks[p].tag === "ADV" || toks[p].tag === "NEG")) p--;
+        if (p >= 0 && toks[p].tag === "AUX" && BE[toks[p].l]) return null;
+      }
+      return inflectPhrase(FORMAL.verb[lem], form);
+    }
+    if (t.tag === "NOUN" && (v = own(FORMAL.noun, lem) || own(FORMAL.noun, w))){
+      var pair = v.split("|");
+      if (!t.plural) return pair[0];
+      return pair[1] || (pair[0].indexOf(" ") < 0 ? plural(pair[0]) : null);
+    }
+    if (t.tag === "ADJ" && own(FORMAL.adj, w) && !t.degree){
+      to = FORMAL.adj[w];
+      if (/enough$/.test(to) && next && nounish(next)) return null;
+      return to;
+    }
+    if ((t.tag === "ADV" || (/ly$/.test(w) && t.tag !== "VERB")) && own(FORMAL.adv, w)){
+      to = FORMAL.adv[w];
+      if (/^(very|fairly)$/.test(to) && !(next && (next.tag === "ADJ" || next.tag === "ADV"))) return null;
+      return to;
+    }
+    if (own(FORMAL.link, w) && t.tag !== "VERB" && t.tag !== "NOUN") return FORMAL.link[w];
+    return null;
+  }
+  /* a rare noun or verb's plainer dictionary synonym. The bundled dictionary keeps three senses
+     per word in no particular order, so a common word's rare sense looks as good as its main one
+     ("firearm" → "piece"); the rule is therefore strict: one everyday word (rank 800–2500, four
+     letters or more, not longer than the word, clearly more common) that the word's best sense
+     lists, whose own best sense lists the word back, and which has at most two senses as that
+     part of speech. A common word with several senses must list the synonym in more than one.
+     Adjectives and adverbs are left to the table: their dictionary synonyms are too loose. */
+  function dictSwap(t, toks, dict, rank, present){
+    if (!(t.tag === "NOUN" || t.tag === "VERB") || t.poss || (t.c && t.c.PROPER)) return null;
+    var w = t.l, lem = t.lemma || w;
+    if (w.length < 4 || /[^a-zà-ɏ]/.test(w)) return null;
+    var wr = Math.min(rank(w), rank(lem));
+    if (wr <= 4000) return null;
+    var entry = dict(lem) || dict(w);
+    if (!entry) return null;
+    var pos = POSN[t.tag], senses = entry.m.filter(function(m){ return m.p === pos; });
+    if (!senses.length) return null;
+    var best = bestSense({ m: senses }, pos, rank);
+    if (!best) return null;
+    var poly = senses.length >= 3 && wr < Infinity;
+    var pick = null, pickRank = 2501;
+    (best.m.s || []).forEach(function(s){
+      if (!/^[a-z]{4,}$/.test(s) || s === lem || s === w || own(present, s) || sameFamily(s, lem) || s.length > lem.length + 2) return;
+      var r = rank(s);
+      if (r >= pickRank || r <= 800 || r * 2 > wr) return;
+      if (poly && senses.filter(function(m){ return (m.s || []).indexOf(s) >= 0; }).length < 2) return;
+      if (NAMEY[s]) return;
+      var se = dict(s);
+      /* a word that is only ever this part of speech, with one or two senses */
+      if (!se || se.m.some(function(m){ return m.p !== pos; }) || se.m.length > 2) return;
+      var sb = bestSense(se, pos, rank);
+      if (!sb || sb.m.p !== pos || (sb.m.s || []).indexOf(lem) < 0) return;
+      if (pos === "verb" && !isVerbBase(s, dict)) return;
+      pickRank = r; pick = s;
+    });
+    if (!pick) return null;
+    if (t.tag === "VERB") pick = inflect(pick, verbForm(t, toks));
+    else if (t.plural) pick = plural(pick);
+    return pick;
+  }
+
+  /* "The window was broken by the storm" → "The storm broke the window": only the plain
+     was / were + participle + by pattern, with a known verb and no negation */
+  function passiveEdit(c, toks, src, dict, used){
+    if (!(c.passive && c.agent && c.subject && c.pos && c.pos.subj && c.pos.agent)) return null;
+    if (c.negative || c.question || c.existential || c.imperative || c.inherited || c.subjectClause || c.kind === "rel" || c.kind === "wh") return null;
+    if (!c.tense || c.tense.name !== "past simple, passive voice") return null;
+    var s0 = c.pos.subj[0], s1 = c.pos.subj[1], v0 = c.pos.verb[0], v1 = c.pos.verb[1], mi = c.pos.main, b0 = c.pos.agent[0], b1 = c.pos.agent[1];
+    if (s1 !== v0 - 1 || mi !== v1 || b0 <= mi) return null;
+    var aux = toks[v0], main = toks[mi], j;
+    if (aux.tag !== "AUX" || !(aux.l === "was" || aux.l === "were") || main.tag !== "VERB") return null;
+    for (j = v0 + 1; j < mi; j++) if (toks[j].tag !== "ADV") return null;
+    var lemma = main.lemma;
+    if (!lemma || !(IRR[lemma] || VERBS[lemma] || posOf(dict(lemma)).verb)) return null;
+    /* what follows the agent must be a plain adverbial or the end, not a list ("by the clerk, the undertaker and…");
+       it stays where it is, outside the edit, so its own words can still be simplified */
+    var after = toks[b1 + 1];
+    if (after && !(after.punct && /^[.!?;:—–”"’)]$/.test(after.w)) && !/^(PREP|ADV|SC)$/.test(after.tag)) return null;
+    for (j = s0; j <= b1; j++) if (used[j] || toks[j].q || toks[j].glued) return null;
+    var subj = src.slice(toks[s0].s, toks[s1].e), agent = src.slice(toks[b0 + 1].s, toks[b1].e);
+    var advs = mi > v0 + 1 ? src.slice(toks[v0 + 1].s, toks[mi - 1].e) + " " : "";
+    var middle = b0 > mi + 1 ? " " + src.slice(toks[mi + 1].s, toks[b0 - 1].e) : "";   /* "was broken into pieces by…" */
+    var OBJ = { i: "me", he: "him", she: "her", we: "us", they: "them" }, SUBJ = { me: "I", him: "he", her: "she", us: "we", them: "they" };
+    if (s0 === s1 && OBJ[toks[s0].l]) subj = OBJ[toks[s0].l];
+    if (b1 === b0 + 1 && SUBJ[toks[b1].l]) agent = SUBJ[toks[b1].l];
+    if (initialAt(toks, s0)){ agent = cap(agent); subj = decap(subj, toks[s0]); }
+    for (j = s0; j <= b1; j++) used[j] = true;
+    return simpleEdit(src, toks[s0].s, toks[b1].e, agent + " " + advs + inflect(lemma, "past") + " " + subj + middle, "passive to active");
+  }
+
+  /* a clause with a subject whose lone base-form verb is not a mistagged noun: "my Christian
+     name Philip" has a singular subject and no -s, so it is no clause */
+  function agrees(c, toks){
+    if (!c.pos || !c.subject) return false;
+    if (!c.pos.subj) return !!c.inherited;          /* "…, but was not convinced" borrows its subject */
+    var v0 = c.pos.verb[0], v = toks[v0];
+    if (v0 !== c.pos.verb[1] || v.tag !== "VERB" || v.form !== "base") return true;
+    var head = toks[c.pos.subj[1]];
+    return !!(head.plural || /^(i|you|we|they|these|those|both|all|many|several|few|some|people)$/.test(head.l));
+  }
+  /* a sentence of more than 22 words is cut where two main clauses meet at "and", "but",
+     "so", a semicolon or a dash; "But" and "So" may open the new sentence */
+  function splitEdits(clauses, toks, src, used, edits){
+    var words = toks.filter(function(t){ return !t.punct; }).length;
+    if (words <= 22) return;
+    var dashes = toks.filter(function(t){ return t.punct && /^[—–]$/.test(t.w); }).length;
+    clauses.forEach(function(c, k){
+      if (!k || c.fragment || c.kind !== "main" || !c.subject || c.inherited || c.inheritedNext || c.imperative || c.question || c.subjectClause) return;
+      if (!c.tense || /participle/.test(c.tense.name)) return;
+      var prev = null, j;
+      for (j = k - 1; j >= 0 && !prev; j--) if (!clauses[j].fragment && clauses[j].kind === "main") prev = clauses[j];
+      if (!prev || !prev.subject || !prev.tense || /participle/.test(prev.tense.name) || prev.imperative || prev.question) return;
+      var first = c.span[0], t0 = toks[first], cc = null, sep = null, next;
+      if (t0.tag === "CC" && /^(and|but|so)$/.test(t0.l)){ cc = t0; next = toks[first + 1]; }
+      else if (first > 0 && toks[first - 1].punct && /^[;—–]$/.test(toks[first - 1].w)){ sep = toks[first - 1]; if (sep.w !== ";" && dashes !== 1) return; next = t0; }
+      else return;
+      if (!next || next.punct || next.q || (cc && (cc.q || used[cc.i])) || (sep && sep.q)) return;
+      /* both halves must be real clauses whose verb agrees with its subject ("my Christian name
+         Philip" is not one), and after a conjunction the new sentence must run straight into its
+         subject ("and then nobody in the village could…"): a comma or a verb before it means a list */
+      if (!agrees(c, toks) || !agrees(prev, toks)) return;
+      if (cc){
+        if (!c.pos.subj) return;
+        for (j = next.i; j < c.pos.subj[0]; j++) if (toks[j].punct || /^(VERB|AUX|MODAL|CC|SC)$/.test(toks[j].tag)) return;
+      }
+      var before = toks.slice(0, cc ? cc.i : sep.i).filter(function(t){ return !t.punct; }).length;
+      if (before < 3 || words - before < 3) return;
+      var mark = cc || sep, pt = toks[mark.i - 1];
+      if (!pt || (pt.punct && pt.w !== ",")) return;   /* not after a closing quote or other punctuation */
+      var start = pt.punct ? pt.s : pt.e;
+      if (cc && cc.l !== "and"){
+        edits.push(simpleEdit(src, start, cc.e, ". " + cap(cc.w), "split long sentence"));
+        used[cc.i] = true;
+        return;
+      }
+      if (used[next.i]){
+        /* the next word already has an edit: fold it in, capitalised */
+        var at = -1;
+        edits.forEach(function(ed, q){ if (ed.s === next.s) at = q; });
+        if (at < 0) return;
+        var ed = edits.splice(at, 1)[0];
+        ed.parts[0].text = cap(ed.parts[0].text);
+        edits.push({ s: start, e: ed.e, parts: [{ text: ".", from: src.slice(start, mark.e), why: "split long sentence" }, { text: " " }].concat(ed.parts) });
+      } else {
+        edits.push(simpleEdit(src, start, next.e, ". " + cap(next.w), "split long sentence"));
+        used[next.i] = true;
+      }
+      used[mark.i] = true;
+    });
+  }
+
+  function simplifySentence(src, dict, rank){
+    var r = explain(src, dict, rank), toks = r.tokens, edits = [], used = {}, present = {}, j;
+    markQuotes(toks);
+    toks.forEach(function(t){ if (!t.punct){ present[t.l] = 1; if (t.lemma) present[t.lemma] = 1; } });
+    function free(a, b){ for (var q = a; q <= b; q++) if (used[q] || toks[q].q || toks[q].glued || toks[q].punct) return false; return true; }
+    function take(a, b){ for (var q = a; q <= b; q++) used[q] = true; }
+
+    /* 1. wordy phrases and idioms */
+    for (var i = 0; i < toks.length; i++){
+      var t = toks[i];
+      if (t.punct || used[t.i] || t.q || t.glued) continue;
+      for (var k = 0; k < WORDY.length; k++){
+        var p = WORDY[k], n = p.from.length, ok = i + n <= toks.length && free(i, i + n - 1);
+        for (j = 0; j < n && ok; j++){
+          var u = toks[i + j];
+          if (j === 0 && p.verb) ok = u.tag === "VERB" && u.lemma === p.from[0];
+          else ok = u.l === p.from[j];
+        }
+        if (!ok || (toks[i + n] && toks[i + n].glued)) continue;
+        var to = p.verb ? inflectPhrase(p.to, verbForm(t, toks)) : p.to;
+        if (isCap(t.w) && initialAt(toks, i)) to = cap(to);
+        edits.push(simpleEdit(src, t.s, toks[i + n - 1].e, to, n > 1 ? "shorter phrase" : "rarer word"));
+        take(i, i + n - 1);
+        break;
+      }
+    }
+    r.expressions.forEach(function(e){
+      if (e.split || e.kind !== "idiom" || !free(e.start, e.end)) return;
+      var t = toks[e.start], x = exprText(e, t, toks, dict, rank), rep = x.text, rw = rep.toLowerCase().split(" ");
+      if (!x.synonym && (rw.length > 3 || rw.length >= e.end - e.start + 1)) return;
+      if (rw.some(function(w){ return rank(w.replace(/[^a-z]/g, "")) > 3000; })) return;
+      if (isCap(t.w) && initialAt(toks, e.start)) rep = cap(rep);
+      edits.push(simpleEdit(src, t.s, toks[e.end].e, rep, "idiom"));
+      take(e.start, e.end);
+    });
+
+    /* 2. a passive turned round */
+    r.clauses.forEach(function(c){ var ed = passiveEdit(c, toks, src, dict, used); if (ed) edits.push(ed); });
+
+    /* 3. rare and formal words (names, numbers and short words are left alone) */
+    toks.forEach(function(t){
+      if (t.punct || used[t.i] || t.glued || (toks[t.i + 1] && toks[t.i + 1].glued)) return;
+      if (t.tag === "NUM" || t.tag === "PROPER" || t.tag === "POSS" || (t.c && t.c.NUM)) return;
+      if (isCap(t.w) && !initialAt(toks, t.i)) return;
+      var to = formalSwap(t, toks) || dictSwap(t, toks, dict, rank, present);
+      if (!to || (to.indexOf(" ") < 0 && own(present, to.toLowerCase()))) return;
+      if (isCap(t.w)) to = cap(to);
+      var s = t.s, prev = toks[t.i - 1];
+      if (prev && prev.tag === "DET" && /^(a|an)$/.test(prev.l) && !used[prev.i] && article(to) !== prev.l){
+        var art = article(to);
+        to = (isCap(prev.w) ? cap(art) : art) + src.slice(prev.e, t.s) + to;
+        s = prev.s; used[prev.i] = true;
+      }
+      edits.push(simpleEdit(src, s, t.e, to, "rarer word"));
+      used[t.i] = true;
+    });
+
+    /* 4. a long sentence split in two */
+    splitEdits(r.clauses, toks, src, used, edits);
+
+    /* apply the edits to the original text, recording where each change landed */
+    edits.sort(function(a, b){ return a.s - b.s; });
+    var out = "", pos = 0, changes = [];
+    edits.forEach(function(ed){
+      if (ed.s < pos) return;
+      out += src.slice(pos, ed.s);
+      ed.parts.forEach(function(pt){
+        if (pt.why) changes.push({ from: pt.from, to: pt.text, start: out.length, end: out.length + pt.text.length, why: pt.why });
+        out += pt.text;
+      });
+      pos = ed.e;
+    });
+    out += src.slice(pos);
+    return { text: out, changes: changes };
+  }
+
+  function simplify(text, dict, rank){
+    text = String(text || "");
+    rank = rank || function(){ return Infinity; };
+    var spans = splitSentences(text), out = "", changes = [], pos = 0;
+    spans.forEach(function(sp){
+      out += text.slice(pos, sp.s);
+      var r = simplifySentence(text.slice(sp.s, sp.e), dict, rank), base = out.length;
+      r.changes.forEach(function(c){ c.start += base; c.end += base; changes.push(c); });
+      out += r.text;
+      pos = sp.e;
+    });
+    out += text.slice(pos);
+    return { text: out, changes: changes, sentences: spans.length };
+  }
 
   /* ---------- public ---------- */
   function explain(sentence, dict, rank){
@@ -1062,5 +1487,6 @@
     return { tokens: toks, clauses: merged, expressions: exprs, plain: plain, keywords: keywords.slice(0, 8) };
   }
 
-  window.llExplain = { explain: explain, rank: rank, tokenize: tokenize, tag: tag, inflect: inflect, lemmas: lemmas, cleanDef: cleanDef, bestSense: bestSense };
+  window.llExplain = { explain: explain, rank: rank, tokenize: tokenize, tag: tag, inflect: inflect, lemmas: lemmas, cleanDef: cleanDef, bestSense: bestSense,
+                       simplify: simplify, splitSentences: splitSentences };
 })();

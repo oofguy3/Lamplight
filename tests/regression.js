@@ -1,7 +1,8 @@
 /* Regression pass over the features that existed before the 2026-09 additions:
    library + resume, tabs, marks, search, contents, explain card, reading aids, keyboard
    shortcuts, settings, PDF controls, the service worker (offline reload, dictionary offline),
-   the update toast and the install manifest.  NODE_PATH=$(npm root -g) node tests/regression.js */
+   the update toast and the install manifest; plus Escape closing one layer at a time.
+   NODE_PATH=$(npm root -g) node tests/regression.js */
 const fs = require("fs"), path = require("path");
 const { serve, browser, newPage, openFixture, makeReport, ROOT } = require("./lib");
 
@@ -155,6 +156,34 @@ async function textPoint(page, word){
     await page.keyboard.press("h"); await page.waitForTimeout(300);
     R.check("h goes home to the library", await page.$eval("#library", (l) => l.classList.contains("show")));
     R.check("no page errors in the session", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
+  /* ---------------- Escape closes only the topmost layer ---------------- */
+  section("Escape layering");
+  await guard("escape", async () => {
+    const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    const isOpen = (sel) => page.$eval(sel, (el) => el.classList.contains("open"));
+    /* the dictionary card over a side panel */
+    await page.keyboard.press("c"); await page.waitForTimeout(300);
+    await page.evaluate(() => window.llDict.defineWord("quietly"));
+    await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 });
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(100);
+    R.check("Escape over a panel closes the dictionary card only", !(await isOpen("#dictCard")) && (await isOpen("#side")));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(350);
+    R.check("the next Escape closes the panel", !(await isOpen("#side")));
+    /* a panel opened from inside the settings sheet */
+    await page.keyboard.press("s"); await page.waitForTimeout(300);
+    await page.click("#fontBrowse"); await page.waitForTimeout(350);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(350);
+    R.check("Escape over the sheet closes the panel only", !(await isOpen("#side")) && (await isOpen("#sheet")));
+    R.check("focus returns to the panel's opener", (await page.evaluate(() => document.activeElement && document.activeElement.id)) === "fontBrowse");
+    await page.keyboard.press("Escape"); await page.waitForTimeout(100);
+    R.check("the next Escape closes the sheet", !(await isOpen("#sheet")));
+    R.check("no page errors (escape)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
   });
 

@@ -18,7 +18,8 @@
     purify:  ["./vendor/purify.min.js"],
     jszip:   ["./vendor/jszip.min.js"],
     explain: ["./explain.js"],
-    morph:   ["./morph.js"]
+    morph:   ["./morph.js"],
+    translate: ["./translate.js"]
   };
   function need(names){
     var files = [];
@@ -601,7 +602,7 @@
   var Fonts = (function(){
     var SYSTEM = { easy: "sans", serif: "serif", sans: "sans", mono: "mono" };   /* the stack each group falls back to */
     var faces = {};        /* file url → promise of its face, once requested */
-    var failed = {};       /* font id → true after a fetch failed (forgotten when we come back online) */
+    var failed = {};       /* font id → true while its last fetch failed (cleared once a later one lands) */
     var listEl = null, watcher = null;
     function ids(group){ return Object.keys(FONTS).filter(function(id){ return FONTS[id].group === group; }); }
     function familyOf(f){ return f.family || f.name; }
@@ -638,19 +639,24 @@
     function fallback(f){ document.documentElement.style.setProperty("--reader-font", STACKS[SYSTEM[f.group]]); }
     /* the chosen family: fetched the first time it is used. If that fails (first use while
        offline — the service worker normally holds every file) the group's system face is read
-       in instead, and the family is tried again once the connection is back */
+       in instead; every later use tries the family again, as does coming back online, and its
+       own stack goes back in once it lands. Only the first failure says so */
     function use(id){
       var f = FONTS[id];
       if (!f || !f.files) return;
-      if (failed[id]){ fallback(f); return; }
-      load(id).catch(function(){
+      var again = !!failed[id];           /* failed before: read the system face meanwhile, but try once more */
+      if (again) fallback(f);
+      load(id).then(function(){
+        delete failed[id];
+        if (state.font === id) document.documentElement.style.setProperty("--reader-font", f.stack);
+      }, function(){
         failed[id] = true;
         if (state.font !== id) return;
         fallback(f);
-        Marks.toast("Font not available offline");
+        if (!again) Marks.toast(navigator.onLine ? "Couldn’t load this font" : "Font not available offline");
       });
     }
-    window.addEventListener("online", function(){ failed = {}; if (FONTS[state.font]) use(state.font); });
+    window.addEventListener("online", function(){ if (FONTS[state.font] && failed[state.font]) use(state.font); });
     /* true once a bundled family's regular face is in and ready */
     function loaded(id){
       var f = FONTS[id], ok = false;
@@ -696,9 +702,13 @@
         applyType();
       });
       /* a bundled family's preview is fetched only once its row comes into view, so opening
-         the panel doesn't pull every font at once */
+         the panel doesn't pull every font at once. Adding a face re-lays-out the whole document,
+         though, so a long book, or one in Pages flow, gets every regular face in one go and
+         pays once rather than once per scroll step (the files come from the worker's precache) */
       var rows = Array.prototype.filter.call(listEl.querySelectorAll(".font-item"), function(b){ return !!FONTS[b.dataset.font].files; });
-      if (window.IntersectionObserver){
+      var eager = !window.IntersectionObserver || (state.mode === "doc" && (state.flow === "pages" || $("#doc").textContent.length > 150000));
+      if (eager) rows.forEach(function(b){ load(b.dataset.font, true).catch(function(){}); });
+      else {
         watcher = new IntersectionObserver(function(entries){
           entries.forEach(function(en){
             if (!en.isIntersecting) return;
@@ -707,7 +717,7 @@
           });
         }, { root: body, rootMargin: "80px 0px" });
         rows.forEach(function(b){ watcher.observe(b); });
-      } else rows.forEach(function(b){ load(b.dataset.font, true).catch(function(){}); });
+      }
     }
     function closed(){ if (watcher) watcher.disconnect(); watcher = null; listEl = null; }
     function openPanel(){ Side.open("fonts", "Fonts", render, closed); }
@@ -749,8 +759,8 @@
   function availHeight(){
     headVar();
     var head = document.querySelector("header");
-    var headH = document.body.classList.contains("immersive") ? 0 : head.offsetHeight;
-    var pagerH = $("#pager").offsetHeight || 56;
+    var headH = document.body.classList.contains("immersive") || document.body.classList.contains("zen") ? 0 : head.offsetHeight;
+    var pagerH = document.body.classList.contains("zen") ? 0 : ($("#pager").offsetHeight || 56);
     document.documentElement.style.setProperty("--pagerH", pagerH + "px");
     var ttsEl = $("#tts"), ttsH = ttsEl && ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
     return Math.max(160, window.innerHeight - headH - pagerH - ttsH - 26);
@@ -1586,7 +1596,12 @@
     }
     scrim.addEventListener("click", close);
     $("#sideClose").addEventListener("click", close);
-    document.addEventListener("keydown", function(e){ if (e.key === "Escape" && current) close(); });
+    /* Escape closes only the topmost layer: the key stops here once it has closed a panel, so the
+       settings sheet and the menu, whose listeners come after this one, keep their state; the
+       dictionary card, which sits over the panel, takes the key first in the capture phase */
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape" && current){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    });
     return { open: open, close: close, is: function(name){ return current === name; }, body: body, foot: foot,
              refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; } } };
   })();
@@ -1620,7 +1635,7 @@
   })();
 
   var Library = (function(){
-    var DB_NAME = "lamplight", DB_VERSION = 2;
+    var DB_NAME = "lamplight", DB_VERSION = 3;
     var dbp = null, books = [], positions = {}, current = null, pending = null, saveTimer = null, titleQueue = null;
     var ready = { doc: false, pdfPages: {} };
 
@@ -1640,6 +1655,7 @@
             var mk = d.createObjectStore("marks", { keyPath: "key" });
             mk.createIndex("doc", "doc");
           }
+          if (!d.objectStoreNames.contains("translations")) d.createObjectStore("translations", { keyPath: "key" });
         };
         req.onsuccess = function(){ resolve(req.result); };
         req.onerror = function(){ reject(req.error); };
@@ -1888,7 +1904,7 @@
     function home(){
       flush();
       abandonOpen();
-      Speak.stop(); Auto.stop(); Ruler.set(false); Side.close();
+      Speak.stop(); Auto.stop(); Ruler.set(false); Zen.exit(); Side.close();
       if (state.mode === "doc" || state.mode === "pdf"){
         document.body.classList.remove("hidebar", "immersive");
         window.scrollTo(0, 0);
@@ -2891,6 +2907,9 @@
       var b = e.target.closest("button[data-about]"); if (!b) return;
       copy(summary(cache.stats, docLabel().name));
     });
+    /* a new document (a file, or another tab) replaces the text under the panel: its numbers
+       would be the old document's, so the panel closes, which also stops a count under way */
+    document.addEventListener("ll:fileopened", function(){ if (Side.is("about")) Side.close(); });
     Menu.add({ order: 60, label: "About this text", key: "I", run: openPanel, show: docOpen });
     window.llAbout = { openPanel: openPanel, stats: analyse, syllables: syllables, sentences: sentencesIn, hardest: hardest, summary: summary };
     return { openPanel: openPanel, stats: analyse, syllables: syllables, hardest: hardest };
@@ -2903,9 +2922,10 @@
   var Speak = (function(){
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
-    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices");
+    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices"), sleepBtn = $("#ttsSleep");
     var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
-    var wait = null, sampleGen = 0, voiceKey = "";
+    var startGen = 0;     /* bumped by every start and stop: a PDF page load from an earlier reading bails out */
+    var wait = null, between = false, sampleGen = 0, voiceKey = "";
     var rate = parseFloat(Store.get("ll_tts_rate") || "1") || 1;
     var voiceName = Store.get("ll_tts_voice") || "";
     var dialogueName = Store.get("ll_tts_dialogue") || "";     /* "" = auto (the other voice), "same", or a voice name */
@@ -3002,7 +3022,7 @@
       voiceSel.value = name;
       var narr = $("#ttsNarr"); if (narr) narr.value = name;
       syncSexButtons(); syncHint();
-      if (playing) speakCurrent();
+      restart();
     }
     /* ♀ / ♂: the best voice of that gender; pressed again, the next one */
     function pickGender(g){
@@ -3017,13 +3037,17 @@
     var SENT = /[^.!?…]+[.!?…]*["”’)»]?\s*/g;
     var CLOSER = { "“": "”", "«": "»", "\"": "\"", "‘": "’" };
     function splitLong(text, base, out, meta){
-      /* keep utterances short: some engines cut off after ~15 seconds */
-      if (text.length <= 220){ out.push(Object.assign({ start: base, end: base + text.length, text: text }, meta || {})); return; }
+      /* keep utterances short: some engines cut off after ~15 seconds. Offsets stay in the
+         document's raw coordinates; only the spoken text has its whitespace runs collapsed */
+      function say(s){ return s.replace(/\s+/g, " "); }
+      if (text.length <= 220){ out.push(Object.assign({ start: base, end: base + text.length, text: say(text) }, meta || {})); return; }
       var i = 0;
       while (i < text.length){
+        while (i < text.length && /\s/.test(text.charAt(i))) i++;    /* a piece starts on its first word */
         var j = Math.min(text.length, i + 200);
-        if (j < text.length){ var k = text.lastIndexOf(" ", j); if (k > i + 60) j = k; }
-        out.push(Object.assign({ start: base + i, end: base + j, text: text.slice(i, j) }, meta || {}));
+        if (j < text.length){ var k = j; while (k > i && !/\s/.test(text.charAt(k))) k--; if (k > i + 60) j = k; }
+        if (j <= i) break;
+        out.push(Object.assign({ start: base + i, end: base + j, text: say(text.slice(i, j)) }, meta || {}));
         i = j;
       }
     }
@@ -3056,15 +3080,18 @@
       return spans;
     }
     function unitsFromText(text, base, out, meta){
-      /* paragraphs (blank lines), then sentences, then the quoted speech cut out of each
+      /* paragraphs (blank lines, CRLF too), then sentences, then the quoted speech cut out of each
          sentence as its own unit (dialogue: true, quote marks left out of the text). Offsets are
          relative to base and exact, so highlighting and "read from here" line up. */
-      var re = /\n[ \t]*\n/g, last = 0, m;
+      var re = /\r?\n[ \t]*\r?\n/g, last = 0, m;
       var paras = [];
       while ((m = re.exec(text))){ paras.push([last, m.index]); last = m.index + m[0].length; }
       paras.push([last, text.length]);
       paras.forEach(function(p){
         var seg = text.slice(p[0], p[1]), quotes = quoteSpans(seg), parens = parenSpans(seg), before = out.length;
+        /* both span lists are sorted and sentences only move forward, so a cursor into each
+           replaces a rescan per sentence (a plain-text book can be one paragraph) */
+        var qi = 0, pi = 0;
         SENT.lastIndex = 0;
         var sm;
         while ((sm = SENT.exec(seg))){
@@ -3072,12 +3099,13 @@
           if (!t.length) SENT.lastIndex++;
           if (se <= ss) continue;
           var pieces = [], pos = ss;
-          quotes.forEach(function(q){
-            if (q[1] < ss || q[0] >= se) return;
+          while (qi < quotes.length && quotes[qi][1] < ss) qi++;
+          for (var qj = qi; qj < quotes.length && quotes[qj][0] < se; qj++){
+            var q = quotes[qj];
             if (q[0] > pos) pieces.push([pos, Math.min(q[0], se), false]);
             pieces.push([Math.max(q[0] + 1, ss), Math.min(q[1], se), true]);
             pos = Math.min(q[1] + 1, se);
-          });
+          }
           if (pos < se) pieces.push([pos, se, false]);
           pieces.forEach(function(pc){
             var piece = seg.slice(pc[0], pc[1]);
@@ -3085,8 +3113,10 @@
             var core = piece.slice(lead, piece.length - trail);
             if (!/[A-Za-z0-9À-ɏ]/.test(core)) return;
             var a = pc[0] + lead, b = pc[1] - trail;
-            var paren = parens.some(function(ps){ return ps[0] <= a && b <= ps[1] + 1; });
-            splitLong(core.replace(/\s+/g, " "), base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren }, meta || {}));
+            while (pi < parens.length && parens[pi][1] + 1 < b) pi++;
+            var paren = false;
+            for (var pj = pi; pj < parens.length && parens[pj][0] <= a; pj++){ if (b <= parens[pj][1] + 1){ paren = true; break; } }
+            splitLong(core, base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren }, meta || {}));
           });
         }
         if (out.length > before) out[out.length - 1].last = true;
@@ -3105,7 +3135,8 @@
         if (!first || !text.trim()) return;
         var base = offsetOfNode.get(first);
         if (base === undefined) return;
-        unitsFromText(text, base, out, { heading: /^H[1-4]$/.test(b.tagName) });
+        var h = /^H[1-4]$/.test(b.tagName);
+        unitsFromText(text, base, out, h ? { heading: true, level: +b.tagName.charAt(1) } : { heading: false });
       });
       return out;
     }
@@ -3194,20 +3225,163 @@
       }
     }
 
+    /* ---- lock-screen, notification and headphone controls. Browsers only surface media
+       controls while an <audio> or <video> element plays, and speech alone doesn't count, so a
+       silent half-second loop plays alongside the reading (started from the same gesture, at a
+       whisper of volume: a fully muted element is dropped from the controls on some platforms).
+       The handlers drive the same play / pause / step code as the bar. ---- */
+    var media = "mediaSession" in navigator ? navigator.mediaSession : null;
+    var silence = null, album = null, sections = [];
+    function silentWav(){
+      /* half a second of 16-bit mono silence at 8 kHz as a WAV data: URL, so no file is needed */
+      var n = 4000, b = new Uint8Array(44 + n * 2), i, s = "";
+      function str(o, t){ for (var k = 0; k < t.length; k++) b[o + k] = t.charCodeAt(k); }
+      function u32(o, v){ b[o] = v & 255; b[o + 1] = (v >> 8) & 255; b[o + 2] = (v >> 16) & 255; b[o + 3] = (v >>> 24) & 255; }
+      str(0, "RIFF"); u32(4, 36 + n * 2); str(8, "WAVE");
+      str(12, "fmt "); u32(16, 16); u32(20, 1 | (1 << 16)); u32(24, 8000); u32(28, 16000); u32(32, 2 | (16 << 16));
+      str(36, "data"); u32(40, n * 2);
+      for (i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      return "data:audio/wav;base64," + btoa(s);
+    }
+    function silentAudio(){
+      if (silence) return silence;
+      silence = document.createElement("audio");
+      silence.id = "ttsSilence"; silence.loop = true; silence.volume = 0.01; silence.preload = "auto";
+      silence.setAttribute("aria-hidden", "true");
+      silence.src = silentWav();
+      bar.appendChild(silence);
+      return silence;
+    }
+    function mediaPlay(){
+      try { var p = silentAudio().play(); if (p && p.catch) p.catch(function(){}); } catch(_){}     /* refused: no controls, reading carries on */
+      mediaState("playing");
+    }
+    function mediaPause(){
+      if (silence) try { silence.pause(); } catch(_){}
+      mediaState(active ? "paused" : "none");
+    }
+    function mediaState(s){ if (media) try { media.playbackState = s; } catch(_){} }
+    function mediaTitle(){
+      return ($("#fname").textContent || document.title.replace(/\s+—\s+lamplight$/i, "")).trim() || "Lamplight";
+    }
+    /* title, app and the current section, with the app icon as artwork */
+    function setMeta(section){
+      album = section;
+      if (!media || typeof MediaMetadata === "undefined") return;
+      try {
+        media.metadata = new MediaMetadata({ title: mediaTitle(), artist: "Lamplight", album: section || "",
+          artwork: [{ src: "./icon-192.png", sizes: "192x192", type: "image/png" }, { src: "./icon-512.png", sizes: "512x512", type: "image/png" }] });
+      } catch(_){}
+    }
+    function clearMeta(){ album = null; if (media) try { media.metadata = null; } catch(_){} }
+    /* where the contents' sections start, so the album can follow the chapter: character
+       offsets for a text document, page numbers for a PDF (its outline arrives later) */
+    function loadSections(my){
+      sections = [];
+      if (state.mode === "pdf"){
+        Toc.pdfEntries().then(function(es){
+          if (my !== startGen || !active) return;
+          sections = es.filter(function(e){ return e.page; }).map(function(e){ return { at: e.page, title: e.title }; });
+        });
+        return;
+      }
+      var w = document.createTreeWalker($("#doc"), NodeFilter.SHOW_TEXT);
+      Toc.entries().forEach(function(e){
+        w.currentNode = e.el;
+        var n = w.nextNode(), at = n ? Anchor.offsetOf(n, 0) : null;     /* the first text at or after the section's element */
+        if (at !== null) sections.push({ at: at, title: e.title });
+      });
+      sections.sort(function(a, b){ return a.at - b.at; });
+    }
+    function sectionFor(u){
+      var key = state.mode === "pdf" ? u.page : u.start, t = "";
+      for (var i = 0; i < sections.length && sections[i].at <= key; i++) t = sections[i].title;
+      return t;
+    }
+    if (media){
+      [["play", function(){ if (active && !playing) play(); }], ["pause", function(){ if (playing) pause(); }],
+       ["stop", function(){ if (active) stop(); }],
+       ["previoustrack", function(){ step(-1); }], ["nexttrack", function(){ step(1); }],
+       ["seekbackward", function(){ step(-3); }], ["seekforward", function(){ step(3); }]].forEach(function(h){
+        try { media.setActionHandler(h[0], h[1]); } catch(_){}     /* an action this browser doesn't know throws */
+      });
+    }
+
+    /* ---- sleep timer: stop after so many minutes, or at the end of the chapter (before the
+       next h1–h3; in a PDF, at the end of the page). It counts from the moment it is chosen, or
+       from when reading starts if chosen while paused; reading stops at the end of a sentence,
+       never inside one. Stopping clears it. Not persisted. ---- */
+    var SLEEP = [[0, "Off", ""], [15, "15", "15 minutes"], [30, "30", "30 minutes"], [45, "45", "45 minutes"], [60, "60 min", "60 minutes"], ["chapter", "End of chapter", ""]];
+    var sleepMode = 0, sleepAt = 0, sleepTick = null;
+    function setSleep(mode){
+      sleepMode = mode; sleepAt = 0; clearInterval(sleepTick); sleepTick = null;
+      if (typeof mode === "number" && mode > 0){
+        if (playing) sleepAt = Date.now() + mode * 60000;
+        sleepTick = setInterval(tickSleep, 15000);
+      }
+      syncSleepChips(); drawSleep();
+    }
+    function clearSleep(){ if (sleepMode) setSleep(0); }
+    /* on play: a minutes timer chosen while paused starts counting now; one that ran out
+       meanwhile had nothing to stop, so it is spent */
+    function armSleep(){
+      if (typeof sleepMode !== "number" || !sleepMode) return;
+      if (!sleepAt) sleepAt = Date.now() + sleepMode * 60000;
+      else if (Date.now() >= sleepAt) clearSleep();
+      drawSleep();
+    }
+    function tickSleep(){
+      if (!sleepAt) return;
+      if (Date.now() >= sleepAt && !playing){ clearSleep(); return; }
+      drawSleep();
+    }
+    function sleepDue(u, next){
+      if (sleepMode === "chapter"){
+        if (state.mode === "pdf") return !!(u.page && next.page && next.page !== u.page);
+        return !!(next.heading && next.level <= 3);
+      }
+      return sleepAt > 0 && Date.now() >= sleepAt;
+    }
+    function drawSleep(){
+      var on = !!sleepMode && active;
+      if (on){
+        var l = sleepMode === "chapter" ? ["Stops at", state.mode === "pdf" ? "end of page" : "end of chapter"]
+              : ["Stops in", (sleepAt ? Math.max(1, Math.ceil((sleepAt - Date.now()) / 60000)) : sleepMode) + " min"];
+        $("#ttsSleepW").textContent = l[0]; $("#ttsSleepV").textContent = l[1];     /* two spans: a phone shows only the second */
+        sleepBtn.setAttribute("aria-label", l[0] + " " + l[1] + " — sleep timer");
+      }
+      if (sleepBtn.hidden !== !on){ sleepBtn.hidden = !on; measure(); }
+    }
+    function sleepChips(){
+      return SLEEP.map(function(c){
+        var on = c[0] === sleepMode;
+        return '<button class="chip' + (on ? ' on' : '') + '" aria-pressed="' + (on ? "true" : "false") + '" data-sleep="' + c[0] + '"' + (c[2] ? ' aria-label="' + c[2] + '"' : '') + '>' + c[1] + '</button>';
+      }).join("");
+    }
+    function syncSleepChips(){
+      var box = $("#ttsSleepChips");
+      if (box) Array.prototype.forEach.call(box.querySelectorAll(".chip"), function(c){
+        var on = c.dataset.sleep === String(sleepMode); c.classList.toggle("on", on); c.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+
     /* ---- speaking ---- */
     function speakCurrent(){
       if (!units.length || idx < 0 || idx >= units.length){ finish(); return; }
       var u = units[idx], myGen = ++gen;
-      clearTimeout(wait); sampleGen++;
+      clearTimeout(wait); between = false; sampleGen++;
       try { speechSynthesis.cancel(); } catch(_){}
       paint(u); ensureVisible(u);
       if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
+      var sec = sectionFor(u); if (sec !== album) setMeta(sec);
       var s = utterFor(u, units[idx - 1], units[idx + 1]);
       utter = s.utter;
       utter.onend = function(){
         if (myGen !== gen || !playing) return;
         if (idx + 1 >= units.length){ finish(); return; }
+        if (sleepDue(u, units[idx + 1])){ stop(); Marks.toast("Stopped by the sleep timer"); return; }
         /* a breath between sentences, a longer one after a paragraph; Prev / Next cut it short */
+        between = true;
         wait = setTimeout(function(){ if (myGen !== gen || !playing) return; idx++; speakCurrent(); }, s.pauseAfter);
       };
       utter.onerror = function(e){
@@ -3219,31 +3393,56 @@
       /* Chrome needs a fresh call after cancel() on some platforms */
       setTimeout(function(){ if (myGen === gen && playing) speechSynthesis.speak(utter); }, 0);
     }
+    /* a settings change mid-sentence restarts it; during the breath after one the pending timer
+       starts the next unit with the new settings (restarting would replay the finished one) */
+    function restart(){ if (playing && !between) speakCurrent(); }
+    /* Prev / Next and the headphone buttons: n sentences on, cutting a breath short */
+    function step(n){
+      if (!units.length) return;
+      idx = clamp(idx + n, 0, units.length - 1);
+      if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); }
+    }
     function play(){
       if (!units.length) return;
       playing = true; playBtn.textContent = "❚❚"; playBtn.setAttribute("aria-label", "Pause");
+      armSleep(); mediaPlay();
       speakCurrent();
     }
     function pause(){
-      playing = false; gen++; sampleGen++; clearTimeout(wait);
+      playing = false; between = false; gen++; sampleGen++; clearTimeout(wait);
       try { speechSynthesis.cancel(); } catch(_){}
+      mediaPause();
       playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play");
     }
-    function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); }
+    function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); clearSleep(); }
     function stop(){
-      pause(); paint(null); active = false; units = []; idx = -1;
+      startGen++;     /* a PDF page load still in flight belongs to a reading that is over */
+      pause(); paint(null); active = false; units = []; idx = -1; sections = [];
+      mediaState("none"); clearMeta(); clearSleep();
       bar.classList.remove("on");
       document.body.classList.remove("tts-on");
       if (state.flow === "pages") relayoutPaged();
     }
-    function measure(){ if (active) document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px"); }
+    var narrow = window.matchMedia ? window.matchMedia("(max-width: 720px)") : null;
+    /* the bar's height, for the page to clear it, and one row or two: two below 720px, and
+       whenever the speed control would overflow its row (with the sleep timer showing, one row
+       needs ~830px) */
+    function measure(){
+      if (!active) return;
+      bar.classList.remove("tts-wrap");
+      var lab = rateEl.parentNode;
+      if ((narrow && narrow.matches) || lab.scrollWidth > lab.clientWidth + 1) bar.classList.add("tts-wrap");
+      document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
+    }
     function startFrom(offset){
       if (!supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
       if (state.mode !== "doc" && state.mode !== "pdf") return;
-      active = true; bar.classList.add("on"); fillVoices();
+      var my = ++startGen;
+      active = true; bar.classList.add("on"); fillVoices(); album = null;
       document.body.classList.add("tts-on");
-      measure();
+      drawSleep(); measure();
       if (state.flow === "pages") relayoutPaged();
+      loadSections(my);
       if (state.mode === "doc"){
         units = buildDocUnits();
         var off = typeof offset === "number" ? offset : (Library.topCharOffset() || 0);
@@ -3253,29 +3452,35 @@
         play();
       } else {
         var page = Library.currentPdfPage();
-        loadPdfUnits(page).then(function(){ if (!units.length){ Marks.toast("No text on this page"); stop(); return; } idx = 0; play(); });
+        loadPdfUnits(page, my).then(function(ok){
+          if (!ok) return;       /* stopped, restarted or the document changed while the page's text loaded */
+          if (!units.length){ Marks.toast("No text on this page"); stop(); return; }
+          idx = 0; play();
+        });
       }
     }
-    function loadPdfUnits(page){
+    /* resolves to whether this reading is still the live one once the first page is in */
+    function loadPdfUnits(page, my){
       var doc = state.pdfDoc;
       units = [];
-      var pages = [];
-      for (var p = page; p <= doc.numPages; p++) pages.push(p);
+      function live(){ return my === startGen && active && state.pdfDoc === doc; }
       /* load the first page now, the rest while reading */
       return PdfText.get(page).then(function(t){
+        if (!live()) return false;
         unitsFromText(t, 0, units); units.forEach(function(u){ u.page = page; });
         pdfUnitsDoc = doc;
         var next = page + 1;
         (function more(){
-          if (next > doc.numPages || state.pdfDoc !== doc || !active) return;
+          if (next > doc.numPages || !live()) return;
           var pg = next++;
           PdfText.get(pg).then(function(tt){
-            if (state.pdfDoc !== doc || !active) return;
+            if (!live()) return;
             var add = []; unitsFromText(tt, 0, add); add.forEach(function(u){ u.page = pg; });
             units = units.concat(add);
             setTimeout(more, 50);
           });
         })();
+        return true;
       });
     }
     /* a short line in both voices, so the panel's choices can be heard */
@@ -3316,7 +3521,7 @@
       if (chips) Array.prototype.forEach.call(chips.querySelectorAll(".chip"), function(c){
         var on = c.dataset.expr === v; c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
       });
-      if (playing) speakCurrent();
+      restart();
     }
     function renderPanel(body, foot){
       var vs = sortedVoices();
@@ -3329,12 +3534,18 @@
         '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
         '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
         '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
+        '<div class="rowline"><label id="ttsSleepL">Stop after</label><div class="chips tts-sleep-chips" role="group" aria-labelledby="ttsSleepL" id="ttsSleepChips">' + sleepChips() + '</div></div>' +
+        '<div class="hint">Minutes from now; reading stops at the end of the sentence. End of chapter stops before the next heading, or at the end of a PDF page.</div>' +
         '</div>';
       foot.innerHTML = '<button class="chip" id="ttsSample">Hear a sample</button>';
-      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr");
+      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr"), sleep = body.querySelector("#ttsSleepChips");
       var pitchEl = body.querySelector("#ttsPitch"), pitchV = body.querySelector("#ttsPitchV");
       narr.addEventListener("change", function(){ setVoice(narr.value); });
-      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); if (playing) speakCurrent(); });
+      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); restart(); });
+      sleep.addEventListener("click", function(e){
+        var ch = e.target.closest(".chip"); if (!ch) return;
+        setSleep(ch.dataset.sleep === "chapter" ? "chapter" : +ch.dataset.sleep);
+      });
       chips.addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch) setExpr(ch.dataset.expr); });
       chips.addEventListener("keydown", function(e){
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -3346,7 +3557,7 @@
       });
       pitchEl.addEventListener("input", function(){
         pitchPref = +pitchEl.value; pitchV.textContent = pitchLabel(); Store.set("ll_tts_pitch", String(pitchPref));
-        if (playing) speakCurrent();
+        restart();
       });
       foot.querySelector("#ttsSample").addEventListener("click", sample);
     }
@@ -3354,18 +3565,19 @@
 
     playBtn.addEventListener("click", function(){ if (playing) pause(); else play(); });
     $("#ttsStop").addEventListener("click", stop);
-    $("#ttsPrev").addEventListener("click", function(){ if (!units.length) return; idx = Math.max(0, idx - 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
-    $("#ttsNext").addEventListener("click", function(){ if (!units.length) return; idx = Math.min(units.length - 1, idx + 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
+    $("#ttsPrev").addEventListener("click", function(){ step(-1); });
+    $("#ttsNext").addEventListener("click", function(){ step(1); });
     rateEl.addEventListener("input", function(){
       rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "×"; Store.set("ll_tts_rate", String(rate));
-      if (playing) speakCurrent();
+      restart();
     });
     voiceSel.addEventListener("change", function(){ setVoice(voiceSel.value); });
     womanBtn.addEventListener("click", function(){ pickGender("f"); });
     manBtn.addEventListener("click", function(){ pickGender("m"); });
     voicesBtn.addEventListener("click", openPanel);
+    sleepBtn.addEventListener("click", openPanel);
     window.addEventListener("resize", measure);
-    window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} });
+    window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} if (silence) try { silence.pause(); } catch(_){} });
 
     Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
@@ -3374,7 +3586,9 @@
       voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
       plan: function(text){ var out = []; unitsFromText(String(text || ""), 0, out); return out; },
       settings: function(){ return { voice: voiceName, dialogue: dialogueName, expr: expr, pitch: pitchPref, rate: rate }; },
-      openPanel: openPanel, sample: sample
+      openPanel: openPanel, sample: sample,
+      sleep: function(){ return { mode: sleepMode, at: sleepAt }; }, setSleep: setSleep,
+      sections: function(){ return sections.slice(); }, silentWav: silentWav
     };
     return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
              units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel, supported: supported };
@@ -3742,6 +3956,160 @@
     window.addEventListener("resize", place);
     Menu.add({ order: 50, label: function(){ return on ? "Hide reading ruler" : "Reading ruler"; }, key: "L", run: toggle, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { toggle: toggle, set: set, isOn: function(){ return on; }, place: place };
+  })();
+
+  /* ============================================================
+     Zen mode — only the text (or the PDF pages) and the thin progress line.
+     body.zen hides the bar, the sheet, the pager and the readouts (app.css);
+     availHeight() gives the pages the whole viewport. Not kept across reloads.
+     ============================================================ */
+  var Zen = (function(){
+    var on = false, owned = false, toasted = false, hinted = false;
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    /* fullscreen when the browser offers it (iOS Safari has none); a refusal is fine */
+    function goFull(){
+      var el = document.documentElement;
+      if (!el.requestFullscreen || document.fullscreenElement) return;
+      try {
+        var p = el.requestFullscreen({ navigationUI: "hide" });
+        if (p && p.then) p.then(function(){ owned = true; if (!on) leaveFull(); }, function(){});
+        else owned = true;
+      } catch(_){}
+    }
+    function leaveFull(){
+      var was = owned; owned = false;
+      if (!was || !document.fullscreenElement || !document.exitFullscreen) return;
+      try { var p = document.exitFullscreen(); if (p && p.catch) p.catch(function(){}); } catch(_){}
+    }
+    /* the header's height changes under the text in Scroll flow: note the place first, land on it after */
+    function relayout(off){
+      relayoutPaged();
+      if (off !== null && off !== undefined && state.flow !== "pages") revealOffset(off);
+    }
+    function enter(){
+      if (on || !docOpen()) return;
+      var off = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null;
+      on = true;
+      setSheet(false); Side.close(); Menu.close();
+      document.body.classList.remove("immersive");
+      document.body.classList.add("zen");
+      goFull();
+      relayout(off);
+      if (!toasted){ toasted = true; Marks.toast("Zen mode — press z or Esc to leave"); }
+    }
+    function exit(){
+      if (!on) return;
+      var off = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null;
+      on = false;
+      document.body.classList.remove("zen", "hidebar");
+      setSheet(false);            /* the sheet is hidden in zen; it must not spring out on the way back */
+      leaveFull();
+      if (docOpen()) relayout(off);
+    }
+    function toggle(){ if (on) exit(); else enter(); }
+    /* the browser's own way out of fullscreen leaves zen too */
+    document.addEventListener("fullscreenchange", function(){ if (on && !document.fullscreenElement) exit(); });
+    /* Escape leaves zen only when nothing else is open; a capture listener sees the sheet, the
+       panel, the card and the menu before their own Escape handlers close them */
+    function somethingOpen(){
+      var sheet = $("#sheet");
+      return (sheet.classList.contains("open") && sheet.offsetHeight > 0) || $("#side").classList.contains("open") ||
+        $("#moreMenu").classList.contains("open") || !!document.querySelector("#dictCard.open, #markPop.on");
+    }
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !on || somethingOpen()) return;
+      exit();
+    }, true);
+    /* in Pages flow the middle tap toggles the bars (tapNav, registered later on the same
+       elements, so this runs first): in zen it only reminds how to leave, once */
+    function middleTap(e){
+      if (!on || !pagedActive() || e.target.closest("a")) return;
+      var sel = window.getSelection();
+      if (sel && sel.toString()) return;
+      var r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+      if (x < 0.35 || x > 0.65) return;
+      e.stopImmediatePropagation();
+      if (!hinted){ hinted = true; Marks.toast("Press z or Esc to leave zen mode"); }
+    }
+    $("#docView").addEventListener("click", middleTap);
+    $("#pdf").addEventListener("click", middleTap);
+    Menu.add({ order: 52, label: function(){ return on ? "Leave zen mode" : "Zen mode"; }, key: "Z", run: toggle, show: docOpen });
+    /* for tests and other scripts */
+    window.llZen = { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
+    return { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
+  })();
+
+  /* ============================================================
+     Print — a text document prints through the browser with the print stylesheet
+     (app.css, @media print). A PDF opens in a new tab and prints from there: the
+     scroll view only keeps the nearby pages drawn, so printing it would lose the rest.
+     ============================================================ */
+  var Print = (function(){
+    var head = $("#printHead");
+    function canPrint(){ return state.mode === "doc" || state.mode === "pdf"; }
+    /* the open file: the File the reader opened (its tab), else the library's copy */
+    function currentFile(){
+      var id = Library.currentId();
+      if (!id) return null;
+      var tab = Tabs.list().filter(function(t){ return t.id === id; })[0];
+      if (tab && tab.file) return tab.file;
+      var book = Library.books().filter(function(b){ return b.id === id; })[0];
+      return book && book.blob ? book.blob : null;
+    }
+    function title(){
+      var name = $("#fname").textContent;
+      if (name) return name;
+      var id = Library.currentId(), book = id ? Library.books().filter(function(b){ return b.id === id; })[0] : null;
+      return book ? (book.title || book.name) : "";
+    }
+    function printPdf(){
+      var file = currentFile();
+      if (!file){ Marks.toast("The PDF isn’t ready to print yet — try again in a moment"); return; }
+      var blob = file.type === "application/pdf" ? file : new Blob([file], { type: "application/pdf" });
+      var url = URL.createObjectURL(blob), win = null;
+      try { win = window.open(url, "_blank"); } catch(_){}
+      Marks.toast(win ? "Opened the PDF in a new tab — print it from there" : "The browser blocked the new tab — allow pop-ups to print this PDF");
+      /* the tab has the file well before then; a minute covers a slow one */
+      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(_){} }, 60000);
+    }
+    function print(){
+      if (!canPrint()) return;
+      Menu.close();
+      if (state.mode === "pdf"){ printPdf(); return; }
+      window.print();
+    }
+    /* the title line at the top of the printout. Pages flow lays the text out in columns
+       scrolled sideways; body.printing marks a print taken from there, so the page can be
+       put back afterwards (the print layout leaves the strip at its start). */
+    function before(){
+      head.textContent = title();
+      if (state.mode === "doc" && state.flow === "pages") document.body.classList.add("printing");
+    }
+    function after(){
+      head.textContent = "";
+      if (!document.body.classList.contains("printing")) return;
+      document.body.classList.remove("printing");
+      /* Chrome is back on the screen layout by now; a browser still on the print one gets the
+         pages measured once it switches back */
+      var mq = window.matchMedia ? window.matchMedia("print") : null;
+      if (!mq || !mq.matches){ relayoutPaged(); return; }
+      var once = function(){
+        if (mq.matches) return;
+        if (mq.removeEventListener) mq.removeEventListener("change", once); else mq.removeListener(once);
+        relayoutPaged();
+      };
+      if (mq.addEventListener) mq.addEventListener("change", once); else mq.addListener(once);
+    }
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    /* Ctrl/⌘+P with a PDF open would print the reader itself, with only the drawn pages on it */
+    document.addEventListener("keydown", function(e){
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "p" || e.key === "P") && state.mode === "pdf"){ e.preventDefault(); printPdf(); }
+    });
+    Menu.add({ order: 70, label: "Print…", run: print, show: canPrint });
+    /* for tests and other scripts */
+    window.llPrint = { print: print, canPrint: canPrint };
+    return { print: print, canPrint: canPrint };
   })();
 
   /* ============================================================
@@ -4212,6 +4580,7 @@
     add("n", "Bookmarks & notes", function(){ Marks.openPanel(); }, docOpen);
     add("r", "Read aloud (start / stop)", function(){ if (Speak.isActive()) Speak.stop(); else Speak.start(); }, docOpen);
     add("l", "Reading ruler", function(){ Ruler.toggle(); }, docOpen);
+    add("z", "Zen mode (enter / leave)", function(){ Zen.toggle(); }, function(){ return Zen.isOn() || docOpen(); });
     add("a", "Auto-scroll (start / stop)", function(){ if (Auto.isOn()) Auto.stop(); else Auto.start(); }, docOpen);
     add("h", "Library / home", function(){ Library.home(); }, docOpen);
     add("i", "About this text", function(){ About.openPanel(); }, docOpen);
@@ -4391,6 +4760,25 @@
       "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
       "#dictCard .plus{align-self:center; color:var(--muted); font-size:0.9375rem; padding:0 1px;}",
       "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
+      /* translation slot (filled by translate.js): the translation in the reader font, an engine line */
+      "#dictCard .tr-slot{margin:2px 0 4px;}",
+      "#dictCard .tr-slot:empty{display:none;}",
+      "#dictCard .tr-out{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 4px; overflow-wrap:break-word;}",
+      "#dictCard .tr-out[dir=rtl]{text-align:right;}",
+      "#dictCard .tr-eng{color:var(--muted); font-size:0.7812rem; padding:0 0 4px;}",
+      /* simplify: the plainer text, each change dotted in the accent colour with a tap-to-show note */
+      "#dictCard .simple{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:4px 0 2px;}",
+      "#dictCard .chg{",
+      "  display:inline; font:inherit; color:inherit; background:transparent; border:0; padding:0; margin:0;",
+      "  cursor:pointer; border-radius:2px; text-decoration:underline dotted var(--accent);",
+      "  text-decoration-thickness:2px; text-underline-offset:3px;",
+      "}",
+      "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 16%, transparent);}",
+      "#dictCard .chgnote{",
+      "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
+      "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--muted);",
+      "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
+      "}",
       "#dictCard .clause{",
       "  padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;",
       "}",
@@ -4445,7 +4833,7 @@
     document.body.appendChild(card);
     var inner = card.querySelector(".inner");
     var pill = document.createElement("div"); pill.id = "dictPill";
-    pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="mark">Highlight</button>';
+    pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="simplify">Simplify</button><button type="button" data-act="mark">Highlight</button><button type="button" data-act="translate">Translate</button>';
     document.body.appendChild(pill);
 
     var openedAt = 0, cardOpener = null;
@@ -4465,9 +4853,13 @@
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
     scrim.addEventListener("click", function(){ if (Date.now() - openedAt > 400) closeCard(); });
     card.querySelector(".grab").addEventListener("click", closeCard);
+    /* the card sits over the side panel and the sheet, so while it is open it takes Escape first
+       (capture phase) and the layers under it stay as they are */
     document.addEventListener("keydown", function(e){
-      if (e.key === "Escape") closeCard();
-    });
+      if (e.key !== "Escape") return;
+      if (card.classList.contains("open")){ e.preventDefault(); e.stopImmediatePropagation(); }
+      closeCard();
+    }, true);
 
     /* ---------- highlight the tapped word ---------- */
     var hitEl = null;
@@ -4630,9 +5022,11 @@
              (navigator.onLine ? '' : ' — you’re offline, so only the built-in dictionary was searched') +
              '.</div>';
       }
+      h += '<div class="tr-slot" data-kind="word"></div>';
       inner.innerHTML = h;
       inner.querySelector(".x").addEventListener("click", closeCard);
       renderParts(term, res);
+      Translate.slot(term, inner.querySelector(".tr-slot"));
     }
 
     /* ---------- word parts (prefix / root / suffix, see llMorph) ----------
@@ -4808,7 +5202,9 @@
               '<div class="term">' + (/\s/.test(sentence) ? 'This sentence' : 'This word') + '</div></div>' +
               '<button class="x" aria-label="Close">×</button></div>' +
               '<div class="quote">' + esc(sentence) + '</div>' +
-              (currentSpan ? '<div class="acts" id="dictMarkActs"><button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button></div>' : '') +
+              '<div class="tr-slot" data-kind="sentence"></div>' +
+              '<div class="acts" id="dictMarkActs"><button class="act" data-m="simplify">Simplify</button>' +
+              (currentSpan ? '<button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button>' : '') + '</div>' +
               '<div id="dictAi"></div>' +
               '<div id="dictExpl"><div class="note">Reading it…' +
               (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
@@ -4816,7 +5212,9 @@
       inner.querySelector(".x").addEventListener("click", closeCard);
       var ma = inner.querySelector("#dictMarkActs");
       if (ma) ma.addEventListener("click", function(e){
-        var b = e.target.closest("button"); if (!b || !window.__ll || !window.__ll.Marks) return;
+        var b = e.target.closest("button"); if (!b) return;
+        if (b.dataset.m === "simplify"){ renderSimplify(sentence, currentSpan); return; }
+        if (!window.__ll || !window.__ll.Marks) return;
         if (b.dataset.m === "read"){ closeCard(); window.__ll.Speak.start(currentSpan.start); return; }
         var m = window.__ll.Marks.addHighlight(currentSpan.start, currentSpan.end);
         closeCard();
@@ -4825,6 +5223,7 @@
       });
       openCard();
       renderAiButton(sentence);
+      Translate.slot(sentence, inner.querySelector(".tr-slot"), { span: currentSpan });
 
       var box = inner.querySelector("#dictExpl");
       /* chunks for every word in the sentence (plus irregular base forms, which can start with another letter) */
@@ -4841,6 +5240,185 @@
         box.innerHTML = '<div class="note">Couldn’t analyse this sentence.</div>';
       });
     }
+
+    /* ---------- simplify: a plainer version of the selected sentence(s), offline (see llExplain.simplify) ----------
+       Drawn in the same card: the original, the plainer text with every change dotted (a tap
+       shows what it was and why), a summary line, and Copy / Read aloud / Highlight / AI actions. */
+    var simpToken = 0, simpUtter = null;
+    /* the dictionary chunks the simplifier needs: every word with its variants and base forms,
+       then the synonyms those entries list (the swap rule reads their entries too) */
+    function simplifyWords(text){
+      var words = (text.toLowerCase().match(/[a-zÀ-ɏ'’-]+/g) || []).map(function(w){ return w.replace(/[’]/g, "'"); });
+      var all = [];
+      words.forEach(function(w){ all.push(w); if (IRREG[w]) all.push(IRREG[w]); variants(w).forEach(function(v){ all.push(v); }); });
+      return withWords(all).then(function(){
+        var syns = [];
+        all.forEach(function(w){
+          var e = find(w);
+          if (e) e.m.forEach(function(m){ (m.s || []).forEach(function(s){ if (/^[a-z]+$/.test(s)) syns.push(s); }); });
+        });
+        return withWords(syns);
+      });
+    }
+    function simplifyText(text){
+      return Promise.all([simplifyWords(text), window.__ll.need(["explain"])]).then(function(){
+        return window.llExplain.simplify(text, find, window.llExplain.rank);
+      });
+    }
+    function stopSimpleSpeech(){
+      if (!simpUtter) return;
+      simpUtter = null;
+      try { speechSynthesis.cancel(); } catch(_){}
+      var b = inner.querySelector("#simpRead");
+      if (b){ b.textContent = "Read aloud"; b.setAttribute("aria-pressed", "false"); }
+    }
+    /* closing the card (any way) stops a reading of the simpler text */
+    new MutationObserver(function(){ if (!card.classList.contains("open")) stopSimpleSpeech(); }).observe(card, { attributes: true, attributeFilter: ["class"] });
+    function simpleSummary(changes){
+      var swaps = 0, phrases = 0, active = 0, splits = 0;
+      changes.forEach(function(c){
+        if (c.why === "rarer word") swaps++;
+        else if (c.why === "shorter phrase" || c.why === "idiom") phrases++;
+        else if (c.why === "passive to active") active++;
+        else if (c.why === "split long sentence") splits++;
+      });
+      var parts = [];
+      function count(k, one, many){ if (k) parts.push(k + " " + (k === 1 ? one : many)); }
+      count(swaps, "word swapped", "words swapped");
+      count(phrases, "phrase shortened", "phrases shortened");
+      count(active, "sentence turned active", "sentences turned active");
+      count(splits, "sentence split", "sentences split");
+      return parts.length ? parts.join(" · ") : "Nothing to simplify — this is already plain.";
+    }
+    function renderSimplify(text, span){
+      text = String(text || "").replace(/\s+/g, " ").trim();
+      if (!text) return;
+      var token = ++simpToken;
+      stopSimpleSpeech();
+      currentSentence = null; currentSpan = null;      /* a late explain result must not draw over this card */
+      var sp = (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
+      inner.innerHTML = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw"><div class="term">Simpler</div></div>' +
+        '<button class="x" aria-label="Close">×</button></div>' +
+        '<div class="quote">' + esc(text) + '</div>' +
+        '<div id="simpBody"><div class="note">Making it plainer…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
+      inner.querySelector(".x").addEventListener("click", closeCard);
+      openCard();
+      simplifyText(text).then(function(r){
+        if (token !== simpToken) return;
+        drawSimple(r, text, sp);
+      }).catch(function(err){
+        console.error(err);
+        if (token !== simpToken) return;
+        inner.querySelector("#simpBody").innerHTML = '<div class="note">Couldn’t simplify this.</div>';
+      });
+    }
+    function drawSimple(r, text, sp){
+      var body = inner.querySelector("#simpBody"), out = r.text, h = '<div class="simple">', pos = 0;
+      r.changes.forEach(function(c){
+        h += esc(out.slice(pos, c.start)) +
+             '<button type="button" class="chg" aria-expanded="false" title="was: ' + esc(c.from) + '" data-from="' + esc(c.from) + '" data-why="' + esc(c.why) + '">' +
+             esc(out.slice(c.start, c.end)) + '</button>';
+        pos = c.end;
+      });
+      h += esc(out.slice(pos)) + '</div>' +
+           '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes)) + '</div>' +
+           '<div class="acts" id="simpActs"><button class="act" data-s="copy">Copy</button>' +
+           ("speechSynthesis" in window ? '<button class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
+           (sp ? '<button class="act" data-s="hl">Highlight</button>' : '') +
+           (navigator.onLine ? '<button class="act go" data-s="ai">Simplify with AI</button>' : '') + '</div>' +
+           '<div id="simpAi"></div>' +
+           (navigator.onLine ? '' : '<div class="note">Offline — simplified with the built-in dictionary only.</div>');
+      body.innerHTML = h;
+      body.addEventListener("click", function(e){
+        var chg = e.target.closest("button.chg");
+        if (chg){ toggleChangeNote(chg); return; }
+        var b = e.target.closest("#simpActs button"); if (!b) return;
+        var act = b.dataset.s;
+        if (act === "copy") copySimple(out);
+        else if (act === "read") readSimple(out, b);
+        else if (act === "hl"){
+          var m = window.__ll && window.__ll.Marks ? window.__ll.Marks.addHighlight(sp.start, sp.end) : null;
+          closeCard();
+          if (m) window.__ll.Marks.toast("Highlighted");
+        } else if (act === "ai"){
+          var key = Store.get(LS_KEY) || "";
+          if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
+          simplifyWithAI(text, key, inner.querySelector("#simpAi"));
+        }
+      });
+    }
+    /* a tap on a changed word shows (or hides) what it was and why it changed */
+    function toggleChangeNote(chg){
+      var open = chg.getAttribute("aria-expanded") === "true", next = chg.nextSibling;
+      if (next && next.nodeType === 1 && next.classList.contains("chgnote")) next.parentNode.removeChild(next);
+      chg.setAttribute("aria-expanded", open ? "false" : "true");
+      if (open) return;
+      var note = document.createElement("span");
+      note.className = "chgnote";
+      note.textContent = "was “" + chg.dataset.from + "” — " + chg.dataset.why;
+      chg.parentNode.insertBefore(note, chg.nextSibling);
+    }
+    function copySimple(s){
+      var done = function(){ if (window.__ll && window.__ll.Marks) window.__ll.Marks.toast("Copied"); };
+      var fallback = function(){
+        var ta = document.createElement("textarea");
+        ta.value = s; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch(_){}
+        document.body.removeChild(ta);
+        done();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).then(done, fallback);
+      else fallback();
+    }
+    /* one plain utterance in the narrator's voice at the saved rate; the button toggles to Stop */
+    function readSimple(s, btn){
+      if (simpUtter){ stopSimpleSpeech(); return; }
+      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
+      if (window.__ll && window.__ll.Speak && window.__ll.Speak.isPlaying()) window.__ll.Speak.pause();
+      var u = new SpeechSynthesisUtterance(s);
+      var name = Store.get("ll_tts_voice") || "", vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
+      for (var i = 0; i < vs.length; i++) if (vs[i].name === name){ u.voice = vs[i]; break; }
+      u.rate = Math.min(2, Math.max(0.5, parseFloat(Store.get("ll_tts_rate") || "1") || 1));
+      u.onend = u.onerror = function(){ if (simpUtter === u){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); } };
+      simpUtter = u; btn.textContent = "Stop"; btn.setAttribute("aria-pressed", "true");
+      try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch(_){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); }
+    }
+    function simplifyWithAI(text, apiKey, aiBox){
+      var token = simpToken;
+      aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
+      var prompt = "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; " +
+        "do not add anything. Reply with the rewritten text only.\n\n" + text;
+      fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({ model: AI_MODEL, max_tokens: 600, messages: [{ role: "user", content: prompt }] })
+      })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        if (token !== simpToken) return;
+        var j = res.j;
+        if (!res.ok) throw new Error((j && j.error && j.error.message) || "the request failed");
+        var txt = (j.content || []).map(function(c){ return c.text || ""; }).join("").trim();
+        if (!txt) throw new Error("empty reply");
+        aiBox.innerHTML = '<div class="sec">Rewritten by Claude</div><div class="ai"></div>';
+        aiBox.querySelector(".ai").textContent = txt;
+      })
+      .catch(function(err){
+        if (token !== simpToken) return;
+        aiBox.innerHTML = '<div class="note">Couldn’t get a rewrite (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
+          '<div class="acts"><button class="act" id="simpAiRetry">Try again</button><button class="act" id="simpAiKey">Change key</button></div>';
+        aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
+        aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
+      });
+    }
+    /* for tests and other modules */
+    window.llSimplify = { render: renderSimplify, simplify: simplifyText };
 
     /* ---------- optional: explain with AI (online + your own key) ---------- */
     function renderAiButton(sentence){
@@ -5095,6 +5673,7 @@
       if (!s || card.classList.contains("open")){ hidePill(); return; }
       var words = s.split(/\s+/).length;
       pill.querySelector("[data-act=lookup]").textContent = words > 1 ? "Explain" : "Define";
+      pill.querySelector("[data-act=simplify]").style.display = words >= 3 ? "" : "none";   /* a plainer version needs a sentence */
       var rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
       if (!rect || (!rect.width && !rect.height)){ hidePill(); return; }
       pill.classList.add("on");
@@ -5117,8 +5696,13 @@
         if (window.Marks_highlightSelection) window.Marks_highlightSelection();
         hidePill(); return;
       }
+      if (b.dataset.act === "simplify"){
+        var so = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
+        hidePill(); if (s) renderSimplify(s, so); return;
+      }
       var off = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
       hidePill();
+      if (b.dataset.act === "translate"){ if (s) Translate.show(s, off); return; }
       if (s) lookupText(s, off);
     });
     window.addEventListener("scroll", hidePill, { passive: true });
@@ -5158,6 +5742,77 @@
       });
       syncChips();
     }
+
+    /* ---------- translation ----------
+       The engines, the cache and the page translator live in translate.js, fetched the first
+       time a Translate button is pressed or the Translation group scrolls into view. The card
+       slots, the settings group and the menu entry are made here so they exist before that. */
+    var Translate = {
+      load: function(){ return need(["translate"]).then(function(){ return window.llTranslate; }); },
+      slot: function(text, el, opts){
+        if (!el) return;
+        Translate.load().then(function(T){ T.slot(text, el, opts); }, function(){ el.innerHTML = '<div class="note">Couldn’t load the translator.</div>'; });
+      },
+      /* the pill's Translate: the card opens straight on a translation view */
+      show: function(text, span){
+        text = String(text || "").replace(/\s+/g, " ").trim();
+        if (!text) return;
+        currentSentence = null;
+        inner.innerHTML = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw"><div class="term">Translation</div></div>' +
+          '<button class="x" aria-label="Close">×</button></div><div class="quote">' + esc(text) + '</div><div class="tr-slot" data-kind="show"></div>';
+        inner.querySelector(".x").addEventListener("click", closeCard);
+        openCard();
+        Translate.slot(text, inner.querySelector(".tr-slot"), { span: span, auto: true, close: closeCard });
+      }
+    };
+    /* target languages: BCP-47 code, English name, native name */
+    var TR_LANGS = [["es","Spanish","Español"],["fr","French","Français"],["de","German","Deutsch"],["it","Italian","Italiano"],["pt","Portuguese","Português"],["nl","Dutch","Nederlands"],["sv","Swedish","Svenska"],["da","Danish","Dansk"],["no","Norwegian","Norsk"],["fi","Finnish","Suomi"],["pl","Polish","Polski"],["cs","Czech","Čeština"],["sk","Slovak","Slovenčina"],["hu","Hungarian","Magyar"],["ro","Romanian","Română"],["el","Greek","Ελληνικά"],["tr","Turkish","Türkçe"],["ru","Russian","Русский"],["uk","Ukrainian","Українська"],["ar","Arabic","العربية"],["he","Hebrew","עברית"],["fa","Persian","فارسی"],["hi","Hindi","हिन्दी"],["bn","Bengali","বাংলা"],["ur","Urdu","اردو"],["id","Indonesian","Bahasa Indonesia"],["ms","Malay","Bahasa Melayu"],["vi","Vietnamese","Tiếng Việt"],["th","Thai","ไทย"],["zh","Chinese (Simplified)","简体中文"],["zh-Hant","Chinese (Traditional)","繁體中文"],["ja","Japanese","日本語"],["ko","Korean","한국어"],["sw","Swahili","Kiswahili"],["ca","Catalan","Català"],["en","English","English"]];
+    /* the browser's own language when it is not English (and is in the table), else Spanish */
+    function trDefaultTo(){
+      var nav = String((navigator.languages && navigator.languages[0]) || navigator.language || "").toLowerCase(), b = nav.split("-")[0];
+      if (b === "zh") return /hant|tw|hk|mo/.test(nav) ? "zh-Hant" : "zh";
+      return b !== "en" && TR_LANGS.some(function(l){ return l[0] === b; }) ? b : "es";
+    }
+    if (sheet){
+      var tg = document.createElement("div");
+      tg.className = "group"; tg.id = "trGroup";
+      var trOpts = TR_LANGS.map(function(l){ return '<option value="' + l[0] + '">' + esc(l[1]) + (l[2] !== l[1] ? ' · ' + esc(l[2]) : '') + '</option>'; }).join("");
+      tg.innerHTML =
+        '<div class="label">Translation</div>' +
+        '<div class="rowline"><label for="trLang">Into</label><select id="trLang" class="sel">' + trOpts + '</select>' +
+        '<label for="trFrom">From</label><select id="trFrom" class="sel"><option value="auto">Auto-detect</option>' + trOpts + '</select></div>' +
+        '<div class="hint" id="trHint">Tap a word or select a sentence for a translation; the menu translates the whole document, shown under each paragraph.</div>';
+      sheet.appendChild(tg);
+      var trTo = tg.querySelector("#trLang"), trFrom = tg.querySelector("#trFrom");
+      if (!Store.get("ll_tr_to")) Store.set("ll_tr_to", trDefaultTo());
+      trTo.value = Store.get("ll_tr_to"); if (!trTo.value){ trTo.value = "es"; Store.set("ll_tr_to", "es"); }
+      trFrom.value = Store.get("ll_tr_from") || "auto"; if (!trFrom.value) trFrom.value = "auto";
+      var trChanged = function(){
+        Store.set("ll_tr_to", trTo.value); Store.set("ll_tr_from", trFrom.value);
+        Translate.load().then(function(T){ T.onSettings(); }).catch(function(){});
+      };
+      trTo.addEventListener("change", trChanged); trFrom.addEventListener("change", trChanged);
+      /* the engines' status line comes with the script, fetched once the group is on screen */
+      var trSeen = function(){ Translate.load().then(function(T){ T.refreshHint(); }).catch(function(){}); };
+      if (window.IntersectionObserver){
+        var trIo = new IntersectionObserver(function(entries){
+          if (entries.some(function(x){ return x.isIntersecting; })){ trIo.disconnect(); trSeen(); }
+        });
+        trIo.observe(tg);
+      } else $("#gear").addEventListener("click", trSeen, { once: true });
+    }
+    Menu.add({ order: 62, key: "",
+      label: function(){ var T = window.llTranslate; return T && T.isOn() ? (T.isPartial() ? "Translate the rest" : "Show original") : "Translate this document…"; },
+      run: function(){ Translate.load().then(function(T){ T.togglePage(); }, function(){ Marks.toast("Couldn’t load the translator"); }); },
+      show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    /* only while a translation is incomplete does "Translate the rest" take the entry above */
+    Menu.add({ order: 63, label: "Show original", run: function(){ Translate.load().then(function(T){ T.showOriginal(); }); },
+      show: function(){ var T = window.llTranslate; return !!(T && T.isOn() && T.isPartial()); } });
+    /* a document left translated comes back translated: the script is wanted as soon as it opens */
+    document.addEventListener("ll:fileopened", function(){
+      var on = Store.get("ll_tr_on");
+      if (!window.llTranslate && on && on !== "{}") Translate.load().catch(function(){});
+    });
 
     /* re-apply after a new file is opened (doc innerHTML is replaced) */
     var mo = new MutationObserver(applyMode);

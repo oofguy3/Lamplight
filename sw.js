@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.16-22";
+const VERSION = "2026.09.20-23";
 const CACHE = "lamplight-" + VERSION;
 const ASSETS = [
   "./",
@@ -10,6 +10,7 @@ const ASSETS = [
   "./app.js",
   "./explain.js",
   "./morph.js",
+  "./translate.js",
   "./manifest.webmanifest",
   "./dict-index.json",
   "./icon-192.png",

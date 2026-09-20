@@ -145,6 +145,7 @@
 </div>
 
 <main id="main" tabindex="-1">
+  <div id="printHead" aria-hidden="true"></div>
   <div id="empty">
     <h1>A quiet place to read.</h1>
     <p>Drop a file anywhere on this page, or open one below.<br>Works fully offline — nothing you open leaves your device.</p>
@@ -174,11 +175,13 @@
   <button class="ctl" id="ttsPrev" title="Previous sentence" aria-label="Previous sentence">‹</button>
   <button class="ctl primary" id="ttsPlay" title="Play / pause" aria-label="Play">▶</button>
   <button class="ctl" id="ttsNext" title="Next sentence" aria-label="Next sentence">›</button>
-  <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
-  <select id="ttsVoice" aria-label="Voice"></select>
   <button class="ctl tts-sex" id="ttsWoman" title="Use a woman's voice" aria-label="Use a woman's voice" aria-pressed="false" hidden>♀</button>
   <button class="ctl tts-sex" id="ttsMan" title="Use a man's voice" aria-label="Use a man's voice" aria-pressed="false" hidden>♂</button>
   <button class="ctl tts-voices" id="ttsVoices" title="Voices, dialogue voice and expression" aria-label="Read-aloud voices" aria-haspopup="dialog">Voices…</button>
+  <button class="ctl tts-sleep" id="ttsSleep" title="Sleep timer — tap to change" aria-live="off" aria-haspopup="dialog" hidden><span id="ttsSleepW"></span><span id="ttsSleepV"></span></button>
+  <i class="tts-break" aria-hidden="true"></i>
+  <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
+  <select id="ttsVoice" aria-label="Voice"></select>
   <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading">×</button>
 </div>
 <div id="sideScrim"></div>
