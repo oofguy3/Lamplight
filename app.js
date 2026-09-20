@@ -2920,9 +2920,10 @@
   var Speak = (function(){
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
-    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices");
+    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices"), sleepBtn = $("#ttsSleep");
     var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
-    var wait = null, sampleGen = 0, voiceKey = "";
+    var startGen = 0;     /* bumped by every start and stop: a PDF page load from an earlier reading bails out */
+    var wait = null, between = false, sampleGen = 0, voiceKey = "";
     var rate = parseFloat(Store.get("ll_tts_rate") || "1") || 1;
     var voiceName = Store.get("ll_tts_voice") || "";
     var dialogueName = Store.get("ll_tts_dialogue") || "";     /* "" = auto (the other voice), "same", or a voice name */
@@ -3019,7 +3020,7 @@
       voiceSel.value = name;
       var narr = $("#ttsNarr"); if (narr) narr.value = name;
       syncSexButtons(); syncHint();
-      if (playing) speakCurrent();
+      restart();
     }
     /* ♀ / ♂: the best voice of that gender; pressed again, the next one */
     function pickGender(g){
@@ -3034,13 +3035,17 @@
     var SENT = /[^.!?…]+[.!?…]*["”’)»]?\s*/g;
     var CLOSER = { "“": "”", "«": "»", "\"": "\"", "‘": "’" };
     function splitLong(text, base, out, meta){
-      /* keep utterances short: some engines cut off after ~15 seconds */
-      if (text.length <= 220){ out.push(Object.assign({ start: base, end: base + text.length, text: text }, meta || {})); return; }
+      /* keep utterances short: some engines cut off after ~15 seconds. Offsets stay in the
+         document's raw coordinates; only the spoken text has its whitespace runs collapsed */
+      function say(s){ return s.replace(/\s+/g, " "); }
+      if (text.length <= 220){ out.push(Object.assign({ start: base, end: base + text.length, text: say(text) }, meta || {})); return; }
       var i = 0;
       while (i < text.length){
+        while (i < text.length && /\s/.test(text.charAt(i))) i++;    /* a piece starts on its first word */
         var j = Math.min(text.length, i + 200);
-        if (j < text.length){ var k = text.lastIndexOf(" ", j); if (k > i + 60) j = k; }
-        out.push(Object.assign({ start: base + i, end: base + j, text: text.slice(i, j) }, meta || {}));
+        if (j < text.length){ var k = j; while (k > i && !/\s/.test(text.charAt(k))) k--; if (k > i + 60) j = k; }
+        if (j <= i) break;
+        out.push(Object.assign({ start: base + i, end: base + j, text: say(text.slice(i, j)) }, meta || {}));
         i = j;
       }
     }
@@ -3073,15 +3078,18 @@
       return spans;
     }
     function unitsFromText(text, base, out, meta){
-      /* paragraphs (blank lines), then sentences, then the quoted speech cut out of each
+      /* paragraphs (blank lines, CRLF too), then sentences, then the quoted speech cut out of each
          sentence as its own unit (dialogue: true, quote marks left out of the text). Offsets are
          relative to base and exact, so highlighting and "read from here" line up. */
-      var re = /\n[ \t]*\n/g, last = 0, m;
+      var re = /\r?\n[ \t]*\r?\n/g, last = 0, m;
       var paras = [];
       while ((m = re.exec(text))){ paras.push([last, m.index]); last = m.index + m[0].length; }
       paras.push([last, text.length]);
       paras.forEach(function(p){
         var seg = text.slice(p[0], p[1]), quotes = quoteSpans(seg), parens = parenSpans(seg), before = out.length;
+        /* both span lists are sorted and sentences only move forward, so a cursor into each
+           replaces a rescan per sentence (a plain-text book can be one paragraph) */
+        var qi = 0, pi = 0;
         SENT.lastIndex = 0;
         var sm;
         while ((sm = SENT.exec(seg))){
@@ -3089,12 +3097,13 @@
           if (!t.length) SENT.lastIndex++;
           if (se <= ss) continue;
           var pieces = [], pos = ss;
-          quotes.forEach(function(q){
-            if (q[1] < ss || q[0] >= se) return;
+          while (qi < quotes.length && quotes[qi][1] < ss) qi++;
+          for (var qj = qi; qj < quotes.length && quotes[qj][0] < se; qj++){
+            var q = quotes[qj];
             if (q[0] > pos) pieces.push([pos, Math.min(q[0], se), false]);
             pieces.push([Math.max(q[0] + 1, ss), Math.min(q[1], se), true]);
             pos = Math.min(q[1] + 1, se);
-          });
+          }
           if (pos < se) pieces.push([pos, se, false]);
           pieces.forEach(function(pc){
             var piece = seg.slice(pc[0], pc[1]);
@@ -3102,8 +3111,10 @@
             var core = piece.slice(lead, piece.length - trail);
             if (!/[A-Za-z0-9À-ɏ]/.test(core)) return;
             var a = pc[0] + lead, b = pc[1] - trail;
-            var paren = parens.some(function(ps){ return ps[0] <= a && b <= ps[1] + 1; });
-            splitLong(core.replace(/\s+/g, " "), base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren }, meta || {}));
+            while (pi < parens.length && parens[pi][1] + 1 < b) pi++;
+            var paren = false;
+            for (var pj = pi; pj < parens.length && parens[pj][0] <= a; pj++){ if (b <= parens[pj][1] + 1){ paren = true; break; } }
+            splitLong(core, base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren }, meta || {}));
           });
         }
         if (out.length > before) out[out.length - 1].last = true;
@@ -3122,7 +3133,8 @@
         if (!first || !text.trim()) return;
         var base = offsetOfNode.get(first);
         if (base === undefined) return;
-        unitsFromText(text, base, out, { heading: /^H[1-4]$/.test(b.tagName) });
+        var h = /^H[1-4]$/.test(b.tagName);
+        unitsFromText(text, base, out, h ? { heading: true, level: +b.tagName.charAt(1) } : { heading: false });
       });
       return out;
     }
@@ -3211,20 +3223,163 @@
       }
     }
 
+    /* ---- lock-screen, notification and headphone controls. Browsers only surface media
+       controls while an <audio> or <video> element plays, and speech alone doesn't count, so a
+       silent half-second loop plays alongside the reading (started from the same gesture, at a
+       whisper of volume: a fully muted element is dropped from the controls on some platforms).
+       The handlers drive the same play / pause / step code as the bar. ---- */
+    var media = "mediaSession" in navigator ? navigator.mediaSession : null;
+    var silence = null, album = null, sections = [];
+    function silentWav(){
+      /* half a second of 16-bit mono silence at 8 kHz as a WAV data: URL, so no file is needed */
+      var n = 4000, b = new Uint8Array(44 + n * 2), i, s = "";
+      function str(o, t){ for (var k = 0; k < t.length; k++) b[o + k] = t.charCodeAt(k); }
+      function u32(o, v){ b[o] = v & 255; b[o + 1] = (v >> 8) & 255; b[o + 2] = (v >> 16) & 255; b[o + 3] = (v >>> 24) & 255; }
+      str(0, "RIFF"); u32(4, 36 + n * 2); str(8, "WAVE");
+      str(12, "fmt "); u32(16, 16); u32(20, 1 | (1 << 16)); u32(24, 8000); u32(28, 16000); u32(32, 2 | (16 << 16));
+      str(36, "data"); u32(40, n * 2);
+      for (i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      return "data:audio/wav;base64," + btoa(s);
+    }
+    function silentAudio(){
+      if (silence) return silence;
+      silence = document.createElement("audio");
+      silence.id = "ttsSilence"; silence.loop = true; silence.volume = 0.01; silence.preload = "auto";
+      silence.setAttribute("aria-hidden", "true");
+      silence.src = silentWav();
+      bar.appendChild(silence);
+      return silence;
+    }
+    function mediaPlay(){
+      try { var p = silentAudio().play(); if (p && p.catch) p.catch(function(){}); } catch(_){}     /* refused: no controls, reading carries on */
+      mediaState("playing");
+    }
+    function mediaPause(){
+      if (silence) try { silence.pause(); } catch(_){}
+      mediaState(active ? "paused" : "none");
+    }
+    function mediaState(s){ if (media) try { media.playbackState = s; } catch(_){} }
+    function mediaTitle(){
+      return ($("#fname").textContent || document.title.replace(/\s+—\s+lamplight$/i, "")).trim() || "Lamplight";
+    }
+    /* title, app and the current section, with the app icon as artwork */
+    function setMeta(section){
+      album = section;
+      if (!media || typeof MediaMetadata === "undefined") return;
+      try {
+        media.metadata = new MediaMetadata({ title: mediaTitle(), artist: "Lamplight", album: section || "",
+          artwork: [{ src: "./icon-192.png", sizes: "192x192", type: "image/png" }, { src: "./icon-512.png", sizes: "512x512", type: "image/png" }] });
+      } catch(_){}
+    }
+    function clearMeta(){ album = null; if (media) try { media.metadata = null; } catch(_){} }
+    /* where the contents' sections start, so the album can follow the chapter: character
+       offsets for a text document, page numbers for a PDF (its outline arrives later) */
+    function loadSections(my){
+      sections = [];
+      if (state.mode === "pdf"){
+        Toc.pdfEntries().then(function(es){
+          if (my !== startGen || !active) return;
+          sections = es.filter(function(e){ return e.page; }).map(function(e){ return { at: e.page, title: e.title }; });
+        });
+        return;
+      }
+      var w = document.createTreeWalker($("#doc"), NodeFilter.SHOW_TEXT);
+      Toc.entries().forEach(function(e){
+        w.currentNode = e.el;
+        var n = w.nextNode(), at = n ? Anchor.offsetOf(n, 0) : null;     /* the first text at or after the section's element */
+        if (at !== null) sections.push({ at: at, title: e.title });
+      });
+      sections.sort(function(a, b){ return a.at - b.at; });
+    }
+    function sectionFor(u){
+      var key = state.mode === "pdf" ? u.page : u.start, t = "";
+      for (var i = 0; i < sections.length && sections[i].at <= key; i++) t = sections[i].title;
+      return t;
+    }
+    if (media){
+      [["play", function(){ if (active && !playing) play(); }], ["pause", function(){ if (playing) pause(); }],
+       ["stop", function(){ if (active) stop(); }],
+       ["previoustrack", function(){ step(-1); }], ["nexttrack", function(){ step(1); }],
+       ["seekbackward", function(){ step(-3); }], ["seekforward", function(){ step(3); }]].forEach(function(h){
+        try { media.setActionHandler(h[0], h[1]); } catch(_){}     /* an action this browser doesn't know throws */
+      });
+    }
+
+    /* ---- sleep timer: stop after so many minutes, or at the end of the chapter (before the
+       next h1–h3; in a PDF, at the end of the page). It counts from the moment it is chosen, or
+       from when reading starts if chosen while paused; reading stops at the end of a sentence,
+       never inside one. Stopping clears it. Not persisted. ---- */
+    var SLEEP = [[0, "Off", ""], [15, "15", "15 minutes"], [30, "30", "30 minutes"], [45, "45", "45 minutes"], [60, "60 min", "60 minutes"], ["chapter", "End of chapter", ""]];
+    var sleepMode = 0, sleepAt = 0, sleepTick = null;
+    function setSleep(mode){
+      sleepMode = mode; sleepAt = 0; clearInterval(sleepTick); sleepTick = null;
+      if (typeof mode === "number" && mode > 0){
+        if (playing) sleepAt = Date.now() + mode * 60000;
+        sleepTick = setInterval(tickSleep, 15000);
+      }
+      syncSleepChips(); drawSleep();
+    }
+    function clearSleep(){ if (sleepMode) setSleep(0); }
+    /* on play: a minutes timer chosen while paused starts counting now; one that ran out
+       meanwhile had nothing to stop, so it is spent */
+    function armSleep(){
+      if (typeof sleepMode !== "number" || !sleepMode) return;
+      if (!sleepAt) sleepAt = Date.now() + sleepMode * 60000;
+      else if (Date.now() >= sleepAt) clearSleep();
+      drawSleep();
+    }
+    function tickSleep(){
+      if (!sleepAt) return;
+      if (Date.now() >= sleepAt && !playing){ clearSleep(); return; }
+      drawSleep();
+    }
+    function sleepDue(u, next){
+      if (sleepMode === "chapter"){
+        if (state.mode === "pdf") return !!(u.page && next.page && next.page !== u.page);
+        return !!(next.heading && next.level <= 3);
+      }
+      return sleepAt > 0 && Date.now() >= sleepAt;
+    }
+    function drawSleep(){
+      var on = !!sleepMode && active;
+      if (on){
+        var l = sleepMode === "chapter" ? ["Stops at", state.mode === "pdf" ? "end of page" : "end of chapter"]
+              : ["Stops in", (sleepAt ? Math.max(1, Math.ceil((sleepAt - Date.now()) / 60000)) : sleepMode) + " min"];
+        $("#ttsSleepW").textContent = l[0]; $("#ttsSleepV").textContent = l[1];     /* two spans: a phone shows only the second */
+        sleepBtn.setAttribute("aria-label", l[0] + " " + l[1] + " — sleep timer");
+      }
+      if (sleepBtn.hidden !== !on){ sleepBtn.hidden = !on; measure(); }
+    }
+    function sleepChips(){
+      return SLEEP.map(function(c){
+        var on = c[0] === sleepMode;
+        return '<button class="chip' + (on ? ' on' : '') + '" aria-pressed="' + (on ? "true" : "false") + '" data-sleep="' + c[0] + '"' + (c[2] ? ' aria-label="' + c[2] + '"' : '') + '>' + c[1] + '</button>';
+      }).join("");
+    }
+    function syncSleepChips(){
+      var box = $("#ttsSleepChips");
+      if (box) Array.prototype.forEach.call(box.querySelectorAll(".chip"), function(c){
+        var on = c.dataset.sleep === String(sleepMode); c.classList.toggle("on", on); c.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+
     /* ---- speaking ---- */
     function speakCurrent(){
       if (!units.length || idx < 0 || idx >= units.length){ finish(); return; }
       var u = units[idx], myGen = ++gen;
-      clearTimeout(wait); sampleGen++;
+      clearTimeout(wait); between = false; sampleGen++;
       try { speechSynthesis.cancel(); } catch(_){}
       paint(u); ensureVisible(u);
       if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
+      var sec = sectionFor(u); if (sec !== album) setMeta(sec);
       var s = utterFor(u, units[idx - 1], units[idx + 1]);
       utter = s.utter;
       utter.onend = function(){
         if (myGen !== gen || !playing) return;
         if (idx + 1 >= units.length){ finish(); return; }
+        if (sleepDue(u, units[idx + 1])){ stop(); Marks.toast("Stopped by the sleep timer"); return; }
         /* a breath between sentences, a longer one after a paragraph; Prev / Next cut it short */
+        between = true;
         wait = setTimeout(function(){ if (myGen !== gen || !playing) return; idx++; speakCurrent(); }, s.pauseAfter);
       };
       utter.onerror = function(e){
@@ -3236,31 +3391,56 @@
       /* Chrome needs a fresh call after cancel() on some platforms */
       setTimeout(function(){ if (myGen === gen && playing) speechSynthesis.speak(utter); }, 0);
     }
+    /* a settings change mid-sentence restarts it; during the breath after one the pending timer
+       starts the next unit with the new settings (restarting would replay the finished one) */
+    function restart(){ if (playing && !between) speakCurrent(); }
+    /* Prev / Next and the headphone buttons: n sentences on, cutting a breath short */
+    function step(n){
+      if (!units.length) return;
+      idx = clamp(idx + n, 0, units.length - 1);
+      if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); }
+    }
     function play(){
       if (!units.length) return;
       playing = true; playBtn.textContent = "❚❚"; playBtn.setAttribute("aria-label", "Pause");
+      armSleep(); mediaPlay();
       speakCurrent();
     }
     function pause(){
-      playing = false; gen++; sampleGen++; clearTimeout(wait);
+      playing = false; between = false; gen++; sampleGen++; clearTimeout(wait);
       try { speechSynthesis.cancel(); } catch(_){}
+      mediaPause();
       playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play");
     }
-    function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); }
+    function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); clearSleep(); }
     function stop(){
-      pause(); paint(null); active = false; units = []; idx = -1;
+      startGen++;     /* a PDF page load still in flight belongs to a reading that is over */
+      pause(); paint(null); active = false; units = []; idx = -1; sections = [];
+      mediaState("none"); clearMeta(); clearSleep();
       bar.classList.remove("on");
       document.body.classList.remove("tts-on");
       if (state.flow === "pages") relayoutPaged();
     }
-    function measure(){ if (active) document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px"); }
+    var narrow = window.matchMedia ? window.matchMedia("(max-width: 720px)") : null;
+    /* the bar's height, for the page to clear it, and one row or two: two below 720px, and
+       whenever the speed control would overflow its row (with the sleep timer showing, one row
+       needs ~830px) */
+    function measure(){
+      if (!active) return;
+      bar.classList.remove("tts-wrap");
+      var lab = rateEl.parentNode;
+      if ((narrow && narrow.matches) || lab.scrollWidth > lab.clientWidth + 1) bar.classList.add("tts-wrap");
+      document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
+    }
     function startFrom(offset){
       if (!supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
       if (state.mode !== "doc" && state.mode !== "pdf") return;
-      active = true; bar.classList.add("on"); fillVoices();
+      var my = ++startGen;
+      active = true; bar.classList.add("on"); fillVoices(); album = null;
       document.body.classList.add("tts-on");
-      measure();
+      drawSleep(); measure();
       if (state.flow === "pages") relayoutPaged();
+      loadSections(my);
       if (state.mode === "doc"){
         units = buildDocUnits();
         var off = typeof offset === "number" ? offset : (Library.topCharOffset() || 0);
@@ -3270,29 +3450,35 @@
         play();
       } else {
         var page = Library.currentPdfPage();
-        loadPdfUnits(page).then(function(){ if (!units.length){ Marks.toast("No text on this page"); stop(); return; } idx = 0; play(); });
+        loadPdfUnits(page, my).then(function(ok){
+          if (!ok) return;       /* stopped, restarted or the document changed while the page's text loaded */
+          if (!units.length){ Marks.toast("No text on this page"); stop(); return; }
+          idx = 0; play();
+        });
       }
     }
-    function loadPdfUnits(page){
+    /* resolves to whether this reading is still the live one once the first page is in */
+    function loadPdfUnits(page, my){
       var doc = state.pdfDoc;
       units = [];
-      var pages = [];
-      for (var p = page; p <= doc.numPages; p++) pages.push(p);
+      function live(){ return my === startGen && active && state.pdfDoc === doc; }
       /* load the first page now, the rest while reading */
       return PdfText.get(page).then(function(t){
+        if (!live()) return false;
         unitsFromText(t, 0, units); units.forEach(function(u){ u.page = page; });
         pdfUnitsDoc = doc;
         var next = page + 1;
         (function more(){
-          if (next > doc.numPages || state.pdfDoc !== doc || !active) return;
+          if (next > doc.numPages || !live()) return;
           var pg = next++;
           PdfText.get(pg).then(function(tt){
-            if (state.pdfDoc !== doc || !active) return;
+            if (!live()) return;
             var add = []; unitsFromText(tt, 0, add); add.forEach(function(u){ u.page = pg; });
             units = units.concat(add);
             setTimeout(more, 50);
           });
         })();
+        return true;
       });
     }
     /* a short line in both voices, so the panel's choices can be heard */
@@ -3333,7 +3519,7 @@
       if (chips) Array.prototype.forEach.call(chips.querySelectorAll(".chip"), function(c){
         var on = c.dataset.expr === v; c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
       });
-      if (playing) speakCurrent();
+      restart();
     }
     function renderPanel(body, foot){
       var vs = sortedVoices();
@@ -3346,12 +3532,18 @@
         '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
         '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
         '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
+        '<div class="rowline"><label id="ttsSleepL">Stop after</label><div class="chips tts-sleep-chips" role="group" aria-labelledby="ttsSleepL" id="ttsSleepChips">' + sleepChips() + '</div></div>' +
+        '<div class="hint">Minutes from now; reading stops at the end of the sentence. End of chapter stops before the next heading, or at the end of a PDF page.</div>' +
         '</div>';
       foot.innerHTML = '<button class="chip" id="ttsSample">Hear a sample</button>';
-      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr");
+      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr"), sleep = body.querySelector("#ttsSleepChips");
       var pitchEl = body.querySelector("#ttsPitch"), pitchV = body.querySelector("#ttsPitchV");
       narr.addEventListener("change", function(){ setVoice(narr.value); });
-      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); if (playing) speakCurrent(); });
+      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); restart(); });
+      sleep.addEventListener("click", function(e){
+        var ch = e.target.closest(".chip"); if (!ch) return;
+        setSleep(ch.dataset.sleep === "chapter" ? "chapter" : +ch.dataset.sleep);
+      });
       chips.addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch) setExpr(ch.dataset.expr); });
       chips.addEventListener("keydown", function(e){
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -3363,7 +3555,7 @@
       });
       pitchEl.addEventListener("input", function(){
         pitchPref = +pitchEl.value; pitchV.textContent = pitchLabel(); Store.set("ll_tts_pitch", String(pitchPref));
-        if (playing) speakCurrent();
+        restart();
       });
       foot.querySelector("#ttsSample").addEventListener("click", sample);
     }
@@ -3371,18 +3563,19 @@
 
     playBtn.addEventListener("click", function(){ if (playing) pause(); else play(); });
     $("#ttsStop").addEventListener("click", stop);
-    $("#ttsPrev").addEventListener("click", function(){ if (!units.length) return; idx = Math.max(0, idx - 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
-    $("#ttsNext").addEventListener("click", function(){ if (!units.length) return; idx = Math.min(units.length - 1, idx + 1); if (playing) speakCurrent(); else { paint(units[idx]); ensureVisible(units[idx]); } });
+    $("#ttsPrev").addEventListener("click", function(){ step(-1); });
+    $("#ttsNext").addEventListener("click", function(){ step(1); });
     rateEl.addEventListener("input", function(){
       rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "×"; Store.set("ll_tts_rate", String(rate));
-      if (playing) speakCurrent();
+      restart();
     });
     voiceSel.addEventListener("change", function(){ setVoice(voiceSel.value); });
     womanBtn.addEventListener("click", function(){ pickGender("f"); });
     manBtn.addEventListener("click", function(){ pickGender("m"); });
     voicesBtn.addEventListener("click", openPanel);
+    sleepBtn.addEventListener("click", openPanel);
     window.addEventListener("resize", measure);
-    window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} });
+    window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} if (silence) try { silence.pause(); } catch(_){} });
 
     Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
@@ -3391,7 +3584,9 @@
       voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
       plan: function(text){ var out = []; unitsFromText(String(text || ""), 0, out); return out; },
       settings: function(){ return { voice: voiceName, dialogue: dialogueName, expr: expr, pitch: pitchPref, rate: rate }; },
-      openPanel: openPanel, sample: sample
+      openPanel: openPanel, sample: sample,
+      sleep: function(){ return { mode: sleepMode, at: sleepAt }; }, setSleep: setSleep,
+      sections: function(){ return sections.slice(); }, silentWav: silentWav
     };
     return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
              units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel, supported: supported };
