@@ -705,3 +705,39 @@
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}
   }
+
+  /* ---------- print ---------- */
+  /* the title line at the top of a printout (Print fills it on beforeprint); never on screen */
+  #printHead{display:none;}
+  @media print{
+    @page{margin:20mm 18mm;}
+    /* the text, not the reader: black on white whatever the theme, nothing fixed or sticky,
+       and no viewport-high body (Pages flow) to cut the printout off at one page */
+    html, body{background:#fff !important; color:#000 !important; height:auto !important; min-height:0 !important; overflow:visible !important;}
+    *{transition:none !important; animation:none !important;}
+    header, #sheet, #pager, #tts, #autoBar, #side, #sideScrim, #dictCard, #dictScrim, #dictPill, #markPop, #progress, #progressInfo,
+    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #pdf, .skip{display:none !important;}
+    body > main{padding:0 !important;}
+    #docView{display:block !important; position:static !important; width:auto !important; max-width:none !important; height:auto !important; overflow:visible !important; padding:0 !important; margin:0 !important;}
+    /* Pages flow sets the columns and the height inline, so these need !important: one long column again */
+    #doc{
+      column-count:auto !important; columns:auto !important; column-width:auto !important; column-gap:normal !important; column-fill:auto !important;
+      height:auto !important; transform:none !important; color:#000; background:#fff;
+      font-family:var(--reader-font); font-size:11pt; line-height:1.5;
+    }
+    #doc::after{display:none !important; content:none !important;}
+    #doc h1, #doc h2, #doc h3, #doc h4{break-after:avoid; page-break-after:avoid;}
+    #doc img, #doc figure, #doc table, #doc pre, #doc blockquote{break-inside:avoid; page-break-inside:avoid;}
+    #doc a{color:#000; text-decoration:underline;}
+    /* the address after a link, only when it leads out to the web */
+    #doc a[href^="http://"]::after, #doc a[href^="https://"]::after{content:" (" attr(href) ")"; font-size:.8em; color:#555; overflow-wrap:anywhere;}
+    /* highlights keep a grey wash and a rule underneath, so they survive a greyscale printer */
+    #doc mark.ll-mark{background:#e2e2e2 !important; color:#000; border-bottom:1px solid #666; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    #doc mark.ll-mark.noted{border-bottom:2px dotted #666;}
+    #doc blockquote{color:#333; border-left-color:#999;}
+    #doc pre{background:#fff; border-color:#bbb; white-space:pre-wrap;}
+    #doc hr{border-top-color:#999;}
+    #doc th, #doc td{border-color:#999;}
+    #printHead{display:block; font-family:var(--ui-font); font-size:9pt; color:#555; border-bottom:1px solid #ccc; padding-bottom:4pt; margin-bottom:1em;}
+    #printHead:empty{display:none;}
+  }

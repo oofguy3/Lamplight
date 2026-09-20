@@ -3843,6 +3843,79 @@
   })();
 
   /* ============================================================
+     Print — a text document prints through the browser with the print stylesheet
+     (app.css, @media print). A PDF opens in a new tab and prints from there: the
+     scroll view only keeps the nearby pages drawn, so printing it would lose the rest.
+     ============================================================ */
+  var Print = (function(){
+    var head = $("#printHead");
+    function canPrint(){ return state.mode === "doc" || state.mode === "pdf"; }
+    /* the open file: the File the reader opened (its tab), else the library's copy */
+    function currentFile(){
+      var id = Library.currentId();
+      if (!id) return null;
+      var tab = Tabs.list().filter(function(t){ return t.id === id; })[0];
+      if (tab && tab.file) return tab.file;
+      var book = Library.books().filter(function(b){ return b.id === id; })[0];
+      return book && book.blob ? book.blob : null;
+    }
+    function title(){
+      var name = $("#fname").textContent;
+      if (name) return name;
+      var id = Library.currentId(), book = id ? Library.books().filter(function(b){ return b.id === id; })[0] : null;
+      return book ? (book.title || book.name) : "";
+    }
+    function printPdf(){
+      var file = currentFile();
+      if (!file){ Marks.toast("The PDF isn’t ready to print yet — try again in a moment"); return; }
+      var blob = file.type === "application/pdf" ? file : new Blob([file], { type: "application/pdf" });
+      var url = URL.createObjectURL(blob), win = null;
+      try { win = window.open(url, "_blank"); } catch(_){}
+      Marks.toast(win ? "Opened the PDF in a new tab — print it from there" : "The browser blocked the new tab — allow pop-ups to print this PDF");
+      /* the tab has the file well before then; a minute covers a slow one */
+      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(_){} }, 60000);
+    }
+    function print(){
+      if (!canPrint()) return;
+      Menu.close();
+      if (state.mode === "pdf"){ printPdf(); return; }
+      window.print();
+    }
+    /* the title line at the top of the printout. Pages flow lays the text out in columns
+       scrolled sideways; body.printing marks a print taken from there, so the page can be
+       put back afterwards (the print layout leaves the strip at its start). */
+    function before(){
+      head.textContent = title();
+      if (state.mode === "doc" && state.flow === "pages") document.body.classList.add("printing");
+    }
+    function after(){
+      head.textContent = "";
+      if (!document.body.classList.contains("printing")) return;
+      document.body.classList.remove("printing");
+      /* Chrome is back on the screen layout by now; a browser still on the print one gets the
+         pages measured once it switches back */
+      var mq = window.matchMedia ? window.matchMedia("print") : null;
+      if (!mq || !mq.matches){ relayoutPaged(); return; }
+      var once = function(){
+        if (mq.matches) return;
+        if (mq.removeEventListener) mq.removeEventListener("change", once); else mq.removeListener(once);
+        relayoutPaged();
+      };
+      if (mq.addEventListener) mq.addEventListener("change", once); else mq.addListener(once);
+    }
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    /* Ctrl/⌘+P with a PDF open would print the reader itself, with only the drawn pages on it */
+    document.addEventListener("keydown", function(e){
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "p" || e.key === "P") && state.mode === "pdf"){ e.preventDefault(); printPdf(); }
+    });
+    Menu.add({ order: 70, label: "Print…", run: print, show: canPrint });
+    /* for tests and other scripts */
+    window.llPrint = { print: print, canPrint: canPrint };
+    return { print: print, canPrint: canPrint };
+  })();
+
+  /* ============================================================
      Auto-scroll (scroll flow) / timed page turns (pages flow)
      ============================================================ */
   var Auto = (function(){
