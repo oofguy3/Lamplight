@@ -253,6 +253,8 @@
   .font-item .font-name{display:block; font-size:1.125rem; line-height:1.3;}
   .font-item[aria-pressed="true"] .font-name::after{content:"\2713"; font-family:var(--ui-font); font-size:.8em; color:var(--accent); margin-left:8px;}
   .font-item .font-note{display:block; font-size:0.75rem; line-height:1.4; color:var(--muted); margin-top:1px;}
+  /* on the tinted rows the muted note slips under 4.5:1 on most themes; ink keeps it readable */
+  .font-item:hover .font-note, .font-item[aria-pressed="true"] .font-note{color:var(--ink);}
   @media (forced-colors: active){
     .font-item{border-color:ButtonText;}
     .font-item[aria-pressed="true"]{border-width:2px; border-color:Highlight;}

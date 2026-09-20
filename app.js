@@ -601,7 +601,7 @@
   var Fonts = (function(){
     var SYSTEM = { easy: "sans", serif: "serif", sans: "sans", mono: "mono" };   /* the stack each group falls back to */
     var faces = {};        /* file url → promise of its face, once requested */
-    var failed = {};       /* font id → true after a fetch failed (forgotten when we come back online) */
+    var failed = {};       /* font id → true while its last fetch failed (cleared once a later one lands) */
     var listEl = null, watcher = null;
     function ids(group){ return Object.keys(FONTS).filter(function(id){ return FONTS[id].group === group; }); }
     function familyOf(f){ return f.family || f.name; }
@@ -638,19 +638,24 @@
     function fallback(f){ document.documentElement.style.setProperty("--reader-font", STACKS[SYSTEM[f.group]]); }
     /* the chosen family: fetched the first time it is used. If that fails (first use while
        offline — the service worker normally holds every file) the group's system face is read
-       in instead, and the family is tried again once the connection is back */
+       in instead; every later use tries the family again, as does coming back online, and its
+       own stack goes back in once it lands. Only the first failure says so */
     function use(id){
       var f = FONTS[id];
       if (!f || !f.files) return;
-      if (failed[id]){ fallback(f); return; }
-      load(id).catch(function(){
+      var again = !!failed[id];           /* failed before: read the system face meanwhile, but try once more */
+      if (again) fallback(f);
+      load(id).then(function(){
+        delete failed[id];
+        if (state.font === id) document.documentElement.style.setProperty("--reader-font", f.stack);
+      }, function(){
         failed[id] = true;
         if (state.font !== id) return;
         fallback(f);
-        Marks.toast("Font not available offline");
+        if (!again) Marks.toast(navigator.onLine ? "Couldn’t load this font" : "Font not available offline");
       });
     }
-    window.addEventListener("online", function(){ failed = {}; if (FONTS[state.font]) use(state.font); });
+    window.addEventListener("online", function(){ if (FONTS[state.font] && failed[state.font]) use(state.font); });
     /* true once a bundled family's regular face is in and ready */
     function loaded(id){
       var f = FONTS[id], ok = false;
@@ -696,9 +701,13 @@
         applyType();
       });
       /* a bundled family's preview is fetched only once its row comes into view, so opening
-         the panel doesn't pull every font at once */
+         the panel doesn't pull every font at once. Adding a face re-lays-out the whole document,
+         though, so a long book, or one in Pages flow, gets every regular face in one go and
+         pays once rather than once per scroll step (the files come from the worker's precache) */
       var rows = Array.prototype.filter.call(listEl.querySelectorAll(".font-item"), function(b){ return !!FONTS[b.dataset.font].files; });
-      if (window.IntersectionObserver){
+      var eager = !window.IntersectionObserver || (state.mode === "doc" && (state.flow === "pages" || $("#doc").textContent.length > 150000));
+      if (eager) rows.forEach(function(b){ load(b.dataset.font, true).catch(function(){}); });
+      else {
         watcher = new IntersectionObserver(function(entries){
           entries.forEach(function(en){
             if (!en.isIntersecting) return;
@@ -707,7 +716,7 @@
           });
         }, { root: body, rootMargin: "80px 0px" });
         rows.forEach(function(b){ watcher.observe(b); });
-      } else rows.forEach(function(b){ load(b.dataset.font, true).catch(function(){}); });
+      }
     }
     function closed(){ if (watcher) watcher.disconnect(); watcher = null; listEl = null; }
     function openPanel(){ Side.open("fonts", "Fonts", render, closed); }
@@ -1586,7 +1595,12 @@
     }
     scrim.addEventListener("click", close);
     $("#sideClose").addEventListener("click", close);
-    document.addEventListener("keydown", function(e){ if (e.key === "Escape" && current) close(); });
+    /* Escape closes only the topmost layer: the key stops here once it has closed a panel, so the
+       settings sheet and the menu, whose listeners come after this one, keep their state; the
+       dictionary card, which sits over the panel, takes the key first in the capture phase */
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape" && current){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    });
     return { open: open, close: close, is: function(name){ return current === name; }, body: body, foot: foot,
              refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; } } };
   })();
@@ -2891,6 +2905,9 @@
       var b = e.target.closest("button[data-about]"); if (!b) return;
       copy(summary(cache.stats, docLabel().name));
     });
+    /* a new document (a file, or another tab) replaces the text under the panel: its numbers
+       would be the old document's, so the panel closes, which also stops a count under way */
+    document.addEventListener("ll:fileopened", function(){ if (Side.is("about")) Side.close(); });
     Menu.add({ order: 60, label: "About this text", key: "I", run: openPanel, show: docOpen });
     window.llAbout = { openPanel: openPanel, stats: analyse, syllables: syllables, sentences: sentencesIn, hardest: hardest, summary: summary };
     return { openPanel: openPanel, stats: analyse, syllables: syllables, hardest: hardest };
@@ -4465,9 +4482,13 @@
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
     scrim.addEventListener("click", function(){ if (Date.now() - openedAt > 400) closeCard(); });
     card.querySelector(".grab").addEventListener("click", closeCard);
+    /* the card sits over the side panel and the sheet, so while it is open it takes Escape first
+       (capture phase) and the layers under it stay as they are */
     document.addEventListener("keydown", function(e){
-      if (e.key === "Escape") closeCard();
-    });
+      if (e.key !== "Escape") return;
+      if (card.classList.contains("open")){ e.preventDefault(); e.stopImmediatePropagation(); }
+      closeCard();
+    }, true);
 
     /* ---------- highlight the tapped word ---------- */
     var hitEl = null;
