@@ -758,8 +758,8 @@
   function availHeight(){
     headVar();
     var head = document.querySelector("header");
-    var headH = document.body.classList.contains("immersive") ? 0 : head.offsetHeight;
-    var pagerH = $("#pager").offsetHeight || 56;
+    var headH = document.body.classList.contains("immersive") || document.body.classList.contains("zen") ? 0 : head.offsetHeight;
+    var pagerH = document.body.classList.contains("zen") ? 0 : ($("#pager").offsetHeight || 56);
     document.documentElement.style.setProperty("--pagerH", pagerH + "px");
     var ttsEl = $("#tts"), ttsH = ttsEl && ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
     return Math.max(160, window.innerHeight - headH - pagerH - ttsH - 26);
@@ -1902,7 +1902,7 @@
     function home(){
       flush();
       abandonOpen();
-      Speak.stop(); Auto.stop(); Ruler.set(false); Side.close();
+      Speak.stop(); Auto.stop(); Ruler.set(false); Zen.exit(); Side.close();
       if (state.mode === "doc" || state.mode === "pdf"){
         document.body.classList.remove("hidebar", "immersive");
         window.scrollTo(0, 0);
@@ -3762,6 +3762,87 @@
   })();
 
   /* ============================================================
+     Zen mode — only the text (or the PDF pages) and the thin progress line.
+     body.zen hides the bar, the sheet, the pager and the readouts (app.css);
+     availHeight() gives the pages the whole viewport. Not kept across reloads.
+     ============================================================ */
+  var Zen = (function(){
+    var on = false, owned = false, toasted = false, hinted = false;
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    /* fullscreen when the browser offers it (iOS Safari has none); a refusal is fine */
+    function goFull(){
+      var el = document.documentElement;
+      if (!el.requestFullscreen || document.fullscreenElement) return;
+      try {
+        var p = el.requestFullscreen({ navigationUI: "hide" });
+        if (p && p.then) p.then(function(){ owned = true; if (!on) leaveFull(); }, function(){});
+        else owned = true;
+      } catch(_){}
+    }
+    function leaveFull(){
+      var was = owned; owned = false;
+      if (!was || !document.fullscreenElement || !document.exitFullscreen) return;
+      try { var p = document.exitFullscreen(); if (p && p.catch) p.catch(function(){}); } catch(_){}
+    }
+    /* the header's height changes under the text in Scroll flow: note the place first, land on it after */
+    function relayout(off){
+      relayoutPaged();
+      if (off !== null && off !== undefined && state.flow !== "pages") revealOffset(off);
+    }
+    function enter(){
+      if (on || !docOpen()) return;
+      var off = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null;
+      on = true;
+      setSheet(false); Side.close(); Menu.close();
+      document.body.classList.remove("immersive");
+      document.body.classList.add("zen");
+      goFull();
+      relayout(off);
+      if (!toasted){ toasted = true; Marks.toast("Zen mode — press z or Esc to leave"); }
+    }
+    function exit(){
+      if (!on) return;
+      var off = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null;
+      on = false;
+      document.body.classList.remove("zen", "hidebar");
+      setSheet(false);            /* the sheet is hidden in zen; it must not spring out on the way back */
+      leaveFull();
+      if (docOpen()) relayout(off);
+    }
+    function toggle(){ if (on) exit(); else enter(); }
+    /* the browser's own way out of fullscreen leaves zen too */
+    document.addEventListener("fullscreenchange", function(){ if (on && !document.fullscreenElement) exit(); });
+    /* Escape leaves zen only when nothing else is open; a capture listener sees the sheet, the
+       panel, the card and the menu before their own Escape handlers close them */
+    function somethingOpen(){
+      var sheet = $("#sheet");
+      return (sheet.classList.contains("open") && sheet.offsetHeight > 0) || $("#side").classList.contains("open") ||
+        $("#moreMenu").classList.contains("open") || !!document.querySelector("#dictCard.open, #markPop.on");
+    }
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !on || somethingOpen()) return;
+      exit();
+    }, true);
+    /* in Pages flow the middle tap toggles the bars (tapNav, registered later on the same
+       elements, so this runs first): in zen it only reminds how to leave, once */
+    function middleTap(e){
+      if (!on || !pagedActive() || e.target.closest("a")) return;
+      var sel = window.getSelection();
+      if (sel && sel.toString()) return;
+      var r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+      if (x < 0.35 || x > 0.65) return;
+      e.stopImmediatePropagation();
+      if (!hinted){ hinted = true; Marks.toast("Press z or Esc to leave zen mode"); }
+    }
+    $("#docView").addEventListener("click", middleTap);
+    $("#pdf").addEventListener("click", middleTap);
+    Menu.add({ order: 52, label: function(){ return on ? "Leave zen mode" : "Zen mode"; }, key: "Z", run: toggle, show: docOpen });
+    /* for tests and other scripts */
+    window.llZen = { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
+    return { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
+  })();
+
+  /* ============================================================
      Auto-scroll (scroll flow) / timed page turns (pages flow)
      ============================================================ */
   var Auto = (function(){
@@ -4229,6 +4310,7 @@
     add("n", "Bookmarks & notes", function(){ Marks.openPanel(); }, docOpen);
     add("r", "Read aloud (start / stop)", function(){ if (Speak.isActive()) Speak.stop(); else Speak.start(); }, docOpen);
     add("l", "Reading ruler", function(){ Ruler.toggle(); }, docOpen);
+    add("z", "Zen mode (enter / leave)", function(){ Zen.toggle(); }, function(){ return Zen.isOn() || docOpen(); });
     add("a", "Auto-scroll (start / stop)", function(){ if (Auto.isOn()) Auto.stop(); else Auto.start(); }, docOpen);
     add("h", "Library / home", function(){ Library.home(); }, docOpen);
     add("i", "About this text", function(){ About.openPanel(); }, docOpen);
