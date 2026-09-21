@@ -3023,9 +3023,21 @@
       var myGen = ++gen, key = keyNow(), mode = state.mode, pdf = state.pdfDoc, note = null;
       function live(){ return myGen === gen && Side.is("about") && state.mode === mode && (mode !== "pdf" || state.pdfDoc === pdf); }
       function status(msg){ if (live() && statusEl) statusEl.textContent = msg; }
-      var src = mode === "pdf" && pdf
-        ? pdfText(pdf, status, live).then(function(r){ if (r && r.capped) note = "first " + MAX_PDF_PAGES + " pages"; return r ? r.text : null; })
-        : Promise.resolve(docText());
+      /* a document switched to a moment ago may still be rendering: count it once it is in */
+      function whenReady(){
+        return new Promise(function(resolve){
+          (function poll(n){
+            var ready = !state.opening && (state.mode !== "doc" || Library._debug().ready.doc);
+            if (ready || n > 150) resolve(); else { status("Waiting for the document\u2026"); setTimeout(function(){ poll(n + 1); }, 100); }
+          })(0);
+        });
+      }
+      var src = whenReady().then(function(){
+        if (!live()) return null;
+        return mode === "pdf" && pdf
+          ? pdfText(pdf, status, live).then(function(r){ if (r && r.capped) note = "first " + MAX_PDF_PAGES + " pages"; return r ? r.text : null; })
+          : docText();
+      });
       src.then(function(text){
         if (text === null || !live()) return null;
         status("Counting words…");
