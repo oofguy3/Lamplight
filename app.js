@@ -3995,34 +3995,925 @@
   })();
 
   /* ============================================================
+     Reading pace — tells reading from everything else, times only the
+     reading, and keeps a words-per-minute (pages-per-minute for PDFs)
+     with a confidence, globally and per book
+     ============================================================ */
+  /* The detector samples where the reader is (the top and bottom word of the visible window, or
+     the PDF page), coalesces the position changes of one gesture, and classifies each settled
+     movement against the last rested window: a step is credited with the words that passed the top
+     and the time since the last step; a fast step beyond half a window is a skim; a dwell longer
+     than the words on screen could take is a pause; a landing beyond the window is a jump. Credited
+     steps form runs; runs that last long enough become the samples of a weighted median, blended
+     with a fading prior, globally and per book. Overlays, read-aloud, auto-scroll and a hidden tab
+     stop the clock or end the run. Everything here runs on Date.now() and plain timers. */
+  var Pace = (function(){
+    var KEY = "ll_pace", DAY = 86400000;
+    /* every constant in one place; tests may change them through llPace._debug.setParams */
+    var Params = {
+      TICK_MS: 250, HEARTBEAT_MS: 1000, SETTLE_MS: 800, STILL_WORDS: 6, JUMP_TOL_MIN: 12, JUMP_TOL_FRAC: 0.12,
+      SKIM_WPM: 1200, SKIM_MIN_FRACTION: 0.5, SKIM_STREAK_CUT: 2, MOVES_SKIM: 3, MIN_PAGE_MS: 4000,
+      MIN_WPM: 60, MIN_DWELL_MS: 30000, HARD_PAUSE_MS: 270000, HARD_PAUSE_INPUT_MS: 420000, INPUT_GUARD_MS: 1500,
+      SLOW_CAP_MS: 600000, HELD_N: 3, HELD_BAND: 2, HELD_MAX_MS: 600000, FLOOR_WPM: 25,
+      NAV_WINDOW_MS: 1500, BLUR_GRACE_MS: 30000, BLOCK_MAX_MS: 1200000, UNMEASURABLE_MS: 5000,
+      RESUME_MS: 120000, RESUME_TOL: 1,
+      MIN_RUN_MS: 40000, MIN_RUN_WORDS: 120, MIN_RUN_STEPS: 2, MIN_RUN_MS_PDF: 30000, MIN_RUN_PAGES: 1,
+      PRIOR_WPM: 230, PRIOR_PPM: 0.5, PRIOR_W: 400, PRIOR_W_BOOK: 400, PRIOR_P: 2, PRIOR_P_BOOK: 2,
+      RUN_WEIGHT_CAP: 3000, RUN_WEIGHT_CAP_P: 20, HALF_LIFE_DAYS: 45,
+      KEEP_RUNS: 60, KEEP_PER_BOOK: 8, MAX_AGE_DAYS: 180, MAX_ENTRIES: 200,
+      CONF_M0: 20, CONF_SPREAD0: 0.6,
+      INDEX_SLICE_CHARS: 200000, SPARSE_WORDS: 40, SAVE_DEBOUNCE_MS: 2000, LIVE_RECOMPUTE_WORDS: 0
+    };
+
+    /* ---- small helpers ---- */
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    function docKeyNow(){ return (Library.currentId() || "") + ":" + state.mode; }
+    function num(x){ return typeof x === "number" && isFinite(x) && x > 0 ? x : 0; }
+    function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
+    var els = {};
+    function el(sel){ var e = els[sel]; if (!e || !document.contains(e)){ e = $(sel); if (e) els[sel] = e; } return e || null; }
+    function has(sel, cls){ var e = el(sel); return !!e && e.classList.contains(cls); }
+    function mins(ms){ return Math.floor(ms / 60000); }
+    function dur(ms){ var m = mins(ms), h = Math.floor(m / 60); return h ? h + " h" + (m % 60 ? " " + (m % 60) + " min" : "") : m + " min"; }
+    function plural(c, one, many){ return c + " " + (c === 1 ? one : many); }
+    function jumpTol(V){ return Math.max(Params.JUMP_TOL_MIN, Math.round(Params.JUMP_TOL_FRAC * V)); }
+    function round3(x){ return x === Infinity ? 1e9 : Math.round(x * 1000) / 1000; }
+
+    /* ---- the word index: the start offset of every word of #doc, built once per document, in
+       slices of characters so a whole novel never blocks a frame. idx(off) is the number of word
+       starts at or before an offset, so positions become word numbers by binary search ---- */
+    var index = { key: null, ready: false, words: 0, slices: 0, ms: 0, starts: [] }, indexGen = 0, indexBuilding = null;
+    function indexKey(){ return docKeyNow() + ":" + Anchor.textLength(); }
+    function indexReady(){ return state.mode === "doc" && index.ready && index.key === indexKey(); }
+    function ensureIndex(){
+      if (state.mode !== "doc") return false;
+      var key = indexKey();
+      if (index.ready && index.key === key) return true;
+      if (indexBuilding !== key) buildIndex(key);
+      return false;
+    }
+    function buildIndex(key){
+      var text = $("#doc").textContent, re = /\S+/g, starts = [], pos = 0, t0 = Date.now(), slices = 0, gen = ++indexGen;
+      indexBuilding = key;
+      function step(){
+        if (gen !== indexGen) return;            /* another document replaced this one meanwhile */
+        var end = Math.min(text.length, pos + Params.INDEX_SLICE_CHARS), m;
+        re.lastIndex = pos;
+        while ((m = re.exec(text)) && m.index < end){ starts.push(m.index); pos = re.lastIndex; }
+        slices++;
+        if (!m){ done(); return; }               /* the regex ran out: done */
+        pos = Math.max(pos, end);                /* a word straddling the boundary was pushed and is skipped by the next slice */
+        setTimeout(step, 0);
+      }
+      function done(){
+        index.key = key; index.ready = true; index.words = starts.length; index.slices = slices; index.ms = Date.now() - t0; index.starts = starts;
+        indexBuilding = null;
+      }
+      step();
+    }
+    function idx(off){
+      var s = index.starts, lo = 0, hi = s.length;
+      while (lo < hi){ var mid = (lo + hi) >> 1; if (s[mid] <= off) lo = mid + 1; else hi = mid; }
+      return lo;
+    }
+    function docWords(){ return indexReady() ? index.words : 0; }
+
+    /* ---- PDF words per page, asked for once a page has been in the rested window ---- */
+    var pageWords = {}, pageAsked = {}, pdfWordsDoc = null;
+    function syncPdfWords(){
+      if (pdfWordsDoc !== state.pdfDoc){ pdfWordsDoc = state.pdfDoc; pageWords = {}; pageAsked = {}; }
+    }
+    function requestPdfWords(){
+      if (!state.pdfDoc || !R) return;
+      syncPdfWords();
+      var doc = state.pdfDoc;
+      for (var i = R.top; i <= R.bottom; i++){
+        if (pageAsked[i]) continue;
+        pageAsked[i] = true;
+        (function(n){
+          PdfText.get(n).then(function(text){ if (pdfWordsDoc === doc) pageWords[n] = (String(text || "").match(/\S+/g) || []).length; });
+        })(i);
+      }
+    }
+    function isSparse(i){ return pageWords[i] !== undefined && pageWords[i] < Params.SPARSE_WORDS; }
+    /* the known words of pages a..b, or null when any of them has not answered yet */
+    function knownWordsIn(a, b){
+      var sum = 0;
+      for (var i = a; i <= b; i++){ if (pageWords[i] === undefined) return null; sum += pageWords[i]; }
+      return sum;
+    }
+
+    /* ---- the visible window: word numbers for text, page numbers for PDFs ---- */
+    var measurements = 0, probeFallbacks = 0, lastMeasureMs = 0, lastV = 0, lastVKey = null;
+    function caretAt(x, y){
+      var r = null;
+      if (document.caretRangeFromPoint) r = document.caretRangeFromPoint(x, y);
+      else if (document.caretPositionFromPoint){ var pp = document.caretPositionFromPoint(x, y); if (pp){ r = document.createRange(); r.setStart(pp.offsetNode, pp.offset); } }
+      if (!r) return null;
+      var n = r.startContainer;
+      if (n.nodeType !== 3 || !n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
+      return Anchor.offsetOf(n, r.startOffset);
+    }
+    function dockHeight(){ return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dockH")) || 0; }
+    /* the last character on screen: topCharOffset's probing, upward from the foot of the view */
+    function bottomCharOffset(){
+      if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
+      var view = $("#doc").getBoundingClientRect(), autoBar = el("#autoBar");
+      var autoH = autoBar && autoBar.classList.contains("on") ? autoBar.offsetHeight : 0;
+      var y1 = Math.min(window.innerHeight, view.bottom) - dockHeight() - autoH - 6;
+      var xs = [view.left + 10, view.left + view.width / 2, view.left + view.width - 10];
+      for (var dy = 0; dy <= 60; dy += 12){
+        for (var k = 0; k < xs.length; k++){
+          var off = caretAt(xs[k], y1 - dy);
+          if (off !== null) return off;
+        }
+      }
+      return null;
+    }
+    /* Pages flow: the first character of page n, read off the column layout like pageTopOffset;
+       -1 past the last page */
+    function pageStartOffset(n){
+      if (state.mode !== "doc" || state.flow !== "pages" || !state.stride) return null;
+      var nodes = Anchor.textNodes();
+      if (!nodes.length) return null;
+      var left = $("#doc").getBoundingClientRect().left, want = n * (state.perPage || 1), r = document.createRange();
+      function col(x){ return Math.floor((x - left + 0.5) / state.stride); }
+      function endCol(i){ r.selectNodeContents(nodes[i]); var b = r.getBoundingClientRect(); return (b.width || b.height) ? col(b.right - 1) : -1; }
+      var ni = firstAtLeast(0, nodes.length - 1, endCol, want);
+      if (ni < 0) return -1;
+      var node = nodes[ni];
+      var ci = firstAtLeast(0, node.length - 1, function(i){
+        r.setStart(node, i); r.setEnd(node, i + 1);
+        var b = r.getBoundingClientRect();
+        return (b.width || b.height) ? col((b.left + b.right) / 2) : -1;
+      }, want);
+      return Anchor.offsetOf(node, ci < 0 ? 0 : ci);
+    }
+    /* when the foot of the view holds no text (an image, a heading gap): the last window, else a
+       guess from the line height and the column width (Auto's formula) */
+    function guessVisibleWords(){
+      var head = Library.headerHeight(), px = Math.max(100, window.innerHeight - head - dockHeight());
+      var colW = Math.min(state.width, $("#docView").clientWidth || state.width);
+      var wordsPerLine = Math.max(4, colW / (state.size * 0.5) / 6);
+      return Math.max(1, Math.round(px / (state.size * state.lh)) * Math.round(wordsPerLine));
+    }
+    function measure(){
+      var t0 = Date.now(), N = null;
+      measurements++;
+      if (state.mode === "doc"){
+        if (!indexReady()) return null;
+        var topOff, bottomOff = null, top, bottom;
+        if (state.flow === "pages"){
+          topOff = pageTopOffset();
+          if (topOff === null) return null;
+          bottomOff = pageStartOffset(state.page + 1);
+          if (bottomOff === null) return null;
+          if (bottomOff < 0) bottomOff = Anchor.textLength();
+          top = idx(topOff); bottom = idx(bottomOff - 1);
+          N = { top: top, bottom: Math.max(top, bottom), page: state.page };
+        } else {
+          topOff = Library.topCharOffset();
+          if (topOff === null) return null;
+          top = idx(topOff);
+          bottomOff = bottomCharOffset();
+          if (bottomOff !== null) bottom = idx(bottomOff);
+          else {
+            probeFallbacks++;
+            bottom = top + (lastV && lastVKey === layoutKeyNow() ? lastV : guessVisibleWords()) - 1;
+          }
+          N = { top: top, bottom: Math.max(top, bottom), page: null };
+          if (bottomOff !== null){ lastV = N.bottom - N.top + 1; lastVKey = layoutKeyNow(); }
+        }
+      } else if (state.mode === "pdf" && state.pdfDoc){
+        var total = state.pdfDoc.numPages;
+        if (state.flow === "pages"){
+          var p = Math.max(1, Math.min(total, state.pdfPageNum || 1));
+          N = { top: p, bottom: Math.min(total, p + (state.perPage || 1) - 1), page: p };
+        } else {
+          var cur = Library.currentPdfPage(), limit = window.innerHeight - dockHeight() - 6, last = cur;
+          var pages = $("#pdf").querySelectorAll(".pdf-page");
+          for (var i = cur; i < pages.length; i++){          /* pages[i] is page i + 1 */
+            if (pages[i].getBoundingClientRect().top < limit) last = +pages[i].dataset.page || (i + 1); else break;
+          }
+          N = { top: cur, bottom: Math.max(cur, last), page: cur };
+        }
+      }
+      if (N) N.V = Math.max(1, N.bottom - N.top + 1);
+      lastMeasureMs = Date.now() - t0;
+      return N;
+    }
+
+    /* ---- sampling: the cheap position key on every poke, a settle after the last change ---- */
+    var posKey = null, layoutKey = null, moves = 0, firstMove = 0, lastChange = 0, pending = false, burstNav = false, relaid = false;
+    var settleTimer = null, failSince = 0, unmeasurable = false;
+    function posKeyNow(){
+      if (state.mode === "doc") return state.flow === "pages" ? "p" + state.page : "y" + Math.round(window.scrollY);
+      return state.flow === "pages" ? "n" + state.pdfPageNum : "y" + Math.round(window.scrollY);
+    }
+    function layoutKeyNow(){
+      var b = document.body.classList;
+      return window.innerWidth + "|" + window.innerHeight + "|" + (state.perPage || 1) + "|" + (state.totalPages || 1) + "|" +
+        (state.mode === "doc" ? Anchor.textLength() : 0) + "|" + state.flow + "|" + state.size + "|" + state.lh + "|" + state.width + "|" + (state.margin || 0) + "|" + state.font + "|" +
+        (b.contains("zen") ? 1 : 0) + (b.contains("immersive") ? 1 : 0) + (has("#tts", "on") ? 1 : 0) + (has("#autoBar", "on") ? 1 : 0) + (has("#sheet", "open") ? 1 : 0);
+    }
+    function overlayOpen(){ return has("#side", "open") || has("#dictCard", "open") || has("#moreMenu", "open"); }
+    function armSettle(){ clearTimeout(settleTimer); settleTimer = setTimeout(settle, Params.SETTLE_MS); }
+    function poke(){
+      if (!docOpen()) return;
+      var now = Date.now(), pk = posKeyNow(), lk = layoutKeyNow();
+      if (posKey === null){ posKey = pk; layoutKey = lk; return; }
+      if (lk !== layoutKey){ relaid = true; lastChange = now; pending = true; armSettle(); }
+      if (pk !== posKey){
+        posKey = pk;
+        if (!moves){ firstMove = now; burstNav = now < navUntil || overlayOpen(); }
+        moves++; lastChange = now; pending = true;
+        armSettle();
+      }
+      layoutKey = lk;
+    }
+
+    /* ---- input: proof that the reader is there, and what cancels a tentative focus loss ---- */
+    var lastInput = 0, inputs = [], lastInputKept = 0, lastPointerMove = 0;
+    function noteInput(e){
+      var now = Date.now();
+      if (e.type === "pointermove"){ if (now - lastPointerMove < 250) return; lastPointerMove = now; }
+      lastInput = now;
+      if (now - lastInputKept >= 1000){ inputs.push(now); if (inputs.length > 64) inputs.shift(); lastInputKept = now; }
+      if (tentOpen) cancelTentative(now);
+    }
+    /* an input inside (P.t, until − guard): the burst's own wheel or key is not evidence of presence during the dwell */
+    function inputDuring(until){
+      if (!P) return false;
+      var lim = until - Params.INPUT_GUARD_MS, t0 = P.t;
+      if (lastInput > t0 && lastInput < lim) return true;
+      for (var i = inputs.length - 1; i >= 0; i--){ if (inputs[i] <= t0) break; if (inputs[i] < lim) return true; }
+      return false;
+    }
+
+    /* ---- blockers: intervals of time that are not reading ---- */
+    var blocks = [], softOpen = null, tentOpen = null, hard = false, blockerList = [], sideWasOpen = false, navUntil = 0;
+    var blurAt = 0, hbFrac = null, hbPage = null;
+    function softActive(){ return !!softOpen || !!tentOpen; }
+    function softBlockers(){
+      var list = [];
+      if (has("#dictCard", "open")) list.push("dictCard");
+      if (has("#side", "open")) list.push("side");
+      var sheet = el("#sheet");
+      if (sheet && sheet.classList.contains("open") && sheet.offsetHeight > 0) list.push("sheet");
+      if (has("#moreMenu", "open")) list.push("menu");
+      if (has("#pop", "open")) list.push("pop");
+      if (document.visibilityState !== "visible") list.push("hidden");
+      if (window.llTranslate && window.llTranslate.isOn && window.llTranslate.isOn()) list.push("translated");
+      return list;
+    }
+    function hardBlockers(){
+      var list = [];
+      if (Speak.isActive()) list.push("speak");
+      if (Auto.isOn() && !Auto.isPaused()) list.push("auto");
+      return list;
+    }
+    /* blocked time inside (t0, t1]: the union of the intervals, clipped */
+    function blockedIn(t0, t1){
+      if (t1 <= t0) return 0;
+      var list = [];
+      blocks.forEach(function(x){ var a = Math.max(x.a, t0), b = Math.min(x.b === null ? t1 : x.b, t1); if (b > a) list.push([a, b]); });
+      list.sort(function(p, q){ return p[0] - q[0]; });
+      var total = 0, cur = null;
+      list.forEach(function(iv){
+        if (!cur || iv[0] > cur[1]){ if (cur) total += cur[1] - cur[0]; cur = iv; }
+        else if (iv[1] > cur[1]) cur[1] = iv[1];
+      });
+      if (cur) total += cur[1] - cur[0];
+      return total;
+    }
+    function pruneBlocks(t){ blocks = blocks.filter(function(x){ return x.b === null || x.b > t; }); }
+    function cancelTentative(now){
+      var i = blocks.indexOf(tentOpen);
+      if (i >= 0) blocks.splice(i, 1);
+      tentOpen = null;
+      record("unblock", { t: now, reason: "input" });
+      if (run && pending) armSettle();
+    }
+    function onFocus(now){
+      blurAt = 0;
+      if (!tentOpen) return;
+      tentOpen.b = now; tentOpen = null;
+      record("unblock", { t: now, reason: "focus" });
+      if (run && pending) armSettle();
+    }
+    function updateBlockers(now, reason){
+      /* a window that lost focus and saw no input for the grace: a tentative block, from when the grace ran out */
+      if (blurAt && !tentOpen){
+        var quiet = Math.max(blurAt, lastInput);
+        if (now - quiet >= Params.BLUR_GRACE_MS){ tentOpen = { a: quiet + Params.BLUR_GRACE_MS, b: null }; blocks.push(tentOpen); record("block", { t: tentOpen.a, reason: "unfocused" }); }
+      }
+      var soft = softBlockers(), hardList = hardBlockers(), sideOpen = has("#side", "open");
+      if (sideWasOpen && !sideOpen) navUntil = now + Params.NAV_WINDOW_MS;
+      sideWasOpen = sideOpen;
+      if (hardList.length && !hard){
+        hard = true;
+        if (run){ justClosed = closeRun("block", now); }
+        hbFrac = clamp(readFrac(), 0, 1); hbPage = state.mode === "pdf" ? Library.currentPdfPage() : null;
+        record("block", { t: now, reason: hardList.join("+") });
+      } else if (!hardList.length && hard){
+        hard = false; hbFrac = null; hbPage = null;
+        moves = 0; firstMove = 0; pending = false;
+        record("unblock", { t: now, reason: reason || "released" });
+      }
+      if (soft.length && !softOpen){
+        softOpen = { a: now, b: null }; blocks.push(softOpen);
+        record("block", { t: now, reason: soft.join("+") });
+      } else if (!soft.length && softOpen){
+        softOpen.b = now; softOpen = null;
+        record("unblock", { t: now, reason: reason || "closed" });
+        if (run && pending) armSettle();       /* the position changed under the overlay: settle now */
+      }
+      blockerList = (hard ? hardList : []).concat(soft, tentOpen ? ["unfocused"] : [], unmeasurable ? ["unmeasurable"] : [], state.opening ? ["opening"] : []);
+    }
+    /* while read-aloud or auto-scroll moves the page the pace learns nothing, but Stats still
+       gets the words that went by, the old way: a fraction of the document per heartbeat */
+    function hardCredit(now){
+      if (state.mode === "doc"){
+        var frac = clamp(readFrac(), 0, 1), total = docWords() || Progress.docWords();
+        var dw = hbFrac === null ? 0 : (frac - hbFrac) * total;
+        hbFrac = frac;
+        if (dw > 0 && dw < 400){
+          if (Speak.isActive()){ if (Speak.isPlaying()){ Stats.noteListened(dw); sess.listened += dw; } }
+          else Stats.noteWords(dw);
+        }
+      } else if (state.pdfDoc){
+        var pg = Library.currentPdfPage(), dp = hbPage === null ? 0 : pg - hbPage;
+        hbPage = pg;
+        if (dp > 0 && dp < 3){
+          if (Speak.isActive()){ if (Speak.isPlaying()){ var kw = knownWordsIn(pg - dp, pg - 1); if (kw){ Stats.noteListened(kw); sess.listened += kw; } } }
+          else Stats.notePages(dp);
+        }
+      }
+    }
+
+    /* ---- the references, the live run and the transitions ---- */
+    var P = null, R = null, run = null, lastClosed = null, justClosed = null, kind = "w", docKey = null, seenKey = null, bookId = null;
+    var skimStreak = 0, lastKind = null, pausedFlag = false, fragments = 0, phase = "off", since = Date.now();
+    var sess = { words: 0, ms: 0, pages: 0, pms: 0, skimmed: 0, listened: 0 };
+    var transitions = [];
+    function record(k, o){
+      o = o || {};
+      var e = { t: o.t !== undefined ? o.t : Date.now(), kind: k };
+      ["adv", "credit", "dt", "blocked", "V", "implied", "moves", "reason", "skimmed", "top"].forEach(function(f){ if (o[f] !== undefined) e[f] = f === "implied" ? round3(o[f]) : o[f]; });
+      transitions.push(e);
+      if (transitions.length > 50) transitions.shift();
+    }
+    function newRun(t0){
+      return { b: bookId, k: kind, t0: t0, w: 0, ms: 0, n: 0, p: 0, wordsKnown: true, held: [], slow: false, buffered: 0,
+               lastTop: null, V: R ? R.V : 1, frontier: P ? P.top : 0, qualified: false, mark: 0, fragCounted: false };
+    }
+    function qualifies(r){
+      if (!r) return false;
+      return r.k === "w" ? (r.ms >= Params.MIN_RUN_MS && r.w >= Params.MIN_RUN_WORDS && r.n >= Params.MIN_RUN_STEPS)
+                         : (r.p >= Params.MIN_RUN_PAGES && r.ms >= Params.MIN_RUN_MS_PDF);
+    }
+    function setP(N){ P = { top: N.top, t: N.t }; R = N; pruneBlocks(N.t); }
+    function dtOf(N){ return Math.max(0, N.t - P.t - blockedIn(P.t, N.t)); }
+    function wAvail(){ return Math.max(1, R.bottom - P.top + 1); }
+    /* how long the words on screen could reasonably take: the floor for a caption, the cap for a
+       break; input during the dwell and a run admitted as slow reading raise the cap */
+    function maxDwell(until){
+      if (run && run.slow) return Params.SLOW_CAP_MS;       /* admitted as slow reading: the words on screen no longer scale it */
+      var cap = inputDuring(until) ? Params.HARD_PAUSE_INPUT_MS : Params.HARD_PAUSE_MS, W;
+      if (kind === "p"){
+        for (var i = R.top; i <= R.bottom; i++) if (isSparse(i)) return cap;
+        W = knownWordsIn(R.top, R.bottom);
+        if (W === null) return cap;
+      } else W = wAvail();
+      return clamp(W / Params.MIN_WPM * 60000, Params.MIN_DWELL_MS, cap);
+    }
+    function statsNote(c){ if (c > 0){ if (kind === "w") Stats.noteWords(c); else Stats.notePages(c); } }
+    function creditStats(c){ if (run.qualified) statsNote(c); else run.buffered += c; }
+    /* a qualifying run enters the estimates; they are refreshed on each credited step once it has
+       (a recompute is a sort of a few dozen runs, at most once per gesture; LIVE_RECOMPUTE_WORDS
+       above 0 would make it every so many words instead) */
+    function afterCredit(){
+      if (!run.qualified && qualifies(run)){
+        run.qualified = true;
+        if (run.buffered > 0) statsNote(run.buffered);
+        run.buffered = 0; run.mark = run.w;
+        if (lastClosed && lastClosed.run !== run) lastClosed.qualifiedAfter = true;
+        dirty = true;
+      } else if (run.qualified && (kind === "p" || run.w - run.mark >= Params.LIVE_RECOMPUTE_WORDS)){ run.mark = run.w; dirty = true; }
+      scheduleSave();
+    }
+    /* pending holds dropped as pauses: the reader did end up past those words, so Stats has them */
+    function dropHolds(r){
+      if (!r.held.length) return;
+      var front = r.frontier;
+      r.held.forEach(function(x){ var c = Math.max(0, x.top - Math.max(x.prevTop, front)); front = Math.max(front, x.top); statsNote(c); });
+      r.held = [];
+    }
+    function storeRun(r, t){
+      var e = { b: r.b, t: t, w: Math.round(r.w), ms: Math.round(r.ms), p: r.p, n: r.n, k: r.k };
+      store.runs.push(e);
+      addAgg(store.books, e);
+      if (lastClosed && lastClosed.run !== r) lastClosed.qualifiedAfter = true;
+      retain(store, t);
+      dirty = true;
+      return e;
+    }
+    function unstoreRun(e){
+      var i = store.runs.lastIndexOf(e);
+      if (i < 0) return;
+      store.runs.splice(i, 1);
+      var b = store.books[e.b];
+      if (b){ b.w = Math.max(0, b.w - e.w); b.ms = Math.max(0, b.ms - e.ms); b.p = Math.max(0, b.p - e.p); b.n = Math.max(0, b.n - 1); }
+      dirty = true;
+    }
+    /* a run ends: kept as a sample when it lasted, otherwise a fragment; remembered for the resume rule */
+    function closeRun(by, t){
+      if (!run) return null;
+      var r = run;
+      dropHolds(r);
+      var q = qualifies(r), entry = null;
+      if (q) entry = storeRun(r, t);
+      else if (r.n > 0 && !r.fragCounted){ fragments++; r.fragCounted = true; }
+      var cand = { run: r, entry: entry, tClose: t, endTop: R ? R.top : r.lastTop, V: R ? R.V : (r.V || 1), by: by, docKey: docKey, qualifiedAfter: false };
+      if (r.n > 0 || q || !lastClosed || lastClosed.docKey !== docKey || t - lastClosed.tClose > Params.RESUME_MS) lastClosed = cand;
+      run = null; pausedFlag = false;
+      dirty = true; scheduleSave();
+      return r;
+    }
+    /* check and return: a jump (or a hard block) closed the run less than two minutes ago and the
+       reader is back within a window of where it ended, with nothing read meanwhile */
+    function tryResume(N, closed){
+      var lc = lastClosed;
+      if (!lc || lc.docKey !== docKey || (lc.by !== "jump" && lc.by !== "block") || lc.qualifiedAfter) return false;
+      if (N.t - lc.tClose > Params.RESUME_MS) return false;
+      if (Math.abs(N.top - lc.endTop) > (kind === "p" ? 1 : Params.RESUME_TOL * lc.V)) return false;
+      if (lc.entry) unstoreRun(lc.entry);
+      run = lc.run; run.held = []; run.V = N.V;
+      if (closed && closed !== run && !closed.fragCounted){ fragments++; closed.fragCounted = true; }
+      lastClosed = null; dirty = true; scheduleSave();
+      return true;
+    }
+    function credit(N, adv, dt, implied){
+      var c, from = Math.max(P.top, run.frontier);
+      if (kind === "w"){ c = Math.max(0, N.top - from); run.w += c; sess.words += c; sess.ms += dt; }
+      else {
+        c = Math.max(0, N.top - from); run.p += c;
+        var kw = knownWordsIn(from, N.top - 1);
+        if (kw === null) run.wordsKnown = false; else run.w += kw;
+        sess.pages += c; sess.pms += dt;
+      }
+      run.ms += dt; run.n += 1; run.frontier = Math.max(run.frontier, N.top); run.lastTop = N.top; run.V = N.V;
+      record("credit", { t: N.t, adv: adv, credit: c, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "credit";
+      creditStats(c); afterCredit();
+    }
+    function skim(N, adv, dt, implied){
+      var from = Math.max(P.top, run.frontier), skipped = kind === "w" ? Math.max(0, N.top - from) : (knownWordsIn(from, N.top - 1) || 0);
+      if (skipped > 0){ Stats.noteSkimmed(skipped); sess.skimmed += skipped; }
+      record("skim", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves, skimmed: skipped });
+      setP(N); skimStreak++; pausedFlag = false; lastKind = "skim";
+      if (skimStreak >= Params.SKIM_STREAK_CUT){
+        closeRun("skim", N.t);
+        run = newRun(N.t); run.frontier = N.top; skimStreak = 0;
+      }
+    }
+    function pause(N, adv, dt, forward){
+      var implied = dt > 0 ? adv / dt * 60000 : 0;
+      if (forward && dt <= Params.HELD_MAX_MS && implied >= Params.FLOOR_WPM){
+        run.held.push({ top: N.top, prevTop: P.top, adv: adv, dt: dt, implied: implied });
+        record("held", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+        setP(N); skimStreak = 0; pausedFlag = true; lastKind = "held";
+        maybeAdmit(N);
+        return;
+      }
+      if (forward) statsNote(Math.max(0, N.top - Math.max(P.top, run.frontier)));
+      record("pause", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+      closeRun("pause", N.t);
+      setP(N); run = newRun(N.t); run.frontier = N.top; skimStreak = 0; pausedFlag = false; lastKind = "pause";
+    }
+    /* three held dwells within a 2× band are slow reading, not three breaks: all of them are credited */
+    function maybeAdmit(N){
+      var h = run.held;
+      if (h.length < Params.HELD_N) return;
+      var mx = -Infinity, mn = Infinity;
+      h.slice(-Params.HELD_N).forEach(function(x){ mx = Math.max(mx, x.implied); mn = Math.min(mn, x.implied); });
+      if (mx / mn > Params.HELD_BAND){
+        var old = h.shift();
+        statsNote(Math.max(0, old.top - Math.max(old.prevTop, run.frontier)));
+        return;
+      }
+      var total = 0;
+      h.forEach(function(x){
+        var from = Math.max(x.prevTop, run.frontier), c = Math.max(0, x.top - from);
+        if (kind === "w") run.w += c;
+        else { run.p += c; var kw = knownWordsIn(from, x.top - 1); if (kw === null) run.wordsKnown = false; else run.w += kw; }
+        run.ms += x.dt; run.n += 1; run.frontier = Math.max(run.frontier, x.top); run.lastTop = x.top;
+        if (kind === "w"){ sess.words += c; sess.ms += x.dt; } else { sess.pages += c; sess.pms += x.dt; }
+        total += c;
+      });
+      run.held = []; run.slow = true; pausedFlag = false; lastKind = "credit";
+      record("admit", { t: N.t, credit: total, V: R.V, moves: moves });
+      creditStats(total); afterCredit();
+    }
+    /* holds pending when a plausible step arrives: they were breaks after all. The run closes at
+       its credited state and a new one starts at the last held position */
+    function reopenAtHeld(){
+      var t = P.t, top = P.top;
+      closeRun("pause", t);
+      run = newRun(t); run.frontier = top;
+    }
+    function step(N){
+      var adv = N.top - P.top, dt = dtOf(N), cap = maxDwell(firstMove || N.t);
+      if (dt > cap){ pause(N, adv, dt, true); return; }
+      if (run.held.length) reopenAtHeld();
+      var implied = dt > 0 ? adv / dt * 60000 : Infinity, fast;
+      if (kind === "w") fast = implied > Params.SKIM_WPM;
+      else {
+        var nonSparse = 0, known = 0;
+        for (var i = P.top; i < N.top; i++){ if (isSparse(i)) continue; nonSparse++; if (pageWords[i] !== undefined) known += pageWords[i]; }
+        fast = nonSparse > 0 && dt < Math.max(Params.MIN_PAGE_MS * nonSparse, known / Params.SKIM_WPM * 60000);
+      }
+      if (fast){
+        if (kind === "w" && adv < Params.SKIM_MIN_FRACTION * R.V){
+          record("defer", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+          R = N;                                   /* the nudge merges into the next transition */
+          return;
+        }
+        skim(N, adv, dt, implied); return;
+      }
+      credit(N, adv, dt, implied);
+    }
+    function backSmall(N){
+      var adv = N.top - P.top, dt = dtOf(N), cap = maxDwell(firstMove || N.t);
+      if (dt > cap){ pause(N, adv, dt, false); return; }
+      if (run.held.length) reopenAtHeld();
+      run.ms += dt; run.n += 1; if (kind === "w") sess.ms += dt; else sess.pms += dt;
+      record("back", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, moves: moves });
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "back";
+      scheduleSave();
+    }
+    /* beyond the rested window: the run ends; a scroll-through skimmed the text in between, one
+       move is navigation. Then the resume rule, or a fresh run where the reader landed */
+    function jump(N, forward){
+      var nav = !forward || burstNav || moves < Params.MOVES_SKIM, skipped = 0;
+      if (!nav){
+        skipped = kind === "w" ? Math.max(0, N.top - R.bottom - 1) : (knownWordsIn(R.bottom + 1, N.top - 1) || 0);
+        if (skipped > 0){ Stats.noteSkimmed(skipped); sess.skimmed += skipped; }
+      }
+      record("jump", { t: N.t, adv: N.top - P.top, dt: dtOf(N), blocked: blockedIn(P.t, N.t), V: R.V, moves: moves, reason: nav ? "navigation" : "skimmed", skimmed: skipped });
+      var closed = closeRun("jump", N.t);
+      setP(N); skimStreak = 0; pausedFlag = false;
+      if (tryResume(N, closed)){ record("resume", { t: N.t, V: N.V, top: N.top }); lastKind = nav ? "resume" : "skimjump"; }
+      else { run = newRun(N.t); run.frontier = N.top; lastKind = nav ? "jump" : "skimjump"; }
+    }
+    function classify(N){
+      var dist = Math.abs(N.top - R.top), still = kind === "w" ? dist <= Params.STILL_WORDS : N.top === R.top;
+      var tol = kind === "w" ? jumpTol(R.V) : 1, reach = Math.max(R.V, N.V);
+      /* a relayout (zen, a resize, a flow switch, a text size) can put the page's first word later
+         than the old top, even changing the page number: the reader did not move, so nothing is
+         skimmed; the origin stays and the next real step credits the words from there */
+      if (still || (relaid && N.top > R.top && N.top <= R.bottom + tol)){
+        record("still", { t: N.t, adv: N.top - R.top, blocked: blockedIn(P.t, N.t), V: N.V, moves: moves, reason: still ? undefined : "relayout" });
+        R = N; return;
+      }
+      /* forward: the new top was on screen at rest, or the text between was never seen; backward:
+         the old top is on screen now (a page back, re-reading), or it is a jump */
+      if (N.top > R.top){
+        if (N.top > R.bottom + tol) jump(N, true); else step(N);
+      } else {
+        if (R.top - N.top > (kind === "w" ? reach + tol : reach)) jump(N, false); else backSmall(N);
+      }
+    }
+    function settle(){
+      clearTimeout(settleTimer); settleTimer = null;
+      var now = Date.now();
+      if (!docOpen()) return;
+      if (!run){ if (!hard && !softActive()) tryAnchor(now, false); refreshPhase(now); return; }
+      if (hard){ moves = 0; firstMove = 0; pending = false; relaid = false; return; }
+      if (softActive()) return;                    /* evaluated when the overlay goes */
+      if (!pending && !unmeasurable) return;
+      var N = measure();
+      if (!N){
+        if (!failSince) failSince = now;
+        if (!unmeasurable && now - failSince >= Params.UNMEASURABLE_MS){ unmeasurable = true; moves = 0; firstMove = 0; pending = false; record("block", { t: now, reason: "unmeasurable" }); }
+        refreshPhase(now); return;
+      }
+      if (unmeasurable) record("unblock", { t: now, reason: "measurable" });
+      failSince = 0; unmeasurable = false;
+      N.t = lastChange || now;
+      pending = false;
+      classify(N);
+      moves = 0; firstMove = 0; burstNav = false; relaid = false;
+      refreshPhase(now);
+    }
+
+    /* ---- anchoring: the first rested window of a document, or after a hard blocker ---- */
+    function tryAnchor(now, force){
+      if (!docOpen() || state.opening) return false;
+      var id = Library.currentId();
+      if (!id || Library._debug().pending) return false;
+      if (state.mode === "doc"){ if (!ensureIndex()) return false; }
+      else if (!state.pdfDoc) return false;
+      if (hard || softActive()) return false;
+      if (!force && lastChange && now - lastChange < Params.SETTLE_MS) return false;
+      var N = measure();
+      if (!N) return false;
+      N.t = now;
+      kind = state.mode === "pdf" ? "p" : "w"; docKey = docKeyNow(); bookId = id;
+      var closed = justClosed; justClosed = null;
+      setP(N); skimStreak = 0; pausedFlag = false; moves = 0; firstMove = 0; pending = false; relaid = false; burstNav = false; unmeasurable = false; failSince = 0;
+      if (tryResume(N, closed)){ record("resume", { t: now, V: N.V, top: N.top }); lastKind = "resume"; }
+      else { run = newRun(now); run.frontier = N.top; record("anchor", { t: now, V: N.V, top: N.top }); lastKind = null; }
+      refreshPhase(now);
+      return true;
+    }
+    /* the document under the detector is gone or replaced: close what was open, start over */
+    function leaveDocument(now){
+      if (run) closeRun("doc", now);
+      lastClosed = null; justClosed = null;
+      P = null; R = null; posKey = null; layoutKey = null; moves = 0; firstMove = 0; pending = false; lastChange = 0; burstNav = false; relaid = false;
+      skimStreak = 0; lastKind = null; pausedFlag = false; unmeasurable = false; failSince = 0;
+      clearTimeout(settleTimer); settleTimer = null;
+      blocks = blocks.filter(function(x){ return x.b === null; });
+      docKey = null; bookId = null; hbFrac = null; hbPage = null;
+      save();
+    }
+    function goOff(now){ leaveDocument(now); seenKey = null; refreshPhase(now); }
+    function onFileOpened(now){ leaveDocument(now); seenKey = null; refreshPhase(now); }
+
+    function computePhase(){
+      if (!docOpen()) return "off";
+      if (blockerList.length || unmeasurable) return "blocked";
+      if (!run) return "anchoring";
+      if (pending && moves) return "moving";
+      if (pausedFlag || run.held.length) return "paused";
+      if (lastKind === "skim" || lastKind === "skimjump") return "skimming";
+      return "reading";
+    }
+    function refreshPhase(now){ var p = computePhase(); if (p !== phase){ phase = p; since = now; } }
+
+    /* ---- the heartbeat: one cheap check a second, no layout work at rest ---- */
+    var observed = {};
+    function attachObservers(){
+      if (!window.MutationObserver) return;
+      ["#dictCard", "#side", "#sheet", "#moreMenu", "#pop", "#tts", "#autoBar"].forEach(function(sel){
+        if (observed[sel]) return;
+        var e = $(sel);
+        if (!e) return;
+        observed[sel] = new MutationObserver(function(){ edge("class " + sel); });
+        observed[sel].observe(e, { attributes: true, attributeFilter: ["class"] });
+      });
+    }
+    function edge(reason){
+      var now = Date.now();
+      if (!docOpen()){ if (phase !== "off") goOff(now); return; }
+      poke();
+      updateBlockers(now, reason);
+      refreshPhase(now);
+    }
+    function heartbeat(){
+      var now = Date.now();
+      if (!docOpen()){ if (phase !== "off") goOff(now); return; }
+      attachObservers();
+      var dk = docKeyNow();
+      if (seenKey !== dk){ if (seenKey !== null) leaveDocument(now); seenKey = dk; }
+      poke();
+      updateBlockers(now, "heartbeat");
+      if (softOpen && run && now - softOpen.a >= Params.BLOCK_MAX_MS){ justClosed = closeRun("block", now); record("block", { t: now, reason: "long" }); }
+      if (hard) hardCredit(now);
+      if (run && !hard && !softActive()){
+        if ((pending || unmeasurable) && now - lastChange >= Params.SETTLE_MS) settle();
+        if (run && P && now - P.t - blockedIn(P.t, now) > maxDwell(now)) pausedFlag = true;
+      }
+      if (!run && !hard && !softActive()) tryAnchor(now, false);
+      if (state.mode === "pdf") requestPdfWords();
+      refreshPhase(now);
+    }
+
+    /* ---- the estimator: a weighted median over recent runs, a fading prior, per book ---- */
+    var store = { runs: [], books: {} }, est = null, dirty = true, bookCache = {}, saveTimer = null;
+    function decay(t, now){ return Math.pow(0.5, Math.max(0, now - t) / DAY / Params.HALF_LIFE_DAYS); }
+    function rateOf(r){ return (r.k === "w" ? r.w : r.p) / r.ms * 60000; }
+    function weightOf(r, now){ return (r.k === "w" ? Math.min(r.w, Params.RUN_WEIGHT_CAP) : Math.min(r.p, Params.RUN_WEIGHT_CAP_P)) * (r.live ? 1 : decay(r.t, now)); }
+    /* piecewise-linear interpolation of the rates over their cumulative weights, at q */
+    function quantile(items, q){
+      var W = 0, acc = 0, pts;
+      items.forEach(function(x){ W += x.u; });
+      if (!W) return null;
+      pts = items.map(function(x){ var c = (acc + x.u / 2) / W; acc += x.u; return { c: c, r: x.r }; });
+      if (q <= pts[0].c) return pts[0].r;
+      if (q >= pts[pts.length - 1].c) return pts[pts.length - 1].r;
+      for (var i = 1; i < pts.length; i++){
+        if (q <= pts[i].c){ var a = pts[i - 1], b = pts[i]; return b.c === a.c ? b.r : a.r + (b.r - a.r) * (q - a.c) / (b.c - a.c); }
+      }
+      return pts[pts.length - 1].r;
+    }
+    function aggregate(runs, now){
+      var items = [];
+      runs.forEach(function(r){ var rate = rateOf(r), u = weightOf(r, now); if (r.ms > 0 && isFinite(rate) && u > 0) items.push({ r: rate, u: u }); });
+      items.sort(function(a, b){ return a.r - b.r; });
+      var W = 0; items.forEach(function(x){ W += x.u; });
+      var m = quantile(items, 0.5), s = null;
+      if (items.length >= 3 && m) s = (quantile(items, 0.75) - quantile(items, 0.25)) / m;
+      return { m: m, W: W, n: items.length, s: s };
+    }
+    function liveEntry(){
+      return run && run.qualified && qualifies(run) ? { b: run.b, t: Date.now(), w: run.w, ms: run.ms, p: run.p, n: run.n, k: run.k, live: true } : null;
+    }
+    function allRuns(){ var list = store.runs.slice(), l = liveEntry(); if (l) list.push(l); return list; }
+    function confidenceOf(runs, w, p, now, own){
+      var n = runs.length, M = 0, ms = 0, books = 0;
+      runs.forEach(function(r){ M += r.ms * (r.live ? 1 : decay(r.t, now)) / 60000; });
+      var A = 1 - Math.exp(-M / Params.CONF_M0), agg = w.n >= p.n ? w : p;
+      var C = agg.n >= 3 && agg.s !== null ? clamp(1 - agg.s / Params.CONF_SPREAD0, 0.3, 1) : 0.7;
+      var cap = n === 0 ? 0 : n === 1 ? 0.35 : n === 2 ? 0.6 : 1;
+      var value = Math.min(cap, A * (0.5 + 0.5 * C));
+      var label = n === 0 ? "not measured yet" : value < 0.2 ? "a first guess" : value < 0.5 ? "an early estimate" : value < 0.8 ? "measured" : "well measured";
+      if (own){ ms = own.ms; books = own.books; }
+      else {
+        var l = liveEntry();
+        Object.keys(store.books).forEach(function(id){ var b = store.books[id]; ms += b.ms; if (b.n >= 1) books++; });
+        if (l){ ms += l.ms; if (!store.books[l.b] || store.books[l.b].n < 1) books++; }
+      }
+      var text = n ? "measured over " + dur(ms) + " of reading in " + plural(books, "book", "books") + (label !== "measured" ? " · " + label : "")
+                   : "not measured yet, using a typical " + Params.PRIOR_WPM + " words per minute";
+      return { value: value, label: label, minutes: mins(ms), books: books, runs: n, text: text };
+    }
+    function compute(){
+      var now = Date.now(), runs = allRuns();
+      var w = aggregate(runs.filter(function(r){ return r.k === "w"; }), now), p = aggregate(runs.filter(function(r){ return r.k === "p"; }), now);
+      var G = (Params.PRIOR_W * Params.PRIOR_WPM + w.W * (w.m || 0)) / (Params.PRIOR_W + w.W);
+      var Gp = (Params.PRIOR_P * Params.PRIOR_PPM + p.W * (p.m || 0)) / (Params.PRIOR_P + p.W);
+      est = { G: G, Gp: Gp, runs: runs, conf: confidenceOf(runs, w, p, now, null), at: now };
+      bookCache = {}; dirty = false;
+      /* the old keys are still written for compatibility; nothing reads them back */
+      if (runs.length){ Store.set("ll_wpm", String(Math.round(G))); Store.set("ll_ppm", Gp.toFixed(2)); }
+      else { Store.remove("ll_wpm"); Store.remove("ll_ppm"); }
+    }
+    function ensure(){ if (dirty || !est || Date.now() - est.at > 3600000) compute(); }
+    function bookEst(id){
+      ensure();
+      if (bookCache[id]) return bookCache[id];
+      var now = est.at, runs = est.runs.filter(function(r){ return r.b === id; });
+      var w = aggregate(runs.filter(function(r){ return r.k === "w"; }), now), p = aggregate(runs.filter(function(r){ return r.k === "p"; }), now);
+      var B = w.W ? (Params.PRIOR_W_BOOK * est.G + w.W * w.m) / (Params.PRIOR_W_BOOK + w.W) : est.G;
+      var Bp = p.W ? (Params.PRIOR_P_BOOK * est.Gp + p.W * p.m) / (Params.PRIOR_P_BOOK + p.W) : est.Gp;
+      var agg = store.books[id], l = liveEntry(), ms = (agg ? agg.ms : 0) + (l && l.b === id ? l.ms : 0);
+      bookCache[id] = { B: B, Bp: Bp, runs: runs.length, ms: ms, conf: confidenceOf(runs, w, p, now, { ms: ms, books: runs.length ? 1 : 0 }) };
+      return bookCache[id];
+    }
+    function wpm(){ ensure(); return est.G; }
+    function ppm(){ ensure(); return est.Gp; }
+    function docWpm(){ var id = Library.currentId(); return id && docOpen() ? bookEst(id).B : wpm(); }
+    function docPpm(){ var id = Library.currentId(); return id && docOpen() ? bookEst(id).Bp : ppm(); }
+    function confidence(){ ensure(); return est.conf; }
+    function docConfidence(){ var id = Library.currentId(); return id && docOpen() ? bookEst(id).conf : confidence(); }
+
+    /* ---- persistence: the retained runs, the all-time totals per book, the live run ---- */
+    function validRun(r){
+      if (!r || typeof r !== "object" || typeof r.b !== "string" || !r.b || (r.k !== "w" && r.k !== "p")) return null;
+      var v = { b: r.b, t: num(r.t), w: num(r.w), ms: num(r.ms), p: num(r.p), n: Math.round(num(r.n)), k: r.k };
+      if (!v.ms || (v.k === "w" ? !v.w : !v.p)) return null;
+      return v;
+    }
+    function addAgg(books, e){
+      var b = books[e.b] || (books[e.b] = { w: 0, ms: 0, p: 0, n: 0, t: 0 });
+      b.w += e.w; b.ms += e.ms; b.p += e.p; b.n += 1; b.t = Math.max(b.t, e.t);
+    }
+    function retain(s, now){
+      var runs = s.runs.filter(function(r){ return now - r.t <= Params.MAX_AGE_DAYS * DAY; }), perBook = {}, n;
+      runs.sort(function(a, b){ return a.t - b.t; });
+      n = runs.length;
+      for (var i = n - 1; i >= 0; i--){
+        var r = runs[i], pb = perBook[r.b] = (perBook[r.b] || 0) + 1;
+        r.keep = (n - 1 - i) < Params.KEEP_RUNS || pb <= Params.KEEP_PER_BOOK;
+      }
+      runs = runs.filter(function(r){ var k = r.keep; delete r.keep; return k; });
+      while (runs.length > Params.MAX_ENTRIES) runs.shift();
+      s.runs = runs;
+      Object.keys(s.books).forEach(function(id){
+        var b = s.books[id];
+        if (!runs.some(function(r){ return r.b === id; }) && now - (b.t || 0) > Params.MAX_AGE_DAYS * DAY) delete s.books[id];
+      });
+    }
+    function load(){
+      var o = null, out = { runs: [], books: {} }, now = Date.now();
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
+      if (o && typeof o === "object"){
+        (Array.isArray(o.runs) ? o.runs : []).forEach(function(r){ var v = validRun(r); if (v) out.runs.push(v); });
+        Object.keys(o.books && typeof o.books === "object" ? o.books : {}).forEach(function(id){
+          var b = o.books[id];
+          if (b && typeof b === "object") out.books[id] = { w: num(b.w), ms: num(b.ms), p: num(b.p), n: Math.round(num(b.n)), t: num(b.t) };
+        });
+        /* a run that was live when the page went away: closed now, kept if it lasted */
+        if (o.live && typeof o.live === "object"){
+          var l = validRun({ b: o.live.b, k: o.live.k, t: num(o.live.t0) + num(o.live.ms), w: o.live.w, ms: o.live.ms, p: o.live.p, n: o.live.n });
+          if (l && qualifies(l)){ out.runs.push(l); addAgg(out.books, l); }
+        }
+      }
+      out.runs.sort(function(a, b){ return a.t - b.t; });
+      /* a seeded or older store without totals: rebuilt from what is retained */
+      out.runs.forEach(function(r){ if (!out.books[r.b]) out.runs.filter(function(x){ return x.b === r.b; }).forEach(function(x){ addAgg(out.books, x); }); });
+      retain(out, now);
+      return out;
+    }
+    function liveSnapshot(){
+      return run && run.n > 0 ? { b: run.b, k: run.k, t0: run.t0, w: Math.round(run.w), ms: Math.round(run.ms), p: run.p, n: run.n, wordsKnown: run.wordsKnown } : null;
+    }
+    function scheduleSave(){ if (!saveTimer) saveTimer = setTimeout(save, Params.SAVE_DEBOUNCE_MS); }
+    function save(){
+      clearTimeout(saveTimer); saveTimer = null;
+      var live = liveSnapshot();
+      if (!store.runs.length && !Object.keys(store.books).length && !live){ Store.remove(KEY); return; }
+      Store.set(KEY, JSON.stringify({ v: 1, runs: store.runs, books: store.books, live: live }));
+    }
+    function reset(){
+      var now = Date.now();
+      run = null; store = { runs: [], books: {} }; lastClosed = null; justClosed = null;
+      P = null; R = null; moves = 0; firstMove = 0; pending = false; relaid = false; lastChange = 0; posKey = null; skimStreak = 0; lastKind = null; pausedFlag = false;
+      sess = { words: 0, ms: 0, pages: 0, pms: 0, skimmed: 0, listened: 0 };
+      blocks = blocks.filter(function(x){ return x.b === null; });
+      clearTimeout(saveTimer); saveTimer = null;
+      Store.remove(KEY); Store.remove("ll_wpm"); Store.remove("ll_ppm");
+      dirty = true; bookCache = {};
+      refreshPhase(now);
+    }
+
+    /* ---- what the rest of the app and the tests read ---- */
+    function runsOut(){ var out = store.runs.map(function(r){ return Object.assign({}, r); }), l = liveEntry(); if (l) out.push(l); return out; }
+    function stateOut(){
+      return {
+        phase: phase, since: since, blockers: blockerList.slice(),
+        window: R ? { top: R.top, bottom: R.bottom, V: R.V, page: R.page } : null,
+        run: run ? { words: run.w, ms: run.ms, n: run.n, pages: run.p, qualifies: qualifies(run), held: run.held.length, slow: run.slow, buffered: run.buffered } : null,
+        skimStreak: skimStreak, docKey: docKey, moves: moves, blockedMs: P ? blockedIn(P.t, Date.now()) : 0
+      };
+    }
+    function summary(){
+      ensure();
+      var id = Library.currentId(), doc = null;
+      if (id && docOpen()){ var be = bookEst(id); if (be.runs > 0) doc = { id: id, wpm: be.B, ppm: be.Bp, ms: be.ms, runs: be.runs }; }
+      return { wpm: est.G, ppm: est.Gp, docWpm: docWpm(), docPpm: docPpm(), confidence: est.conf, doc: doc, runs: store.runs.length,
+               live: run ? { words: run.w, ms: run.ms, n: run.n, pages: run.p, qualifies: qualifies(run) } : null,
+               words: sess.words, ms: sess.ms, pages: sess.pages, pms: sess.pms, skimmed: sess.skimmed, listened: sess.listened };
+    }
+    /* an edge from elsewhere in the app (a mode change, a bar): re-read the blockers now */
+    function noteBlock(reason){ edge(reason || "edge"); }
+
+    /* ---- wiring ---- */
+    store = load();
+    ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"].forEach(function(ev){ window.addEventListener(ev, noteInput, { passive: true, capture: true }); });
+    document.addEventListener("selectionchange", noteInput, { passive: true });
+    document.addEventListener("visibilitychange", function(){ edge("visibility"); if (document.visibilityState === "hidden") save(); });
+    window.addEventListener("pagehide", save);
+    window.addEventListener("blur", function(e){ if (e.target !== window) return; blurAt = Date.now(); });
+    window.addEventListener("focus", function(e){ if (e.target !== window) return; onFocus(Date.now()); edge("focus"); });
+    document.addEventListener("ll:fileopened", function(){ onFileOpened(Date.now()); });
+    setTimeout(attachObservers, 0);
+    setInterval(heartbeat, Params.HEARTBEAT_MS);
+
+    var debug = {
+      params: Params,
+      setParams: function(o){ Object.keys(o || {}).forEach(function(k){ if (k in Params) Params[k] = o[k]; }); dirty = true; },
+      transitions: function(){ return transitions.slice(); },
+      poke: poke, settle: settle, heartbeat: heartbeat, measure: measure,
+      anchorNow: function(){ var now = Date.now(); if (run){ run = null; } P = null; R = null; lastChange = 0; return tryAnchor(now, true); },
+      live: function(){ return run; }, lastClosed: function(){ return lastClosed; }, store: function(){ return store; },
+      blockers: function(){ return blockerList.slice(); }, pageWords: function(){ return Object.assign({}, pageWords); },
+      index: index
+    };
+    Object.defineProperty(debug, "fragments", { get: function(){ return fragments; } });
+    Object.defineProperty(debug, "lastMeasureMs", { get: function(){ return lastMeasureMs; } });
+    Object.defineProperty(debug, "measurements", { get: function(){ return measurements; } });
+    Object.defineProperty(debug, "probeFallbacks", { get: function(){ return probeFallbacks; } });
+    window.llPace = { state: stateOut, runs: runsOut, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence,
+                      summary: summary, reset: reset, _debug: debug };
+    return { poke: poke, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence, summary: summary,
+             state: stateOut, runs: runsOut, docWords: docWords, reset: reset, flush: save, noteBlock: noteBlock };
+  })();
+
+  /* ============================================================
      Reading progress + time left, from your measured reading speed
      ============================================================ */
   var Progress = (function(){
     var el = $("#progressInfo"), hideTimer = null;
-    var wpm = parseFloat(Store.get("ll_wpm") || "0") || 0;    /* words per minute (text) */
-    var ppm = parseFloat(Store.get("ll_ppm") || "0") || 0;    /* pages per minute (pdf) */
-    var PRIOR_WPM = 230, PRIOR_PPM = 0.5, sample = { words: 0, ms: 0, pages: 0, pms: 0 };
-    var docWords = 0, docLen = 0, lastFrac = null, lastT = 0, lastTick = 0, docKey = null;
+    var docWords = 0, docLen = 0, lastTick = 0, docKey = null;
     function countWords(){
       var t = $("#doc").textContent;
       docLen = t.length;
       docWords = (t.match(/\S+/g) || []).length;
     }
-    function currentWpm(){
-      /* blend a prior with what has been measured; measurements dominate after a few hundred words */
-      var measured = sample.ms > 20000 ? sample.words / (sample.ms / 60000) : null;
-      var base = wpm || PRIOR_WPM;
-      if (measured === null) return base;
-      var w = Math.min(1, sample.words / 1500);
-      return base * (1 - w) + measured * w;
+    /* the words of the open text: the pace detector's index once it is built, a plain count until then */
+    function words(){
+      var n = Pace.docWords();
+      if (n) return n;
+      if (!docWords || docLen !== Anchor.textLength()) countWords();
+      return docWords;
     }
-    function currentPpm(){
-      var measured = sample.pms > 20000 ? sample.pages / (sample.pms / 60000) : null;
-      var base = ppm || PRIOR_PPM;
-      if (measured === null) return base;
-      var w = Math.min(1, sample.pages / 15);
-      return base * (1 - w) + measured * w;
-    }
+    /* the speed comes from the pace detector: this book's measured pace, blended toward the
+       global estimate (and the prior) while the book has little of its own */
+    function currentWpm(){ return Pace.docWpm(); }
+    function currentPpm(){ return Pace.docPpm(); }
     function fmt(min){
       if (!isFinite(min) || min < 0) return "";
       if (min < 1) return "under a minute left";
@@ -4037,51 +4928,35 @@
       clearTimeout(hideTimer);
       hideTimer = setTimeout(function(){ el.classList.remove("on"); }, 2600);
     }
+    /* every scroll and page turn: the pace detector sees the movement first (before the throttle,
+       so no gesture's time is lost), then the readout is drawn */
     function tick(){
+      Pace.poke("tick");
       if (state.mode !== "doc" && state.mode !== "pdf") return;
       var now = Date.now();
       if (now - lastTick < 250) return;
       lastTick = now;
       var key = (Library.currentId() || "") + ":" + state.mode;
-      if (key !== docKey){ docKey = key; lastFrac = null; if (state.mode === "doc") countWords(); }
+      if (key !== docKey){ docKey = key; docWords = 0; docLen = 0; }
       var frac = Math.max(0, Math.min(1, readFrac()));
       var text;
       if (state.mode === "doc"){
-        if (docLen !== $("#doc").textContent.length) countWords();
-        if (lastFrac !== null){
-          var dt = now - lastT, dw = (frac - lastFrac) * docWords;
-          /* count only steady forward reading: small steps, no long pauses */
-          if (dt > 0 && dt < 45000 && dw > 0 && dw < 400 && document.visibilityState === "visible"){ sample.words += dw; sample.ms += dt; Stats.noteWords(dw); }
-        }
-        var left = (1 - frac) * docWords / currentWpm();
-        text = Math.round(frac * 100) + "%" + (docWords > 80 ? " \u00B7 " + fmt(left) : "");
+        var n = words();
+        var left = (1 - frac) * n / currentWpm();
+        text = Math.round(frac * 100) + "%" + (n > 80 ? " \u00B7 " + fmt(left) : "");
       } else {
         var pages = state.pdfDoc ? state.pdfDoc.numPages : 1, page = Library.currentPdfPage();
-        if (lastFrac !== null){
-          var dt2 = now - lastT, dp = (frac - lastFrac) * (pages - 1);
-          if (dt2 > 0 && dt2 < 120000 && dp > 0 && dp < 3 && document.visibilityState === "visible"){ sample.pages += dp; sample.pms += dt2; Stats.notePages(dp); }
-        }
         var leftP = (pages - page) / currentPpm();
         text = "p. " + page + " / " + pages + (pages > 3 ? " \u00B7 " + fmt(leftP) : "");
       }
-      lastFrac = frac; lastT = now;
       show(text);
-      maybeStore();
-    }
-    var storeTimer = null;
-    function maybeStore(){
-      clearTimeout(storeTimer);
-      storeTimer = setTimeout(function(){
-        if (sample.ms > 60000 && sample.words > 300){ wpm = currentWpm(); Store.set("ll_wpm", wpm.toFixed(0)); }
-        if (sample.pms > 60000 && sample.pages > 3){ ppm = currentPpm(); Store.set("ll_ppm", ppm.toFixed(2)); }
-      }, 1500);
     }
     /* the time left from here, worded for the page-turn bar ("18 min left"), or "" when the
        document is too short to say */
     function left(){
       if (state.mode === "doc"){
-        if (!docWords || docLen !== $("#doc").textContent.length) countWords();
-        return docWords > 80 ? fmt((1 - Math.max(0, Math.min(1, readFrac()))) * docWords / currentWpm()) : "";
+        var n = words();
+        return n > 80 ? fmt((1 - Math.max(0, Math.min(1, readFrac()))) * n / currentWpm()) : "";
       }
       if (state.mode === "pdf" && state.pdfDoc){
         var pages = state.pdfDoc.numPages;
@@ -4089,7 +4964,7 @@
       }
       return "";
     }
-    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
+    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, sample: function(){ return Pace.summary(); }, docWords: words };
   })();
 
   /* ============================================================
@@ -4120,18 +4995,18 @@
       Object.keys(o.days && typeof o.days === "object" ? o.days : {}).forEach(function(k){
         var d = o.days[k];
         if (!/^\d{4}-\d\d-\d\d$/.test(k) || !d || typeof d !== "object") return;
-        out.days[k] = { ms: num(d.ms), words: num(d.words), pages: num(d.pages), docs: Array.isArray(d.docs) ? d.docs.filter(function(x){ return typeof x === "string"; }) : [] };
+        out.days[k] = { ms: num(d.ms), words: num(d.words), pages: num(d.pages), skimmed: num(d.skimmed), listened: num(d.listened), docs: Array.isArray(d.docs) ? d.docs.filter(function(x){ return typeof x === "string"; }) : [] };
       });
       Object.keys(o.books && typeof o.books === "object" ? o.books : {}).forEach(function(k){
         var b = o.books[k];
-        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), opened: Math.round(num(b.opened)), finished: !!b.finished };
+        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), skimmed: num(b.skimmed), listened: num(b.listened), opened: Math.round(num(b.opened)), finished: !!b.finished };
       });
       if (o.best && typeof o.best === "object") out.best = { streak: Math.round(num(o.best.streak)), day: typeof o.best.day === "string" ? o.best.day : "" };
       if (typeof o.notified === "string") out.notified = o.notified;
       return out;
     }
     /* words and pages arrive in fractions; they are rounded on the way out, never in memory */
-    function tidy(k, v){ return k === "words" ? Math.round(v) : k === "pages" ? Math.round(v * 10) / 10 : v; }
+    function tidy(k, v){ return k === "words" || k === "skimmed" || k === "listened" ? Math.round(v) : k === "pages" ? Math.round(v * 10) / 10 : v; }
     function save(){
       clearTimeout(saveTimer); saveTimer = null;
       if (!dirty) return;
@@ -4145,8 +5020,8 @@
     window.addEventListener("pagehide", save);
 
     /* ---- records ---- */
-    function day(key){ return data.days[key] || (data.days[key] = { ms: 0, words: 0, pages: 0, docs: [] }); }
-    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, opened: 0, finished: false }); }
+    function day(key){ return data.days[key] || (data.days[key] = { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0, docs: [] }); }
+    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0, opened: 0, finished: false }); }
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
     /* the open document belongs to today; an opening is counted once per open (the id arrives a moment after the file) */
     function noteDoc(){
@@ -4159,9 +5034,13 @@
       return b;
     }
     function noteFinished(b){ if (b && !b.finished && readFrac() >= 0.98){ b.finished = true; touch(); } }
-    /* forward reading, as Progress measures it */
-    function noteWords(dw){ var b = noteDoc(); if (!b) return; day(todayKey()).words += dw; b.words += dw; lastActive = Date.now(); noteFinished(b); touch(); }
-    function notePages(dp){ var b = noteDoc(); if (!b) return; day(todayKey()).pages += dp; b.pages += dp; lastActive = Date.now(); noteFinished(b); touch(); }
+    /* forward reading, as the pace detector credits it (and auto-scroll's advances) */
+    function noteWords(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).words += dw; b.words += dw; lastActive = Date.now(); noteFinished(b); touch(); }
+    function notePages(dp){ var b = noteDoc(); if (!b || !(dp > 0)) return; day(todayKey()).pages += dp; b.pages += dp; lastActive = Date.now(); noteFinished(b); touch(); }
+    /* words the detector saw pass by too fast to be read, and words read aloud: counted apart,
+       and no sign of the reader's own activity */
+    function noteSkimmed(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).skimmed += dw; b.skimmed += dw; touch(); }
+    function noteListened(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).listened += dw; b.listened += dw; touch(); }
 
     /* ---- goal and streak ---- */
     function met(key){ var d = data.days[key]; return !!d && d.ms >= data.goal * 60000; }
@@ -4212,6 +5091,7 @@
     function onMode(mode){
       if (mode === "doc" || mode === "pdf"){ active(); if (!noteDoc()) setTimeout(noteDoc, 600); }
       else docKey = null;
+      Pace.noteBlock("mode");
       renderWidget();
     }
 
@@ -4255,11 +5135,12 @@
     /* ---- panel ---- */
     function row(k, v){ return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
     function renderPanel(body, foot){
-      var k = todayKey(), t = data.days[k] || { ms: 0, words: 0, pages: 0 }, goalMs = data.goal * 60000, done = t.ms >= goalMs;
+      var k = todayKey(), t = data.days[k] || { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0 }, goalMs = data.goal * 60000, done = t.ms >= goalMs;
       var s = streak(), left = Math.max(0, Math.ceil((goalMs - t.ms) / 60000)), h = "";
       /* today */
       var also = [plural(Math.round(t.words), "word", "words")];
       if (t.pages >= 1) also.push(plural(Math.round(t.pages), "page", "pages"));
+      if ((t.skimmed || 0) >= 1) also.push(count(t.skimmed) + " skimmed");
       h += '<section class="st-sec"><div class="label sec">Today</div><div class="st-today">' +
         '<div class="st-ring" style="--p:' + Math.min(100, Math.round(t.ms / goalMs * 100)) + '%" aria-hidden="true"></div>' +
         '<div><div class="st-big">' + mins(t.ms) + '<span> of ' + data.goal + ' min</span></div>' +
@@ -4279,15 +5160,23 @@
           return '<div class="st-bar' + (met(key) ? ' met' : '') + '" style="height:' + pct.toFixed(1) + '%" role="img" aria-label="' + dayTitle(key) + '"></div>';
         }).join("") + '</div>' +
         '<div class="st-line">This week ' + dur(sum(ws, 7)) + ' · last week ' + dur(sum(addDays(ws, -7), 7)) + '</div></section>';
-      /* all time */
-      var all = { ms: 0, words: 0, pages: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
-      dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; });
+      /* all time, with the measured pace: the estimate over every book, this book's own, and how
+         much reading the numbers rest on */
+      var all = { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
+      dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; all.skimmed += d.skimmed || 0; all.listened += d.listened || 0; });
       var finished = ids.filter(function(id){ return data.books[id].finished; }).length, first = dayKeys.length ? dateOf(dayKeys[0]) : null;
+      var pace = Pace.summary(), thisDoc = "";
+      if (pace.doc && docOpen()){
+        thisDoc = state.mode === "pdf" ? row("This document", pace.doc.ppm.toFixed(1) + " pages per minute over " + dur(pace.doc.ms))
+                                       : row("This document", Math.round(pace.doc.wpm) + " words per minute over " + dur(pace.doc.ms));
+      }
       h += '<section class="st-sec"><div class="label sec">All time</div><dl class="st-grid">' +
         row("Time read", dur(all.ms)) + row("Words", count(all.words)) + row("Pages", count(all.pages)) +
+        (all.skimmed >= 1 ? row("Skimmed", count(all.skimmed)) : "") + (all.listened >= 1 ? row("Listened", count(all.listened)) : "") +
         row("Documents opened", count(ids.length)) + row("Books finished", count(finished)) +
-        row("Average speed", Math.round(Progress.wpm()) + " words per minute") +
-        row("First day recorded", first ? first.getDate() + " " + MO[first.getMonth()] + " " + first.getFullYear() : "—") + '</dl></section>';
+        row("Average speed", Math.round(Pace.wpm()) + " words per minute") + thisDoc +
+        row("First day recorded", first ? first.getDate() + " " + MO[first.getMonth()] + " " + first.getFullYear() : "—") + '</dl>' +
+        '<div class="st-hint">' + pace.confidence.text + '</div></section>';
       /* goal */
       h += '<section class="st-sec"><div class="label sec">Daily goal</div><div class="chips st-goals" role="group" aria-label="Daily goal in minutes">' +
         GOALS.map(function(g){ return '<button type="button" class="chip' + (g === data.goal ? ' on' : '') + '" data-goal="' + g + '" aria-pressed="' + (g === data.goal) + '" aria-label="' + plural(g, "minute", "minutes") + ' a day">' + g + '</button>'; }).join("") +
@@ -4317,12 +5206,13 @@
       setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
     }
     function exportJson(){
-      var out = { app: "Lamplight", exported: new Date().toISOString(), goal: data.goal, streak: streak(), best: data.best, days: data.days, books: data.books };
+      var out = { app: "Lamplight", exported: new Date().toISOString(), goal: data.goal, streak: streak(), best: data.best, days: data.days, books: data.books, pace: { runs: Pace.runs() } };
       download("lamplight-stats.json", JSON.stringify(out, tidy, 2), "application/json");
     }
     function reset(){
       if (!confirm("Clear all reading stats from this device? This can’t be undone.")) return;
       data = fresh(); docKey = null; dirty = true;
+      Pace.reset();
       save(); refreshPanel(); renderWidget();
       Marks.toast("Reading stats cleared");
     }
@@ -4337,10 +5227,10 @@
     });
     Menu.add({ order: 61, group: "app", icon: ICONS.chart, label: "Reading stats", key: "G", run: openPanel });
 
-    function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); return o; }
+    function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); o.pace = Pace.summary(); return o; }
     /* for tests and other scripts */
     window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save };
-    return { noteWords: noteWords, notePages: notePages, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
+    return { noteWords: noteWords, notePages: notePages, noteSkimmed: noteSkimmed, noteListened: noteListened, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
   })();
 
   /* ============================================================
