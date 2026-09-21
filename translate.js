@@ -319,19 +319,9 @@
 
   /* ---------- word and sentence: fill a .tr-slot in the card ---------- */
   var memo = {}, slotGen = 0;
-  function copy(text){
-    var done = function(){ toast("Copied"); }, fail = function(){ toast("Couldn’t copy"); };
-    if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, fail); return; }
-    try {
-      var ta = document.createElement("textarea");
-      ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
-      document.body.appendChild(ta); ta.select();
-      var ok = document.execCommand("copy"); ta.remove();
-      if (ok) done(); else fail();
-    } catch(_){ fail(); }
-  }
-  /* opts: span {start, end} adds a Highlight button; auto translates without a press whatever
-     the engine (the pill's Translate is a press already); close() shuts the card after Highlight */
+  /* The slot is the card's Translate panel: the translation and its engine line; Copy and
+     Highlight are the card's own footer. opts: auto translates without a press whatever the
+     engine; onResult(text) is called when a translation is shown (the card marks the tab). */
   function slot(text, el, opts){
     opts = opts || {};
     text = norm(text);
@@ -347,17 +337,9 @@
     function render(out, engineId){
       el.innerHTML = '<div class="sec">In ' + esc(name) + '</div>' +
         '<div class="tr-out" lang="' + esc(t) + '" dir="' + dirOf(t) + '"></div>' +
-        '<div class="tr-eng">Translated ' + esc(LABEL[engineId] || engineId) + '</div>' +
-        '<div class="acts"><button type="button" class="act tr-copy">Copy</button>' +
-        (opts.span ? '<button type="button" class="act tr-hl">Highlight</button>' : '') + '</div>';
+        '<div class="tr-eng">Translated ' + esc(LABEL[engineId] || engineId) + '</div>';
       el.querySelector(".tr-out").textContent = out;
-      el.querySelector(".tr-copy").addEventListener("click", function(){ copy(out); });
-      var hl = el.querySelector(".tr-hl");
-      if (hl) hl.addEventListener("click", function(){
-        var m = L.Marks && L.Marks.addHighlight ? L.Marks.addHighlight(opts.span.start, opts.span.end) : null;
-        if (opts.close) opts.close();
-        if (m) toast("Highlighted");
-      });
+      if (opts.onResult) opts.onResult(out);
     }
     function run(){
       if (!src) return;

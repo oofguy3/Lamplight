@@ -4664,14 +4664,30 @@
      Lamplight — offline dictionary + sentence explainer
      ============================================================ */
   (function(){
-    var ICON_BOOK = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg>';
-    var ICON_STAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z"/></svg>';
+    /* the icons this card draws — the redesign's shared table (24×24, stroked, round caps) */
+    var ICONS = {
+      meaning:   "M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z | M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z",
+      explain:   "M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7 | M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7",
+      simpler:   "M4 20l9-9 | M14 6l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2z | M19 3l.6 1.4L21 5l-1.4.6L19 7l-.6-1.4L17 5l1.4-.6L19 3z",
+      parts:     "M3 8h6v8H3z | M9 8h6v8H9z | M15 8h6v8h-6z",
+      translate: "M4 5h9 M8 5v2c0 4-2 7-5 9 M6 10c1 3 3 5 6 6 | M13 20l4-9 4 9 M14.5 17h5",
+      highlight: "M4 20h6 | M14 4l6 6-9 9H5v-6l9-9z",
+      star:      "M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z",
+      close:     "M6 6l12 12 M18 6L6 18"
+    };
+    function icon(name, size){
+      return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        ICONS[name].split(" | ").map(function(d){ return '<path d="' + d + '"/>'; }).join("") + '</svg>';
+    }
     var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
     var LS_KEY  = "ll_apikey";
     var AI_MODEL = "claude-sonnet-5";
     var dictMode = Store.get(LS_MODE) || "tap";
 
-    /* ---------- styles ---------- */
+    /* ---------- styles ----------
+       One card for everything the reader touches: a head, a tab strip, one panel per tab and a
+       footer of actions on the passage. A bottom sheet on phones, a floating card on wider
+       screens; the strip and the footer stay put while the panel scrolls. */
     var css = document.createElement("style");
     css.textContent = [
       /* on touch screens the app's own tap / hold gestures replace native selection */
@@ -4681,66 +4697,95 @@
       "  }",
       "}",
       ".ll-hit{background:var(--accent); color:var(--bg); border-radius:3px;}",
-      "#dictScrim{",
-      "  position:fixed; inset:0; z-index:59; background:transparent; display:none;",
-      "}",
+      "#dictScrim{position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.18); display:none;}",
       "#dictScrim.on{display:block;}",
       "#dictCard{",
       "  position:fixed; left:0; right:0; bottom:0; z-index:60;",
+      "  display:flex; flex-direction:column; max-height:66vh;",
       "  background:var(--panel); color:var(--ink);",
-      "  border-top:1px solid var(--line);",
-      "  border-radius:16px 16px 0 0;",
+      "  border-top:1px solid var(--line); border-radius:16px 16px 0 0;",
       "  box-shadow:0 -10px 40px rgba(0,0,0,.28);",
       "  transform:translateY(110%); visibility:hidden;",
-      "  transition:transform .24s ease, visibility 0s linear .24s;",
-      "  max-height:62vh; overflow-y:auto; overscroll-behavior:contain;",
-      "  padding:0 0 max(16px, env(safe-area-inset-bottom));",
+      "  transition:transform .22s ease, visibility 0s linear .22s;",
       "  font-family:var(--ui-font);",
       "}",
-      "#dictCard.open{transform:none; visibility:visible; transition:transform .24s ease, visibility 0s;}",
-      "#dictCard .grab{",
-      "  width:40px; height:4px; border-radius:999px; background:var(--line);",
-      "  margin:9px auto 4px;",
-      "}",
-      "#dictCard .inner{max-width:1100px; margin:0 auto; padding:6px 18px 4px;}",
-      "#dictCard .head{display:flex; align-items:flex-start; gap:12px;}",
+      "#dictCard.open{transform:none; visibility:visible; transition:transform .22s ease, visibility 0s;}",
+      "#dictCard:focus{outline:none;}",
+      "#dictCard:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}",
+      "#dictCard .grab{flex:none; width:40px; height:4px; border-radius:999px; background:var(--line); margin:8px auto 0;}",
+      "#dictCard .inner{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}",
+      /* head: the mark, the word or “This sentence” in the reader serif, a close button */
+      "#dictCard .head{flex:none; display:flex; align-items:center; gap:12px; padding:8px 16px 0;}",
       "#dictCard .mark{",
-      "  flex:none; width:38px; height:38px; border-radius:50%;",
+      "  flex:none; width:36px; height:36px; border-radius:50%;",
       "  display:flex; align-items:center; justify-content:center;",
-      "  background:color-mix(in srgb, var(--accent) 22%, transparent);",
-      "  color:var(--accent); font-size:1.188rem; margin-top:2px;",
+      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent);",
       "}",
-      "#dictCard .hw{flex:1; min-width:0;}",
-      "#dictCard .term{",
-      "  font-family:var(--reader-font); font-size:1.25rem; line-height:1.25;",
-      "  word-break:break-word;",
-      "}",
-      "#dictCard .ipa{color:var(--muted); font-size:0.9375rem; font-weight:400;}",
+      "#dictCard .hw{flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 10px;}",
+      "#dictCard .term{font-family:var(--reader-font); font-size:1.25rem; line-height:1.3; word-break:break-word;}",
+      "#dictCard .ipa{color:var(--muted); font-size:0.875rem; line-height:1.3;}",
       "#dictCard .x{",
-      "  flex:none; border:0; background:transparent; color:var(--muted);",
-      "  font-size:1.375rem; line-height:1; padding:4px 2px 4px 8px; cursor:pointer;",
+      "  flex:none; width:36px; height:36px; margin-right:-8px; border:0; border-radius:10px;",
+      "  background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer;",
       "}",
-      "#dictCard .senses{margin:10px 0 2px; display:grid; gap:9px;}",
-      "#dictCard .sense{font-size:0.9375rem; line-height:1.5;}",
-      "#dictCard .pos{",
-      "  color:var(--accent); font-style:italic; margin-right:7px;",
-      "}",
-      "#dictCard .syn{",
-      "  display:block; margin-top:3px; font-size:0.7812rem; color:var(--muted);",
-      "}",
+      "#dictCard .x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}",
+      /* the sentence itself, cut at three lines with a way to see it all */
       "#dictCard .quote{",
-      "  font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55;",
-      "  padding:10px 12px; margin:4px 0 12px;",
-      "  border-left:3px solid var(--accent);",
-      "  background:color-mix(in srgb, var(--accent) 8%, transparent);",
-      "  border-radius:0 8px 8px 0;",
+      "  flex:none; margin:10px 16px 0; padding:8px 12px; font-family:var(--reader-font); font-size:0.9375rem; line-height:1.5;",
+      "  border-left:3px solid var(--accent); border-radius:0 8px 8px 0;",
+      "  background:color-mix(in srgb, var(--accent) 8%, transparent); overflow-wrap:break-word;",
       "}",
-      "#dictCard .note{color:var(--muted); font-size:0.7812rem; padding:2px 0 6px;}",
+      "#dictCard .quote.clamp{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}",
+      "#dictCard .more{",
+      "  flex:none; align-self:flex-end; margin:2px 12px 0; padding:4px 6px; border:0; border-radius:6px;",
+      "  background:transparent; color:var(--muted); font:inherit; font-size:0.75rem; cursor:pointer;",
+      "}",
+      "#dictCard .more:hover{color:var(--ink); background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      /* the tab strip: equal tabs, the chosen one underlined in the accent */
+      "#dictCard .tabs{flex:none; display:flex; gap:2px; margin:10px 0 0; padding:0 8px; border-bottom:1px solid var(--line);}",
+      "#dictCard [role=tab]{",
+      "  flex:1 1 0; min-width:0; height:40px; position:relative;",
+      "  display:flex; align-items:center; justify-content:center; gap:6px; padding:0 6px;",
+      "  border:0; border-radius:8px 8px 0 0; background:transparent; color:var(--muted);",
+      "  font:inherit; font-size:0.8125rem; font-weight:600; white-space:nowrap; cursor:pointer;",
+      "}",
+      "#dictCard [role=tab] svg{flex:none;}",
+      "#dictCard [role=tab]:focus-visible{outline-offset:-3px;}",
+      "#dictCard [role=tab]:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}",
+      "#dictCard [role=tab][aria-selected=true]{color:var(--ink);}",
+      "#dictCard [role=tab][aria-selected=true]::after{",
+      "  content:\"\"; position:absolute; left:6px; right:6px; bottom:-1px; height:2px; border-radius:2px 2px 0 0; background:var(--accent);",
+      "}",
+      "#dictCard [role=tab][aria-disabled=true]{opacity:.42; cursor:default;}",
+      "#dictCard [role=tab][aria-disabled=true]:hover{background:transparent; color:var(--muted);}",
+      "#dictCard .bdg{",
+      "  font-size:0.6875rem; line-height:1; padding:3px 6px; border-radius:999px; font-variant-numeric:tabular-nums;",
+      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--ink);",
+      "}",
+      "#dictCard .dot{flex:none; width:6px; height:6px; border-radius:50%; background:var(--accent);}",
+      "@media (pointer: coarse){ #dictCard [role=tab]{height:44px;} }",
+      "@media (max-width:359px){ #dictCard [role=tab]{gap:4px; padding:0 4px; font-size:0.75rem;} }",
+      /* the panels scroll between the strip and the footer */
+      "#dictCard .body{flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:12px 16px;}",
+      "#dictCard .panel[hidden]{display:none;}",
+      "#dictCard .panel:focus{outline:none;}",
+      "#dictCard .panel:focus-visible{outline:2px solid var(--accent); outline-offset:-2px; border-radius:8px;}",
+      "#dictCard .foot{",
+      "  flex:none; display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px calc(12px + env(safe-area-inset-bottom, 0px));",
+      "  border-top:1px solid var(--line);",
+      "}",
+      "#dictCard .empty{color:var(--muted); font-size:0.875rem; line-height:1.5; text-align:center; padding:22px 8px;}",
+      /* meaning: senses with the part of speech as an italic accent word, synonyms in muted */
+      "#dictCard .senses{display:grid; gap:9px;}",
+      "#dictCard .sense{font-size:0.9375rem; line-height:1.5;}",
+      "#dictCard .pos{color:var(--accent); font-style:italic; margin-right:6px;}",
+      "#dictCard .syn{display:block; margin-top:3px; font-size:0.78rem; color:var(--muted);}",
+      "#dictCard .note{color:var(--muted); font-size:0.78rem; line-height:1.45; padding:2px 0 6px;}",
       "#dictCard .sec{",
       "  font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;",
       "  color:var(--muted); margin:14px 0 6px;",
       "}",
-      "#dictCard .sec:first-child{margin-top:4px;}",
+      "#dictCard .panel > .sec:first-child, #dictCard .tr-slot > .sec:first-child{margin-top:0;}",
       "#dictCard .brk{display:grid; gap:7px; margin-top:2px;}",
       "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
@@ -4760,28 +4805,25 @@
       "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
       "#dictCard .plus{align-self:center; color:var(--muted); font-size:0.9375rem; padding:0 1px;}",
       "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
-      /* translation slot (filled by translate.js): the translation in the reader font, an engine line */
-      "#dictCard .tr-slot{margin:2px 0 4px;}",
-      "#dictCard .tr-slot:empty{display:none;}",
+      /* translation (filled by translate.js): the translation in the reader font, an engine line */
       "#dictCard .tr-out{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 4px; overflow-wrap:break-word;}",
       "#dictCard .tr-out[dir=rtl]{text-align:right;}",
-      "#dictCard .tr-eng{color:var(--muted); font-size:0.7812rem; padding:0 0 4px;}",
-      /* simplify: the plainer text, each change dotted in the accent colour with a tap-to-show note */
-      "#dictCard .simple{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:4px 0 2px;}",
+      "#dictCard .tr-eng{color:var(--muted); font-size:0.78rem; padding:0 0 4px;}",
+      /* simpler: the plainer text, each change dotted in the accent colour with a tap-to-show note */
+      "#dictCard .simple{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:0 0 2px;}",
       "#dictCard .chg{",
       "  display:inline; font:inherit; color:inherit; background:transparent; border:0; padding:0; margin:0;",
       "  cursor:pointer; border-radius:2px; text-decoration:underline dotted var(--accent);",
       "  text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
-      "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 16%, transparent);}",
+      "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 14%, transparent);}",
       "#dictCard .chgnote{",
       "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
       "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--muted);",
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
-      "#dictCard .clause{",
-      "  padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;",
-      "}",
+      /* explain: one box per clause, its roles as small tiles */
+      "#dictCard .clause{padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;}",
       "#dictCard .clause .ctext{font-family:var(--reader-font); font-size:0.9375rem; line-height:1.45;}",
       "#dictCard .clause .ckind{",
       "  display:inline-block; font-size:0.6875rem; color:var(--accent); font-weight:600;",
@@ -4798,29 +4840,57 @@
       "}",
       "#dictCard .tense{font-size:0.7812rem; color:var(--muted); margin-top:7px; line-height:1.4;}",
       "#dictCard .tense b{color:var(--ink); font-weight:600;}",
-      "#dictCard .plain{",
-      "  font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55;",
-      "  padding:8px 0 2px;",
-      "}",
+      "#dictCard .plain{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 2px;}",
       "#dictCard .ai{font-size:0.9375rem; line-height:1.55; white-space:pre-wrap; padding:2px 0 4px;}",
-      "#dictCard .acts{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 2px;}",
+      /* chips: quiet actions; .go is the one primary action of a panel (the AI rewrite, a translation) */
+      "#dictCard .acts{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px;}",
       "#dictCard .act{",
-      "  padding:7px 13px; border-radius:999px; border:1px solid var(--line);",
-      "  background:transparent; color:var(--ink); font-size:0.8125rem; cursor:pointer;",
+      "  display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 12px; border-radius:999px;",
+      "  border:1px solid var(--line); background:transparent; color:var(--ink);",
+      "  font:inherit; font-size:0.8125rem; cursor:pointer; transition:background .15s, border-color .15s;",
       "}",
+      "#dictCard .act:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); border-color:var(--accent);}",
+      "#dictCard .act:active{transform:scale(.97);}",
+      "#dictCard .act[aria-pressed=true]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}",
       "#dictCard .act.go{background:var(--accent); border-color:var(--accent); color:var(--panel);}",
+      "#dictCard .act.go:hover{background:var(--accent);}",
+      "@media (pointer: coarse){ #dictCard .act{min-height:38px;} }",
+      /* the selection pill: Define / Explain and Highlight, a small popover above the selection */
       "#dictPill{",
-      "  position:fixed; z-index:58; display:none; gap:2px; padding:3px; border-radius:999px;",
-      "  border:1px solid var(--accent); background:var(--accent); color:var(--panel);",
+      "  position:fixed; z-index:58; display:none; padding:3px; border-radius:999px;",
+      "  border:1px solid var(--line); background:var(--panel); color:var(--ink);",
       "  font-family:var(--ui-font); font-size:0.8125rem; font-weight:600;",
-      "  box-shadow:0 4px 16px rgba(0,0,0,.25);",
+      "  box-shadow:0 10px 30px rgba(0,0,0,.18);",
       "}",
       "#dictPill.on{display:flex;}",
-      "#dictPill button{border:0; background:transparent; color:inherit; font:inherit; padding:5px 11px; border-radius:999px; cursor:pointer;}",
-      "#dictPill button:hover{background:rgba(0,0,0,.16);}",
-      "@media (min-width:820px){",
-      "  #dictCard{left:auto; right:22px; bottom:22px; width:440px;",
-      "    border-radius:16px; border:1px solid var(--line); max-height:70vh;}",
+      "#dictPill button{",
+      "  display:flex; align-items:center; gap:6px; height:32px; padding:0 12px; position:relative;",
+      "  border:0; border-radius:999px; background:transparent; color:inherit; font:inherit; cursor:pointer;",
+      "}",
+      "#dictPill button + button{margin-left:3px;}",
+      "#dictPill button + button::before{content:\"\"; position:absolute; left:-2px; top:8px; bottom:8px; width:1px; background:var(--line);}",
+      "#dictPill button svg{color:var(--accent);}",
+      "#dictPill button:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      "#dictPill button:active{transform:scale(.97);}",
+      /* wider screens: a floating card by the bottom-right corner, no scrim */
+      "@media (min-width:561px){",
+      "  #dictScrim{background:transparent;}",
+      "  #dictCard{",
+      "    left:auto; right:22px; bottom:22px; width:460px; max-width:calc(100vw - 44px); max-height:72vh;",
+      "    border:1px solid var(--line); border-radius:12px; box-shadow:0 2px 14px rgba(0,0,0,.12);",
+      "    transform:translateY(12px); opacity:0;",
+      "    transition:transform .22s ease, opacity .22s ease, visibility 0s linear .22s;",
+      "  }",
+      "  #dictCard.open{transform:none; opacity:1; transition:transform .22s ease, opacity .22s ease, visibility 0s;}",
+      "  #dictCard .grab{display:none;}",
+      "  #dictCard .head{padding-top:14px;}",
+      "  #dictCard .foot{padding-bottom:12px;}",
+      "}",
+      "@media (forced-colors: active){",
+      "  #dictCard [role=tab][aria-selected=true]{text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:6px;}",
+      "  #dictCard [role=tab][aria-disabled=true]{color:GrayText; opacity:1;}",
+      "  #dictCard .bdg, #dictCard .mark, #dictPill{border:1px solid ButtonText;}",
+      "  #dictCard .dot{background:ButtonText;}",
       "}"
     ].join("\n");
     document.head.appendChild(css);
@@ -4828,12 +4898,14 @@
     /* ---------- card markup ---------- */
     var scrim = document.createElement("div"); scrim.id = "dictScrim";
     var card  = document.createElement("div"); card.id  = "dictCard";
-    card.innerHTML = '<div class="grab"></div><div class="inner"></div>';
+    card.innerHTML = '<div class="grab" aria-hidden="true"></div><div class="inner"></div>';
     document.body.appendChild(scrim);
     document.body.appendChild(card);
     var inner = card.querySelector(".inner");
     var pill = document.createElement("div"); pill.id = "dictPill";
-    pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="simplify">Simplify</button><button type="button" data-act="mark">Highlight</button><button type="button" data-act="translate">Translate</button>';
+    pill.setAttribute("role", "group"); pill.setAttribute("aria-label", "Selected text");
+    pill.innerHTML = '<button type="button" data-act="lookup">' + icon("explain", 16) + '<span>Explain</span></button>' +
+                     '<button type="button" data-act="mark">' + icon("highlight", 16) + '<span>Highlight</span></button>';
     document.body.appendChild(pill);
 
     var openedAt = 0, cardOpener = null;
@@ -4860,6 +4932,161 @@
       if (card.classList.contains("open")){ e.preventDefault(); e.stopImmediatePropagation(); }
       closeCard();
     }, true);
+
+    /* ---------- the card's shape ----------
+       Everything the reader touches opens the same card: a head, a strip of tabs, a panel per
+       tab and a footer of actions on the passage. cur is what the card shows now; every
+       asynchronous answer checks cur.gen, so a late one never draws over the next word. A
+       panel keeps its result while the card stays open, so switching tabs costs nothing. */
+    var TABS = {
+      meaning:   { label: "Meaning",   icon: "meaning" },
+      parts:     { label: "Parts",     icon: "parts" },
+      translate: { label: "Translate", icon: "translate" },
+      explain:   { label: "Explain",   icon: "explain" },
+      simpler:   { label: "Simpler",   icon: "simpler", attr: ' data-m="simplify"' }
+    };
+    var cur = null, gen = 0;
+    function buildCard(o){
+      o.gen = ++gen; o.lazy = o.lazy || {}; cur = o;
+      stopSpeech();
+      var h = '<div class="head"><div class="mark">' + icon(o.icon, 20) + '</div><div class="hw">' +
+              '<div class="term">' + esc(o.title) + '</div>' + (o.ipa ? '<div class="ipa">' + esc(o.ipa) + '</div>' : '') + '</div>' +
+              '<button type="button" class="x" aria-label="Close" title="Close">' + icon("close", 20) + '</button></div>';
+      if (o.quote) h += '<div class="quote clamp" id="dictQuote">' + esc(o.quote) + '</div>' +
+                        '<button type="button" class="more" hidden aria-expanded="false" aria-controls="dictQuote">Show all</button>';
+      h += '<div class="tabs" role="tablist" aria-label="' + esc(o.tabsLabel) + '">';
+      o.tabs.forEach(function(t){
+        var d = TABS[t];
+        h += '<button type="button" role="tab" id="dictTab-' + t + '" aria-controls="dictPanel-' + t + '" aria-selected="false" tabindex="-1" data-tab="' + t + '"' +
+             (d.attr || '') + (o.off && o.off[t] ? ' aria-disabled="true"' : '') + '>' + icon(d.icon, 18) + '<span>' + d.label + '</span></button>';
+      });
+      h += '</div><div class="body">';
+      o.tabs.forEach(function(t){
+        h += '<div class="panel" role="tabpanel" id="dictPanel-' + t + '" aria-labelledby="dictTab-' + t + '" data-tab="' + t + '" tabindex="0" hidden>' +
+             ((o.panels && o.panels[t]) || '') + '</div>';
+      });
+      h += '</div><div class="foot" id="dictMarkActs">';
+      o.foot.forEach(function(a){
+        h += '<button type="button" class="act" data-m="' + a.m + '"' + (a.id ? ' id="' + a.id + '"' : '') + (a.pressed ? ' aria-pressed="false"' : '') + '>' + esc(a.label) + '</button>';
+      });
+      h += '</div>';
+      inner.innerHTML = h;
+      card.setAttribute("aria-label", o.dialogLabel);
+      inner.querySelector(".x").addEventListener("click", closeCard);
+      var more = inner.querySelector(".more");
+      if (more) more.addEventListener("click", function(){
+        var open = !inner.querySelector("#dictQuote").classList.toggle("clamp");
+        more.textContent = open ? "Show less" : "Show all";
+        more.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      var strip = inner.querySelector(".tabs");
+      strip.addEventListener("click", function(e){
+        var b = e.target.closest("[role=tab]");
+        if (b && b.getAttribute("aria-disabled") !== "true") select(b.dataset.tab, false);
+      });
+      /* arrow keys walk the tabs that have something to show; Home and End jump */
+      strip.addEventListener("keydown", function(e){
+        var step = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
+        if (!(e.key in step)) return;
+        var list = tabButtons().filter(function(b){ return b.getAttribute("aria-disabled") !== "true"; });
+        var i = list.indexOf(inner.querySelector("[role=tab][aria-selected=true]"));
+        var j = e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : (i + step[e.key] + list.length) % list.length;
+        e.preventDefault();
+        if (list[j]) select(list[j].dataset.tab, true);
+      });
+      inner.querySelector(".foot").addEventListener("click", function(e){ var b = e.target.closest("button"); if (b) footAct(b); });
+      select(o.active);
+      if (more){ var q = inner.querySelector("#dictQuote"); if (q.scrollHeight > q.clientHeight + 2) more.hidden = false; }
+    }
+    function tabButtons(){ return Array.prototype.slice.call(inner.querySelectorAll("[role=tab]")); }
+    function tabEl(t){ return inner.querySelector('[role=tab][data-tab="' + t + '"]'); }
+    function panelEl(t){ return inner.querySelector('.panel[data-tab="' + t + '"]'); }
+    function select(t, focus){
+      if (!cur || cur.tabs.indexOf(t) < 0) return;
+      cur.active = t;
+      tabButtons().forEach(function(b){
+        var on = b.dataset.tab === t;
+        b.setAttribute("aria-selected", on ? "true" : "false"); b.tabIndex = on ? 0 : -1;
+        if (on){ var d = b.querySelector(".dot"); if (d) d.remove(); }
+      });
+      Array.prototype.forEach.call(inner.querySelectorAll(".panel"), function(p){ p.hidden = p.dataset.tab !== t; });
+      var body = inner.querySelector(".body"); if (body) body.scrollTop = 0;
+      if (focus){ var b = tabEl(t); if (b) b.focus({ preventScroll: true }); }
+      /* a panel drawn the first time its tab opens */
+      if (cur.lazy[t]){ var f = cur.lazy[t]; delete cur.lazy[t]; f(); }
+    }
+    /* a tab that has nothing yet is dimmed; when its answer comes it lights up, with a count or
+       a dot so the reader knows there is something there */
+    function markTab(t, mark){
+      var b = tabEl(t); if (!b) return;
+      b.removeAttribute("aria-disabled");
+      var old = b.querySelector(".bdg, .dot"); if (old) old.remove();
+      if (mark === "dot"){ if (cur && cur.active !== t) b.insertAdjacentHTML("beforeend", '<span class="dot" aria-hidden="true"></span>'); }
+      else if (mark) b.insertAdjacentHTML("beforeend", '<span class="bdg">' + esc(mark) + '</span>');
+    }
+    /* the footer acts on the passage in the book; Copy takes what the open tab shows */
+    function footAct(b){
+      var m = b.dataset.m;
+      if (!cur) return;
+      if (m === "copy"){ copyPlain(copyText()); return; }
+      if (m === "say"){ speakPlain(cur.title, b, null); return; }
+      var L = window.__ll;
+      if (!L || !L.Marks || !cur.span) return;
+      if (m === "read"){ closeCard(); L.Speak.start(cur.span.start); return; }
+      clearHit();
+      var mk = L.Marks.addHighlight(cur.span.start, cur.span.end);
+      closeCard();
+      if (mk && m === "note") L.Marks.openPanel(mk.key);
+      else if (mk) L.Marks.toast("Highlighted");
+    }
+    function copyText(){
+      var p = panelEl(cur.active), out;
+      if (cur.active === "simpler" && cur.simple) return cur.simple;
+      if (cur.active === "translate" && p && (out = p.querySelector(".tr-out"))) return out.textContent;
+      return cur.kind === "word" ? cur.title : cur.sentence;
+    }
+    function copyPlain(s){
+      var done = function(){ if (window.__ll && window.__ll.Marks) window.__ll.Marks.toast("Copied"); };
+      var fallback = function(){
+        var ta = document.createElement("textarea");
+        ta.value = s; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch(_){}
+        document.body.removeChild(ta);
+        done();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).then(done, fallback);
+      else fallback();
+    }
+    /* one plain utterance at a time (Say it, Read aloud in Simpler): the narrator's voice at the
+       saved rate; the button shows it is speaking and a second press stops it */
+    var utter = null, utterBtn = null, utterLabel = "";
+    function resetSpeechBtn(){
+      if (utterBtn){ if (utterLabel) utterBtn.textContent = utterLabel; utterBtn.setAttribute("aria-pressed", "false"); }
+      utterBtn = null; utterLabel = "";
+    }
+    function stopSpeech(){
+      if (!utter) return;
+      utter = null;
+      try { speechSynthesis.cancel(); } catch(_){}
+      resetSpeechBtn();
+    }
+    function speakPlain(s, btn, stopLabel){
+      if (utter){ stopSpeech(); return; }
+      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
+      if (window.__ll && window.__ll.Speak && window.__ll.Speak.isPlaying()) window.__ll.Speak.pause();
+      var u = new SpeechSynthesisUtterance(s);
+      var name = Store.get("ll_tts_voice") || "", vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
+      for (var i = 0; i < vs.length; i++) if (vs[i].name === name){ u.voice = vs[i]; break; }
+      u.rate = Math.min(2, Math.max(0.5, parseFloat(Store.get("ll_tts_rate") || "1") || 1));
+      u.onend = u.onerror = function(){ if (utter === u){ utter = null; resetSpeechBtn(); } };
+      utter = u; utterBtn = btn; utterLabel = stopLabel ? btn.textContent : "";
+      if (stopLabel) btn.textContent = stopLabel;
+      btn.setAttribute("aria-pressed", "true");
+      try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch(_){ utter = null; resetSpeechBtn(); }
+    }
+    /* closing the card (any way) stops what it was saying */
+    new MutationObserver(function(){ if (!card.classList.contains("open")) stopSpeech(); }).observe(card, { attributes: true, attributeFilter: ["class"] });
 
     /* ---------- highlight the tapped word ---------- */
     var hitEl = null;
@@ -4997,14 +5224,18 @@
       });
     }
 
-    function renderWord(term, res){
-      var h = '<div class="head">' +
-              '<div class="mark">' + ICON_BOOK + '</div><div class="hw">';
+    /* the Meaning panel, and the head once the headword and its sound are known */
+    function renderWord(term, res, my){
+      if (!cur || cur.kind !== "word" || cur.gen !== my) return;
+      var p = panelEl("meaning"), h = '';
       if (res){
-        h += '<div class="term">' + esc(res.word);
-        if (res.entry.i) h += ' <span class="ipa">' + esc(res.entry.i) + '</span>';
-        h += '</div></div>' +
-             '<button class="x" aria-label="Close">×</button></div>';
+        cur.title = res.word;
+        inner.querySelector(".term").textContent = res.word;
+        var hw = inner.querySelector(".hw"), ipa = hw.querySelector(".ipa");
+        if (res.entry.i){
+          if (!ipa){ ipa = document.createElement("div"); ipa.className = "ipa"; hw.appendChild(ipa); }
+          ipa.textContent = res.entry.i;
+        } else if (ipa) ipa.remove();
         h += '<div class="senses">';
         res.entry.m.slice(0,6).forEach(function(m){
           h += '<div class="sense">';
@@ -5016,22 +5247,16 @@
         h += '</div>';
         if (res.online) h += '<div class="note">Looked up online — not in the offline dictionary.</div>';
       } else {
-        h += '<div class="term">' + esc(term) + '</div></div>' +
-             '<button class="x" aria-label="Close">×</button></div>' +
-             '<div class="note">No definition found' +
-             (navigator.onLine ? '' : ' — you’re offline, so only the built-in dictionary was searched') +
-             '.</div>';
+        h += '<div class="empty">No definition found' +
+             (navigator.onLine ? '' : ' — you’re offline, so only the built-in dictionary was searched') + '.</div>';
       }
-      h += '<div class="tr-slot" data-kind="word"></div>';
-      inner.innerHTML = h;
-      inner.querySelector(".x").addEventListener("click", closeCard);
+      p.innerHTML = h;
       renderParts(term, res);
-      Translate.slot(term, inner.querySelector(".tr-slot"));
     }
 
     /* ---------- word parts (prefix / root / suffix, see llMorph) ----------
-       Drawn under the definition once morph.js and the chunks for the possible stems are
-       in; the definition itself never waits for it. */
+       Drawn in the Parts panel once morph.js and the chunks for the possible stems are in;
+       the tab lights up with the number of parts. The definition never waits for it. */
     var partsToken = 0;
     function shortDef(entry){
       var m = null;
@@ -5061,7 +5286,7 @@
       return null;
     }
     function renderParts(term, res){
-      var token = ++partsToken;
+      var token = ++partsToken, my = cur.gen;
       var words = [term.toLowerCase().replace(/[’]/g, "'")];
       if (res && res.word && words.indexOf(res.word) < 0) words.push(res.word);
       need(["morph"]).then(function(){
@@ -5069,11 +5294,11 @@
         words.forEach(function(w){ cands = cands.concat(window.llMorph.candidates(w)); });
         return withWords(cands.concat(cands.map(function(c){ return IRREG[c]; })));
       }).then(function(){
-        if (token !== partsToken || !card.classList.contains("open")) return;
+        if (token !== partsToken || !cur || cur.gen !== my || !card.classList.contains("open")) return;
         var r = null;
         for (var i = 0; i < words.length && !r; i++) r = window.llMorph.analyse(words[i], partLookup);
         if (!r) return;
-        var h = '<div class="sec">Word parts</div><div class="parts">';
+        var h = '<div class="parts">';
         r.parts.forEach(function(p, i){
           if (i) h += '<span class="plus" aria-hidden="true">+</span>';
           /* a base is shown as the word it is (hurry, not the hurri- of "unhurried") */
@@ -5093,30 +5318,49 @@
           var b = e.target.closest("button.part");
           if (b) defineWord(b.dataset.w);
         });
-        inner.appendChild(box);
+        var p = panelEl("parts");
+        p.innerHTML = ""; p.appendChild(box);
+        markTab("parts", String(r.parts.length));
       }).catch(function(err){ console.warn("Word parts unavailable", err); });
     }
 
-    function defineWord(term){
-      inner.innerHTML = '<div class="note">Looking up “' + esc(term) + '”…' +
-        (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
+    /* the Translate panel is handed to translate.js as soon as the card is built: the on-device
+       translator fills it by itself and the tab gets a dot; other engines wait for a press */
+    function runTranslate(text, span){
+      var p = panelEl("translate"), el = p && p.querySelector(".tr-slot"), my = cur.gen;
+      if (!el) return;
+      Translate.slot(text, el, { span: span, onResult: function(){ if (cur && cur.gen === my) markTab("translate", "dot"); } });
+    }
+
+    /* the word card: Meaning at once, Parts when the analyser answers, Translate when it can;
+       hit = the word's character span in #doc, when it was tapped in the text */
+    function defineWord(term, hit){
+      var foot = [];
+      if (hit && state.mode === "doc") foot.push({ m: "hl", label: "Highlight" });
+      foot.push({ m: "copy", label: "Copy" });
+      if ("speechSynthesis" in window) foot.push({ m: "say", label: "Say it", id: "dictSay", pressed: true });
+      buildCard({ kind: "word", term: term, title: term, icon: "meaning", dialogLabel: "Dictionary", tabsLabel: "Word",
+        tabs: ["meaning", "parts", "translate"], off: { parts: true }, active: "meaning", span: hit || null, foot: foot,
+        panels: { meaning: '<div class="note">Looking up “' + esc(term) + '”…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>',
+                  translate: '<div class="tr-slot" data-kind="word"></div>' } });
       openCard();
+      runTranslate(term, null);
+      var my = cur.gen;
       lookupLocal(term).then(function(res){
-        if (res){ renderWord(term, res); return; }
-        if (!navigator.onLine){ renderWord(term, null); return; }
+        if (!cur || cur.gen !== my) return;
+        if (res){ renderWord(term, res, my); return; }
+        if (!navigator.onLine){ renderWord(term, null, my); return; }
         var lw = term.toLowerCase();
         var base = IRREG[lw] || lw;
         return lookupOnline(base).then(function(r2){
-          if (r2) { renderWord(term, r2); return; }
-          if (base === lw) { renderWord(term, null); return; }
-          return lookupOnline(lw).then(function(r3){ renderWord(term, r3); });
+          if (r2) { renderWord(term, r2, my); return; }
+          if (base === lw) { renderWord(term, null, my); return; }
+          return lookupOnline(lw).then(function(r3){ renderWord(term, r3, my); });
         });
       });
     }
 
     /* ---------- sentence explaining (offline, rule-based — see llExplain) ---------- */
-    var currentSentence = null, currentSpan = null;
-
     function kindLabel(c){
       var first = "";
       if (c.kind === "sub") return (c.label || "clause") + (c.sub ? " — “" + c.sub.toLowerCase() + "”" : "");
@@ -5130,8 +5374,8 @@
     function role(label, val){
       return '<span class="role"><b>' + esc(label) + '</b>' + esc(val) + '</span>';
     }
-    function renderExplain(r){
-      var h = '<div class="sec">Explain</div>';
+    function renderExplain(r, sentence){
+      var h = '';
       if (!r.clauses.length){
         h += '<div class="note">Nothing to break down here.</div>';
         return h;
@@ -5167,7 +5411,7 @@
         });
         h += '</div>';
       }
-      if (r.plain && r.plain.replace(/\W/g, "").toLowerCase() !== currentSentence.replace(/\W/g, "").toLowerCase()){
+      if (r.plain && r.plain.replace(/\W/g, "").toLowerCase() !== sentence.replace(/\W/g, "").toLowerCase()){
         h += '<div class="sec">In plainer words</div><div class="plain">' + esc(r.plain) + '</div>';
       }
       return h;
@@ -5192,59 +5436,57 @@
       });
       return h + '</div>';
     }
-
-    function explainSentence(sentence, span){
-      sentence = String(sentence || "").replace(/\s+/g, " ").trim();
-      if (!sentence) return;
-      currentSentence = sentence;
-      currentSpan = (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
-      var h = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw">' +
-              '<div class="term">' + (/\s/.test(sentence) ? 'This sentence' : 'This word') + '</div></div>' +
-              '<button class="x" aria-label="Close">×</button></div>' +
-              '<div class="quote">' + esc(sentence) + '</div>' +
-              '<div class="tr-slot" data-kind="sentence"></div>' +
-              '<div class="acts" id="dictMarkActs"><button class="act" data-m="simplify">Simplify</button>' +
-              (currentSpan ? '<button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button>' : '') + '</div>' +
-              '<div id="dictAi"></div>' +
-              '<div id="dictExpl"><div class="note">Reading it…' +
-              (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
-      inner.innerHTML = h;
-      inner.querySelector(".x").addEventListener("click", closeCard);
-      var ma = inner.querySelector("#dictMarkActs");
-      if (ma) ma.addEventListener("click", function(e){
-        var b = e.target.closest("button"); if (!b) return;
-        if (b.dataset.m === "simplify"){ renderSimplify(sentence, currentSpan); return; }
-        if (!window.__ll || !window.__ll.Marks) return;
-        if (b.dataset.m === "read"){ closeCard(); window.__ll.Speak.start(currentSpan.start); return; }
-        var m = window.__ll.Marks.addHighlight(currentSpan.start, currentSpan.end);
-        closeCard();
-        if (m && b.dataset.m === "note") window.__ll.Marks.openPanel(m.key);
-        else if (m) window.__ll.Marks.toast("Highlighted");
-      });
-      openCard();
+    /* the Explain panel: chunks for every word in the sentence (plus irregular base forms, which
+       can start with another letter), then the analysis and the key words */
+    function runExplain(sentence){
+      var my = cur.gen, box = inner.querySelector("#dictExpl");
+      if (!box) return;
+      box.innerHTML = '<div class="note">Reading it…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
       renderAiButton(sentence);
-      Translate.slot(sentence, inner.querySelector(".tr-slot"), { span: currentSpan });
-
-      var box = inner.querySelector("#dictExpl");
-      /* chunks for every word in the sentence (plus irregular base forms, which can start with another letter) */
-      var words = (sentence.toLowerCase().match(/[a-z\u00C0-\u024F'\u2019-]+/g) || []).map(function(w){ return w.replace(/[\u2019]/g, "'"); });
+      var words = (sentence.toLowerCase().match(/[a-zÀ-ɏ'’-]+/g) || []).map(function(w){ return w.replace(/[’]/g, "'"); });
       var extra = [];
       words.forEach(function(w){ if (IRREG[w]) extra.push(IRREG[w]); variants(w).forEach(function(v){ extra.push(v); }); });
-      Promise.all([withWords(words.concat(extra)), window.__ll.need(["explain"])]).then(function(){
-        if (currentSentence !== sentence) return;
+      Promise.all([withWords(words.concat(extra)), need(["explain"])]).then(function(){
+        if (!cur || cur.gen !== my) return;
         var r = window.llExplain.explain(sentence, find, window.llExplain.rank);
-        box.innerHTML = renderExplain(r) + renderKeywords(r) +
+        box.innerHTML = renderExplain(r, sentence) + renderKeywords(r) +
           (navigator.onLine ? '' : '<div class="note">Offline — explained with the built-in dictionary only.</div>');
       }).catch(function(err){
         console.error(err);
-        box.innerHTML = '<div class="note">Couldn’t analyse this sentence.</div>';
+        if (cur && cur.gen === my) box.innerHTML = '<div class="note">Couldn’t analyse this sentence.</div>';
       });
     }
 
+    /* the sentence card: Explain, Simpler and Translate over one quoted sentence. Explain is
+       drawn when its tab is open (at once, from a hold or a right-click), Simpler the first time
+       its tab opens, Translate as soon as the on-device translator can (a press otherwise). */
+    function validSpan(span){
+      return (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
+    }
+    function openSentence(text, span, tab){
+      text = String(text || "").replace(/\s+/g, " ").trim();
+      if (!text) return;
+      var sp = validSpan(span);
+      /* the same passage again (Simpler asked for from another module, say): just turn to that tab */
+      if (cur && cur.kind === "sentence" && cur.sentence === text && card.classList.contains("open") &&
+          (sp && cur.span ? sp.start === cur.span.start && sp.end === cur.span.end : !sp && !cur.span)){ select(tab); return; }
+      var foot = [];
+      if (sp) foot.push({ m: "hl", label: "Highlight" }, { m: "note", label: "Note…" }, { m: "read", label: "Read from here" });
+      foot.push({ m: "copy", label: "Copy" });
+      buildCard({ kind: "sentence", sentence: text, title: /\s/.test(text) ? "This sentence" : "This word", icon: "explain",
+        dialogLabel: "Sentence", tabsLabel: "Sentence", quote: text, tabs: ["explain", "simpler", "translate"], active: tab || "explain",
+        span: sp, foot: foot,
+        panels: { explain: '<div id="dictExpl"></div><div id="dictAi"></div>', simpler: '<div id="simpBody"></div>',
+                  translate: '<div class="tr-slot" data-kind="sentence"></div>' },
+        lazy: { explain: function(){ runExplain(text); }, simpler: function(){ runSimplify(text); } } });
+      openCard();
+      runTranslate(text, sp);
+    }
+    function explainSentence(sentence, span){ openSentence(sentence, span, "explain"); }
+
     /* ---------- simplify: a plainer version of the selected sentence(s), offline (see llExplain.simplify) ----------
-       Drawn in the same card: the original, the plainer text with every change dotted (a tap
-       shows what it was and why), a summary line, and Copy / Read aloud / Highlight / AI actions. */
-    var simpToken = 0, simpUtter = null;
+       The Simpler panel: the plainer text with every change dotted (a tap shows what it was and
+       why), a summary line, Read aloud and an optional AI rewrite. */
     /* the dictionary chunks the simplifier needs: every word with its variants and base forms,
        then the synonyms those entries list (the swap rule reads their entries too) */
     function simplifyWords(text){
@@ -5261,19 +5503,10 @@
       });
     }
     function simplifyText(text){
-      return Promise.all([simplifyWords(text), window.__ll.need(["explain"])]).then(function(){
+      return Promise.all([simplifyWords(text), need(["explain"])]).then(function(){
         return window.llExplain.simplify(text, find, window.llExplain.rank);
       });
     }
-    function stopSimpleSpeech(){
-      if (!simpUtter) return;
-      simpUtter = null;
-      try { speechSynthesis.cancel(); } catch(_){}
-      var b = inner.querySelector("#simpRead");
-      if (b){ b.textContent = "Read aloud"; b.setAttribute("aria-pressed", "false"); }
-    }
-    /* closing the card (any way) stops a reading of the simpler text */
-    new MutationObserver(function(){ if (!card.classList.contains("open")) stopSimpleSpeech(); }).observe(card, { attributes: true, attributeFilter: ["class"] });
     function simpleSummary(changes){
       var swaps = 0, phrases = 0, active = 0, splits = 0;
       changes.forEach(function(c){
@@ -5290,29 +5523,21 @@
       count(splits, "sentence split", "sentences split");
       return parts.length ? parts.join(" · ") : "Nothing to simplify — this is already plain.";
     }
-    function renderSimplify(text, span){
-      text = String(text || "").replace(/\s+/g, " ").trim();
-      if (!text) return;
-      var token = ++simpToken;
-      stopSimpleSpeech();
-      currentSentence = null; currentSpan = null;      /* a late explain result must not draw over this card */
-      var sp = (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
-      inner.innerHTML = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw"><div class="term">Simpler</div></div>' +
-        '<button class="x" aria-label="Close">×</button></div>' +
-        '<div class="quote">' + esc(text) + '</div>' +
-        '<div id="simpBody"><div class="note">Making it plainer…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
-      inner.querySelector(".x").addEventListener("click", closeCard);
-      openCard();
+    /* opens the card on the Simpler tab (the pill's Explain leads there too, one tab over) */
+    function renderSimplify(text, span){ openSentence(text, span, "simpler"); }
+    function runSimplify(text){
+      var my = cur.gen, body = inner.querySelector("#simpBody");
+      if (!body) return;
+      body.innerHTML = '<div class="note">Making it plainer…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
       simplifyText(text).then(function(r){
-        if (token !== simpToken) return;
-        drawSimple(r, text, sp);
+        if (!cur || cur.gen !== my) return;
+        drawSimple(r, text);
       }).catch(function(err){
         console.error(err);
-        if (token !== simpToken) return;
-        inner.querySelector("#simpBody").innerHTML = '<div class="note">Couldn’t simplify this.</div>';
+        if (cur && cur.gen === my) body.innerHTML = '<div class="note">Couldn’t simplify this.</div>';
       });
     }
-    function drawSimple(r, text, sp){
+    function drawSimple(r, text){
       var body = inner.querySelector("#simpBody"), out = r.text, h = '<div class="simple">', pos = 0;
       r.changes.forEach(function(c){
         h += esc(out.slice(pos, c.start)) +
@@ -5322,25 +5547,19 @@
       });
       h += esc(out.slice(pos)) + '</div>' +
            '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes)) + '</div>' +
-           '<div class="acts" id="simpActs"><button class="act" data-s="copy">Copy</button>' +
-           ("speechSynthesis" in window ? '<button class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
-           (sp ? '<button class="act" data-s="hl">Highlight</button>' : '') +
-           (navigator.onLine ? '<button class="act go" data-s="ai">Simplify with AI</button>' : '') + '</div>' +
+           '<div class="acts" id="simpActs">' +
+           ("speechSynthesis" in window ? '<button type="button" class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
+           (navigator.onLine ? '<button type="button" class="act go" data-s="ai">' + icon("star", 16) + '<span>Simplify with AI</span></button>' : '') + '</div>' +
            '<div id="simpAi"></div>' +
            (navigator.onLine ? '' : '<div class="note">Offline — simplified with the built-in dictionary only.</div>');
       body.innerHTML = h;
+      cur.simple = out;
       body.addEventListener("click", function(e){
         var chg = e.target.closest("button.chg");
         if (chg){ toggleChangeNote(chg); return; }
         var b = e.target.closest("#simpActs button"); if (!b) return;
-        var act = b.dataset.s;
-        if (act === "copy") copySimple(out);
-        else if (act === "read") readSimple(out, b);
-        else if (act === "hl"){
-          var m = window.__ll && window.__ll.Marks ? window.__ll.Marks.addHighlight(sp.start, sp.end) : null;
-          closeCard();
-          if (m) window.__ll.Marks.toast("Highlighted");
-        } else if (act === "ai"){
+        if (b.dataset.s === "read") speakPlain(out, b, "Stop");
+        else if (b.dataset.s === "ai"){
           var key = Store.get(LS_KEY) || "";
           if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
           simplifyWithAI(text, key, inner.querySelector("#simpAi"));
@@ -5358,34 +5577,8 @@
       note.textContent = "was “" + chg.dataset.from + "” — " + chg.dataset.why;
       chg.parentNode.insertBefore(note, chg.nextSibling);
     }
-    function copySimple(s){
-      var done = function(){ if (window.__ll && window.__ll.Marks) window.__ll.Marks.toast("Copied"); };
-      var fallback = function(){
-        var ta = document.createElement("textarea");
-        ta.value = s; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
-        document.body.appendChild(ta); ta.select();
-        try { document.execCommand("copy"); } catch(_){}
-        document.body.removeChild(ta);
-        done();
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).then(done, fallback);
-      else fallback();
-    }
-    /* one plain utterance in the narrator's voice at the saved rate; the button toggles to Stop */
-    function readSimple(s, btn){
-      if (simpUtter){ stopSimpleSpeech(); return; }
-      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
-      if (window.__ll && window.__ll.Speak && window.__ll.Speak.isPlaying()) window.__ll.Speak.pause();
-      var u = new SpeechSynthesisUtterance(s);
-      var name = Store.get("ll_tts_voice") || "", vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
-      for (var i = 0; i < vs.length; i++) if (vs[i].name === name){ u.voice = vs[i]; break; }
-      u.rate = Math.min(2, Math.max(0.5, parseFloat(Store.get("ll_tts_rate") || "1") || 1));
-      u.onend = u.onerror = function(){ if (simpUtter === u){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); } };
-      simpUtter = u; btn.textContent = "Stop"; btn.setAttribute("aria-pressed", "true");
-      try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch(_){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); }
-    }
     function simplifyWithAI(text, apiKey, aiBox){
-      var token = simpToken;
+      var my = cur.gen;
       aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
       var prompt = "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; " +
         "do not add anything. Reply with the rewritten text only.\n\n" + text;
@@ -5401,7 +5594,7 @@
       })
       .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
       .then(function(res){
-        if (token !== simpToken) return;
+        if (!cur || cur.gen !== my) return;
         var j = res.j;
         if (!res.ok) throw new Error((j && j.error && j.error.message) || "the request failed");
         var txt = (j.content || []).map(function(c){ return c.text || ""; }).join("").trim();
@@ -5410,9 +5603,9 @@
         aiBox.querySelector(".ai").textContent = txt;
       })
       .catch(function(err){
-        if (token !== simpToken) return;
+        if (!cur || cur.gen !== my) return;
         aiBox.innerHTML = '<div class="note">Couldn’t get a rewrite (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
-          '<div class="acts"><button class="act" id="simpAiRetry">Try again</button><button class="act" id="simpAiKey">Change key</button></div>';
+          '<div class="acts"><button type="button" class="act" id="simpAiRetry">Try again</button><button type="button" class="act" id="simpAiKey">Change key</button></div>';
         aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
         aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
       });
@@ -5420,12 +5613,12 @@
     /* for tests and other modules */
     window.llSimplify = { render: renderSimplify, simplify: simplifyText };
 
-    /* ---------- optional: explain with AI (online + your own key) ---------- */
+    /* ---------- optional: explain with AI (online + your own key) — the last block of the Explain panel ---------- */
     function renderAiButton(sentence){
       var aiBox = inner.querySelector("#dictAi");
       if (!aiBox) return;
       if (!navigator.onLine){ aiBox.innerHTML = ""; return; }
-      aiBox.innerHTML = '<div class="acts"><button class="act go" id="dictAiBtn">Explain with AI</button></div>';
+      aiBox.innerHTML = '<div class="acts"><button type="button" class="act go" id="dictAiBtn">' + icon("star", 16) + '<span>Explain with AI</span></button></div>';
       aiBox.querySelector("#dictAiBtn").addEventListener("click", function(){
         var key = Store.get(LS_KEY) || "";
         if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
@@ -5433,6 +5626,7 @@
       });
     }
     function explainWithAI(sentence, apiKey, aiBox){
+      var my = cur.gen;
       aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
       var prompt = "Explain this sentence from a book in plain English, in 2-3 short sentences: what it means, " +
         "and what it implies about the people, the situation or the mood. If it contains an idiom or unusual phrase, " +
@@ -5453,7 +5647,7 @@
       })
       .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
       .then(function(res){
-        if (currentSentence !== sentence) return;
+        if (!cur || cur.gen !== my) return;
         var j = res.j;
         if (!res.ok){
           var msg = (j && j.error && j.error.message) || "the request failed";
@@ -5465,14 +5659,17 @@
         aiBox.querySelector(".ai").textContent = txt;
       })
       .catch(function(err){
-        if (currentSentence !== sentence) return;
+        if (!cur || cur.gen !== my) return;
         aiBox.innerHTML = '<div class="note">Couldn’t get an explanation (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
-          '<div class="acts"><button class="act" id="dictAiRetry">Try again</button><button class="act" id="dictAiKey">Change key</button></div>';
+          '<div class="acts"><button type="button" class="act" id="dictAiRetry">Try again</button><button type="button" class="act" id="dictAiKey">Change key</button></div>';
         aiBox.querySelector("#dictAiRetry").addEventListener("click", function(){ explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
         aiBox.querySelector("#dictAiKey").addEventListener("click", function(){ if (askForKey(true)) explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
       });
     }
-    window.addEventListener("online", function(){ if (currentSentence && card.classList.contains("open")) renderAiButton(currentSentence); });
+    /* back online: the AI chip is offered again (unless an answer is already there) */
+    window.addEventListener("online", function(){
+      if (cur && cur.kind === "sentence" && card.classList.contains("open") && !inner.querySelector("#dictAi .ai")) renderAiButton(cur.sentence);
+    });
     window.addEventListener("offline", function(){ var b = inner.querySelector("#dictAiBtn"); if (b) b.parentNode.removeChild(b); });
 
     function askForKey(keepOpen){
@@ -5646,8 +5843,9 @@
         var w = wordAt(e.clientX, e.clientY);
         if (!w) return;
         e.stopPropagation();
+        var s0 = Anchor.offsetOf(w.node, w.s), hit = s0 === null ? null : { start: s0, end: s0 + (w.e - w.s) };
         markHit(w.node, w.s, w.e);
-        defineWord(w.word);
+        defineWord(w.word, hit);
       }, true);
 
       /* desktop: long-press equivalent is a right-click (on a selection, or on the sentence under the pointer) */
@@ -5660,20 +5858,24 @@
       });
     }
 
-    /* selected text (mouse drag, or the native handles when the dictionary is off):
-       a small floating button offers to define one word or explain a longer selection */
+    /* selected text (mouse drag, or the native handles when the dictionary is off): a small
+       pill offers to define one word or explain a longer selection, and to highlight it.
+       Simpler and Translate are tabs of the card the first button opens. */
     function lookupText(s, off){
       var words = s.split(/\s+/).filter(Boolean);
-      if (words.length === 1) defineWord(words[0].replace(/^[^A-Za-zÀ-ɏ]+|[^A-Za-zÀ-ɏ]+$/g, "") || words[0]);
+      if (words.length === 1) defineWord(words[0].replace(/^[^A-Za-zÀ-ɏ]+|[^A-Za-zÀ-ɏ]+$/g, "") || words[0], off);
       else explainSentence(s, off);
     }
     function hidePill(){ pill.classList.remove("on"); }
     function updatePill(){
       var s = selectionText();
       if (!s || card.classList.contains("open")){ hidePill(); return; }
-      var words = s.split(/\s+/).length;
-      pill.querySelector("[data-act=lookup]").textContent = words > 1 ? "Explain" : "Define";
-      pill.querySelector("[data-act=simplify]").style.display = words >= 3 ? "" : "none";   /* a plainer version needs a sentence */
+      var kind = s.split(/\s+/).length > 1 ? "explain" : "meaning";
+      var look = pill.querySelector("[data-act=lookup]");
+      if (look.dataset.kind !== kind){
+        look.dataset.kind = kind;
+        look.innerHTML = icon(kind, 16) + '<span>' + (kind === "explain" ? "Explain" : "Define") + '</span>';
+      }
       var rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
       if (!rect || (!rect.width && !rect.height)){ hidePill(); return; }
       pill.classList.add("on");
@@ -5696,13 +5898,8 @@
         if (window.Marks_highlightSelection) window.Marks_highlightSelection();
         hidePill(); return;
       }
-      if (b.dataset.act === "simplify"){
-        var so = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
-        hidePill(); if (s) renderSimplify(s, so); return;
-      }
       var off = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
       hidePill();
-      if (b.dataset.act === "translate"){ if (s) Translate.show(s, off); return; }
       if (s) lookupText(s, off);
     });
     window.addEventListener("scroll", hidePill, { passive: true });
@@ -5712,7 +5909,7 @@
     var sheet = document.querySelector(".sheet-inner");
     if (sheet){
       var g = document.createElement("div");
-      g.className = "group";
+      g.className = "group"; g.id = "dictGroup";
       g.innerHTML =
         '<div class="label">Dictionary</div>' +
         '<div class="chips" id="dictChips">' +
@@ -5753,17 +5950,8 @@
         if (!el) return;
         Translate.load().then(function(T){ T.slot(text, el, opts); }, function(){ el.innerHTML = '<div class="note">Couldn’t load the translator.</div>'; });
       },
-      /* the pill's Translate: the card opens straight on a translation view */
-      show: function(text, span){
-        text = String(text || "").replace(/\s+/g, " ").trim();
-        if (!text) return;
-        currentSentence = null;
-        inner.innerHTML = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw"><div class="term">Translation</div></div>' +
-          '<button class="x" aria-label="Close">×</button></div><div class="quote">' + esc(text) + '</div><div class="tr-slot" data-kind="show"></div>';
-        inner.querySelector(".x").addEventListener("click", closeCard);
-        openCard();
-        Translate.slot(text, inner.querySelector(".tr-slot"), { span: span, auto: true, close: closeCard });
-      }
+      /* opens the sentence card on its Translate tab */
+      show: function(text, span){ openSentence(text, span, "translate"); }
     };
     /* target languages: BCP-47 code, English name, native name */
     var TR_LANGS = [["es","Spanish","Español"],["fr","French","Français"],["de","German","Deutsch"],["it","Italian","Italiano"],["pt","Portuguese","Português"],["nl","Dutch","Nederlands"],["sv","Swedish","Svenska"],["da","Danish","Dansk"],["no","Norwegian","Norsk"],["fi","Finnish","Suomi"],["pl","Polish","Polski"],["cs","Czech","Čeština"],["sk","Slovak","Slovenčina"],["hu","Hungarian","Magyar"],["ro","Romanian","Română"],["el","Greek","Ελληνικά"],["tr","Turkish","Türkçe"],["ru","Russian","Русский"],["uk","Ukrainian","Українська"],["ar","Arabic","العربية"],["he","Hebrew","עברית"],["fa","Persian","فارسی"],["hi","Hindi","हिन्दी"],["bn","Bengali","বাংলা"],["ur","Urdu","اردو"],["id","Indonesian","Bahasa Indonesia"],["ms","Malay","Bahasa Melayu"],["vi","Vietnamese","Tiếng Việt"],["th","Thai","ไทย"],["zh","Chinese (Simplified)","简体中文"],["zh-Hant","Chinese (Traditional)","繁體中文"],["ja","Japanese","日本語"],["ko","Korean","한국어"],["sw","Swahili","Kiswahili"],["ca","Catalan","Català"],["en","English","English"]];
@@ -5801,12 +5989,12 @@
         trIo.observe(tg);
       } else $("#gear").addEventListener("click", trSeen, { once: true });
     }
-    Menu.add({ order: 62, key: "",
+    Menu.add({ order: 62, key: "", group: "tools", icon: icon("translate", 20),
       label: function(){ var T = window.llTranslate; return T && T.isOn() ? (T.isPartial() ? "Translate the rest" : "Show original") : "Translate this document…"; },
       run: function(){ Translate.load().then(function(T){ T.togglePage(); }, function(){ Marks.toast("Couldn’t load the translator"); }); },
       show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     /* only while a translation is incomplete does "Translate the rest" take the entry above */
-    Menu.add({ order: 63, label: "Show original", run: function(){ Translate.load().then(function(T){ T.showOriginal(); }); },
+    Menu.add({ order: 63, group: "tools", icon: icon("translate", 20), label: "Show original", run: function(){ Translate.load().then(function(T){ T.showOriginal(); }); },
       show: function(){ var T = window.llTranslate; return !!(T && T.isOn() && T.isPartial()); } });
     /* a document left translated comes back translated: the script is wanted as soon as it opens */
     document.addEventListener("ll:fileopened", function(){

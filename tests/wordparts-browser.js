@@ -1,5 +1,5 @@
-/* Word parts in the dictionary card: prefix / root / suffix tiles with meanings, a gloss,
-   nothing for a plain word.  NODE_PATH=$(npm root -g) node tests/wordparts-browser.js */
+/* Word parts in the dictionary card's Parts tab: prefix / root / suffix tiles with meanings, a
+   gloss, nothing for a plain word (its tab stays dim).  NODE_PATH=$(npm root -g) node tests/wordparts-browser.js */
 const os = require("os"), path = require("path"), fs = require("fs");
 const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-wordparts");
@@ -19,9 +19,13 @@ async function tapWord(page, word){
   await page.mouse.click(pt.x, pt.y);
   await page.waitForFunction((w) => { const t = document.querySelector("#dictCard .term"); return document.getElementById("dictCard").classList.contains("open") && t && new RegExp("^" + w, "i").test(t.textContent.trim()); }, word, { timeout: 30000 });
 }
+/* the tiles live in the Parts tab: wait for it to light up (a plain word leaves it dim), open it, read the tiles */
+const PARTS_TAB = '#dictCard [role=tab][data-tab="parts"]';
 async function partsOf(page, wait){
-  if (wait) await page.waitForSelector("#dictCard .wordparts", { timeout: 30000 }).catch(() => null);
+  if (wait) await page.waitForFunction((sel) => { const t = document.querySelector(sel); return t && t.getAttribute("aria-disabled") !== "true"; }, PARTS_TAB, { timeout: 30000 }).catch(() => null);
   else await page.waitForTimeout(2500);
+  await page.evaluate((sel) => { const t = document.querySelector(sel); if (t && t.getAttribute("aria-disabled") !== "true") t.click(); }, PARTS_TAB);
+  await page.waitForTimeout(100);
   return page.evaluate(() => {
     const box = document.querySelector("#dictCard .wordparts");
     if (!box) return null;
