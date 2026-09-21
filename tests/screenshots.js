@@ -6,6 +6,8 @@ const { serve, browser, newPage, openFixture } = require("./lib");
 const OUT = process.env.LL_SHOT_DIR || path.join(__dirname, "..", "docs", "screenshots");
 fs.mkdirSync(OUT, { recursive: true });
 const only = process.argv.slice(2);
+/* the first-run tips and their toast belong in a first run, not in a picture of the app */
+const QUIET = `(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch (e){} })();`;
 const want = (n) => !only.length || only.indexOf(n) >= 0;
 
 /* a believable set of voices: two women, two men, one of each "natural", one compact */
@@ -22,6 +24,19 @@ const SPEECH = `(() => {
   Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true, writable: true });
   Object.defineProperty(window, "SpeechSynthesisUtterance", { value: function(t){ this.text = t; this.rate = 1; this.pitch = 1; this.volume = 1; this.voice = null; this.lang = ""; }, configurable: true, writable: true });
 })();`;
+
+/* the fixture's sentences in Spanish, written for this picture */
+const ES = {
+  "The Lamp": "La l\u00e1mpara",
+  "A short sample book for Lamplight.": "Un breve libro de muestra para Lamplight.",
+  "Chapter 1": "Cap\u00edtulo 1",
+  "The lamp hums quietly as she turns the page. \u201cOne more chapter,\u201d she tells herself, \u201cjust one more.\u201d The lamp hums quietly as she turns the page. \u201cOne more chapter,\u201d she tells herself, \u201cjust one more.\u201d":
+    "La l\u00e1mpara zumba en silencio mientras ella pasa la p\u00e1gina. \u00abUn cap\u00edtulo m\u00e1s\u00bb, se dice, \u00absolo uno m\u00e1s\u00bb. La l\u00e1mpara zumba en silencio mientras ella pasa la p\u00e1gina. \u00abUn cap\u00edtulo m\u00e1s\u00bb, se dice, \u00absolo uno m\u00e1s\u00bb.",
+  "Outside, the unexpected rain had started again, and the street lights made the puddles glitter like spilled coins. He asked, \u201cAre you coming?\u201d She did not answer; the misunderstanding between them was older than the house.":
+    "Fuera, la lluvia inesperada hab\u00eda empezado de nuevo, y las farolas hac\u00edan brillar los charcos como monedas derramadas. \u00c9l pregunt\u00f3: \u00ab\u00bfVienes?\u00bb. Ella no contest\u00f3; el malentendido entre ellos era m\u00e1s viejo que la casa.",
+  "He asked, \u201cAre you coming?\u201d She did not answer; the misunderstanding between them was older than the house. The children ran ahead, laughing, while the old dog followed at its own unhurried pace.":
+    "\u00c9l pregunt\u00f3: \u00ab\u00bfVienes?\u00bb. Ella no contest\u00f3; el malentendido entre ellos era m\u00e1s viejo que la casa. Los ni\u00f1os corr\u00edan delante, riendo, mientras el viejo perro los segu\u00eda a su propio paso tranquilo."
+};
 
 function dayKey(back){ const d = new Date(); d.setDate(d.getDate() - back); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 /* twelve weeks of reading, speeding up a little, so the trend line has something to say */
@@ -45,8 +60,9 @@ const STATS = (() => {
   const made = [];
   const shot = async (page, name, clip) => { await page.waitForTimeout(450); await page.screenshot(Object.assign({ path: path.join(OUT, name + ".png") }, clip ? { clip } : {})); made.push(name); console.log("wrote " + name); };
   const theme = (page, id) => page.evaluate((id) => window.llThemes.select(id), id);
-  const desktop = (w, h) => b.newContext({ viewport: { width: w || 1000, height: h || 720 } });
-  const phone = () => b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const quiet = async (ctx) => { await ctx.addInitScript(QUIET); return ctx; };
+  const desktop = async (w, h) => quiet(await b.newContext({ viewport: { width: w || 1000, height: h || 720 } }));
+  const phone = async () => quiet(await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }));
 
   /* ---- the reader itself: a two-page spread ---- */
   if (want("spread")){
@@ -91,7 +107,7 @@ const STATS = (() => {
   }
   /* ---- themes: the sheet's Theme group with the editor open ---- */
   if (want("themes")){
-    const ctx = await b.newContext({ viewport: { width: 1000, height: 2200 } }), page = await newPage(ctx, url);
+    const ctx = await quiet(await b.newContext({ viewport: { width: 1000, height: 2200 } })), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await theme(page, "midnight");
     await page.evaluate(() => window.llThemes.create());
@@ -198,7 +214,7 @@ const STATS = (() => {
   }
   /* ---- reading stats, with the speed trend and the yearly goals ---- */
   if (want("stats")){
-    const ctx = await b.newContext({ viewport: { width: 1000, height: 1200 } });
+    const ctx = await quiet(await b.newContext({ viewport: { width: 1000, height: 1200 } }));
     await ctx.addInitScript((s) => { localStorage.setItem("ll_stats", JSON.stringify(s)); }, STATS);
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
@@ -209,7 +225,7 @@ const STATS = (() => {
   }
   /* ---- the storage panel ---- */
   if (want("storage")){
-    const ctx = await b.newContext({ viewport: { width: 1000, height: 1000 } });
+    const ctx = await quiet(await b.newContext({ viewport: { width: 1000, height: 1000 } }));
     await ctx.addInitScript((s) => { localStorage.setItem("ll_stats", JSON.stringify(s)); }, STATS);
     const page = await newPage(ctx, url);
     await page.setInputFiles("#fileInput", ["sample.md", "sample.epub", "sample.txt"].map((f) => path.join(__dirname, "fixtures", f)));
@@ -221,14 +237,24 @@ const STATS = (() => {
     await shot(page, "storage");
     await ctx.close();
   }
-  /* ---- a translated document ---- */
+  /* ---- a translated document. The built-in on-device translator is not in headless Chromium,
+         so it is stood in for by the Spanish of the fixture's own sentences (written by hand, not
+         generated): the picture shows the real bilingual view, with real translations in it. ---- */
   if (want("translate")){
-    const ctx = await desktop(1000, 760), page = await newPage(ctx, url);
+    const ctx = await desktop(1000, 760);
+    await ctx.addInitScript((ES) => {
+      Object.defineProperty(window, "Translator", { configurable: true, writable: true,
+        value: { availability: async () => "available", create: async () => ({ translate: async (s) => ES[s] || s, destroy(){} }) } });
+      Object.defineProperty(window, "LanguageDetector", { configurable: true, writable: true,
+        value: { create: async () => ({ detect: async () => [{ detectedLanguage: "en", confidence: 0.9 }] }) } });
+      localStorage.setItem("ll_tr_to", "es");
+    }, ES);
+    const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "day");
-    await page.evaluate(() => { localStorage.setItem("ll_tr_to", "es"); });
-    await page.evaluate(() => window.llTranslate.togglePage());
-    await page.waitForTimeout(4000);
+    await theme(page, "parchment");
+    await page.evaluate(() => window.__ll.need(["translate"]).then(() => window.llTranslate.togglePage()));
+    await page.waitForFunction(() => document.querySelectorAll("#doc .ll-tr").length >= 4, null, { timeout: 40000 });
+    await page.waitForTimeout(2500);
     await shot(page, "translate");
     await ctx.close();
   }

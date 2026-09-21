@@ -36,6 +36,11 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
   &nbsp;&nbsp;
   <img src="docs/screenshots/simplify.png" alt="The Simpler card: a sentence rewritten in plainer words with the swapped words underlined" width="410">
 </p>
+<p align="center">
+  <img src="docs/screenshots/type.png" alt="The type popover: size, spacing, width and, behind More, weight, letter spacing and word spacing" width="410">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/storage.png" alt="The Storage panel: what Lamplight keeps on the device, row by row, against the browser's quota" width="410">
+</p>
 
 ## Features
 
