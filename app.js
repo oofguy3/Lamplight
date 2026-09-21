@@ -2671,7 +2671,40 @@
   var Marks = (function(){
     var docId = null, docName = "", list = [], loaded = false, rendered = false, loadGen = 0;
     var COLORS = ["accent", "sun", "leaf", "rose"];
+    var COLOR_WORDS = { accent: "Default", sun: "Yellow", leaf: "Green", rose: "Pink" };
     var pop = $("#markPop"), popKey = null;
+
+    /* ---- what the four colours mean to this reader; three are suggested, all are editable ---- */
+    var LEGEND_KEY = "ll_mark_legend", LEGEND_DEFAULT = { accent: "", sun: "Important", leaf: "Vocabulary", rose: "Question" };
+    var legend = (function(){
+      var out = Object.assign({}, LEGEND_DEFAULT), o = null;
+      try { o = JSON.parse(Store.get(LEGEND_KEY) || "null"); } catch(_){}
+      if (o && typeof o === "object") COLORS.forEach(function(c){ if (typeof o[c] === "string") out[c] = o[c].trim().slice(0, 40); });
+      return out;
+    })();
+    function colorLabel(c){ return legend[c] || COLOR_WORDS[c] || c; }
+    function setLegend(c, name){
+      if (COLORS.indexOf(c) < 0) return;
+      legend[c] = String(name || "").trim().slice(0, 40);
+      Store.set(LEGEND_KEY, JSON.stringify(legend));
+    }
+
+    /* ---- #tags typed into a note: letters, digits, hyphens and underscores ---- */
+    var TAG = /#([A-Za-z0-9][A-Za-z0-9_-]*)/g;
+    function tagsOf(m){
+      var out = [], s = String((m && m.note) || ""), t;
+      TAG.lastIndex = 0;
+      while ((t = TAG.exec(s))){ var k = t[1].toLowerCase(); if (out.indexOf(k) < 0) out.push(k); }
+      return out;
+    }
+    /* every tag in use with how many marks carry it, in the order they first appear */
+    function tagCounts(){
+      var order = [], counts = {};
+      list.forEach(function(m){
+        tagsOf(m).forEach(function(t){ if (counts[t] === undefined){ counts[t] = 0; order.push(t); } counts[t]++; });
+      });
+      return order.map(function(t){ return { tag: t, n: counts[t] }; });
+    }
 
     function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
@@ -2887,7 +2920,7 @@
       if (!m) return;
       popKey = m.key;
       pop.innerHTML = '<button data-act="note">' + (m.note ? "Edit note" : "Note") + '</button>' +
-        COLORS.map(function(c){ return '<button class="dot ' + c + '" data-color="' + c + '" title="' + c + '" aria-label="Colour ' + c + '"></button>'; }).join("") +
+        COLORS.map(function(c){ var n = esc(colorLabel(c)); return '<button class="dot ' + c + '" data-color="' + c + '" title="' + n + '" aria-label="' + n + '"></button>'; }).join("") +
         '<button data-act="remove">Remove</button>';
       pop.classList.add("on");
       var r = mk.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
@@ -2916,40 +2949,149 @@
     window.addEventListener("scroll", hidePop, { passive: true });
     document.addEventListener("keydown", function(e){ if (e.key === "Escape") hidePop(); });
 
-    /* ---- panel ---- */
-    function refreshPanel(){ if (Side.is("marks")) Side.refresh("marks", renderPanel); }
-    var editKey = null;
+    /* ---- panel ----
+       Above the list: a search box, the filters in use (colours and tags, which narrow together),
+       and what the colours mean. Only the list and the chips are redrawn while typing, so the
+       search box keeps the caret. */
+    var editKey = null, legendEdit = null, query = "", tagPick = [], colorPick = null;
+    function refreshPanel(){
+      if (!Side.is("marks")) return;
+      var body = Side.body, top = body.scrollTop, a = document.activeElement;
+      var find = a && a.id === "markFind", at = find ? a.selectionStart : 0;
+      Side.refresh("marks", renderPanel);
+      body.scrollTop = top;
+      if (find){ var f = body.querySelector("#markFind"); if (f){ f.focus(); try { f.setSelectionRange(at, at); } catch(_){} } }
+    }
+    /* the marks the filters leave, in list order */
+    function shown(){
+      var q = query.trim().toLowerCase();
+      return list.filter(function(m){
+        if (colorPick && (m.kind !== "highlight" || (m.color || "accent") !== colorPick)) return false;
+        if (tagPick.length){
+          var t = tagsOf(m);
+          for (var i = 0; i < tagPick.length; i++) if (t.indexOf(tagPick[i]) < 0) return false;
+        }
+        if (q && ((m.text || "") + " " + (m.note || "") + " " + (m.label || "")).toLowerCase().indexOf(q) < 0) return false;
+        return true;
+      });
+    }
+    function filtering(){ return !!(query.trim() || tagPick.length || colorPick); }
+    /* a note with its #tags drawn as chips */
+    function noteHtml(note){
+      return esc(note || "").replace(TAG, function(whole){ return '<span class="tag">' + whole + '</span>'; });
+    }
+    function itemHtml(m){
+      var pct = pctOf(m), h = '<div class="mark-item" data-key="' + esc(m.key) + '">' +
+        '<div class="mark-kind">' + (m.kind === "bookmark" ? "Bookmark" : "Highlight") + '<span>' + (m.pdfPage ? "page " + m.pdfPage : pct + "%") + '</span></div>';
+      if (m.kind === "bookmark") h += '<div class="mark-text">' + esc(m.label || "") + '</div>';
+      else h += '<div class="mark-text q" data-color="' + esc(m.color || "accent") + '">' + esc(m.text || "") + '</div>';
+      if (editKey === m.key) h += '<textarea data-note="' + esc(m.key) + '" placeholder="Your note\u2026 use #tags to group it">' + esc(m.note || "") + '</textarea>';
+      else h += '<div class="mark-note">' + noteHtml(m.note) + '</div>';
+      return h + '<div class="mark-acts">' +
+        (editKey === m.key ? '<button data-act="savenote">Save note</button><button data-act="cancel">Cancel</button>'
+                           : '<button data-act="note">' + (m.note ? "Edit note" : "Add note") + '</button>') +
+        '<button data-act="del">Delete</button></div></div>';
+    }
+    function renderList(){
+      var host = Side.body.querySelector("#markList"), count = Side.body.querySelector("#markCount");
+      if (!host) return;
+      var rows = shown();
+      host.innerHTML = rows.length ? rows.map(itemHtml).join("")
+        : '<div class="empty-note">Nothing here matches those filters.</div>';
+      if (count) count.textContent = filtering() ? rows.length + " of " + list.length + (list.length === 1 ? " mark" : " marks")
+                                                 : list.length + (list.length === 1 ? " mark" : " marks");
+    }
+    function renderFilters(){
+      var host = Side.body.querySelector("#markFilters");
+      if (!host) return;
+      var used = COLORS.filter(function(c){ return list.some(function(m){ return m.kind === "highlight" && (m.color || "accent") === c; }); });
+      var h = used.map(function(c){
+        var n = esc(colorLabel(c));
+        return '<button type="button" class="chip mk-color' + (colorPick === c ? " on" : "") + '" data-pick-color="' + c + '" aria-pressed="' + (colorPick === c) +
+          '" title="' + n + '" aria-label="Only ' + n + ' highlights"><i class="mk-dot ' + c + '" aria-hidden="true"></i><span>' + n + '</span></button>';
+      }).join("");
+      h += tagCounts().map(function(t){
+        var on = tagPick.indexOf(t.tag) >= 0;
+        return '<button type="button" class="chip mk-tag' + (on ? " on" : "") + '" data-pick-tag="' + esc(t.tag) + '" aria-pressed="' + on +
+          '" aria-label="Only notes tagged ' + esc(t.tag) + '">#' + esc(t.tag) + '<b>' + t.n + '</b></button>';
+      }).join("");
+      if (h && filtering()) h += '<button type="button" class="chip mk-clear" data-pick-clear="1">Clear filters</button>';
+      host.innerHTML = h;
+      host.hidden = !h;
+    }
+    function renderLegend(){
+      var host = Side.body.querySelector("#markLegend");
+      if (!host) return;
+      host.innerHTML = '<span class="mk-leg-l">Colours</span>' + COLORS.map(function(c){
+        if (legendEdit === c) return '<input class="mk-leg-in" data-leg-in="' + c + '" value="' + esc(legend[c]) + '" maxlength="40" ' +
+          'aria-label="What a ' + esc(COLOR_WORDS[c].toLowerCase()) + ' highlight means" placeholder="' + esc(COLOR_WORDS[c]) + '">';
+        return '<button type="button" class="mk-leg" data-leg="' + c + '" aria-label="' + esc(colorLabel(c)) + ' \u2014 rename"><i class="mk-dot ' + c +
+          '" aria-hidden="true"></i><span' + (legend[c] ? '' : ' class="mk-leg-none"') + '>' + esc(legend[c] || "Name it") + '</span></button>';
+      }).join("");
+    }
     function renderPanel(body, foot){
       if (!list.length){
         body.innerHTML = '<div class="empty-note">No bookmarks or highlights yet.<br>' +
           (state.mode === "pdf" ? 'Use \u201CBookmark here\u201D in the \u22EF menu to mark a page.' :
            'Select text and choose Highlight, or hold a sentence and tap Highlight. \u201CBookmark here\u201D in the \u22EF menu marks your spot.') + '</div>';
+        foot.innerHTML = "";
         return;
       }
-      var h = "";
-      list.forEach(function(m){
-        var pct = pctOf(m);
-        h += '<div class="mark-item" data-key="' + esc(m.key) + '">' +
-          '<div class="mark-kind">' + (m.kind === "bookmark" ? "Bookmark" : "Highlight") + '<span>' + (m.pdfPage ? "page " + m.pdfPage : pct + "%") + '</span></div>';
-        if (m.kind === "bookmark") h += '<div class="mark-text">' + esc(m.label || "") + '</div>';
-        else h += '<div class="mark-text q" data-color="' + esc(m.color || "accent") + '">' + esc(m.text || "") + '</div>';
-        if (editKey === m.key) h += '<textarea data-note="' + esc(m.key) + '" placeholder="Your note\u2026">' + esc(m.note || "") + '</textarea>';
-        else h += '<div class="mark-note">' + esc(m.note || "") + '</div>';
-        h += '<div class="mark-acts">' +
-          (editKey === m.key ? '<button data-act="savenote">Save note</button><button data-act="cancel">Cancel</button>'
-                             : '<button data-act="note">' + (m.note ? "Edit note" : "Add note") + '</button>') +
-          '<button data-act="del">Delete</button></div></div>';
-      });
-      body.innerHTML = h;
-      var ta = body.querySelector("textarea"); if (ta){ ta.focus(); ta.selectionStart = ta.value.length; }
-      foot.innerHTML = '<button class="chip" data-exp="md">Export Markdown</button><button class="chip" data-exp="json">Export JSON</button><button class="chip" data-exp="copy">Copy as text</button>';
+      body.innerHTML =
+        '<div class="find-row mk-find"><input type="search" id="markFind" placeholder="Search highlights and notes\u2026" ' +
+          'aria-label="Search highlights, notes and bookmarks" value="' + esc(query) + '"></div>' +
+        '<div class="mk-filters" id="markFilters"></div>' +
+        '<div class="mk-legend" id="markLegend" role="group" aria-label="What the highlight colours mean"></div>' +
+        '<div class="mk-count" id="markCount" aria-live="polite"></div>' +
+        '<div class="mk-list" id="markList"></div>';
+      renderFilters(); renderLegend(); renderList();
+      foot.innerHTML = '<button class="chip" data-exp="md">Export Markdown</button><button class="chip" data-exp="obsidian">Export Obsidian</button>' +
+        '<button class="chip" data-exp="json">Export JSON</button><button class="chip" data-exp="copy">Copy as text</button>' +
+        '<button class="chip" data-exp="copy-obsidian">Copy for Obsidian</button>';
+      /* the note being written wins the focus the drawer hands out a moment after opening */
+      var ta = body.querySelector("textarea");
+      if (ta) setTimeout(function(){ if (document.contains(ta)){ ta.focus(); ta.selectionStart = ta.value.length; } }, 80);
+      else if (legendEdit) setTimeout(function(){ var el = body.querySelector(".mk-leg-in"); if (el){ el.focus(); el.select(); } }, 80);
     }
     function openPanel(focusKey){
-      editKey = focusKey || null;
-      Side.open("marks", "Bookmarks & notes", renderPanel, function(){ editKey = null; }, { family: "doc" });
+      editKey = focusKey || null; legendEdit = null;
+      Side.open("marks", "Bookmarks & notes", renderPanel, function(){ editKey = null; legendEdit = null; }, { family: "doc" });
     }
+    Side.body.addEventListener("input", function(e){
+      if (!Side.is("marks") || e.target.id !== "markFind") return;
+      query = e.target.value;
+      renderFilters(); renderList();
+    });
+    /* Enter saves a colour's meaning, Escape leaves it as it was */
+    Side.body.addEventListener("keydown", function(e){
+      if (!Side.is("marks") || !e.target.dataset || e.target.dataset.legIn === undefined) return;
+      if (e.key === "Enter"){ e.preventDefault(); setLegend(e.target.dataset.legIn, e.target.value); legendEdit = null; refreshPanel(); }
+      else if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); legendEdit = null; refreshPanel(); }
+    });
+    /* leaving the little input keeps what was typed; clicking straight on to another colour
+       opens that one, since the row is redrawn before the click could land */
+    Side.body.addEventListener("focusout", function(e){
+      if (!Side.is("marks") || !e.target.dataset || e.target.dataset.legIn === undefined || legendEdit === null) return;
+      setLegend(e.target.dataset.legIn, e.target.value);
+      var to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-leg]") : null;
+      legendEdit = to ? to.dataset.leg : null;
+      refreshPanel();
+    });
     Side.body.addEventListener("click", function(e){
       if (!Side.is("marks")) return;
+      var pick = e.target.closest("[data-pick-color], [data-pick-tag], [data-pick-clear]");
+      if (pick){
+        if (pick.dataset.pickClear){ query = ""; tagPick = []; colorPick = null; refreshPanel(); return; }
+        if (pick.dataset.pickColor) colorPick = colorPick === pick.dataset.pickColor ? null : pick.dataset.pickColor;
+        else {
+          var t = pick.dataset.pickTag, i = tagPick.indexOf(t);
+          if (i < 0) tagPick.push(t); else tagPick.splice(i, 1);
+        }
+        renderFilters(); renderList();
+        return;
+      }
+      var leg = e.target.closest("[data-leg]");
+      if (leg){ legendEdit = leg.dataset.leg; refreshPanel(); return; }
       var item = e.target.closest(".mark-item"); if (!item) return;
       var m = list.filter(function(x){ return x.key === item.dataset.key; })[0]; if (!m) return;
       var b = e.target.closest("button");
@@ -2990,15 +3132,88 @@
       return JSON.stringify({ document: { name: docName, title: $("#fname").textContent, id: docId }, exported: new Date().toISOString(),
         marks: list.map(function(m){ var o = {}; Object.keys(m).forEach(function(k){ if (k !== "doc") o[k] = m[k]; }); o.percent = pctOf(m); return o; }) }, null, 2);
     }
+    /* ---- Obsidian: one note per book, with front matter and a heading per chapter ----
+       The title shown in the bar is "Title \u2014 Author" for an EPUB; nothing else carries an author. */
+    function shownTitle(){ return $("#fname").textContent || docName || "Untitled"; }
+    function titleAndAuthor(){
+      var t = shownTitle(), i = /\.epub$/i.test(docName || "") ? t.indexOf(" \u2014 ") : -1;
+      return i > 0 ? { title: t.slice(0, i), author: t.slice(i + 3) } : { title: t, author: "" };
+    }
+    function yaml(s){ return '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'; }
+    function isoDay(){ var d = new Date(); return d.getFullYear() + "-" + (d.getMonth() < 9 ? "0" : "") + (d.getMonth() + 1) + "-" + (d.getDate() < 10 ? "0" : "") + d.getDate(); }
+    /* the headings of a text document as character offsets, so each mark falls under one */
+    function chapterHeads(){
+      var out = [];
+      if (state.mode !== "doc") return out;
+      var entries = [];
+      try { entries = Toc.entries() || []; } catch(_){ return out; }
+      entries.forEach(function(e){
+        if (!e.el) return;
+        var w = document.createTreeWalker(e.el, NodeFilter.SHOW_TEXT), n = w.nextNode();
+        var off = n ? Anchor.offsetOf(n, 0) : null;
+        if (off !== null) out.push({ title: e.title, off: off });
+      });
+      out.sort(function(a, b){ return a.off - b.off; });
+      return out;
+    }
+    function toObsidian(){
+      var ta = titleAndAuthor(), heads = chapterHeads(), tags = tagCounts().map(function(t){ return t.tag; });
+      var out = ["---", "title: " + yaml(ta.title)];
+      if (ta.author) out.push("author: " + yaml(ta.author));
+      out.push("source: Lamplight", "date: " + isoDay(), "tags: [" + ["reading"].concat(tags).join(", ") + "]", "---", "", "# " + ta.title, "");
+      var named = COLORS.filter(function(c){ return legend[c]; });
+      if (named.length){
+        out.push("> [!note] Legend");
+        named.forEach(function(c){ out.push("> - " + COLOR_WORDS[c] + " \u2014 " + legend[c]); });
+        out.push("");
+      }
+      var his = list.filter(function(m){ return m.kind === "highlight"; });
+      /* group the highlights under the last heading at or above each one */
+      var groups = [], byTitle = {};
+      function bucket(name){
+        if (!byTitle[name]){ byTitle[name] = { title: name, marks: [] }; groups.push(byTitle[name]); }
+        return byTitle[name];
+      }
+      his.forEach(function(m){
+        var name = "Notes";
+        if (heads.length && typeof m.start === "number"){
+          for (var i = 0; i < heads.length; i++) if (heads[i].off <= m.start) name = heads[i].title;
+        }
+        bucket(name).marks.push(m);
+      });
+      groups.forEach(function(g){
+        out.push("## " + g.title, "");
+        g.marks.forEach(function(m){
+          out.push("> " + (m.text || "").replace(/\n/g, " "));
+          if (m.note) out.push(m.note.replace(/\n/g, " "));
+          out.push("");
+        });
+      });
+      var bms = list.filter(function(m){ return m.kind === "bookmark"; });
+      if (bms.length){
+        out.push("## Bookmarks", "");
+        bms.forEach(function(m){
+          out.push("- " + (m.pdfPage ? "Page " + m.pdfPage : pctOf(m) + "%") + " \u2014 " + (m.label || "") + (m.note ? " " + m.note.replace(/\n/g, " ") : ""));
+        });
+        out.push("");
+      }
+      return out.join("\n");
+    }
     function download(name, text, type){
       var blob = new Blob([text], { type: type }), url = URL.createObjectURL(blob);
       var a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
       setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
     }
+    function copy(text){
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(text).then(function(){ toast("Copied"); }, function(){ toast("Couldn\u2019t copy"); });
+    }
     function exportMarks(fmt){
       if (fmt === "md") download(baseName() + "-notes.md", toMarkdown(), "text/markdown");
+      else if (fmt === "obsidian") download(baseName() + ".md", toObsidian(), "text/markdown");
       else if (fmt === "json") download(baseName() + "-notes.json", toJSON(), "application/json");
-      else if (navigator.clipboard) navigator.clipboard.writeText(toMarkdown()).then(function(){ toast("Copied"); }, function(){ toast("Couldn\u2019t copy"); });
+      else if (fmt === "copy-obsidian") copy(toObsidian());
+      else copy(toMarkdown());
     }
 
     Menu.add({ order: 30, group: "marks", icon: ICONS.bookmark, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
@@ -3006,7 +3221,8 @@
 
     return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, clearAll: clearAll, addHighlight: addHighlight, highlightSelection: highlightSelection,
              selectionOffsets: selectionOffsets, hidePop: hidePop, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
-             toMarkdown: toMarkdown, toJSON: toJSON };
+             toMarkdown: toMarkdown, toJSON: toJSON, toObsidian: toObsidian, tagsOf: tagsOf,
+             legend: function(){ return Object.assign({}, legend); }, setLegend: setLegend };
   })();
 
   /* ============================================================

@@ -1224,6 +1224,36 @@
   #markPop.on{display:flex;}
   #markPop .dot{width:22px; height:22px; border-radius:50%; border:1px solid var(--line); padding:0; cursor:pointer;}
   #markPop .dot.accent{background:var(--accent);} #markPop .dot.sun{background:#E8C547;} #markPop .dot.leaf{background:#7FB069;} #markPop .dot.rose{background:#E07A9A;}
+  /* the notes panel above the list: search, the filters in use, and what the colours mean */
+  .mk-find{margin:2px 0 8px;}
+  .mk-filters{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:7px;}
+  .mk-filters[hidden]{display:none;}
+  .mk-filters .chip{display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; padding:5px 10px;}
+  .mk-filters .chip b{font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .mk-filters .chip.on b{color:var(--ink);}
+  .mk-clear{color:var(--muted);}
+  .mk-dot{width:.6875rem; height:.6875rem; border-radius:50%; flex:none; border:1px solid var(--line);}
+  .mk-dot.accent{background:var(--accent);} .mk-dot.sun{background:#E8C547;} .mk-dot.leaf{background:#7FB069;} .mk-dot.rose{background:#E07A9A;}
+  .mk-legend{display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; margin-bottom:7px; font-size:0.75rem;}
+  .mk-leg-l{font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);}
+  .mk-leg{
+    display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid transparent; border-radius:999px;
+    background:transparent; color:var(--ink); font-family:var(--ui-font); font-size:0.75rem; cursor:pointer;
+  }
+  .mk-leg:hover{border-color:var(--line); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .mk-leg-none{color:var(--muted); font-style:italic;}
+  .mk-leg-in{
+    width:8.5rem; padding:4px 8px; border:1px solid var(--accent); border-radius:999px;
+    background:var(--bg); color:var(--ink); font-family:var(--ui-font); font-size:0.75rem;
+  }
+  .mk-count{font-size:0.7188rem; color:var(--muted); padding:0 2px 6px;}
+  /* #tags inside a note */
+  .mark-item .mark-note .tag{color:var(--accent); font-weight:600;}
+  @media (pointer: coarse){ .mk-filters .chip, .mk-leg, .mk-leg-in{min-height:34px;} }
+  @media (forced-colors: active){
+    .mk-dot{forced-color-adjust:none; border-color:CanvasText;}
+    .mk-filters .chip.on{border-width:2px; border-color:Highlight;}
+  }
 
   /* ---------- warmth (the evening tint) ---------- */
   /* a fixed film of warm amber over the whole page — bars, panels and cards included, the way a
