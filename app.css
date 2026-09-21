@@ -537,7 +537,8 @@
   .cc-ring span{position:relative;}
   .cc-main{min-width:0; display:grid; gap:2px;}
   .cc-title{font-family:var(--reader-font); font-size:1.0625rem; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .cc-meta{font-size:0.75rem; color:var(--muted); display:flex; align-items:center; gap:8px;}
+  .cc-meta{font-size:0.75rem; color:var(--muted); display:flex; align-items:center; gap:4px 8px; flex-wrap:wrap;}
+  .cc-left{font-variant-numeric:tabular-nums;}
   .cc-go{display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-size:0.8438rem; font-weight:600; white-space:nowrap;}
   .cc-go svg{width:18px; height:18px;}
   /* first-run tips: three lines and a Got it */
@@ -570,19 +571,23 @@
   }
   .lib-head button:hover{color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
   .lib-list{display:grid; gap:8px;}
-  /* a card per file: an accent bar on the left, then two sibling buttons — the book (type, name,
-     progress) and the remove. The card clips its corners, so the book button's focus ring is
-     drawn on the card instead */
+  /* "Pinned" and "Recent" over the two halves of the list; only drawn once something is pinned */
+  .lib-group{margin:6px 4px 0;}
+  .lib-group:first-child{margin-top:0;}
+  /* a card per file: an accent bar on the left, then sibling buttons — the book (type, name,
+     progress), move up and down for a pinned one, the pin and the remove. The card clips its
+     corners, so the book button's focus ring is drawn on the card instead */
   .lib-item{
-    position:relative; overflow:hidden; display:grid; grid-template-columns:1fr auto; align-items:center;
+    position:relative; overflow:hidden; display:flex; align-items:center;
     width:100%; padding-right:8px; border-radius:12px;
     border:1px solid var(--line); background:var(--panel); color:var(--ink);
     font-family:var(--ui-font); transition:border-color .2s, background .35s ease;
   }
   .lib-item::before{content:""; position:absolute; left:0; top:0; bottom:0; width:6px; background:var(--accent);}
   .lib-item:hover{border-color:var(--accent);}
+  .lib-item.pinned::before{background:var(--accent); width:6px;}
   .lib-open{
-    display:grid; grid-template-columns:auto 1fr; align-items:center; gap:12px; min-width:0; width:100%; text-align:left;
+    display:grid; grid-template-columns:auto 1fr; align-items:center; gap:12px; min-width:0; flex:1 1 auto; text-align:left;
     padding:11px 12px 11px 18px; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer;
   }
   .lib-open:focus-visible{outline:none;}
@@ -601,21 +606,42 @@
     font-size:0.625rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent);
     border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:999px; padding:2px 7px;
   }
-  .lib-x{
-    display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px;
+  /* the finish forecast, under the progress line */
+  .lib-left{display:block; font-size:0.7188rem; color:var(--muted); margin-top:3px; font-variant-numeric:tabular-nums;}
+  .lib-x, .lib-pin, .lib-move{
+    display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; flex:none;
     border:0; background:transparent; color:var(--muted); padding:0; cursor:pointer; border-radius:8px;
-    transition:color .2s, background .2s;
+    transition:color .2s, background .2s, opacity .2s;
   }
-  .lib-x svg{width:18px; height:18px;}
-  .lib-x:hover{color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .lib-x svg, .lib-pin svg, .lib-move svg{width:18px; height:18px;}
+  .lib-x:hover, .lib-pin:hover, .lib-move:hover{color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .lib-pin.on{color:var(--accent);}
+  .lib-pin.on svg{fill:currentColor;}
+  /* move up / down stay out of the way on a desktop until the card is hovered or has the focus */
+  .lib-move{opacity:0;}
+  .lib-item:hover .lib-move, .lib-item:focus-within .lib-move{opacity:1;}
+  .lib-move:disabled{opacity:0; cursor:default;}
+  .lib-item:hover .lib-move:disabled, .lib-item:focus-within .lib-move:disabled{opacity:.35;}
   /* touch: the remove deletes without asking, so it gets the full target; the header's Clear and
      the footer's buttons grow to the row size */
   @media (pointer: coarse){
-    .lib-x{width:44px; height:44px;}
+    .lib-x, .lib-pin, .lib-move{width:44px; height:44px;}
+    .lib-move, .lib-move:disabled{opacity:1;}
+    .lib-move:disabled{opacity:.35;}
     .lib-head button{min-height:40px; padding:0 12px;}
     #tipsOk{min-height:40px;}
     #libOpen{height:44px;}
   }
+  /* a pinned card carries four controls; on a phone they take their room out of the padding,
+     not out of the title */
+  @media (max-width:480px){
+    .lib-x, .lib-pin, .lib-move{width:40px;}
+    .lib-open{padding:11px 6px 11px 14px; gap:9px;}
+    .lib-type{min-width:38px; padding:3px 4px;}
+    /* a pinned card has two controls more: the bar gives way, the percentage still says it */
+    .lib-item.pinned .lib-bar{display:none;}
+  }
+  @media (prefers-reduced-motion: reduce){ .lib-move{transition:none;} }
   .lib-empty{font-size:0.8125rem; color:var(--muted); text-align:center; padding:14px;}
   .lib-foot{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px; padding:0 2px;}
   .lib-foot .hint{font-size:0.8125rem;}
@@ -668,6 +694,32 @@
     .st-day.today{outline-color:CanvasText;}
     .st-bar{background:GrayText;} .st-bar.met{background:Highlight;}
     .st-ring{background:conic-gradient(Highlight var(--p), GrayText 0);} .st-ring::after{background:Canvas;}
+  }
+
+  /* ---------- storage ---------- */
+  .so-sec{padding:12px 2px 14px; border-bottom:1px solid var(--line);}
+  .so-sec:last-child{border-bottom:0;}
+  .so-sec .label{margin-bottom:9px;}
+  /* how much of what the browser allows is in use */
+  .so-meter{height:.5rem; border-radius:999px; background:color-mix(in srgb, var(--line) 85%, transparent); overflow:hidden;}
+  .so-meter i{display:block; height:100%; background:var(--accent);}
+  .so-line{font-size:0.8125rem; color:var(--muted); margin-top:8px; line-height:1.45;}
+  /* one kind of stored thing: what it is on the left, how big on the right, its action below */
+  .so-row{
+    display:grid; grid-template-columns:1fr auto; gap:2px 12px; align-items:baseline;
+    padding:9px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  .so-row:last-child{border-bottom:0; padding-bottom:0;}
+  .so-name{font-size:0.875rem;}
+  .so-sub{font-size:0.75rem; color:var(--muted); margin-top:2px;}
+  .so-val{font-size:0.8125rem; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .so-act{grid-column:1 / -1; justify-self:start; margin-top:7px;}
+  .so-acts{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .so-sec .chip{font-size:0.7812rem; padding:7px 12px;}
+  @media (pointer: coarse){ .so-sec .chip, #side .side-foot .so-danger{min-height:40px;} }
+  @media (forced-colors: active){
+    .so-meter{forced-color-adjust:none; background:GrayText;}
+    .so-meter i{background:Highlight;}
   }
 
   #status{max-width:var(--w); margin:30px auto; text-align:center; color:var(--muted); font-size:0.875rem; display:none;}

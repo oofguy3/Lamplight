@@ -894,6 +894,9 @@
       open:      svg('<path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/>'),
       chevronR:  svg('<path d="M9 6l6 6-6 6"/>'),
       chevronL:  svg('<path d="M15 6l-6 6 6 6"/>'),
+      chevronU:  svg('<path d="M6 15l6-6 6 6"/>'),
+      chevronD:  svg('<path d="M6 9l6 6 6-6"/>'),
+      pin:       svg('<path d="M6 3h12v18l-6-4-6 4V3z"/>'),
       more:      svg('<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/>'),
       check:     svg('<path d="M5 12l4 4L19 7"/>'),
       goOn:      svg('<path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M10 8l4 4-4 4"/>'),
@@ -2463,29 +2466,89 @@
       return new Date(t).toLocaleDateString();
     }
     function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
-    /* the start screen: a Continue card for the book opened last, then every book as a card */
+    function cssEsc(s){ return window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&"); }
+    /* the start screen: a Continue card for the book that is up next, then every book as a card */
     function pctOf(b){ var pos = positions[b.id]; return pos ? pos.pct : 0; }
-    /* a card is a plain wrapper holding two sibling buttons: the book (opens it) and the remove;
-       nesting the remove inside a button-role card would give the card the remove's name too */
-    function item(b){
-      var pct = pctOf(b), name = escapeHtml(b.title || b.name), done = pct >= 98;
-      return '<div class="lib-item" data-id="' + escapeHtml(b.id) + '">' +
-        '<button type="button" class="lib-open" data-id="' + escapeHtml(b.id) + '" title="' + escapeHtml(b.name) + '">' +
+    function put(rec){ tx("books", "readwrite", function(st){ st.put(rec); }).catch(function(){}); }
+    function byId(id){ return books.filter(function(x){ return x.id === id; })[0]; }
+
+    /* ---- pinned books: a short list kept at the top, in the order they are waiting in ---- */
+    function pinnedList(){
+      return books.filter(function(b){ return !!b.pinned; })
+        .sort(function(a, b){ return (a.order || 0) - (b.order || 0) || (a.pinned || 0) - (b.pinned || 0); });
+    }
+    function setPinned(id, on){
+      var b = byId(id);
+      if (!b || !!b.pinned === !!on) return;
+      if (on){
+        var top = pinnedList();
+        b.pinned = Date.now();
+        b.order = top.length ? (top[top.length - 1].order || 0) + 1 : 1;
+      } else { delete b.pinned; delete b.order; }
+      put(b); render();
+    }
+    function togglePin(id){ var b = byId(id); if (b) setPinned(id, !b.pinned); }
+    /* one place up or down the waiting list; the orders are renumbered so they stay 1, 2, 3… */
+    function movePinned(id, dir){
+      var top = pinnedList(), i = -1;
+      top.forEach(function(b, k){ if (b.id === id) i = k; });
+      var j = i + dir;
+      if (i < 0 || j < 0 || j >= top.length) return;
+      top.splice(j, 0, top.splice(i, 1)[0]);
+      top.forEach(function(b, k){ if (b.order !== k + 1){ b.order = k + 1; put(b); } });
+      render();
+      refocus(id, '[data-move="' + (dir < 0 ? "up" : "down") + '"]');
+    }
+    /* the list is rebuilt whole on every change: put the focus back where it was */
+    function refocus(id, sel){
+      var row = $("#libList").querySelector('.lib-item[data-id="' + cssEsc(id) + '"]');
+      if (!row) return;
+      var b = row.querySelector(sel);
+      if (!b || b.disabled) b = row.querySelector(".lib-open");
+      if (b) b.focus({ preventScroll: true });
+    }
+    /* the book to carry on with: the first pinned one, else the one opened last */
+    function upNext(){ var top = pinnedList(); return top.length ? top[0] : books[0]; }
+    /* pinned and not opened since it was pinned: it is waiting, not half-read */
+    function waiting(b){ return !!(b && b.pinned) && !(b.opened > b.pinned); }
+    /* "about 2 h 10 min left · ≈ 4 more evenings", from the shared estimate in Stats */
+    function forecastOf(b){
+      try { return (window.llStats && window.llStats.forecast) ? window.llStats.forecast(b, positions[b.id]) : ""; }
+      catch(_){ return ""; }
+    }
+    /* a card is a plain wrapper holding sibling buttons: the book (opens it), move up and down
+       for a pinned one, the pin and the remove; nesting one inside another would give the card
+       every one of their names */
+    function item(b, idx, of){
+      var pct = pctOf(b), name = escapeHtml(b.title || b.name), done = pct >= 98, pinned = !!b.pinned;
+      var id = escapeHtml(b.id), left = forecastOf(b);
+      function move(dir, label, icon, off){
+        return '<button type="button" class="lib-move" data-move="' + dir + '" data-id="' + id + '" title="' + label +
+          '" aria-label="' + label + " " + name + '"' + (off ? " disabled" : "") + '>' + icon + '</button>';
+      }
+      return '<div class="lib-item' + (pinned ? " pinned" : "") + '" data-id="' + id + '">' +
+        '<button type="button" class="lib-open" data-id="' + id + '" title="' + escapeHtml(b.name) + '">' +
         '<span class="lib-type">' + escapeHtml(b.type) + '</span>' +
         '<span class="lib-main"><span class="lib-name">' + name + '</span>' +
         '<span class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
-        (done ? '<span class="lib-done">Finished</span>' : '') + '</span></span>' +
+        (done ? '<span class="lib-done">Finished</span>' : '') + '</span>' +
+        (left ? '<span class="lib-left">' + escapeHtml(left) + '</span>' : '') + '</span>' +
         '</button>' +
-        '<button type="button" class="lib-x" data-x="' + escapeHtml(b.id) + '" title="Remove from library" aria-label="Remove ' + name + ' from the library">' + ICONS.close + '</button>' +
+        (pinned ? move("up", "Move up", ICONS.chevronU, idx === 0) + move("down", "Move down", ICONS.chevronD, idx === of - 1) : '') +
+        '<button type="button" class="lib-pin' + (pinned ? " on" : "") + '" data-pin="' + id + '" aria-pressed="' + pinned +
+        '" title="' + (pinned ? "Unpin from the top" : "Pin to the top") + '" aria-label="' + (pinned ? "Unpin " : "Pin ") + name + ' to the top">' + ICONS.pin + '</button>' +
+        '<button type="button" class="lib-x" data-x="' + id + '" title="Remove from library" aria-label="Remove ' + name + ' from the library">' + ICONS.close + '</button>' +
         '</div>';
     }
     /* a finished book starts again from the beginning; the words on the card say so */
     function continueHtml(b){
-      var pct = pctOf(b), name = escapeHtml(b.title || b.name), again = pct >= 98;
+      var pct = pctOf(b), name = escapeHtml(b.title || b.name), again = pct >= 98, left = forecastOf(b);
+      var lead = again ? "Read again" : waiting(b) ? "Up next" : "Continue reading";
       return '<button type="button" id="continueCard" title="' + (again ? "Read " + name + " again" : "Continue reading " + name) + '">' +
         '<span class="cc-ring" style="--p:' + pct + '%" aria-hidden="true"><span>' + (pct ? pct + "%" : "new") + '</span></span>' +
-        '<span class="cc-main"><span class="label">' + (again ? "Read again" : "Continue reading") + '</span><span class="cc-title">' + name + '</span>' +
-        '<span class="cc-meta"><span class="lib-type">' + escapeHtml(b.type) + '</span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span></span></span>' +
+        '<span class="cc-main"><span class="label">' + lead + '</span><span class="cc-title">' + name + '</span>' +
+        '<span class="cc-meta"><span class="lib-type">' + escapeHtml(b.type) + '</span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
+        (left ? '<span class="cc-left">' + escapeHtml(left) + '</span>' : '') + '</span></span>' +
         '<span class="cc-go">' + (again ? "Start again" : "Continue") + ICONS.goOn + '</span>' +
         '</button>';
     }
@@ -2497,28 +2560,65 @@
       lib.classList.toggle("show", on);
       cont.classList.toggle("show", on);
       $("#libCount").textContent = books.length > 1 ? String(books.length) : "";
-      list.innerHTML = books.slice(0, 60).map(item).join("");
-      cont.innerHTML = books.length ? continueHtml(books[0]) : "";
+      var top = pinnedList(), rest = books.filter(function(b){ return !b.pinned; }).slice(0, 60), h = "";
+      if (top.length){
+        h += '<div class="lib-group label">Pinned</div>' + top.map(function(b, i){ return item(b, i, top.length); }).join("");
+        if (rest.length) h += '<div class="lib-group label">Recent</div>';
+      }
+      h += rest.map(function(b){ return item(b, -1, 0); }).join("");
+      list.innerHTML = h;
+      /* the heading over the whole list: "Recent" until something is pinned above it */
+      var head = lib.querySelector(".lib-head .label");
+      if (head && head.firstChild) head.firstChild.nodeValue = (top.length ? "Library" : "Recent") + " ";
+      var next = upNext();
+      cont.innerHTML = next ? continueHtml(next) : "";
     }
     $("#continue").addEventListener("click", function(e){
-      if (e.target.closest("#continueCard") && books.length) openId(books[0].id, pctOf(books[0]) >= 98);
+      if (!e.target.closest("#continueCard")) return;
+      var b = upNext();
+      if (b) openId(b.id, pctOf(b) >= 98);
     });
     /* native buttons deliver Enter and Space as clicks, so one listener covers keys and pointers */
     $("#libList").addEventListener("click", function(e){
+      var pin = e.target.closest(".lib-pin");
+      if (pin){ togglePin(pin.dataset.pin); refocus(pin.dataset.pin, ".lib-pin"); return; }
+      var mv = e.target.closest(".lib-move");
+      if (mv){ movePinned(mv.dataset.id, mv.dataset.move === "up" ? -1 : 1); return; }
       var x = e.target.closest(".lib-x");
       if (x){ remove(x.dataset.x); return; }
       var it = e.target.closest(".lib-open");
       if (it) openId(it.dataset.id);
     });
-    $("#libClear").addEventListener("click", function(){
-      if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device?")) return;
+    /* p pins or unpins the card the focus is on */
+    $("#libList").addEventListener("keydown", function(e){
+      if ((e.key !== "p" && e.key !== "P") || e.ctrlKey || e.metaKey || e.altKey) return;
+      var it = e.target.closest && e.target.closest(".lib-item");
+      if (!it) return;
+      e.preventDefault(); e.stopPropagation();
+      var id = it.dataset.id, onPin = !!e.target.closest(".lib-pin");
+      togglePin(id);
+      refocus(id, onPin ? ".lib-pin" : ".lib-open");
+    });
+    /* everything this device holds for the library; translations are a separate store */
+    function wipe(alsoTranslations){
       books = []; positions = {};
       Tabs.clear();
-      tx("books", "readwrite", function(st){ st.clear(); }).catch(function(){});
-      tx("positions", "readwrite", function(st){ st.clear(); }).catch(function(){});
-      tx("marks", "readwrite", function(st){ st.clear(); }).catch(function(){});
-      render(); show("empty");
+      var stores = ["books", "positions", "marks"].concat(alsoTranslations ? ["translations"] : []);
+      var jobs = stores.map(function(s){ return tx(s, "readwrite", function(st){ st.clear(); }).catch(function(){}); });
+      render();
+      return Promise.all(jobs);
+    }
+    $("#libClear").addEventListener("click", function(){
+      if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device?")) return;
+      wipe(false);
+      show("empty");
     });
+    /* books read to the end: taken out with their positions and notes, like a single remove */
+    function removeFinished(){
+      var done = books.filter(function(b){ return pctOf(b) >= 98; });
+      done.forEach(function(b){ remove(b.id); });
+      return done.length;
+    }
     /* fresh: open at the beginning instead of the saved place (a finished book read again) */
     function openId(id, fresh){
       var b = books.filter(function(x){ return x.id === id; })[0];
@@ -2557,6 +2657,8 @@
 
     return { tx: tx, headerHeight: headerHeight, topCharOffset: topCharOffset, currentPdfPage: currentPdfPage, idFor: idFor, openId: openId,
              books: function(){ return books; }, remember: remember,
+             pin: setPinned, togglePin: togglePin, move: movePinned, pinned: pinnedList, upNext: upNext,
+             removeFinished: removeFinished, wipe: wipe,
              onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
              flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render,
              ready: loaded, currentId: function(){ return current; }, positionFor: function(id){ return positions[id]; },
@@ -2595,6 +2697,14 @@
     }
     function save(m){ Library.tx("marks", "readwrite", function(st){ st.put(m); }).catch(function(){}); }
     function del(m){ Library.tx("marks", "readwrite", function(st){ st.delete(m.key); }).catch(function(){}); }
+    /* every mark on this device (the Storage panel); the open document loses its highlights too */
+    function clearAll(){
+      list = [];
+      return Library.tx("marks", "readwrite", function(st){ st.clear(); }).then(function(){
+        if (state.mode === "doc") apply();
+        refreshPanel();
+      }).catch(function(){});
+    }
     function forget(id){ Library.tx("marks", "readwrite", function(st){
       var idx = st.index("doc").openKeyCursor(IDBKeyRange.only(id));
       idx.onsuccess = function(){ var c = idx.result; if (c){ st.delete(c.primaryKey); c.continue(); } };
@@ -2894,7 +3004,7 @@
     Menu.add({ order: 30, group: "marks", icon: ICONS.bookmark, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     Menu.add({ order: 31, group: "marks", icon: ICONS.notes, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
 
-    return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, addHighlight: addHighlight, highlightSelection: highlightSelection,
+    return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, clearAll: clearAll, addHighlight: addHighlight, highlightSelection: highlightSelection,
              selectionOffsets: selectionOffsets, hidePop: hidePop, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
              toMarkdown: toMarkdown, toJSON: toJSON };
   })();
@@ -4487,6 +4597,37 @@
     function weekStart(key){ return addDays(key, -((dateOf(key).getDay() + 6) % 7)); }
     function sum(from, n){ var ms = 0; for (var i = 0; i < n; i++){ var d = data.days[addDays(from, i)]; if (d) ms += d.ms; } return ms; }
     function hasReading(){ return Object.keys(data.days).some(function(k){ var d = data.days[k]; return d.ms > 0 || d.words > 0 || d.pages > 0; }); }
+    /* ---- how long a book still has to run ----
+       The minutes come from the reader's measured pace (Progress), the "evenings" from how long
+       an evening's reading usually is: the average of the days actually read in the last fortnight. */
+    function sittingMinutes(n){
+      var k = todayKey(), total = 0, days = 0;
+      for (var i = 0; i < n; i++){
+        var d = data.days[addDays(k, -i)];
+        if (d && d.ms > 0){ total += d.ms; days++; }
+      }
+      return days ? total / days / 60000 : 0;
+    }
+    /* a library record and its saved position -> "about 2 h 10 min left · ≈ 4 more evenings" */
+    function forecast(rec, pos){
+      if (!pos) return "";
+      var min = null;
+      if (pos.mode === "pdf" || pos.pdfPages){
+        var pages = pos.pdfPages || 0, page = Math.min(pos.pdfPage || 1, pages), ppm = Progress.ppm();
+        if (pages > 3 && ppm > 0) min = (pages - page) / ppm;
+      } else {
+        var words = (pos.total || 0) / 6, wpm = Progress.wpm();
+        if (words > 80 && wpm > 0) min = words * (1 - Math.max(0, Math.min(1, pos.frac || 0))) / wpm;
+      }
+      if (min === null || !isFinite(min) || min < 1) return "";
+      var out = "about " + dur(Math.round(min) * 60000) + " left";
+      var avg = sittingMinutes(14);
+      if (avg > 0){
+        var e = Math.max(1, Math.round(min / avg));
+        out += " · ≈ " + e + (e === 1 ? " more evening" : " more evenings");
+      }
+      return out;
+    }
     /* a row of lamp dots, one per day: lit when the goal was met, half-lit when there was some reading, today outlined */
     function dots(n, decorative){
       var k = todayKey(), h = '<span class="st-days"' + (decorative ? ' aria-hidden="true"' : '') + '>';
@@ -4582,11 +4723,13 @@
       var out = { app: "Lamplight", exported: new Date().toISOString(), goal: data.goal, streak: streak(), best: data.best, days: data.days, books: data.books };
       download("lamplight-stats.json", JSON.stringify(out, tidy, 2), "application/json");
     }
-    function reset(){
-      if (!confirm("Clear all reading stats from this device? This can’t be undone.")) return;
+    /* quiet: the caller has already asked (the Storage panel's "Clear everything") */
+    function reset(quiet){
+      if (!quiet && !confirm("Clear all reading stats from this device? This can’t be undone.")) return false;
       data = fresh(); docKey = null; dirty = true;
       save(); refreshPanel(); renderWidget();
-      Marks.toast("Reading stats cleared");
+      if (!quiet) Marks.toast("Reading stats cleared");
+      return true;
     }
     Side.body.addEventListener("click", function(e){
       if (!Side.is("stats")) return;
@@ -4601,8 +4744,182 @@
 
     function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); return o; }
     /* for tests and other scripts */
-    window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save };
-    return { noteWords: noteWords, notePages: notePages, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
+    window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save,
+                       forecast: forecast, reset: reset };
+    return { noteWords: noteWords, notePages: notePages, onMode: onMode, openPanel: openPanel, snapshot: snapshot,
+             forecast: forecast, reset: reset };
+  })();
+
+  /* ============================================================
+     Storage — what Lamplight is keeping on this device, and how to let it go.
+     Nothing here leaves the device; the panel only counts and clears.
+     ============================================================ */
+  var Storage = (function(){
+    var measured = null, cache = null, cacheState = "idle";
+
+    function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function size(n){
+      if (!(n > 0)) return "0 KB";
+      if (n < 1024) return n + " B";
+      if (n < 1048576) return Math.round(n / 1024) + " KB";
+      if (n < 1073741824) return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
+      return (n / 1073741824).toFixed(1) + " GB";
+    }
+    function plural(n, one, many){ return n + " " + (n === 1 ? one : many); }
+    function countOf(store){ return Library.tx(store, "readonly", function(st){ return st.count(); }).catch(function(){ return 0; }); }
+
+    /* ---- the count ---- */
+    function measure(){
+      var list = Library.books();
+      var o = { books: list.length, bookBytes: 0, finished: 0, positions: 0, marks: 0,
+                trDocs: 0, trWords: 0, trBytes: 0,
+                stats: (Store.get("ll_stats") || "").length, statDays: 0,
+                themes: (state.customs || []).length, usage: null, quota: null, persisted: null };
+      list.forEach(function(b){
+        o.bookBytes += (b.blob && b.blob.size) || b.size || 0;
+        var p = Library.positionFor(b.id);
+        if (p && p.pct >= 98) o.finished++;
+      });
+      try { o.statDays = Object.keys(Stats.snapshot().days).length; } catch(_){}
+      var jobs = [
+        countOf("positions").then(function(n){ o.positions = n; }),
+        countOf("marks").then(function(n){ o.marks = n; }),
+        Library.tx("translations", "readonly", function(st){ return st.getAll(); }).then(function(rows){
+          (rows || []).forEach(function(r){
+            /* a document's blocks are one record; single words and sentences are keyed "s|…" */
+            if (String(r.key || "").indexOf("s|") === 0) o.trWords++; else o.trDocs++;
+            try { o.trBytes += JSON.stringify(r).length; } catch(_){}
+          });
+        }).catch(function(){})
+      ];
+      if (navigator.storage && navigator.storage.estimate)
+        jobs.push(navigator.storage.estimate().then(function(e){ o.usage = e.usage; o.quota = e.quota; }).catch(function(){}));
+      if (navigator.storage && navigator.storage.persisted)
+        jobs.push(navigator.storage.persisted().then(function(p){ o.persisted = !!p; }).catch(function(){}));
+      return Promise.all(jobs).then(function(){ return o; });
+    }
+    /* the service worker's cache holds the app itself and the dictionary; reading every
+       response back is slow, so it is measured on its own and the row says so meanwhile */
+    function measureCache(){
+      if (cacheState !== "idle") return;
+      if (!window.caches){ cacheState = "unknown"; return; }
+      cacheState = "busy";
+      caches.keys().then(function(keys){
+        return Promise.all(keys.filter(function(k){ return k.indexOf("lamplight-") === 0; }).map(function(k){
+          return caches.open(k).then(function(c){ return c.matchAll(); }).then(function(list){
+            return Promise.all(list.map(function(res){
+              return res.blob().then(function(bl){ return bl.size; }, function(){ return 0; });
+            })).then(function(sizes){
+              return { n: sizes.length, bytes: sizes.reduce(function(a, x){ return a + x; }, 0) };
+            });
+          });
+        }));
+      }).then(function(parts){
+        cache = parts.reduce(function(a, p){ return { n: a.n + p.n, bytes: a.bytes + p.bytes }; }, { n: 0, bytes: 0 });
+        cacheState = "done";
+      }).catch(function(){ cacheState = "unknown"; }).then(refresh);
+    }
+
+    /* ---- the panel ---- */
+    function row(name, sub, val, act, label){
+      return '<div class="so-row"><div class="so-what"><div class="so-name">' + esc(name) + '</div>' +
+        '<div class="so-sub">' + esc(sub) + '</div></div>' +
+        '<div class="so-val">' + esc(val || "") + '</div>' +
+        (act ? '<button type="button" class="chip so-act" data-so="' + act + '">' + esc(label) + '</button>' : '') +
+        '</div>';
+    }
+    function cacheRow(){
+      if (cacheState === "done") return row("App files and dictionary", plural(cache.n, "file", "files"), size(cache.bytes), "", "");
+      if (cacheState === "busy") return row("App files and dictionary", "Measuring…", "", "", "");
+      return row("App files and dictionary", "Not cached yet", "", "", "");
+    }
+    function renderPanel(body, foot){
+      var o = measured;
+      if (!o){ body.innerHTML = '<div class="empty-note">Measuring…</div>'; foot.innerHTML = ""; return; }
+      var h = "";
+      if (o.usage !== null && o.usage !== undefined){
+        var pct = o.quota ? Math.min(100, Math.max(0.5, o.usage / o.quota * 100)) : 0;
+        var line = size(o.usage) + " used" + (o.quota ? " of about " + size(o.quota) + " this site may use" : "");
+        h += '<section class="so-sec"><div class="label sec">All together</div>' +
+          '<div class="so-meter" role="img" aria-label="' + esc(line) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+          '<div class="so-line">' + esc(line) + '</div></section>';
+      }
+      h += '<section class="so-sec"><div class="label sec">What is stored</div>' +
+        row("Books", plural(o.books, "file", "files") + (o.finished ? " · " + o.finished + " finished" : ""), size(o.bookBytes),
+            o.finished ? "finished" : "", "Remove finished books") +
+        row("Reading positions", plural(o.positions, "book", "books"), "", "", "") +
+        row("Highlights and notes", plural(o.marks, "mark", "marks"), "", o.marks ? "marks" : "", "Delete all highlights and notes") +
+        row("Cached translations", plural(o.trDocs, "document", "documents") + " · " + plural(o.trWords, "word or sentence", "words and sentences"),
+            o.trBytes ? size(o.trBytes) : "", (o.trDocs + o.trWords) ? "translations" : "", "Clear cached translations") +
+        row("Reading stats", plural(o.statDays, "day", "days"), size(o.stats), o.statDays ? "stats" : "", "Reset reading stats") +
+        row("Saved themes", plural(o.themes, "theme", "themes"), "", "", "") +
+        cacheRow() + '</section>';
+      h += '<section class="so-sec"><div class="label sec">Keeping it</div><div class="so-line">' +
+        (o.persisted === null ? "This browser doesn’t say whether it keeps storage."
+         : o.persisted ? "Storage is persistent — the browser won’t clear it on its own."
+         : "Storage may be cleared by the browser when space is low.") + '</div>' +
+        (o.persisted === false ? '<div class="so-acts"><button type="button" class="chip" data-so="persist">Request persistent storage</button></div>' : '') +
+        '</section>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button type="button" class="chip so-danger" data-so="wipe">Clear everything…</button>';
+    }
+    /* redraw in place: the scroll position and the focused button survive */
+    function refresh(){
+      if (!Side.is("storage")) return;
+      var body = Side.body, top = body.scrollTop, a = document.activeElement;
+      var sel = a && a.dataset && a.dataset.so ? '[data-so="' + a.dataset.so + '"]' : null;
+      Side.refresh("storage", renderPanel);
+      body.scrollTop = top;
+      var again = sel && (body.querySelector(sel) || Side.foot.querySelector(sel));
+      if (again) again.focus({ preventScroll: true });
+    }
+    function reload(){ measure().then(function(o){ measured = o; refresh(); }).catch(function(){}); }
+    function openPanel(){
+      measured = null;
+      Side.open("storage", "Storage", renderPanel);
+      reload(); measureCache();
+    }
+
+    /* ---- letting things go ---- */
+    function act(what){
+      if (what === "finished"){
+        var n = Library.removeFinished();
+        Marks.toast(n ? "Removed " + plural(n, "finished book", "finished books") : "Nothing is finished yet");
+        reload();
+      } else if (what === "marks"){
+        if (!confirm("Delete every highlight, bookmark and note on this device? This can’t be undone.")) return;
+        Marks.clearAll().then(function(){ Marks.toast("Highlights and notes deleted"); reload(); });
+      } else if (what === "translations"){
+        Library.tx("translations", "readwrite", function(st){ st.clear(); })
+          .then(function(){ Marks.toast("Cached translations cleared"); reload(); }, function(){});
+      } else if (what === "stats"){
+        if (Stats.reset()) reload();
+      } else if (what === "persist"){
+        if (!(navigator.storage && navigator.storage.persist)) return;
+        navigator.storage.persist().then(function(ok){
+          Store.set("ll_persist", ok ? "granted" : "denied");
+          Marks.toast(ok ? "Storage is now persistent" : "The browser kept storage as it was");
+          reload();
+        }, function(){});
+      } else if (what === "wipe"){
+        if (!confirm("Clear everything Lamplight keeps on this device — books, positions, notes, translations, stats, themes and settings?")) return;
+        if (!confirm("This can’t be undone. Clear everything?")) return;
+        Stats.reset(true);
+        ["ll_stats", "ll_prefs", "ll_tabs", "ll_wpm", "ll_ppm", "ll_mark_legend"].forEach(function(k){ Store.remove(k); });
+        Library.wipe(true).then(function(){ location.reload(); }, function(){ location.reload(); });
+      }
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("storage")) return;
+      var b = e.target.closest("button[data-so]"); if (b) act(b.dataset.so);
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("storage")) return;
+      var b = e.target.closest("button[data-so]"); if (b) act(b.dataset.so);
+    });
+    Menu.add({ order: 62, group: "app", icon: ICONS.books, label: "Storage", run: openPanel });
+    window.llStorage = { openPanel: openPanel, measure: measure, act: act };
+    return { openPanel: openPanel };
   })();
 
   /* ============================================================
