@@ -274,8 +274,8 @@
     }).catch(function(){});
   }
   function openSettings(){
-    var sheet = $("#sheet"), gear = $("#gear");
-    if (sheet && !sheet.classList.contains("open") && gear) gear.click();
+    var sheet = $("#sheet"), P = window.llPop;
+    if (sheet && !sheet.classList.contains("open") && P && P.sheet) P.sheet(true);
     refreshHint();
     setTimeout(function(){
       var g = $("#trGroup"), s = $("#trLang");

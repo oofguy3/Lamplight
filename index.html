@@ -22,24 +22,79 @@
   <div class="bar">
     <div class="wordmark" id="wordmark" title="Library" role="button" tabindex="0">lamp<span>light</span></div>
     <div id="fname"></div>
-    <button class="ctl" id="smaller" title="Smaller text / zoom out" aria-label="Smaller text or zoom out">A−</button>
-    <button class="ctl" id="bigger" title="Larger text / zoom in" aria-label="Larger text or zoom in">A+</button>
-    <button class="ctl" id="lamp" title="Switch theme" aria-label="Switch to the next theme"><span class="bulb" aria-hidden="true"></span></button>
-    <button class="ctl" id="gear" title="Reading settings" aria-label="Reading settings" aria-expanded="false" aria-controls="sheet">Aa</button>
+    <!-- while a document is open: find, contents, read aloud -->
+    <div class="grp grp-doc">
+      <button class="ctl" id="searchBtn" title="Search in the document" aria-label="Search in the document"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"/><path d="M20 20l-3.5-3.5"/></svg></button>
+      <button class="ctl" id="tocBtn" title="Contents" aria-label="Contents"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="2.6"/></svg></button>
+      <button class="ctl" id="speakBtn" title="Read aloud" aria-label="Read aloud" aria-pressed="false"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg><i class="dot" aria-hidden="true"></i></button>
+    </div>
+    <span class="sep sep-doc" aria-hidden="true"></span>
+    <!-- type and theme: each opens a popover -->
+    <div class="grp">
+      <button class="ctl" id="gear" title="Text settings" aria-label="Text settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="pop">Aa</button>
+      <button class="ctl" id="lamp" title="Theme" aria-label="Theme" aria-haspopup="dialog" aria-expanded="false" aria-controls="pop"><span class="bulb" aria-hidden="true"></span></button>
+    </div>
+    <span class="sep" aria-hidden="true"></span>
     <div id="moreWrap">
       <button class="ctl" id="more" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="false">⋯</button>
       <div id="moreMenu" role="menu"></div>
     </div>
-    <button class="ctl primary" id="openBtn">Open</button>
+    <button class="ctl primary" id="openBtn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/></svg>Open</button>
   </div>
   <div id="tabs" role="tablist" aria-label="Open documents"></div>
 </header>
 
+<!-- the two popovers under the bar (a bottom sheet on phones): text settings and themes.
+     Both panes live here so their controls exist from the start; Pop shows one at a time. -->
+<div id="popScrim"></div>
+<div id="pop" role="dialog" aria-label="Text settings" aria-hidden="true" tabindex="-1">
+  <div class="pop-handle" aria-hidden="true"></div>
+  <div class="pop-pane" id="typePop" hidden>
+    <div class="pop-head"><span class="label">Text</span></div>
+    <div class="prow prow-size">
+      <label for="qSize" id="qSizeL">Size</label>
+      <div class="prow-in">
+        <button class="ctl mini" id="smaller" title="Smaller text / zoom out" aria-label="Smaller text or zoom out">A−</button>
+        <input type="range" id="qSize" min="14" max="28" step="1" value="19" aria-labelledby="qSizeL">
+        <input type="range" id="qZoom" min="60" max="250" step="5" value="100" aria-labelledby="qSizeL">
+        <button class="ctl mini" id="bigger" title="Larger text / zoom in" aria-label="Larger text or zoom in">A+</button>
+      </div>
+      <span class="val" id="qSizeV">19 px</span>
+    </div>
+    <div class="prow doc-row"><label for="qLh">Spacing</label><input type="range" id="qLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="qLhV">1.75</span></div>
+    <div class="prow doc-row"><label for="qW">Width</label><input type="range" id="qW" min="320" max="960" step="20" value="720"><span class="val" id="qWV">720 px</span></div>
+    <div class="prow doc-row"><label for="fontQuick">Font</label><select id="fontQuick" class="sel"></select></div>
+    <div class="prow pdf-row"><label class="check"><input type="checkbox" id="qSoften" checked>Soften pages in dark themes</label></div>
+    <div class="prow">
+      <span class="plabel" id="qFlowL">Flow</span>
+      <div class="seg" id="qFlow" role="group" aria-labelledby="qFlowL">
+        <button type="button" class="chip" data-flow="scroll" aria-pressed="false">Scroll</button>
+        <button type="button" class="chip" data-flow="pages" aria-pressed="false">Pages</button>
+      </div>
+    </div>
+    <button type="button" class="pop-link" id="typeMore">All text settings…<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+  <div class="pop-pane" id="themePop" hidden>
+    <div class="pop-head"><span class="label">Theme</span></div>
+    <div class="pop-sec"><div class="plabel" id="qLightL">Light</div><div class="strip" id="qLight" role="group" aria-labelledby="qLightL"></div></div>
+    <div class="pop-sec"><div class="plabel" id="qDarkL">Dark</div><div class="strip" id="qDark" role="group" aria-labelledby="qDarkL"></div></div>
+    <div class="prow">
+      <span class="plabel" id="qAutoL">Auto</span>
+      <div class="seg" id="qAuto" role="group" aria-labelledby="qAutoL">
+        <button type="button" class="chip" data-auto="off" aria-pressed="false">Manual</button>
+        <button type="button" class="chip" data-auto="system" aria-pressed="false">System</button>
+        <button type="button" class="chip" data-auto="time" aria-pressed="false">By time</button>
+      </div>
+    </div>
+    <button type="button" class="pop-link" id="themeMore">All themes and the editor…<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+</div>
+
 <div id="sheet" aria-hidden="true" aria-label="Reading settings">
   <div class="sheet-inner">
-    <div class="group">
+    <div class="group" id="readingGroup">
       <div class="label">Reading</div>
-      <div class="chips" id="flowChips">
+      <div class="chips seg" id="flowChips" role="group" aria-label="Reading flow">
         <button class="chip" data-flow="scroll">Scroll</button>
         <button class="chip" data-flow="pages">Pages</button>
       </div>
@@ -50,11 +105,11 @@
       </div>
     </div>
 
-    <div class="group">
+    <div class="group" id="themeGroup">
       <div class="label">Theme</div>
       <div id="themeChips"></div>
-      <div class="rowline"><label>Auto</label>
-        <div class="chips" id="autoChips">
+      <div class="rowline"><label id="autoLabel">Auto</label>
+        <div class="chips seg" id="autoChips" role="group" aria-labelledby="autoLabel">
           <button class="chip" data-auto="off">Manual</button>
           <button class="chip" data-auto="system">Follow system</button>
           <button class="chip" data-auto="time">By time</button>
@@ -65,7 +120,7 @@
         <div class="rowline" id="autoTimes"><label for="nightFrom">Night from</label><input type="time" id="nightFrom" class="sel" value="21:00"><label for="nightTo">until</label><input type="time" id="nightTo" class="sel" value="07:00"></div>
         <div class="hint" id="autoHint"></div>
       </div>
-      <div id="customRow">
+      <div id="customRow" class="card">
         <div class="cst-head">
           <div class="cst-name" id="cName">Custom</div>
           <div class="cst-acts">
@@ -136,7 +191,7 @@
       <div class="hint" id="textHint">Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).</div>
     </div>
 
-    <div class="group">
+    <div class="group" id="pdfGroup">
       <div class="label">PDF</div>
       <div class="rowline"><label for="rZoom">Zoom</label><input type="range" id="rZoom" min="60" max="250" step="5" value="100"><span class="val" id="vZoom">100 %</span></div>
       <label class="check"><input type="checkbox" id="softenPdf" checked>Soften PDF pages in dark themes</label>
@@ -146,16 +201,43 @@
 
 <main id="main" tabindex="-1">
   <div id="printHead" aria-hidden="true"></div>
+  <!-- the start screen: the lamp hero until the library has a book, then a Continue card, the
+       streak, first-run tips and the recent files -->
   <div id="empty">
-    <h1>A quiet place to read.</h1>
-    <p>Drop a file anywhere on this page, or open one below.<br>Works fully offline — nothing you open leaves your device.</p>
-    <button class="ctl primary" id="openBtn2" style="margin:0 auto;">Open a file</button>
-    <div class="formats">PDF · EPUB · DOCX · TXT · MARKDOWN · HTML</div>
+    <div class="hero">
+      <svg class="hero-lamp" viewBox="0 0 160 132" aria-hidden="true">
+        <defs>
+          <radialGradient id="heroGlow" cx="50%" cy="42%" r="55%"><stop offset="0" stop-opacity=".16"/><stop offset="1" stop-opacity="0"/></radialGradient>
+          <linearGradient id="heroCone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-opacity=".14"/><stop offset="1" stop-opacity="0"/></linearGradient>
+        </defs>
+        <ellipse class="glow" cx="80" cy="84" rx="76" ry="46"/>
+        <path class="cone" d="M40 58h80l30 70H10z"/>
+        <path class="shade" d="M55 14h50l17 42H38z"/>
+        <path class="bulb" d="M66 56h28a14 14 0 0 1-28 0z"/>
+        <path class="stem" d="M80 70v40"/>
+        <path class="base" d="M50 114h60"/>
+      </svg>
+      <h1>A quiet place to read.</h1>
+      <p>Drop a file anywhere on this page, or open one below.<br>Works fully offline — nothing you open leaves your device.</p>
+      <button class="ctl primary big" id="openBtn2"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/></svg>Open a file</button>
+      <div class="formats" aria-label="Supported formats"><span>PDF</span><span>EPUB</span><span>DOCX</span><span>TXT</span><span>MD</span><span>HTML</span></div>
+    </div>
   </div>
+  <div id="continue"></div>
   <div id="streak"></div>
+  <div id="tips" hidden>
+    <div class="tip-row"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg><span>Tap a word for its meaning and its parts</span></div>
+    <div class="tip-row"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7"/><path d="M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7"/></svg><span>Hold a sentence to explain, simplify or translate it</span></div>
+    <div class="tip-row"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg><span>Press ⋯ for read aloud, stats, zen mode and more</span></div>
+    <div class="tip-foot"><button type="button" class="chip" id="tipsOk">Got it</button></div>
+  </div>
   <div id="library" aria-label="Recent files">
-    <div class="lib-head"><div class="label">Continue reading</div><button id="libClear" title="Remove all files from this device">Clear library</button></div>
+    <div class="lib-head"><div class="label">Recent <span class="lib-count" id="libCount"></span></div><button id="libClear" title="Remove all files from this device">Clear library</button></div>
     <div class="lib-list" id="libList"></div>
+    <div class="lib-foot">
+      <button class="ctl" id="libOpen"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/></svg>Open another file</button>
+      <span class="hint">or drop a file anywhere on this page</span>
+    </div>
   </div>
   <div id="status"></div>
   <div id="docView"><article id="doc"></article></div>

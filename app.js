@@ -494,6 +494,7 @@
     });
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
+    if (Pop) Pop.sync();
     Prefs.save();
   }
   /* the preview and the meter show every colour of the theme being edited */
@@ -594,6 +595,7 @@
     $("#vLh").textContent   = state.lh.toFixed(2);
     $("#vW").textContent    = state.width + " px";
     $("#vM").textContent    = (state.margin || 0) + " px";
+    if (Pop) Pop.sync();
     if (state.mode === "doc" && state.flow === "pages") relayoutDocPages();
     Prefs.save();
   }
@@ -727,9 +729,190 @@
     return { use: use, load: load, loaded: loaded, syncUI: syncUI, openPanel: openPanel };
   })();
 
+  /* ---------- icons for the shell (the shared set; the same strings the other surfaces draw) ---------- */
+  var ICONS = (function(){
+    var open = 'stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    function svg(paths, extra){ return '<svg viewBox="0 0 24 24" ' + open + (extra || '') + '>' + paths + '</svg>'; }
+    return {
+      close:     svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+      open:      svg('<path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/>'),
+      chevronR:  svg('<path d="M9 6l6 6-6 6"/>'),
+      goOn:      svg('<path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M10 8l4 4-4 4"/>'),
+      books:     svg('<path d="M4 4h5v16H4z"/><path d="M9 4h5v16H9z"/><path d="M14 6l5-1.5L23 19l-5 1.5z"/>'),
+      sun:       svg('<path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+      print:     svg('<path d="M6 9V3h12v6"/><path d="M6 17H4V9h16v8h-2"/><path d="M6 14h12v7H6z"/>'),
+      meaning:   svg('<path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/>'),
+      translate: svg('<path d="M4 5h9M8 5v2c0 4-2 7-5 9M6 10c1 3 3 5 6 6"/><path d="M13 20l4-9 4 9M14.5 17h5"/>'),
+      aa:        '<span class="label-aa" aria-hidden="true">Aa</span>'
+    };
+  })();
+
+  /* ---------- popovers: type (Aa) and theme (the lamp) share one surface ---------- */
+  /* Pop.open(id, button, render(pane), opts) shows the pane for `id` under its bar button — a
+     bottom sheet on phones — after `render` has filled or refreshed it. One popover at a time;
+     Escape, the scrim, a click outside or the button again closes it, and focus goes back to the
+     button. The two panes are static markup in index.html so their controls exist from the start
+     (A− / A+ keep their ids and their listeners). */
+  var Pop = (function(){
+    var el = $("#pop"), scrim = $("#popScrim"), panes = { type: $("#typePop"), theme: $("#themePop") };
+    var current = null, anchor = null, scrollY0 = 0;
+    var reduce = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    function phone(){ return window.matchMedia && window.matchMedia("(max-width:560px)").matches; }
+    /* under the button, right edges aligned, kept inside the window */
+    function place(){
+      if (!current) return;
+      if (phone()){ el.style.top = ""; el.style.left = ""; el.style.right = ""; return; }
+      var r = anchor.getBoundingClientRect();
+      el.style.top = Math.round(r.bottom + 6) + "px";
+      el.style.left = "";
+      var right = Math.max(8, Math.round(window.innerWidth - r.right));
+      el.style.right = right + "px";
+      if (window.innerWidth - right - el.offsetWidth < 8){ el.style.right = ""; el.style.left = "8px"; }
+    }
+    function open(id, btn, render, opts){
+      if (current === id){ close(); return; }
+      if (current) close(true);
+      Menu.close();
+      document.body.classList.remove("hidebar");
+      current = id; anchor = btn;
+      Object.keys(panes).forEach(function(k){ panes[k].hidden = k !== id; });
+      el.setAttribute("aria-label", (opts && opts.label) || (id === "type" ? "Text settings" : "Theme"));
+      if (render) render(panes[id]);
+      sync();
+      el.classList.add("open"); el.setAttribute("aria-hidden", "false");
+      scrim.classList.toggle("on", phone());
+      btn.setAttribute("aria-expanded", "true");
+      place();
+      scrollY0 = window.scrollY;
+      /* focus lands on the first control: the size (zoom) slider, or the chosen theme */
+      var first = id === "type" ? (panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
+                                : (panes.theme.querySelector(".strip .chip.on") || panes.theme.querySelector(".strip .chip"));
+      (first || el).focus({ preventScroll: true });
+    }
+    function close(quiet){
+      if (!current) return;
+      var btn = anchor;
+      current = null; anchor = null;
+      el.classList.remove("open"); el.setAttribute("aria-hidden", "true");
+      scrim.classList.remove("on");
+      btn.setAttribute("aria-expanded", "false");
+      if (!quiet && btn.focus) btn.focus({ preventScroll: true });
+    }
+    function is(id){ return current === id; }
+
+    /* ---- the type pane: size (zoom for a PDF), spacing, width, font, flow ---- */
+    var fontQuick = $("#fontQuick");
+    FONT_GROUPS.forEach(function(g){
+      var og = document.createElement("optgroup"); og.label = g.name;
+      Object.keys(FONTS).forEach(function(id){ if (FONTS[id].group !== g.id) return; var o = document.createElement("option"); o.value = id; o.textContent = FONTS[id].name; og.appendChild(o); });
+      fontQuick.appendChild(og);
+    });
+    function syncType(){
+      var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100);
+      panes.type.classList.toggle("pdf", pdf);
+      $("#qSizeL").textContent = pdf ? "Zoom" : "Size";
+      $("#qZoom").value = z; $("#qSize").value = state.size;
+      $("#qSizeV").textContent = pdf ? z + " %" : state.size + " px";
+      $("#qLh").value = state.lh; $("#qLhV").textContent = state.lh.toFixed(2);
+      $("#qW").value = state.width; $("#qWV").textContent = state.width + " px";
+      fontQuick.value = state.font;
+      $("#qSoften").checked = !!state.soften;
+      Array.prototype.forEach.call(panes.type.querySelectorAll("#qFlow .chip"), function(ch){
+        var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    $("#qSize").addEventListener("input", function(e){ state.size = +e.target.value; applyType(); });
+    $("#qZoom").addEventListener("input", function(e){
+      state.zoom = (+e.target.value) / 100;
+      $("#rZoom").value = e.target.value; $("#vZoom").textContent = e.target.value + " %";
+      queueRerender(); syncType();
+    });
+    $("#qLh").addEventListener("input", function(e){ state.lh = +e.target.value; applyType(); });
+    $("#qW").addEventListener("input", function(e){ state.width = +e.target.value; applyType(); });
+    fontQuick.addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
+    $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
+    $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
+    $("#typeMore").addEventListener("click", function(){ close(true); openSheetAt("#textGroup"); });
+
+    /* ---- the theme pane: a strip of light themes, one of dark, and the auto choice ---- */
+    function chip(k){
+      var t = resolveTheme(k);
+      return t ? '<button type="button" class="chip" data-theme="' + k + '" aria-pressed="false">' + swatchHtml(t) + escapeHtml(t.name) + '</button>' : "";
+    }
+    function renderTheme(){
+      var groups = themeGroups(), light = groups[0].ids.slice(), dark = groups[1].ids.slice();
+      /* the two high-contrast themes and the saved ones join the row of their lightness */
+      HICON.forEach(function(k){ (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
+      state.customs.forEach(function(c){ (isDarkColor(c.bg) ? dark : light).push("c:" + c.id); });
+      $("#qLight").innerHTML = light.map(chip).join("");
+      $("#qDark").innerHTML = dark.map(chip).join("");
+    }
+    function syncTheme(){
+      var t = currentTheme(), custom = customById(state.theme);
+      Array.prototype.forEach.call(panes.theme.querySelectorAll(".strip .chip"), function(ch){
+        var on = ch.dataset.theme === state.theme;
+        ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+        if (on && custom){ var sw = ch.querySelector("i"); sw.style.setProperty("--sw-bg", t.bg); sw.style.setProperty("--sw-acc", t.accent); }
+      });
+      Array.prototype.forEach.call(panes.theme.querySelectorAll("#qAuto .chip"), function(ch){
+        var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    function showCurrent(){
+      var on = panes.theme.querySelector(".strip .chip.on");
+      if (on && on.scrollIntoView) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "instant" });
+    }
+    panes.theme.addEventListener("click", function(e){
+      var ch = e.target.closest(".strip .chip");
+      if (ch){ selectTheme(ch.dataset.theme); showCurrent(); return; }
+      var a = e.target.closest("#qAuto .chip");
+      if (a){ state.auto = a.dataset.auto; Prefs.save(); AutoTheme.apply(); syncTheme(); }
+    });
+    $("#themeMore").addEventListener("click", function(){ close(true); openSheetAt("#themeGroup"); });
+
+    /* the open pane follows the state (applyType / applyTheme call this) */
+    function sync(){
+      if (!current) return;
+      if (current === "type") syncType(); else syncTheme();
+    }
+    /* the settings sheet, scrolled so a group sits under its strip */
+    function openSheetAt(sel){
+      setSheet(true);
+      var sheet = $("#sheet"), g = $(sel), strip = $("#sheetTabs");
+      if (!g) return;
+      var top = g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop - (strip ? strip.offsetHeight : 0) - 2;
+      if (SheetTabs) SheetTabs.mark(g.id, 700);
+      sheet.scrollTo({ top: Math.max(0, top), behavior: reduce && reduce.matches ? "auto" : "smooth" });
+      var first = g.querySelector("input, select, button");
+      if (first) first.focus({ preventScroll: true });
+    }
+
+    /* Escape closes the popover only: it stops here (capture) so the sheet, the panel and the
+       menu keep their state; a click anywhere else, the scrim, or scrolling away closes it too */
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape" && current){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    }, true);
+    /* capture phase: the ⋯ button stops its click from bubbling, and that click must close this too */
+    document.addEventListener("click", function(e){
+      if (!current || e.target.closest("#pop") || (anchor && anchor.contains(e.target))) return;
+      close(true);
+    }, true);
+    scrim.addEventListener("click", function(){ close(); });
+    window.addEventListener("scroll", function(){ if (current && Math.abs(window.scrollY - scrollY0) > 80) close(true); }, { passive: true });
+    window.addEventListener("resize", place);
+
+    /* the bar buttons */
+    $("#gear").addEventListener("click", function(e){ e.stopPropagation(); open("type", this, syncType); });
+    $("#lamp").addEventListener("click", function(e){ e.stopPropagation(); open("theme", this, function(){ renderTheme(); syncTheme(); showCurrent(); }); });
+
+    window.llPop = { open: open, close: close, is: is, sync: sync, sheet: setSheet, sheetAt: openSheetAt };
+    return { open: open, close: close, is: is, sync: sync, sheetAt: openSheetAt };
+  })();
+
   /* ---------- view switching ---------- */
   function show(mode){
     state.mode = mode;
+    document.body.dataset.mode = mode;
     if (mode === "doc" || mode === "pdf") state.opening = false;
     Wake.set(mode === "doc" || mode === "pdf");
     $("#empty").style.display  = mode === "empty"  ? "block" : "none";
@@ -1614,7 +1797,8 @@
   })();
 
   /* ---------- icons: the shared set, drawn inline in the text colour (24×24 boxes) ---------- */
-  var ICONS = (function(){
+  /* the menu's, panels' and bars' icons join the shared table declared above the popovers */
+  ICONS = Object.assign(ICONS, (function(){
     var head = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
     var dots = 'stroke-width="2.6"', solid = 'fill="currentColor" stroke="none"';
     function path(d, attrs){ return '<path d="' + d + '"' + (attrs ? " " + attrs : "") + '/>'; }
@@ -1639,7 +1823,7 @@
       play:     icon(path("M8 5v14l11-7z", solid)),
       pause:    icon(path("M7 5h3.5v14H7z M13.5 5H17v14h-3.5z", solid))
     };
-  })();
+  })());
   /* a bar's play / pause button: the icon follows the state, the callers set the label */
   function playIcon(btn, playing){ btn.innerHTML = playing ? ICONS.pause : ICONS.play; }
 
@@ -2031,21 +2215,41 @@
       return new Date(t).toLocaleDateString();
     }
     function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    /* the start screen: a Continue card for the book opened last, then every book as a card */
+    function pctOf(b){ var pos = positions[b.id]; return pos ? pos.pct : 0; }
+    function item(b){
+      var pct = pctOf(b), name = escapeHtml(b.title || b.name), done = pct >= 98;
+      return '<div class="lib-item" role="button" tabindex="0" data-id="' + escapeHtml(b.id) + '" title="' + escapeHtml(b.name) + '">' +
+        '<span class="lib-type">' + escapeHtml(b.type) + '</span>' +
+        '<span class="lib-main"><div class="lib-name">' + name + '</div>' +
+        '<div class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
+        (done ? '<span class="lib-done">Finished</span>' : '') + '</div></span>' +
+        '<button class="lib-x" data-x="' + escapeHtml(b.id) + '" title="Remove from library" aria-label="Remove ' + name + ' from the library">' + ICONS.close + '</button>' +
+        '</div>';
+    }
+    function continueHtml(b){
+      var pct = pctOf(b), name = escapeHtml(b.title || b.name);
+      return '<button type="button" id="continueCard" title="Continue reading ' + name + '">' +
+        '<span class="cc-ring" style="--p:' + pct + '%" aria-hidden="true"><span>' + (pct ? pct + "%" : "new") + '</span></span>' +
+        '<span class="cc-main"><span class="label">' + (pct >= 98 ? "Read again" : "Continue reading") + '</span><span class="cc-title">' + name + '</span>' +
+        '<span class="cc-meta"><span class="lib-type">' + escapeHtml(b.type) + '</span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span></span></span>' +
+        '<span class="cc-go">Continue' + ICONS.goOn + '</span>' +
+        '</button>';
+    }
     function render(){
       var list = $("#libList");
       if (!list) return;
-      var lib = $("#library");
-      lib.classList.toggle("show", state.mode === "empty" && books.length > 0);
-      list.innerHTML = books.slice(0, 60).map(function(b){
-        var pos = positions[b.id], pct = pos ? pos.pct : 0;
-        return '<div class="lib-item" role="button" tabindex="0" data-id="' + escapeHtml(b.id) + '" title="' + escapeHtml(b.name) + '">' +
-          '<span class="lib-type">' + escapeHtml(b.type) + '</span>' +
-          '<span><div class="lib-name">' + escapeHtml(b.title || b.name) + '</div>' +
-          '<div class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span></div></span>' +
-          '<button class="lib-x" data-x="' + escapeHtml(b.id) + '" title="Remove from library" aria-label="Remove">×</button>' +
-          '</div>';
-      }).join("");
+      var lib = $("#library"), cont = $("#continue"), on = state.mode === "empty" && books.length > 0;
+      document.body.classList.toggle("has-books", books.length > 0);
+      lib.classList.toggle("show", on);
+      cont.classList.toggle("show", on);
+      $("#libCount").textContent = books.length > 1 ? String(books.length) : "";
+      list.innerHTML = books.slice(0, 60).map(item).join("");
+      cont.innerHTML = books.length ? continueHtml(books[0]) : "";
     }
+    $("#continue").addEventListener("click", function(e){
+      if (e.target.closest("#continueCard") && books.length) openId(books[0].id);
+    });
     $("#libList").addEventListener("click", function(e){
       var x = e.target.closest(".lib-x");
       if (x){ e.stopPropagation(); remove(x.dataset.x); return; }
@@ -2086,13 +2290,14 @@
     function home(){
       flush();
       abandonOpen();
-      Speak.stop(); Auto.stop(); Ruler.set(false); Zen.exit(); Side.close();
+      Speak.stop(); Auto.stop(); Ruler.set(false); Zen.exit(); Side.close(); Pop.close(true);
       if (state.mode === "doc" || state.mode === "pdf"){
         document.body.classList.remove("hidebar", "immersive");
         window.scrollTo(0, 0);
       }
       setSheet(false);
       $("#fname").textContent = "";
+      Section.reset();
       document.title = "lamplight — reader";
       show("empty");
       render();
@@ -4484,19 +4689,25 @@
   /* ---------- wiring ---------- */
   $("#openBtn").addEventListener("click", function(){ $("#fileInput").click(); });
   $("#openBtn2").addEventListener("click", function(){ $("#fileInput").click(); });
+  $("#libOpen").addEventListener("click", function(){ $("#fileInput").click(); });
   $("#fileInput").addEventListener("change", function(e){
     openFiles(e.target.files);
     e.target.value = "";
   });
 
+  /* a file dragged over the window: a dashed frame says it can be dropped anywhere. dragover
+     keeps firing while the drag lasts, so the frame goes when the events stop */
+  var dragTimer = null;
+  function dragOff(){ clearTimeout(dragTimer); dragTimer = null; document.body.classList.remove("dragging"); $("#empty").classList.remove("drag"); }
   document.addEventListener("dragover", function(e){
     e.preventDefault();
-    $("#empty").classList.add("drag");
+    document.body.classList.add("dragging"); $("#empty").classList.add("drag");
+    clearTimeout(dragTimer); dragTimer = setTimeout(dragOff, 220);
   });
-  document.addEventListener("dragleave", function(){ $("#empty").classList.remove("drag"); });
+  document.addEventListener("dragleave", function(e){ if (!e.relatedTarget) dragOff(); });
   document.addEventListener("drop", function(e){
     e.preventDefault();
-    $("#empty").classList.remove("drag");
+    dragOff();
     if (e.dataTransfer.files && e.dataTransfer.files.length) openFiles(e.dataTransfer.files);
   });
 
@@ -4546,11 +4757,33 @@
 
   $("#wordmark").addEventListener("click", function(){ Library.home(); });
   $("#wordmark").addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " "){ e.preventDefault(); Library.home(); } });
-  $("#lamp").addEventListener("click", function(){
-    var idx = CYCLE.indexOf(state.theme);
-    state.theme = CYCLE[(idx + 1) % CYCLE.length];
-    applyTheme(); AutoTheme.userPicked(state.theme);
-  });
+  /* the bar's document buttons; the Aa and lamp buttons open their popovers (see Pop) */
+  $("#searchBtn").addEventListener("click", function(){ Search.openPanel(); });
+  $("#tocBtn").addEventListener("click", function(){ Toc.openPanel(); });
+  $("#speakBtn").addEventListener("click", function(){ if (Speak.isActive()) Speak.stop(); else Speak.start(); });
+  /* the read-aloud button shows its state: the Speak module marks the body while it is on */
+  function syncSpeakBtn(){
+    var b = $("#speakBtn"), on = Speak.isActive();
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.setAttribute("aria-label", on ? "Stop reading aloud" : "Read aloud");
+    b.title = on ? "Stop reading aloud" : "Read aloud";
+  }
+  if (window.MutationObserver) new MutationObserver(function(){
+    syncSpeakBtn();
+    /* zen hides the bar: a popover left under it would float on its own */
+    if (document.body.classList.contains("zen")) Pop.close(true);
+  }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  /* t: between the day and the night theme (the auto pair; day / dusk unless changed). From a
+     theme that is neither, a light one goes to the night theme and a dark one to the day theme */
+  function toggleDayNight(){
+    var day = state.autoDay, night = state.autoNight, cur = state.theme, dark = isDarkColor(currentTheme().bg), to;
+    if (cur === day && day !== night) to = night;
+    else if (cur === night && day !== night) to = day;
+    else to = dark ? day : night;
+    if (to === cur) to = dark ? "day" : "dusk";
+    selectTheme(to);
+  }
   /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
      Scroll flow, opening it should push the text down so what was at the top reappears just
      under the sheet, and closing it should pull the text back up; browsers with scroll
@@ -4562,18 +4795,166 @@
     if (open === was) return;
     var paged = document.body.classList.contains("paged"), ref = $("#main");
     var before = ref.getBoundingClientRect().top, h = was ? sheet.offsetHeight : 0;
+    if (open) Pop.close(true);
     sheet.classList.toggle("open", open);
-    $("#gear").setAttribute("aria-expanded", open ? "true" : "false");
     sheet.setAttribute("aria-hidden", open ? "false" : "true");
     if (!paged){
       if (open) h = sheet.offsetHeight;
       var wanted = before + (open ? h : -h), actual = ref.getBoundingClientRect().top;
       if (Math.abs(actual - wanted) > 1) window.scrollBy(0, actual - wanted);
     }
+    if (open && SheetTabs) SheetTabs.pick();
   }
-  $("#gear").addEventListener("click", function(){
-    document.body.classList.remove("hidebar");
-    setSheet();
+
+  /* ---- the sheet's section strip: built once every group exists (the dictionary and translation
+     groups are added by their module at load), sticky at the top of the sheet. A button jumps to
+     its group; the button for the group under the strip is marked while the sheet scrolls ---- */
+  var SheetTabs = (function(){
+    var sheet = $("#sheet"), strip = null, groups = [], lock = 0, raf = null;
+    /* icon and id per group, by the label's text */
+    var META = { Reading: [ICONS.books, "readingGroup"], Theme: [ICONS.sun, "themeGroup"], Text: [ICONS.aa, "textGroup"],
+                 PDF: [ICONS.print, "pdfGroup"], Dictionary: [ICONS.meaning, "dictGroup"], Translation: [ICONS.translate, "trGroup"] };
+    function nameOf(g){
+      var l = g.querySelector(".label"), t = "";
+      if (l) Array.prototype.forEach.call(l.childNodes, function(n){ if (n.nodeType === 3) t += n.textContent; });
+      return t.trim();
+    }
+    function build(){
+      if (strip) return;
+      groups = Array.prototype.slice.call(sheet.querySelectorAll(".sheet-inner > .group"));
+      strip = document.createElement("nav");
+      strip.className = "sheet-tabs"; strip.id = "sheetTabs"; strip.setAttribute("aria-label", "Settings sections");
+      var row = document.createElement("div"); row.className = "sheet-tabs-row";
+      groups.forEach(function(g, i){
+        var n = nameOf(g), m = META[n] || [];
+        if (!g.id) g.id = m[1] || ("group" + i);
+        var l = g.querySelector(".label");
+        if (l && m[0] && !l.querySelector("svg, .label-aa")) l.insertAdjacentHTML("afterbegin", m[0]);
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = n || g.id; b.dataset.group = g.id;
+        row.appendChild(b);
+      });
+      strip.appendChild(row);
+      var x = document.createElement("button");
+      x.type = "button"; x.className = "sheet-x"; x.id = "sheetClose"; x.title = "Close settings"; x.setAttribute("aria-label", "Close settings");
+      x.innerHTML = ICONS.close;
+      strip.appendChild(x);
+      var inner = sheet.querySelector(".sheet-inner");
+      inner.insertBefore(strip, inner.firstChild);
+      strip.addEventListener("click", function(e){
+        var b = e.target.closest("button[data-group]");
+        if (b){ go(b.dataset.group); return; }
+        if (e.target.closest("#sheetClose")) setSheet(false);
+      });
+      sheet.addEventListener("scroll", function(){ if (raf) return; raf = requestAnimationFrame(function(){ raf = null; pick(); }); }, { passive: true });
+      if (window.IntersectionObserver){
+        var io = new IntersectionObserver(function(){ pick(); }, { root: sheet, threshold: [0, 0.5, 1] });
+        groups.forEach(function(g){ io.observe(g); });
+      }
+      pick();
+    }
+    function topOf(g){ return g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop; }
+    /* room under the last group, so that it too can be scrolled up under the strip like the others */
+    function pad(){
+      var last = groups[groups.length - 1], inner = sheet.querySelector(".sheet-inner");
+      var extra = sheet.clientHeight - strip.offsetHeight - last.offsetHeight - 40;
+      inner.style.paddingBottom = Math.max(24, Math.round(extra)) + "px";
+    }
+    function mark(id, hold){
+      if (!strip) return;
+      if (hold) lock = Date.now() + hold;
+      Array.prototype.forEach.call(strip.querySelectorAll("button[data-group]"), function(b){
+        var on = b.dataset.group === id;
+        b.classList.toggle("on", on);
+        if (on) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+        if (on && b.scrollIntoView) b.scrollIntoView({ inline: "nearest", block: "nearest" });
+      });
+    }
+    /* the group under the strip */
+    function pick(){
+      if (!strip || !groups.length || !sheet.classList.contains("open")) return;
+      pad();
+      if (Date.now() < lock) return;
+      var line = sheet.scrollTop + strip.offsetHeight + 12, cur = groups[0];
+      groups.forEach(function(g){ if (topOf(g) <= line) cur = g; });
+      mark(cur.id);
+    }
+    function go(id){
+      var g = document.getElementById(id);
+      if (!g) return;
+      pad();
+      mark(id, 700);
+      sheet.scrollTo({ top: Math.max(0, topOf(g) - strip.offsetHeight - 2), behavior: reduceMotion && reduceMotion.matches ? "auto" : "smooth" });
+    }
+    return { build: build, pick: pick, mark: mark, go: go };
+  })();
+
+  /* ---- the current section after the title while reading: the last heading at or above the
+     top of the screen (the outline entry for the page, in a PDF), looked up at most twice a
+     second on scroll and page turns. It goes in a data attribute the stylesheet appends, so the
+     title's own text stays what exports, printing and About read ---- */
+  var Section = (function(){
+    var timer = null, last = 0, offs = null, offsLen = -1, fname = $("#fname");
+    function set(t){
+      if (t) fname.dataset.sec = t; else delete fname.dataset.sec;
+      fname.title = fname.textContent + (t ? " · " + t : "");
+    }
+    /* each heading's character offset, computed once per document */
+    function entries(){
+      var len = Anchor.textLength();
+      if (offs && offsLen === len) return offs;
+      offs = Toc.entries().map(function(e){
+        var w = document.createTreeWalker(e.el, NodeFilter.SHOW_TEXT), n = w.nextNode();
+        return { title: e.title, off: n ? Anchor.offsetOf(n, 0) : null };
+      }).filter(function(e){ return e.off !== null; });
+      offsLen = len;
+      return offs;
+    }
+    function pick(){
+      if (state.mode === "doc"){
+        var top = Library.topCharOffset();
+        if (top === null) return;
+        var cur = "";
+        entries().forEach(function(e){ if (e.off <= top + 1) cur = e.title; });
+        set(cur);
+      } else if (state.mode === "pdf" && state.pdfDoc){
+        var doc = state.pdfDoc;
+        Toc.pdfEntries().then(function(es){
+          if (state.pdfDoc !== doc) return;
+          var pg = Library.currentPdfPage(), cur = "";
+          es.forEach(function(e){ if (e.page && e.page <= pg) cur = e.title; });
+          set(cur);
+        });
+      } else set("");
+    }
+    function update(){
+      clearTimeout(timer);
+      timer = setTimeout(function(){ last = Date.now(); pick(); }, Math.max(60, 500 - (Date.now() - last)));
+    }
+    function reset(){ offs = null; set(""); }
+    window.addEventListener("scroll", update, { passive: true });
+    if (window.MutationObserver) new MutationObserver(update).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
+    document.addEventListener("ll:fileopened", function(){ reset(); Pop.close(true); });
+    return { update: update, reset: reset };
+  })();
+
+  /* ---- first-run tips on the start screen, and one toast on the first document ever opened ---- */
+  $("#tips").hidden = Store.get("ll_tips") === "seen";
+  $("#tipsOk").addEventListener("click", function(){ Store.set("ll_tips", "seen"); $("#tips").hidden = true; });
+  /* the tip waits its turn: it never covers a message that is showing (a font that failed, say) */
+  function tipDoc(){
+    var t = $("#toast");
+    if (t && t.classList.contains("on")){ setTimeout(tipDoc, 600); return; }
+    Marks.toast("Tip: tap any word for its meaning");
+  }
+  document.addEventListener("ll:fileopened", function(){
+    if (Store.get("ll_tip_doc")) return;
+    var tries = 0, t = setInterval(function(){
+      if (state.mode === "doc" || state.mode === "pdf"){
+        clearInterval(t); Store.set("ll_tip_doc", "1");
+        setTimeout(tipDoc, 900);
+      } else if (++tries > 100 || (state.mode === "status" && !state.opening)) clearInterval(t);
+    }, 300);
   });
 
   $("#themeChips").addEventListener("click", function(e){
@@ -4722,6 +5103,7 @@
       $("#rZoom").value = Math.round(state.zoom * 100);
       $("#vZoom").textContent = Math.round(state.zoom * 100) + " %";
       queueRerender();
+      Pop.sync();
     } else {
       state.size = Math.max(14, Math.min(28, state.size + dir));
       $("#rSize").value = state.size;
@@ -4782,8 +5164,8 @@
     function typing(e){ return /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable; }
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
     add("o", "Open a file", function(){ $("#fileInput").click(); });
-    add("s", "Reading settings", function(){ $("#gear").click(); });
-    add("t", "Next theme", function(){ $("#lamp").click(); });
+    add("s", "Settings", function(){ document.body.classList.remove("hidebar"); setSheet(); });
+    add("t", "Switch day / night theme", toggleDayNight);
     add("+", "Larger text / zoom in", function(){ bump(1); }, docOpen);
     add("-", "Smaller text / zoom out", function(){ bump(-1); }, docOpen);
     add("p", "Switch scroll / pages", function(){ setFlow(state.flow === "pages" ? "scroll" : "pages"); }, docOpen);
@@ -6249,6 +6631,10 @@
   $("#cWake").checked = state.wake !== false;
   AutoTheme.apply();
   show("empty");
+  /* the sheet's section strip, now that every group is in place */
+  SheetTabs.build();
+  if (!Speak.supported) $("#speakBtn").hidden = true;
+  syncSpeakBtn();
   Launch.boot();
 
   /* warm up the small parsers once the page is idle, so the first open feels instant */
