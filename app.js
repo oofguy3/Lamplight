@@ -5572,7 +5572,12 @@
       "#dictCard .tr-out{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 4px; overflow-wrap:break-word;}",
       "#dictCard .tr-out[dir=rtl]{text-align:right;}",
       "#dictCard .tr-eng{color:var(--muted); font-size:0.78rem; padding:0 0 4px;}",
-      /* simpler: the plainer text, each change dotted in the accent colour with a tap-to-show note */
+      /* simpler: how plain to make it, then the plainer text with each change dotted in the
+         accent colour and a tap-to-show note */
+      "#dictCard .lvl{margin:0 0 12px;}",
+      "#dictCard .lvl .sec{margin-top:0;}",
+      /* four longish labels: the pill wraps onto a second row rather than scrolling out of sight */
+      "#dictCard .lvl .seg{max-width:100%; flex-wrap:wrap; overflow:visible; row-gap:4px;}",
       "#dictCard .simple{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:0 0 2px;}",
       "#dictCard .chg{",
       "  display:inline; font:inherit; color:inherit; background:transparent; border:0; padding:0; margin:0;",
@@ -5605,6 +5610,33 @@
       "#dictCard .tense{font-size:0.7812rem; color:var(--muted); margin-top:7px; line-height:1.4;}",
       "#dictCard .tense b{color:var(--ink); font-weight:600;}",
       "#dictCard .plain{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 2px;}",
+      /* style: the register as a quiet pill, then a row per figure of speech; a row marks its
+         own words in the quote above */
+      "#dictCard #dictExpl > .sec:first-child{margin-top:0;}",
+      "#dictCard .style{display:grid; gap:6px; margin:0 0 4px;}",
+      "#dictCard .pill{",
+      "  display:inline-block; padding:2px 9px; border-radius:999px; flex:none;",
+      "  font-size:0.7188rem; line-height:1.55; white-space:nowrap; border:1px solid var(--line);",
+      "}",
+      "#dictCard .pill.ink{background:color-mix(in srgb, var(--ink) 6%, transparent); color:var(--ink);}",
+      "#dictCard .pill.acc{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent); color:var(--ink);}",
+      "#dictCard .reg{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px;}",
+      "#dictCard .reg .rnote{color:var(--muted); font-size:0.78rem; line-height:1.45;}",
+      "#dictCard .figrow{",
+      "  display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; width:100%; margin:0; text-align:left;",
+      "  padding:7px 9px; border:1px solid var(--line); border-radius:10px; background:transparent;",
+      "  color:var(--ink); font-family:inherit; font-size:0.8125rem; line-height:1.5; cursor:pointer;",
+      "  transition:background .2s, border-color .2s;",
+      "}",
+      "#dictCard .figrow:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      "#dictCard .figrow[aria-pressed=true]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}",
+      "#dictCard .figrow .ftext{font-family:var(--reader-font);}",
+      "#dictCard .figrow .fnote{color:var(--muted);}",
+      "@media (pointer: coarse){ #dictCard .figrow{min-height:44px;} }",
+      "#dictCard .quote mark.fig{",
+      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--ink); border-radius:3px;",
+      "  text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:3px;",
+      "}",
       "#dictCard .ai{font-size:0.9375rem; line-height:1.55; white-space:pre-wrap; padding:2px 0 4px;}",
       /* chips: quiet actions; .go is the one primary action of a panel (the AI rewrite, a translation) */
       "#dictCard .acts{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px;}",
@@ -5657,6 +5689,9 @@
       "  #dictCard [role=tab][aria-disabled=true]{color:GrayText; opacity:1;}",
       "  #dictCard .bdg, #dictCard .mark, #dictPill{border:1px solid ButtonText;}",
       "  #dictCard .dot{background:ButtonText;}",
+      "  #dictCard .pill{border-color:ButtonText;}",
+      "  #dictCard .figrow[aria-pressed=true]{border-color:Highlight; border-width:2px;}",
+      "  #dictCard .quote mark.fig{background:Highlight; color:HighlightText;}",
       "}"
     ].join("\n");
     document.head.appendChild(css);
@@ -6167,8 +6202,53 @@
     function role(label, val){
       return '<span class="role"><b>' + esc(label) + '</b>' + esc(val) + '</span>';
     }
+    /* how the sentence is written: its register, and the figures of speech in it. Nothing is
+       drawn for plain everyday prose. */
+    function renderStyle(r){
+      var st = r.style;
+      if (!st) return '';
+      var figs = st.figurative || [], reg = st.register || { kind: "neutral", note: "" };
+      if (!figs.length && reg.kind === "neutral") return '';
+      var h = '<div class="sec">Style</div><div class="style">' +
+        '<div class="reg"><span class="pill ink">' + esc(reg.kind) + '</span><span class="rnote">' + esc(reg.note || '') + '</span></div>';
+      figs.forEach(function(f, i){
+        h += '<button type="button" class="figrow" aria-pressed="false" data-fig="' + i + '">' +
+             '<span class="pill acc">' + esc(f.kind) + '</span>' +
+             '<span class="ftext">“' + esc(f.text) + '”</span>' +
+             '<span class="fnote">' + esc(f.note) + '</span></button>';
+      });
+      return h + '</div>';
+    }
+    /* a row marks its own words in the quote above: on hover, on focus, and while it is pressed */
+    function wireStyle(r, sentence){
+      var quote = inner.querySelector("#dictQuote"), rows = inner.querySelectorAll(".figrow");
+      var figs = (r.style && r.style.figurative) || [];
+      if (!quote || !rows.length) return;
+      function show(i){
+        var f = figs[i];
+        if (!f){ quote.textContent = sentence; return; }
+        quote.innerHTML = esc(sentence.slice(0, f.start)) + '<mark class="fig">' + esc(sentence.slice(f.start, f.end)) +
+                          '</mark>' + esc(sentence.slice(f.end));
+      }
+      function held(){
+        for (var i = 0; i < rows.length; i++) if (rows[i].getAttribute("aria-pressed") === "true") return i;
+        return -1;
+      }
+      Array.prototype.forEach.call(rows, function(b, i){
+        b.addEventListener("mouseenter", function(){ show(i); });
+        b.addEventListener("focus", function(){ show(i); });
+        b.addEventListener("mouseleave", function(){ show(held()); });
+        b.addEventListener("blur", function(){ show(held()); });
+        b.addEventListener("click", function(){
+          var on = b.getAttribute("aria-pressed") === "true";
+          Array.prototype.forEach.call(rows, function(o){ o.setAttribute("aria-pressed", "false"); });
+          b.setAttribute("aria-pressed", on ? "false" : "true");
+          show(on ? -1 : i);
+        });
+      });
+    }
     function renderExplain(r, sentence){
-      var h = '';
+      var h = renderStyle(r);
       if (!r.clauses.length){
         h += '<div class="note">Nothing to break down here.</div>';
         return h;
@@ -6244,6 +6324,7 @@
         var r = window.llExplain.explain(sentence, find, window.llExplain.rank);
         box.innerHTML = renderExplain(r, sentence) + renderKeywords(r) +
           (navigator.onLine ? '' : '<div class="note">Offline — explained with the built-in dictionary only.</div>');
+        wireStyle(r, sentence);
       }).catch(function(err){
         console.error(err);
         if (cur && cur.gen === my) box.innerHTML = '<div class="note">Couldn’t analyse this sentence.</div>';
@@ -6269,7 +6350,8 @@
       buildCard({ kind: "sentence", sentence: text, title: /\s/.test(text) ? "This sentence" : "This word", icon: "explain",
         dialogLabel: "Sentence", tabsLabel: "Sentence", quote: text, tabs: ["explain", "simpler", "translate"], active: tab || "explain",
         span: sp, foot: foot,
-        panels: { explain: '<div id="dictExpl"></div><div id="dictAi"></div>', simpler: '<div id="simpBody"></div>',
+        panels: { explain: '<div id="dictExpl"></div><div id="dictAi"></div>',
+                  simpler: '<div class="lvl" id="simpLevel"></div><div id="simpBody"></div>',
                   translate: '<div class="tr-slot" data-kind="sentence"></div>' },
         lazy: { explain: function(){ runExplain(text); }, simpler: function(){ runSimplify(text); } } });
       openCard();
@@ -6295,34 +6377,75 @@
         return withWords(syns);
       });
     }
-    function simplifyText(text){
+    /* how plain to make it: the reader's choice is kept between passages and between visits */
+    var LS_LEVEL = "ll_simplify_level";
+    var SIMP_LEVELS = [["light", "Light"], ["plain", "Plain"], ["very", "Very plain"], ["kid", "For a 10-year-old"]];
+    function simpLevel(){
+      var v = Store.get(LS_LEVEL) || "plain";
+      for (var i = 0; i < SIMP_LEVELS.length; i++) if (SIMP_LEVELS[i][0] === v) return v;
+      return "plain";
+    }
+    function levelName(l){
+      for (var i = 0; i < SIMP_LEVELS.length; i++) if (SIMP_LEVELS[i][0] === l) return SIMP_LEVELS[i][1];
+      return "Plain";
+    }
+    function simplifyText(text, level){
       return Promise.all([simplifyWords(text), need(["explain"])]).then(function(){
-        return window.llExplain.simplify(text, find, window.llExplain.rank);
+        return window.llExplain.simplify(text, find, window.llExplain.rank, { level: level || simpLevel() });
       });
     }
-    function simpleSummary(changes){
-      var swaps = 0, phrases = 0, active = 0, splits = 0;
+    function simpleSummary(changes, level){
+      var swaps = 0, phrases = 0, active = 0, splits = 0, cut = 0, gloss = 0;
       changes.forEach(function(c){
         if (c.why === "rarer word") swaps++;
-        else if (c.why === "shorter phrase" || c.why === "idiom") phrases++;
+        else if (c.why === "shorter phrase" || c.why === "idiom" || c.why === "connector" || c.why === "abbreviation") phrases++;
         else if (c.why === "passive to active") active++;
         else if (c.why === "split long sentence") splits++;
+        else if (c.why === "shortened" || c.why === "aside removed") cut++;
+        else if (c.why === "glossed") gloss++;
       });
-      var parts = [];
+      var parts = [levelName(level)];
       function count(k, one, many){ if (k) parts.push(k + " " + (k === 1 ? one : many)); }
       count(swaps, "word swapped", "words swapped");
       count(phrases, "phrase shortened", "phrases shortened");
       count(active, "sentence turned active", "sentences turned active");
       count(splits, "sentence split", "sentences split");
-      return parts.length ? parts.join(" · ") : "Nothing to simplify — this is already plain.";
+      count(cut, "part shortened", "parts shortened");
+      count(gloss, "word explained", "words explained");
+      if (parts.length === 1) parts.push("nothing to simplify — this is already plain");
+      return parts.join(" · ");
     }
     /* opens the card on the Simpler tab (the pill's Explain leads there too, one tab over) */
     function renderSimplify(text, span){ openSentence(text, span, "simpler"); }
+    /* the four strengths, above the text; choosing one redraws the passage at that strength */
+    function drawLevels(){
+      var box = inner.querySelector("#simpLevel");
+      if (!box) return;
+      var now = simpLevel();
+      box.innerHTML = '<div class="sec" id="simpLevelL">How plain</div>' +
+        '<div class="chips seg" id="simpLevels" role="group" aria-labelledby="simpLevelL">' +
+        SIMP_LEVELS.map(function(p){
+          var on = p[0] === now;
+          return '<button type="button" class="chip' + (on ? ' on' : '') + '" data-l="' + p[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + esc(p[1]) + '</button>';
+        }).join("") + '</div>';
+    }
     function runSimplify(text){
-      var my = cur.gen, body = inner.querySelector("#simpBody");
+      var my = cur.gen, body = inner.querySelector("#simpBody"), box = inner.querySelector("#simpLevel");
       if (!body) return;
+      if (box && !box.dataset.wired){
+        box.dataset.wired = "1";
+        box.addEventListener("click", function(e){
+          var b = e.target.closest("#simpLevels .chip");
+          if (!b || b.dataset.l === simpLevel()) return;
+          Store.set(LS_LEVEL, b.dataset.l);
+          drawLevels();
+          runSimplify(text);
+        });
+      }
+      drawLevels();
       body.innerHTML = '<div class="note">Making it plainer…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
-      simplifyText(text).then(function(r){
+      var level = simpLevel();
+      simplifyText(text, level).then(function(r){
         if (!cur || cur.gen !== my) return;
         drawSimple(r, text);
       }).catch(function(err){
@@ -6339,7 +6462,7 @@
         pos = c.end;
       });
       h += esc(out.slice(pos)) + '</div>' +
-           '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes)) + '</div>' +
+           '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes, r.level || simpLevel())) + '</div>' +
            '<div class="acts" id="simpActs">' +
            ("speechSynthesis" in window ? '<button type="button" class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
            (navigator.onLine ? '<button type="button" class="act go" data-s="ai">' + icon("star", 16) + '<span>Simplify with AI</span></button>' : '') + '</div>' +
@@ -6355,7 +6478,7 @@
         else if (b.dataset.s === "ai"){
           var key = Store.get(LS_KEY) || "";
           if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
-          simplifyWithAI(text, key, inner.querySelector("#simpAi"));
+          simplifyWithAI(text, key, inner.querySelector("#simpAi"), r.level || simpLevel());
         }
       });
     }
@@ -6370,11 +6493,18 @@
       note.textContent = "was “" + chg.dataset.from + "” — " + chg.dataset.why;
       chg.parentNode.insertBefore(note, chg.nextSibling);
     }
-    function simplifyWithAI(text, apiKey, aiBox){
+    /* the rewrite Claude is asked for follows the strength the reader chose */
+    var AI_LEVEL = {
+      light: "Rewrite this, but replace only difficult words with everyday ones. Keep the sentences as they are.",
+      plain: "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; do not add anything.",
+      very:  "Rewrite this in very plain English: short sentences, everyday words. Keep every fact and the same tone; do not add anything.",
+      kid:   "Rewrite this for a ten-year-old: short sentences, everyday words, explain any hard word in brackets, keep every fact."
+    };
+    function simplifyWithAI(text, apiKey, aiBox, level){
       var my = cur.gen;
       aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
-      var prompt = "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; " +
-        "do not add anything. Reply with the rewritten text only.\n\n" + text;
+      var ask = AI_LEVEL[level] || AI_LEVEL.plain;
+      var prompt = ask + " Reply with the rewritten text only.\n\n" + text;
       fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -6399,12 +6529,12 @@
         if (!cur || cur.gen !== my) return;
         aiBox.innerHTML = '<div class="note">Couldn’t get a rewrite (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
           '<div class="acts"><button type="button" class="act" id="simpAiRetry">Try again</button><button type="button" class="act" id="simpAiKey">Change key</button></div>';
-        aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
-        aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
+        aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox, level); });
+        aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox, level); });
       });
     }
     /* for tests and other modules */
-    window.llSimplify = { render: renderSimplify, simplify: simplifyText };
+    window.llSimplify = { render: renderSimplify, simplify: simplifyText, levels: SIMP_LEVELS, level: simpLevel };
 
     /* ---------- optional: explain with AI (online + your own key) — the last block of the Explain panel ---------- */
     function renderAiButton(sentence){

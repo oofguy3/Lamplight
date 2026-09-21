@@ -1030,6 +1030,242 @@
   EASY_WORDS.split(" ").forEach(function(w, i){ RANK[w] = i + 1; });
   function rank(w){ return RANK[w] || Infinity; }
 
+  /* ---------- figurative language and register ----------
+     How the sentence is written, not only what it says: similes, metaphors, personification,
+     hyperbole and the idioms the explainer already found, plus one word for its register with
+     the evidence for it. start / end are character offsets into the sentence, so the card can
+     mark the span inside its quote. */
+
+  /* vivid everyday nouns — the right-hand side of a metaphor ("her words were daggers") */
+  var VIVID = set("storm sun moon star wolf lion tiger fox bear snake serpent ghost shadow machine engine ocean sea river stream fire flame ice stone rock wall mountain cliff angel devil monster giant beast book mirror window door bridge anchor chain thread needle dagger knife sword blade arrow bullet hammer nail rope net cage prison fortress castle tower island desert forest garden flower rose thorn weed seed root branch leaf tree oak cloud rain thunder lightning wind breeze frost snow hail fog mist dawn dusk night candle lamp lantern furnace oven kettle clock coin gold silver iron steel glass crystal diamond pearl velvet silk paper dust ash smoke steam honey sugar salt poison medicine wound scar knot maze puzzle mask puppet doll clown king queen soldier prisoner saint bird hawk eagle dove crow owl sheep lamb pig dog cat horse mouse rat fish shark whale bee ant spider butterfly worm sunshine whirlwind volcano earthquake avalanche tide harbour harbor lighthouse compass");
+  /* things only people do — a thing that does one of them is personified */
+  var HUMAN_ACT = set("whisper sigh smile laugh cry weep dance sing sleep wake grieve beg refuse argue mutter groan kiss embrace wait watch listen remember forget decide want");
+  /* the left-hand side of "a sea of troubles" */
+  var ABSTRACT = set("trouble sorrow grief joy fear hope despair doubt love hatred anger rage peace time life death memory pain pleasure guilt shame pride courage faith wisdom knowledge freedom silence chaos confusion regret longing desire misery worry");
+  var POSSDET = set("my your his her its our their");
+  /* "as soon as", "as much as" and the like are joining words, not comparisons */
+  var NOT_SIMILE = set("soon long far well much many more most often usual always possible early late quickly good");
+  var ARCHAIC = set("thou thee thy thine ye hath doth dost hast saith ere whilst oft prithee nay forsooth methinks hither thither whence whither yonder betwixt nigh unto morrow");
+  var NOT_ETH = set("teeth beneath underneath breath death wreath heath sheath bequeath seeth");
+  var FILLERS = [/\bwell\s*,/i, /\byou know\b/i, /\bi mean\b/i, /\bkind of\b/i, /\bkinda\b/i, /\bsort of\b/i, /\bsorta\b/i, /\bgonna\b/i, /\bgotta\b/i, /\bwanna\b/i, /\byeah\b/i, /\byep\b/i, /\bnope\b/i, /\bokay\b/i, /\bhey\b/i, /\bhuh\b/i];
+  var TAG_Q = /,\s*(?:[a-z]+n['’]t|is|are|was|were|do|does|did|will|would|can|could|should|shall|have|has|had)\s+(?:i|you|he|she|it|we|they)\s*\?/i;
+  var HYPER = [
+    /\b(?:a|one)\s+(?:hundred|thousand|million|billion)\s+times\b/gi,
+    /\bforever\b/gi,
+    /\bnever\s+in\s+(?:my|your|his|her|our|their)\s+(?:whole\s+)?life\b/gi,
+    /\bthe\s+whole\s+world\b/gi,
+    /\b(?:everyone|everybody|no\s+one|nobody)\s+ever\b/gi,
+    /\btons\s+of\b/gi,
+    /\bweigh(?:s|ed)?\s+a\s+ton\b/gi,
+    /\bfor\s+ages\b/gi,
+    /\bd(?:ied|ying)\s+of\s+(?:laughter|embarrassment|boredom|shame)\b/gi,
+    /\bstarving\b/gi,
+    /\bfreezing\s+to\s+death\b/gi,
+    /\bthe\s+(?:best|worst)\b[^.!?]{0,40}?\bever\b/gi,
+    /\b(?:very\s+very|so\s+so)\b/gi
+  ];
+
+  /* the nearest noun or pronoun before token i */
+  function headBefore(toks, i){
+    for (var j = i - 1; j >= 0; j--){
+      if (toks[j].punct) continue;
+      if (/^(NOUN|PROPER|PRON|PRONO)$/.test(toks[j].tag)) return toks[j];
+    }
+    return null;
+  }
+  /* the run of words after token i, up to punctuation or a joining word: [first, last] */
+  function phraseAfter(toks, i){
+    var a = i + 1, b = a;
+    while (b < toks.length && !toks[b].punct && !/^(CC|SC|REL|WH)$/.test(toks[b].tag)) b++;
+    return b > a ? [a, b - 1] : null;
+  }
+  function isAbstract(t){
+    var l = t.lemma || t.l;
+    return !!(ABSTRACT[l] || /(tion|sion|ness|ity|ment|ance|ence|hood|ship|ism)$/.test(l));
+  }
+  /* a person, a name, or something a person owns ("her words") */
+  function personish(toks, t){
+    var l = t.lemma || t.l;
+    if (PERSON[l] || t.tag === "PROPER" || (t.c && t.c.PROPER)) return true;
+    for (var j = t.i - 1; j >= 0 && j >= t.i - 3; j--){
+      if (toks[j].punct) break;
+      if (POSSDET[toks[j].l] || toks[j].poss) return true;
+      if (!/^(DET|ADJ|NOUN|NUM)$/.test(toks[j].tag)) break;
+    }
+    return false;
+  }
+  /* the first token of the noun phrase that ends at t ("her words" from "words") */
+  function npStart(toks, t){
+    var j = t.i;
+    while (j > 0 && !toks[j-1].punct && (/^(DET|ADJ|POSS|NUM)$/.test(toks[j-1].tag) || POSSDET[toks[j-1].l])) j--;
+    return j;
+  }
+  /* "like" compares when it stands after something that has already happened, not when it is
+     the clause's own verb ("I like tea", "she would like tea", "the children like sweets") */
+  function likeIsPrep(toks, i){
+    var prev = toks[i - 1], z;
+    if (!prev || prev.punct) return true;
+    if (/^(MODAL|TO|AUX|NEG|DET|ADJ|CC|SC)$/.test(prev.tag)) return false;
+    if (prev.tag === "PRON" && PERSON[prev.l]) return false;
+    for (z = 0; z < i; z++) if (/^(VERB|AUX|MODAL)$/.test(toks[z].tag) && toks[z].l !== "like") return true;
+    return false;
+  }
+  /* a run of words that reads as a thing, not as another clause */
+  function nominal(toks, ph){
+    var last = toks[ph[1]];
+    return /^(NOUN|PROPER|PRON|PRONO|NUM)$/.test(last.tag) && !/^(AUX|MODAL|TO)$/.test(toks[ph[0]].tag);
+  }
+  function clauseAt(clauses, i){
+    for (var k = 0; k < clauses.length; k++){
+      var c = clauses[k];
+      if (c.span && i >= c.span[0] && i <= c.span[1]) return c;
+    }
+    return null;
+  }
+  function subjectOf(clauses, i){
+    var c = clauseAt(clauses, i);
+    return (c && c.subject) ? c.subject.toLowerCase() : "this";
+  }
+
+  function figurative(toks, clauses, exprs, src, rank){
+    var out = [], seen = {};
+    function add(kind, a, b, note){
+      if (a < 0 || b >= toks.length || b < a) return;
+      push(kind, toks[a].s, toks[b].e, note);
+    }
+    function push(kind, s, e, note){
+      var key = kind + ":" + s + ":" + e;
+      if (seen[key] || e <= s) return;
+      seen[key] = 1;
+      out.push({ kind: kind, text: src.slice(s, e), start: s, end: e, note: note });
+    }
+    function slice(a, b){ return src.slice(toks[a].s, toks[b].e); }
+
+    toks.forEach(function(t, i){
+      if (t.punct) return;
+      /* simile: "like a …" — never the verb ("I like tea", "she would like tea"). The tagger
+         sometimes reads a comparison as the verb of its clause, so a "like" that could be a
+         preposition counts when the clause already has a verb and nothing before it is a
+         subject pronoun or an auxiliary waiting for one */
+      if (t.l === "like" && t.tag !== "NOUN" && t.c && t.c.PREP && likeIsPrep(toks, i)){
+        var ph = phraseAfter(toks, i);
+        if (ph && nominal(toks, ph)){
+          var x = headBefore(toks, i);
+          add("simile", i, ph[1], "compares " + (x ? x.w.toLowerCase() : subjectOf(clauses, i)) + " to " + slice(ph[0], ph[1]).toLowerCase());
+        }
+      }
+      /* simile: "as cold as ice" — not "as many as 400", not "as soon as" */
+      if (t.l === "as" && toks[i+1] && /^(ADJ|NOUN|ADV)$/.test(toks[i+1].tag) && !NOT_SIMILE[toks[i+1].l] && toks[i+2] && toks[i+2].l === "as"){
+        var ph2 = phraseAfter(toks, i + 2);
+        if (ph2 && /^(DET|NOUN|ADJ|PROPER|POSS)$/.test(toks[ph2[0]].tag) && !(toks[ph2[0]].c && toks[ph2[0]].c.NUM)){
+          add("simile", i, ph2[1], "compares " + subjectOf(clauses, i) + " to " + slice(ph2[0], ph2[1]).toLowerCase());
+        }
+      }
+      /* simile: "as if / as though …" */
+      if (t.l === "as" && toks[i+1] && /^(if|though)$/.test(toks[i+1].l) && toks[i+2] && !toks[i+2].punct){
+        var b3 = i + 2;
+        while (b3 + 1 < toks.length && !toks[b3 + 1].punct) b3++;
+        add("simile", i, b3, "compares " + subjectOf(clauses, i) + " to " + slice(i + 2, b3).toLowerCase());
+      }
+      /* metaphor: "X is / was a Y", with Y a vivid everyday thing */
+      if ((t.tag === "AUX" || t.tag === "VERB") && BE[t.l]){
+        var sj = headBefore(toks, i), j = i + 1;
+        while (toks[j] && /^(DET|ADJ|POSS|ADV|NUM)$/.test(toks[j].tag)) j++;
+        var y = toks[j];
+        if (sj && y && y.tag === "NOUN" && VIVID[y.lemma || y.l] && (y.lemma || y.l) !== (sj.lemma || sj.l) && personish(toks, sj)){
+          add("metaphor", npStart(toks, sj), j, "says one thing is another to suggest a likeness");
+        }
+      }
+      /* metaphor: "a sea of troubles" — a vivid thing standing for an idea */
+      if (t.l === "of" && t.tag === "PREP"){
+        var xh = headBefore(toks, i), k = i + 1;
+        while (toks[k] && /^(DET|ADJ|POSS|NUM)$/.test(toks[k].tag)) k++;
+        var yh = toks[k];
+        if (xh && yh && xh.tag === "NOUN" && yh.tag === "NOUN" && VIVID[xh.lemma || xh.l] && isAbstract(yh)){
+          add("metaphor", npStart(toks, xh), k, "says one thing is another to suggest a likeness");
+        }
+      }
+    });
+
+    /* personification: a thing doing something only people do */
+    clauses.forEach(function(c){
+      if (!c || c.fragment || !c.pos || !c.pos.subj || c.pos.main < 0) return;
+      var head = toks[c.pos.subj[1]], v = toks[c.pos.main];
+      if (!head || !v || v.tag !== "VERB" || head.tag !== "NOUN") return;
+      if (PERSON[head.lemma || head.l] || (head.c && head.c.PROPER)) return;
+      if (!HUMAN_ACT[v.lemma || v.l]) return;
+      add("personification", c.pos.subj[0], v.i, "gives a human action to a thing");
+    });
+
+    /* hyperbole: the stock exaggerations */
+    HYPER.forEach(function(re){
+      var m;
+      re.lastIndex = 0;
+      while ((m = re.exec(src))) push("hyperbole", m.index, m.index + m[0].length, "exaggerates for effect");
+    });
+
+    /* the idioms the explainer already found, with their dictionary sense */
+    exprs.forEach(function(e){
+      if (e.kind !== "idiom" || e.split) return;
+      var best = bestSense(e.entry, null, rank);
+      add("idiom", e.start, e.end, best && best.d ? "an idiom — it means " + best.d : "a set phrase with a meaning of its own");
+    });
+
+    out.sort(function(a, b){ return a.start - b.start || a.end - b.end; });
+    return out;
+  }
+
+  /* "a, b and c" */
+  function andList(a){
+    if (!a.length) return "";
+    if (a.length === 1) return a[0];
+    return a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+  }
+  function registerOf(toks, clauses, figs, src){
+    var words = toks.filter(function(t){ return !t.punct; }), low = src.toLowerCase(), found = [], i;
+    /* archaic */
+    var marks = [];
+    words.forEach(function(t){
+      if (ARCHAIC[t.l] && marks.indexOf("“" + t.l + "”") < 0) marks.push("“" + t.l + "”");
+      if (/^[a-z]{3,}eth$/.test(t.l) && !NOT_ETH[t.l] && marks.indexOf("-eth verbs") < 0) marks.push("-eth verbs");
+    });
+    if (/['’]tis\b|\btwas\b/.test(low) && marks.indexOf("“’tis”") < 0) marks.push("“’tis”");
+    if (words.some(function(t){ return t.l === "art"; }) && words.some(function(t){ return t.l === "thou"; })) marks.push("“art”");
+    if (marks.length) return { kind: "archaic", note: "Archaic — " + andList(marks.slice(0, 3)) };
+
+    /* spoken */
+    var contractions = toks.filter(function(t){ return t.glued; }).length;
+    var fillers = FILLERS.filter(function(re){ return re.test(src); }).length;
+    var tag = TAG_Q.test(src);
+    if (contractions && (fillers || tag)){
+      found = [];
+      if (contractions) found.push("contractions");
+      if (fillers) found.push(fillers > 1 ? "everyday fillers" : "an everyday filler");
+      if (tag) found.push("a question tag");
+      return { kind: "spoken", note: "Spoken — " + andList(found) };
+    }
+    if (fillers >= 2) return { kind: "spoken", note: "Spoken — everyday fillers" };
+
+    /* formal */
+    if (!contractions){
+      found = [];
+      if (clauses.some(function(c){ return c && c.passive; })) found.push("a passive");
+      var noms = words.filter(function(t){ return /(tion|sion|ment|ance|ence)$/.test(t.l) && t.l.length > 5; }).length;
+      if (noms >= 2) found.push("nouns built from verbs");
+      var latin = words.filter(function(t){ return t.l.length >= 8 && rank(t.l) > 5000 && rank(t.lemma || t.l) > 5000; }).length;
+      if (latin >= 2) found.push("long Latin-based words");
+      if (/\bone must\b|\bit is\b[^.!?]{0,40}\bthat\b|\bshall\b/.test(low)) found.push("“shall” or “one must”");
+      if (found.length >= 2) return { kind: "formal", note: "Formal — " + andList(["no contractions"].concat(found)) };
+    }
+
+    /* literary */
+    if (figs.length) return { kind: "literary", note: "Literary — " + figs[0].kind + " and a written turn of phrase" };
+    var seps = toks.filter(function(t){ return t.punct && /^[;—–]$/.test(t.w); }).length;
+    if (seps && clauses.filter(function(c){ return c && !c.fragment; }).length > 1) return { kind: "literary", note: "Literary — clauses joined by a semicolon or a dash" };
+
+    return { kind: "neutral", note: "Neutral — everyday written English" };
+  }
+
   /* ---------- simplify ----------
      A plainer version of one or more sentences, built as edits on the original text so that
      spelling, spacing, quotes and contractions stay exactly as written: wordy phrases and
@@ -1112,6 +1348,32 @@
   var NATION = /^(american|british|english|french|german|spanish|italian|russian|chinese|japanese|indian|irish|scottish|welsh|european|african|asian|christian|jewish|muslim|roman|greek|victorian|dutch|swiss|swedish|polish|turkish|arab|persian|latin)$/;
   var ABBR = set("mr mrs ms dr st prof sr jr vs etc e.g i.e mt fig vol pp inc ltd a.m p.m u.s u.k no");
   /* everyday words the frequency list ranks high because they are also names */
+  /* how far to go: light only trades the rarest words, plain is the default, very plain also
+     splits, straightens and drops asides, and "for a ten-year-old" shortens what is left,
+     expands abbreviations and glosses the words a child would not know */
+  var LEVELS = {
+    light: { swap: 7000, curated: 7000, wordy: false, passive: false, split: 0 },
+    plain: { swap: 4000, curated: 0, wordy: true, passive: true, split: 22 },
+    very:  { swap: 3000, curated: 0, wordy: true, passive: true, split: 16, hardSep: true, aside: true, connector: true },
+    kid:   { swap: 3000, curated: 0, wordy: true, passive: true, split: 16, hardSep: true, aside: true, connector: true,
+             abbr: true, numbers: true, adjectives: true, shorten: true, gloss: 5000 }
+  };
+  function levelOf(opts){
+    var name = typeof opts === "string" ? opts : (opts && opts.level) || "plain";
+    return own(LEVELS, name) ? name : "plain";
+  }
+  /* linking adverbs a plainer text says in one short word */
+  var CONNECT = { however: "but", moreover: "also", nevertheless: "still", furthermore: "also", consequently: "so" };
+  /* abbreviations written out */
+  var ABBREV = [[/\be\.\s?g\./gi, "for example"], [/\bi\.\s?e\./gi, "that is"], [/\betc\./gi, "and so on"]];
+  /* a closing subordinate clause that can stand as its own sentence */
+  var CUT_SUB = { "although": "though", "though": "though", "whereas": "though", "because": "because" };
+  /* numbers spelled out: they need no meaning in brackets */
+  var NUMWORD = set("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion dozen first second third fourth fifth sixth seventh eighth ninth tenth half quarter");
+  /* where a definition can be cut without leaving a phrase half-said */
+  var BREAK = /^(?:of|to|in|on|at|with|for|from|by|as|that|which|who|or|and|but|when|where|into|about|than|through|over|under|like|used|usually|without|upon)$/;
+  /* a gloss cut to four words must not end on a joining word */
+  var TRAIL = /\s+(?:or|and|of|by|to|in|on|with|for|from|as|at|that|which|the|a|an|is|are|be|being|into|about)$/;
   var NAMEY = set("harry smith mike jack tom bill bob frank pat dick sue ray rob art will grant sherry brandy ruby rose amber pearl daisy lily may june april august carol joy grace faith hope victor dean earl duke roman bush wood woods green brown black white gray grey young king knight cook baker carter mason taylor turner walker ward warren wells west york chase lane hill dale glen rich guy jay drew chuck jimmy tony mac");
 
   /* the input as sentences: [{ s, e }] over the text; abbreviations, initials and decimals
@@ -1230,12 +1492,12 @@
      lists, whose own best sense lists the word back, and which has at most two senses as that
      part of speech. A common word with several senses must list the synonym in more than one.
      Adjectives and adverbs are left to the table: their dictionary synonyms are too loose. */
-  function dictSwap(t, toks, dict, rank, present){
+  function dictSwap(t, toks, dict, rank, present, floor){
     if (!(t.tag === "NOUN" || t.tag === "VERB") || t.poss || (t.c && t.c.PROPER)) return null;
     var w = t.l, lem = t.lemma || w;
     if (w.length < 4 || /[^a-zà-ɏ]/.test(w)) return null;
     var wr = Math.min(rank(w), rank(lem));
-    if (wr <= 4000) return null;
+    if (wr <= (floor || 4000)) return null;
     var entry = dict(lem) || dict(w);
     if (!entry) return null;
     var pos = POSN[t.tag], senses = entry.m.filter(function(m){ return m.p === pos; });
@@ -1305,10 +1567,10 @@
   }
   /* a sentence of more than 22 words is cut where two main clauses meet at "and", "but",
      "so", a semicolon or a dash; "But" and "So" may open the new sentence */
-  function splitEdits(clauses, toks, src, used, edits){
+  function splitEdits(clauses, toks, src, used, edits, L){
     var words = toks.filter(function(t){ return !t.punct; }).length;
-    if (words <= 22) return;
-    var dashes = toks.filter(function(t){ return t.punct && /^[—–]$/.test(t.w); }).length;
+    if (words <= L.split && !L.hardSep) return;
+    var dashes = toks.filter(function(t){ return t.punct && /^[—–]$/.test(t.w) && !used[t.i]; }).length;
     clauses.forEach(function(c, k){
       if (!k || c.fragment || c.kind !== "main" || !c.subject || c.inherited || c.inheritedNext || c.imperative || c.question || c.subjectClause) return;
       if (!c.tense || /participle/.test(c.tense.name)) return;
@@ -1319,6 +1581,9 @@
       if (t0.tag === "CC" && /^(and|but|so)$/.test(t0.l)){ cc = t0; next = toks[first + 1]; }
       else if (first > 0 && toks[first - 1].punct && /^[;—–]$/.test(toks[first - 1].w)){ sep = toks[first - 1]; if (sep.w !== ";" && dashes !== 1) return; next = t0; }
       else return;
+      /* a semicolon or a dash between two clauses always becomes a full stop in the plainer
+         levels; a joining word waits until the sentence is long */
+      if (words <= L.split && !(L.hardSep && sep)) return;
       if (!next || next.punct || next.q || (cc && (cc.q || used[cc.i])) || (sep && sep.q)) return;
       /* both halves must be real clauses whose verb agrees with its subject ("my Christian name
          Philip" is not one), and after a conjunction the new sentence must run straight into its
@@ -1354,15 +1619,58 @@
     });
   }
 
-  function simplifySentence(src, dict, rank){
-    var r = explain(src, dict, rank), toks = r.tokens, edits = [], used = {}, present = {}, j;
+  function simplifySentence(src, dict, rank, L){
+    var r = explain(src, dict, rank), toks = r.tokens, edits = [], used = {}, present = {}, tail = [], i, j, q;
     markQuotes(toks);
     toks.forEach(function(t){ if (!t.punct){ present[t.l] = 1; if (t.lemma) present[t.lemma] = 1; } });
     function free(a, b){ for (var q = a; q <= b; q++) if (used[q] || toks[q].q || toks[q].glued || toks[q].punct) return false; return true; }
     function take(a, b){ for (var q = a; q <= b; q++) used[q] = true; }
+    /* the tokens whose text overlaps a stretch of the source */
+    function spanToks(a, b){ return toks.filter(function(t){ return t.e > a && t.s < b; }); }
+    /* an edit found by a plain search of the text (abbreviations, big numbers) */
+    function rawEdit(re, make, why){
+      var m;
+      re.lastIndex = 0;
+      while ((m = re.exec(src))){
+        var a = m.index, b = a + m[0].length, list = spanToks(a, b), ok = list.length > 0;
+        list.forEach(function(t){ if (used[t.i] || t.q || t.glued) ok = false; });
+        if (!ok) continue;
+        var to = make(m, b);
+        if (to === null) continue;
+        edits.push(simpleEdit(src, a, b, to, why));
+        list.forEach(function(t){ used[t.i] = true; });
+      }
+    }
 
-    /* 1. wordy phrases and idioms */
-    for (var i = 0; i < toks.length; i++){
+    /* 1. abbreviations written out, and a number in the millions said in words */
+    if (L.abbr) ABBREV.forEach(function(p){
+      rawEdit(p[0], function(m, b){ return p[1] + (/^[\s”’")\]]*$/.test(src.slice(b)) ? "." : ""); }, "abbreviation");
+    });
+    if (L.numbers) rawEdit(/\b\d[\d,]*(?:\.\d+)?\b/g, function(m){
+      var n = parseFloat(m[0].replace(/,/g, ""));
+      if (!(n >= 1000000)) return null;
+      var big = n >= 1e9, unit = big ? 1e9 : 1e6, v = n / unit;
+      var d = v >= 10 ? Math.round(v) : Math.round(v * 10) / 10;
+      return (Math.abs(d * unit - n) < 0.5 ? "" : "about ") + d + " " + (big ? "billion" : "million");
+    }, "shortened");
+
+    /* 2. linking adverbs in one short word */
+    if (L.connector) toks.forEach(function(t){
+      if (t.punct || used[t.i] || t.q || t.glued) return;
+      var to = own(CONNECT, t.l);
+      if (!to || t.tag === "NOUN" || t.tag === "VERB") return;
+      var end = t.e, last = t.i;
+      if (initialAt(toks, t.i)){
+        to = cap(to);
+        var nx = toks[t.i + 1];
+        if (nx && nx.punct && nx.w === ","){ end = nx.e; last = nx.i; }
+      }
+      edits.push(simpleEdit(src, t.s, end, to, "connector"));
+      take(t.i, last);
+    });
+
+    /* 3. wordy phrases and idioms */
+    if (L.wordy) for (i = 0; i < toks.length; i++){
       var t = toks[i];
       if (t.punct || used[t.i] || t.q || t.glued) continue;
       for (var k = 0; k < WORDY.length; k++){
@@ -1390,15 +1698,82 @@
       take(e.start, e.end);
     });
 
-    /* 2. a passive turned round */
-    r.clauses.forEach(function(c){ var ed = passiveEdit(c, toks, src, dict, used); if (ed) edits.push(ed); });
+    /* 4. an aside in brackets or between dashes: its own sentence when it has a verb, else gone */
+    if (L.aside){
+      var pairs = [], openAt = -1, dashAt = -1;
+      for (i = 0; i < toks.length; i++){
+        if (!toks[i].punct) continue;
+        if (toks[i].w === "("){ openAt = i; continue; }
+        if (toks[i].w === ")"){ if (openAt >= 0 && i > openAt + 1) pairs.push([openAt, i]); openAt = -1; continue; }
+        if (/^[—–]$/.test(toks[i].w)){
+          if (dashAt < 0) dashAt = i;
+          else if (i > dashAt + 1){ pairs.push([dashAt, i]); dashAt = -1; }
+        }
+      }
+      pairs.forEach(function(pr){
+        var a = pr[0], b = pr[1], mid = [], ok = a > 0, x;
+        for (x = a; x <= b; x++){
+          if (used[x] || toks[x].q) ok = false;
+          if (x > a && x < b && !toks[x].punct) mid.push(toks[x]);
+        }
+        if (!ok || !mid.length) return;
+        /* "which nobody expected" describes the noun before it: it stays where it is */
+        if (/^(REL|WH|SC|CC)$/.test(mid[0].tag) || REL[mid[0].l] || WH[mid[0].l] || SUB[mid[0].l] || CC[mid[0].l]) return;
+        var from = src.slice(toks[a].s, toks[b].e), at = toks[a - 1].e;
+        if (mid.some(function(m){ return m.tag === "VERB" || m.tag === "AUX" || m.tag === "MODAL"; })){
+          var body = src.slice(toks[a + 1].s, toks[b - 1].e).replace(/^[\s,;:—–-]+/, "").replace(/[\s,;:—–-]+$/, "");
+          if (!body) return;
+          edits.push({ s: at, e: toks[b].e, parts: [{ text: "" }] });
+          tail.push({ from: from, text: " " + cap(body) + "." });
+        } else {
+          edits.push(simpleEdit(src, at, toks[b].e, "", "aside removed"));
+        }
+        for (x = a; x <= b; x++) used[x] = true;
+      });
+    }
 
-    /* 3. rare and formal words (names, numbers and short words are left alone) */
+    /* 5. stacked adjectives: the commonest one carries the meaning */
+    if (L.adjectives){
+      i = 0;
+      while (i < toks.length){
+        if (toks[i].tag !== "ADJ"){ i++; continue; }
+        var run = [toks[i]], at2 = i + 1;
+        for (;;){
+          var sk = at2;
+          while (toks[sk] && ((toks[sk].punct && toks[sk].w === ",") || (toks[sk].tag === "CC" && toks[sk].l === "and"))) sk++;
+          if (toks[sk] && toks[sk].tag === "ADJ"){ run.push(toks[sk]); at2 = sk + 1; continue; }
+          break;
+        }
+        var head = toks[at2], a0 = run[0], aN = run[run.length - 1], okRun = run.length >= 2 && !!head && head.tag === "NOUN";
+        for (q = a0.i; q <= aN.i && okRun; q++) if (used[q] || toks[q].q || toks[q].glued) okRun = false;
+        if (okRun){
+          var keep = a0;
+          run.forEach(function(x){ if (Math.min(rank(x.l), rank(x.lemma || x.l)) < Math.min(rank(keep.l), rank(keep.lemma || keep.l))) keep = x; });
+          var word = keep.w, from2 = a0.s, prev2 = toks[a0.i - 1];
+          if (isCap(a0.w) && initialAt(toks, a0.i)) word = cap(word);
+          if (prev2 && prev2.tag === "DET" && /^(a|an)$/.test(prev2.l) && !used[prev2.i] && article(word) !== prev2.l){
+            var art2 = article(word);
+            word = (isCap(prev2.w) ? cap(art2) : art2) + src.slice(prev2.e, a0.s) + word;
+            from2 = prev2.s; used[prev2.i] = true;
+          }
+          edits.push(simpleEdit(src, from2, aN.e, word, "shortened"));
+          for (q = a0.i; q <= aN.i; q++) used[q] = true;
+        }
+        i = at2 > i ? at2 : i + 1;
+      }
+    }
+
+    /* 6. a passive turned round */
+    if (L.passive) r.clauses.forEach(function(c){ var ed = passiveEdit(c, toks, src, dict, used); if (ed) edits.push(ed); });
+
+    /* 7. rare and formal words (names, numbers and short words are left alone) */
     toks.forEach(function(t){
       if (t.punct || used[t.i] || t.glued || (toks[t.i + 1] && toks[t.i + 1].glued)) return;
       if (t.tag === "NUM" || t.tag === "PROPER" || t.tag === "POSS" || (t.c && t.c.NUM)) return;
       if (isCap(t.w) && !initialAt(toks, t.i)) return;
-      var to = formalSwap(t, toks) || dictSwap(t, toks, dict, rank, present);
+      /* the light touch trades only the words almost nobody meets */
+      if (L.curated && Math.min(rank(t.l), rank(t.lemma || t.l)) <= L.curated) return;
+      var to = formalSwap(t, toks) || dictSwap(t, toks, dict, rank, present, L.swap);
       if (!to || (to.indexOf(" ") < 0 && own(present, to.toLowerCase()))) return;
       if (isCap(t.w)) to = cap(to);
       var s = t.s, prev = toks[t.i - 1];
@@ -1411,8 +1786,85 @@
       used[t.i] = true;
     });
 
-    /* 4. a long sentence split in two */
-    splitEdits(r.clauses, toks, src, used, edits);
+    /* 8. a long sentence split in two */
+    if (L.split || L.hardSep) splitEdits(r.clauses, toks, src, used, edits, L);
+
+    /* 9. a closing subordinate clause stands as its own sentence */
+    if (L.shorten) (function(){
+      var clauses = r.clauses, last = null, k, x;
+      for (k = 0; k < clauses.length; k++) if (!clauses[k].fragment) last = clauses[k];
+      var c = last;
+      if (!c || c.kind !== "sub" || !c.subject || !c.pos || !c.pos.subj || c.inherited) return;
+      var a = c.span[0], sc = toks[a];
+      if (!sc || sc.tag !== "SC" || c.span[1] - a < 3) return;
+      var word = own(CUT_SUB, sc.l);
+      if (!word) return;
+      var pre = toks[a - 1];
+      if (!pre) return;
+      var at, first = a;
+      if (pre.punct && /^[,;]$/.test(pre.w)){ if (!toks[a - 2]) return; at = toks[a - 2].e; first = a - 1; }
+      else if (pre.punct) return;
+      else at = pre.e;
+      for (x = first; x <= a; x++) if (used[x] || toks[x].q) return;
+      var nx = toks[a + 1];
+      if (!nx || nx.punct || used[nx.i] || nx.q) return;
+      if (word === "because") edits.push(simpleEdit(src, at, sc.e, ". That is because", "shortened"));
+      else {
+        edits.push(simpleEdit(src, at, nx.e, ". " + cap(nx.w), "shortened"));
+        used[nx.i] = true;
+        var fin = toks[toks.length - 1];
+        if (fin && fin.punct && fin.w === "." && !used[fin.i]){
+          edits.push(simpleEdit(src, fin.s, fin.e, ", though.", "shortened"));
+          used[fin.i] = true;
+        }
+      }
+      for (x = first; x <= a; x++) used[x] = true;
+    })();
+
+    /* 10. what is left that a ten-year-old would not know keeps a short meaning in brackets */
+    if (L.gloss){
+      var glossed = {};
+      toks.forEach(function(t){
+        if (t.punct || used[t.i] || t.glued || (toks[t.i + 1] && toks[t.i + 1].glued)) return;
+        if (!/^(NOUN|VERB|ADJ|ADV)$/.test(t.tag) || t.poss || (t.c && t.c.PROPER)) return;
+        if ((t.c && t.c.NUM) || NUMWORD[t.l] || NUMWORD[t.lemma || t.l]) return;   /* "thirty" needs no meaning */
+        if (isCap(t.w) && !initialAt(toks, t.i)) return;
+        var lem = t.lemma || t.l;
+        if (glossed[lem] || lem.length < 4 || NAMEY[t.l] || /[^a-zà-ɏ]/.test(t.l)) return;
+        if (rank(lem) <= L.gloss) return;
+        var entry = dict(lem) || dict(t.l), pos = POSN[t.tag];
+        /* "was tired" reads as a description, not as the verb "tire": take the adjective the
+           dictionary lists for the word as written */
+        if (t.tag === "VERB" && verbForm(t, toks) === "pp"){
+          var adj = dict(t.l);
+          if (adj && adj.m.some(function(m){ return m.p === "adjective"; })){ entry = adj; pos = "adjective"; lem = t.l; }
+        }
+        if (!entry) return;
+        var best = bestSense(entry, pos, rank);
+        /* a sense of another part of speech is not this word's meaning here */
+        if (!best || !best.d || !best.m || (best.m.p && best.m.p !== pos)) return;
+        /* four words at most; a cut that lands inside a phrase ("shining with a bright |
+           reflected light") steps back to the last joining word instead */
+        var full = best.d.split(" "), n = Math.min(4, full.length);
+        if (full.length > n && !BREAK.test(full[n])){
+          while (n > 1 && !BREAK.test(full[n - 1])) n--;
+          if (n > 1) n--;
+        }
+        var d = full.slice(0, n).join(" ").replace(/[\s,;:.]+$/, "");
+        while (d && TRAIL.test(d)) d = d.replace(TRAIL, "");
+        if (!d || sameFamily(d.toLowerCase(), lem)) return;
+        glossed[lem] = 1;
+        edits.push(simpleEdit(src, t.s, t.e, t.w + " (= " + d + ")", "glossed"));
+        used[t.i] = true;
+      });
+    }
+
+    /* an aside with a verb follows the sentence it came from */
+    if (tail.length){
+      var parts = /[.!?…]["'”’)\]]*\s*$/.test(src) ? [] : [{ text: "." }];
+      tail.forEach(function(x){ parts.push({ text: x.text, from: x.from, why: "shortened" }); });
+      edits.push({ s: src.length, e: src.length, parts: parts });
+    }
 
     /* apply the edits to the original text, recording where each change landed */
     edits.sort(function(a, b){ return a.s - b.s; });
@@ -1430,19 +1882,22 @@
     return { text: out, changes: changes };
   }
 
-  function simplify(text, dict, rank){
+  /* the text, and how far to go: opts is a level name or { level } — light, plain (the
+     default), very or kid */
+  function simplify(text, dict, rank, opts){
     text = String(text || "");
     rank = rank || function(){ return Infinity; };
+    var name = levelOf(opts), L = LEVELS[name];
     var spans = splitSentences(text), out = "", changes = [], pos = 0;
     spans.forEach(function(sp){
       out += text.slice(pos, sp.s);
-      var r = simplifySentence(text.slice(sp.s, sp.e), dict, rank), base = out.length;
+      var r = simplifySentence(text.slice(sp.s, sp.e), dict, rank, L), base = out.length;
       r.changes.forEach(function(c){ c.start += base; c.end += base; changes.push(c); });
       out += r.text;
       pos = sp.e;
     });
     out += text.slice(pos);
-    return { text: out, changes: changes, sentences: spans.length };
+    return { text: out, changes: changes, sentences: spans.length, level: name };
   }
 
   /* ---------- public ---------- */
@@ -1484,7 +1939,10 @@
       seen[lem] = 1;
       keywords.push({ word: t.w, lemma: lem, pos: { NOUN: "noun", VERB: "verb", ADJ: "adjective", ADV: "adverb" }[t.tag] });
     });
-    return { tokens: toks, clauses: merged, expressions: exprs, plain: plain, keywords: keywords.slice(0, 8) };
+    var src = String(sentence == null ? "" : sentence);
+    var figs = figurative(toks, merged, exprs, src, rank);
+    return { tokens: toks, clauses: merged, expressions: exprs, plain: plain, keywords: keywords.slice(0, 8),
+             style: { figurative: figs, register: registerOf(toks, merged, figs, src) } };
   }
 
   window.llExplain = { explain: explain, rank: rank, tokenize: tokenize, tag: tag, inflect: inflect, lemmas: lemmas, cleanDef: cleanDef, bestSense: bestSense,

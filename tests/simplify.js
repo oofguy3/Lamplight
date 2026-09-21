@@ -158,7 +158,8 @@ async function openSimpler(page){
     await page.evaluate(() => window.llSimplify.render("The cat sat on the mat."));
     await cardOpen(page);
     info = await cardInfo(page);
-    R.check("a plain sentence says it is already plain", info.summary === "Nothing to simplify — this is already plain." && info.changes.length === 0 && info.simple === "The cat sat on the mat.", JSON.stringify(info));
+    /* the summary now opens with the chosen strength (see tests/explain2.js) */
+    R.check("a plain sentence says it is already plain, at the chosen strength", info.summary === "Plain · nothing to simplify — this is already plain" && info.changes.length === 0 && info.simple === "The cat sat on the mat.", JSON.stringify(info));
     await page.keyboard.press("Escape"); await page.waitForTimeout(200);
     const api = await page.evaluate(() => window.llSimplify.simplify("They commenced walking towards the village, and the window was broken by the storm.").then((r) => ({ text: r.text, whys: r.changes.map((c) => c.why) })));
     R.check("llSimplify.simplify(text) resolves with the plainer text", api.text === "They began walking towards the village, and the storm broke the window." && api.whys.indexOf("rarer word") >= 0 && api.whys.indexOf("passive to active") >= 0, JSON.stringify(api));
