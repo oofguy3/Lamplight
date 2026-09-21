@@ -260,7 +260,9 @@ const SPEECH_STUB = `(() => {
     R.check("s from the document puts focus on the first section button", await page.evaluate(() => document.activeElement && document.activeElement.closest("#sheetTabs") && document.activeElement.dataset.group === "readingGroup"), await page.evaluate(() => document.activeElement && (document.activeElement.id || document.activeElement.className)));
     await page.focus("#rSize"); await page.keyboard.press("Escape"); await page.waitForTimeout(200);
     R.check("Escape from a control in the sheet returns focus to the document", !(await sheetOpen(page)) && (await page.evaluate(() => document.activeElement.id === "main")), await page.evaluate(() => document.activeElement.id));
-    await page.click("#more"); await page.click("#moreMenu button:has-text('Settings')"); await page.waitForTimeout(300);
+    await page.click("#more");
+    await page.waitForSelector("#moreMenu button:has-text('Settings')", { state: "visible", timeout: 20000 });
+    await page.click("#moreMenu button:has-text('Settings')"); await page.waitForTimeout(300);
     await page.evaluate(() => document.getElementById("sheetClose").focus());
     await page.keyboard.press("Enter"); await page.waitForTimeout(200);
     R.check("closing with the sheet's own button returns focus to the ⋯ button it came from", !(await sheetOpen(page)) && (await page.evaluate(() => document.activeElement.id === "more")), await page.evaluate(() => document.activeElement.id));

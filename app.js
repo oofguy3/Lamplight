@@ -6030,13 +6030,20 @@
     function drop(id){ var i = tabs.findIndex(function(x){ return x.id === id; }); if (i >= 0){ tabs.splice(i, 1); save(); render(); } }
     function clear(){ tabs = []; activeId = null; save(); render(); }
     /* add files without opening them (multi-select / multi-drop) */
+    /* the ids are hashed at their own pace, so they are collected before any tab is added:
+       pushing each one as it arrived put the strip in whatever order the hashing finished in */
     function addFiles(files){
-      Array.prototype.forEach.call(files, function(f){
-        Library.idFor(f).then(function(id){
-          if (!tabs.some(function(x){ return x.id === id; })){ tabs.push({ id: id, name: f.name, file: f }); save(); render(); }
+      var list = Array.prototype.slice.call(files || []).filter(Boolean);
+      if (!list.length) return Promise.resolve();
+      return Promise.all(list.map(function(f){ return Library.idFor(f); })).then(function(ids){
+        var added = false;
+        ids.forEach(function(id, i){
+          var f = list[i];
+          if (!tabs.some(function(x){ return x.id === id; })){ tabs.push({ id: id, name: f.name, file: f }); added = true; }
           /* make sure it is in the library too */
           Library.remember(f, id);
         });
+        if (added){ save(); render(); }
       });
     }
     strip.addEventListener("click", function(e){
