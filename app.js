@@ -1125,7 +1125,7 @@
       var n = state.pdfPageNum + dir * step;
       if (n < 1) n = 1;
       if (n > state.pdfDoc.numPages) return;
-      if (n !== state.pdfPageNum){ state.pdfPageNum = n; renderPdfSingle(); }
+      if (n !== state.pdfPageNum){ state.pdfPageNum = n; Progress.tick(); renderPdfSingle(); }
     }
   }
   /* the section the current page is in: the last heading at or before it (a PDF's outline
@@ -4012,9 +4012,10 @@
     /* every constant in one place; tests may change them through llPace._debug.setParams */
     var Params = {
       TICK_MS: 250, HEARTBEAT_MS: 1000, SETTLE_MS: 800, STILL_WORDS: 6, JUMP_TOL_MIN: 12, JUMP_TOL_FRAC: 0.12,
-      SKIM_WPM: 1200, SKIM_MIN_FRACTION: 0.5, SKIM_STREAK_CUT: 2, MOVES_SKIM: 3, MIN_PAGE_MS: 4000,
+      SKIM_WPM: 1200, SKIM_MIN_FRACTION: 0.6, SKIM_STREAK_CUT: 2, MOVES_SKIM: 3, MIN_PAGE_MS: 4000,
+      MERGE_MS: 6000, MERGE_BAND: 1.5, MERGE_FLOOR_WPM: 400, MERGE_PART: 0.75,
       MIN_WPM: 60, MIN_DWELL_MS: 30000, HARD_PAUSE_MS: 270000, HARD_PAUSE_INPUT_MS: 420000, INPUT_GUARD_MS: 1500,
-      SLOW_CAP_MS: 600000, HELD_N: 3, HELD_BAND: 2, HELD_MAX_MS: 600000, FLOOR_WPM: 25,
+      SLOW_CAP_MS: 600000, HELD_N: 3, HELD_BAND: 2, HELD_MAX_MS: 600000, FLOOR_WPM: 25, DWELL_BAND: 2.5, SLOW_BAND: 1.5,
       NAV_WINDOW_MS: 1500, BLUR_GRACE_MS: 30000, BLOCK_MAX_MS: 1200000, UNMEASURABLE_MS: 5000,
       RESUME_MS: 120000, RESUME_TOL: 1,
       MIN_RUN_MS: 40000, MIN_RUN_WORDS: 120, MIN_RUN_STEPS: 2, MIN_RUN_MS_PDF: 30000, MIN_RUN_PAGES: 1,
@@ -4083,11 +4084,11 @@
     function syncPdfWords(){
       if (pdfWordsDoc !== state.pdfDoc){ pdfWordsDoc = state.pdfDoc; pageWords = {}; pageAsked = {}; }
     }
-    function requestPdfWords(){
-      if (!state.pdfDoc || !R) return;
+    function askPdfWords(a, b){
+      if (!state.pdfDoc) return;
       syncPdfWords();
-      var doc = state.pdfDoc;
-      for (var i = R.top; i <= R.bottom; i++){
+      var doc = state.pdfDoc, total = doc.numPages;
+      for (var i = Math.max(1, a); i <= Math.min(total, b); i++){
         if (pageAsked[i]) continue;
         pageAsked[i] = true;
         (function(n){
@@ -4095,6 +4096,7 @@
         })(i);
       }
     }
+    function requestPdfWords(){ if (R) askPdfWords(R.top, R.bottom); }
     function isSparse(i){ return pageWords[i] !== undefined && pageWords[i] < Params.SPARSE_WORDS; }
     /* the known words of pages a..b, or null when any of them has not answered yet */
     function knownWordsIn(a, b){
@@ -4149,6 +4151,21 @@
       }, want);
       return Anchor.offsetOf(node, ci < 0 ? 0 : ci);
     }
+    /* Pages flow: the page starts of the current layout, kept until the layout changes. Probing a
+       column boundary in a long book costs a binary search over every text node, and a turn asks
+       for two of them (this page's first word and the next page's): the one the turn moves onto
+       was measured as the last window's end, so each turn costs one search instead of two */
+    var pageOffs = { key: null, map: null };
+    function pageStart(n){
+      var key = layoutKeyNow() + "|" + (state.stride || 0);
+      if (pageOffs.key !== key){ pageOffs.key = key; pageOffs.map = {}; }
+      if (pageOffs.map[n] === undefined){
+        var v = pageStartOffset(n);
+        if (v === null) return null;
+        pageOffs.map[n] = v;
+      }
+      return pageOffs.map[n];
+    }
     /* when the foot of the view holds no text (an image, a heading gap): the last window, else a
        guess from the line height and the column width (Auto's formula) */
     function guessVisibleWords(){
@@ -4164,9 +4181,9 @@
         if (!indexReady()) return null;
         var topOff, bottomOff = null, top, bottom;
         if (state.flow === "pages"){
-          topOff = pageTopOffset();
+          topOff = pageStart(state.page);
           if (topOff === null) return null;
-          bottomOff = pageStartOffset(state.page + 1);
+          bottomOff = pageStart(state.page + 1);
           if (bottomOff === null) return null;
           if (bottomOff < 0) bottomOff = Anchor.textLength();
           top = idx(topOff); bottom = idx(bottomOff - 1);
@@ -4204,32 +4221,40 @@
     }
 
     /* ---- sampling: the cheap position key on every poke, a settle after the last change ---- */
-    var posKey = null, layoutKey = null, moves = 0, firstMove = 0, lastChange = 0, pending = false, burstNav = false, relaid = false;
-    var settleTimer = null, failSince = 0, unmeasurable = false;
+    var posKey = null, layoutKey = null, flowKey = null, moves = 0, firstMove = 0, lastChange = 0, pending = false, burstNav = false, relaid = false;
+    var settleTimer = null, failSince = 0, unmeasurable = false, burstReveal = false, movedAt = 0;
     function posKeyNow(){
       if (state.mode === "doc") return state.flow === "pages" ? "p" + state.page : "y" + Math.round(window.scrollY);
       return state.flow === "pages" ? "n" + state.pdfPageNum : "y" + Math.round(window.scrollY);
     }
-    function layoutKeyNow(){
+    /* what decides where the words fall: a change here renumbers the text under the reader (a new
+       size, zen, a flow switch, a narrower window). The height of the window is part of it only in
+       Pages flow — in Scroll flow a phone's toolbar sliding away moves no word at all */
+    function flowKeyNow(){
       var b = document.body.classList;
-      return window.innerWidth + "|" + window.innerHeight + "|" + (state.perPage || 1) + "|" + (state.totalPages || 1) + "|" +
+      return window.innerWidth + "|" + (state.flow === "pages" ? window.innerHeight : 0) + "|" + (state.perPage || 1) + "|" + (state.totalPages || 1) + "|" +
         (state.mode === "doc" ? Anchor.textLength() : 0) + "|" + state.flow + "|" + state.size + "|" + state.lh + "|" + state.width + "|" + (state.margin || 0) + "|" + state.font + "|" +
         (b.contains("zen") ? 1 : 0) + (b.contains("immersive") ? 1 : 0) + (has("#tts", "on") ? 1 : 0) + (has("#autoBar", "on") ? 1 : 0) + (has("#sheet", "open") ? 1 : 0);
     }
+    function layoutKeyNow(){ return window.innerHeight + "|" + flowKeyNow(); }
     function overlayOpen(){ return has("#side", "open") || has("#dictCard", "open") || has("#moreMenu", "open"); }
     function armSettle(){ clearTimeout(settleTimer); settleTimer = setTimeout(settle, Params.SETTLE_MS); }
     function poke(){
       if (!docOpen()) return;
-      var now = Date.now(), pk = posKeyNow(), lk = layoutKeyNow();
-      if (posKey === null){ posKey = pk; layoutKey = lk; return; }
-      if (lk !== layoutKey){ relaid = true; lastChange = now; pending = true; armSettle(); }
+      var now = Date.now(), pk = posKeyNow(), fk = flowKeyNow(), lk = window.innerHeight + "|" + fk;
+      if (posKey === null){ posKey = pk; layoutKey = lk; flowKey = fk; return; }
+      if (lk !== layoutKey){ if (fk !== flowKey) relaid = true; lastChange = now; pending = true; armSettle(); }
       if (pk !== posKey){
         posKey = pk;
-        if (!moves){ firstMove = now; burstNav = now < navUntil || overlayOpen(); }
-        moves++; lastChange = now; pending = true;
+        if (!moves){ firstMove = now; burstNav = now < navUntil || overlayOpen(); burstReveal = now < navUntil || has("#side", "open"); }
+        /* one gesture, not one scroll event: the browser animates a key scroll over a dozen frames
+           from a single press, so a change counts as a move only when an input arrived since the
+           last one — or when nothing the reader just did can explain it (a script, a restore) */
+        if (!moves || lastInput > movedAt || now - lastInput >= Params.INPUT_GUARD_MS) moves++;
+        movedAt = now; lastChange = now; pending = true;
         armSettle();
       }
-      layoutKey = lk;
+      layoutKey = lk; flowKey = fk;
     }
 
     /* ---- input: proof that the reader is there, and what cancels a tentative focus loss ---- */
@@ -4252,7 +4277,7 @@
 
     /* ---- blockers: intervals of time that are not reading ---- */
     var blocks = [], softOpen = null, tentOpen = null, hard = false, blockerList = [], sideWasOpen = false, navUntil = 0;
-    var blurAt = 0, hbFrac = null, hbPage = null;
+    var blurAt = 0, hbFrac = null, hbPage = null, hbVoice = null, spokenTo = null;
     function softActive(){ return !!softOpen || !!tentOpen; }
     function softBlockers(){
       var list = [];
@@ -4286,7 +4311,9 @@
       if (cur) total += cur[1] - cur[0];
       return total;
     }
-    function pruneBlocks(t){ blocks = blocks.filter(function(x){ return x.b === null || x.b > t; }); }
+    /* blocked intervals are dropped once they are behind the credit origin, but not at once:
+       a run that reopens after an excursion looks back as far as the resume rule allows */
+    function pruneBlocks(t){ blocks = blocks.filter(function(x){ return x.b === null || x.b > t - Params.RESUME_MS; }); }
     function cancelTentative(now){
       var i = blocks.indexOf(tentOpen);
       if (i >= 0) blocks.splice(i, 1);
@@ -4314,14 +4341,18 @@
         hard = true;
         if (run){ justClosed = closeRun("block", now); }
         hbFrac = clamp(readFrac(), 0, 1); hbPage = state.mode === "pdf" ? Library.currentPdfPage() : null;
+        hbVoice = null; spokenTo = null;
         record("block", { t: now, reason: hardList.join("+") });
       } else if (!hardList.length && hard){
-        hard = false; hbFrac = null; hbPage = null;
+        hard = false; hbFrac = null; hbPage = null; hbVoice = null;
         moves = 0; firstMove = 0; pending = false;
         record("unblock", { t: now, reason: reason || "released" });
       }
       if (soft.length && !softOpen){
         softOpen = { a: now, b: null }; blocks.push(softOpen);
+        /* a panel opened while a gesture was still settling: whatever it reveals belongs to the
+           panel, not to the scroll that came before it */
+        if (moves > 0){ burstNav = true; if (sideOpen) burstReveal = true; }
         record("block", { t: now, reason: soft.join("+") });
       } else if (!soft.length && softOpen){
         softOpen.b = now; softOpen = null;
@@ -4330,10 +4361,33 @@
       }
       blockerList = (hard ? hardList : []).concat(soft, tentOpen ? ["unfocused"] : [], unmeasurable ? ["unmeasurable"] : [], state.opening ? ["opening"] : []);
     }
+    /* where the voice has got to, as a word number: read-aloud units are character offsets into
+       #doc, so the listener's progress is the unit's end, not the view's (the view may not move
+       at all while a screenful is read out) */
+    function voiceWord(){
+      if (state.mode !== "doc" || !indexReady()) return null;
+      var us = Speak.units(), i = Speak.index();
+      if (!us || !us.length) return null;
+      var u = us[Math.max(0, Math.min(us.length - 1, i))];
+      return u && typeof u.start === "number" ? idx(u.start) : null;
+    }
     /* while read-aloud or auto-scroll moves the page the pace learns nothing, but Stats still
-       gets the words that went by, the old way: a fraction of the document per heartbeat */
+       gets the words that went by: the voice's own advance while it speaks, a fraction of the
+       document per heartbeat while auto-scroll runs */
     function hardCredit(now){
       if (state.mode === "doc"){
+        if (Speak.isActive()){
+          var vw = voiceWord();
+          if (vw !== null){
+            if (hbVoice === null) hbVoice = vw;
+            var dvw = vw - hbVoice;
+            hbVoice = Math.max(hbVoice, vw);
+            spokenTo = spokenTo === null ? vw : Math.max(spokenTo, vw);
+            hbFrac = clamp(readFrac(), 0, 1);
+            if (Speak.isPlaying() && dvw > 0 && dvw < 400){ Stats.noteListened(dvw); sess.listened += dvw; }
+            return;
+          }
+        }
         var frac = clamp(readFrac(), 0, 1), total = docWords() || Progress.docWords();
         var dw = hbFrac === null ? 0 : (frac - hbFrac) * total;
         hbFrac = frac;
@@ -4354,6 +4408,7 @@
     /* ---- the references, the live run and the transitions ---- */
     var P = null, R = null, run = null, lastClosed = null, justClosed = null, kind = "w", docKey = null, seenKey = null, bookId = null;
     var skimStreak = 0, lastKind = null, pausedFlag = false, fragments = 0, phase = "off", since = Date.now();
+    var undo = null, lastBack = null, pendSkim = null, pendPages = null, docFrontier = 0;
     var sess = { words: 0, ms: 0, pages: 0, pms: 0, skimmed: 0, listened: 0 };
     var transitions = [];
     function record(k, o){
@@ -4364,8 +4419,9 @@
       if (transitions.length > 50) transitions.shift();
     }
     function newRun(t0){
-      return { b: bookId, k: kind, t0: t0, w: 0, ms: 0, n: 0, p: 0, wordsKnown: true, held: [], slow: false, buffered: 0,
-               lastTop: null, V: R ? R.V : 1, frontier: P ? P.top : 0, qualified: false, mark: 0, fragCounted: false };
+      var top = P ? P.top : 0;
+      return { b: bookId, k: kind, t0: t0, w: 0, ms: 0, n: 0, p: 0, wordsKnown: true, held: [], slow: false, slowWpm: 0, buffered: 0,
+               lastTop: null, V: R ? R.V : 1, frontier: top, low: top, qualified: false, mark: 0, fragCounted: false };
     }
     function qualifies(r){
       if (!r) return false;
@@ -4375,20 +4431,81 @@
     function setP(N){ P = { top: N.top, t: N.t }; R = N; pruneBlocks(N.t); }
     function dtOf(N){ return Math.max(0, N.t - P.t - blockedIn(P.t, N.t)); }
     function wAvail(){ return Math.max(1, R.bottom - P.top + 1); }
+    function runRate(r){ return r && r.w > 0 && r.ms > 0 ? r.w / r.ms * 60000 : 0; }
     /* how long the words on screen could reasonably take: the floor for a caption, the cap for a
-       break; input during the dwell and a run admitted as slow reading raise the cap */
+       break; input during the dwell and a run admitted as slow reading raise the cap. A run with a
+       pace of its own is judged against that too — an odd page at half the run's speed is still
+       reading (a small window with large type takes minutes), a dwell at a fifth of it is a break */
     function maxDwell(until){
-      if (run && run.slow) return Params.SLOW_CAP_MS;       /* admitted as slow reading: the words on screen no longer scale it */
-      var cap = inputDuring(until) ? Params.HARD_PAUSE_INPUT_MS : Params.HARD_PAUSE_MS, W;
+      var cap = inputDuring(until) ? Params.HARD_PAUSE_INPUT_MS : Params.HARD_PAUSE_MS, W, rate;
       if (kind === "p"){
         for (var i = R.top; i <= R.bottom; i++) if (isSparse(i)) return cap;
         W = knownWordsIn(R.top, R.bottom);
         if (W === null) return cap;
       } else W = wAvail();
-      return clamp(W / Params.MIN_WPM * 60000, Params.MIN_DWELL_MS, cap);
+      var slowest = Params.MIN_WPM;
+      if (run){
+        rate = runRate(run);
+        if (rate > 0) slowest = Math.min(slowest, rate / Params.DWELL_BAND);
+        if (run.slowWpm > 0){ slowest = Math.min(slowest, run.slowWpm / Params.SLOW_BAND); cap = Math.max(cap, Params.SLOW_CAP_MS); }
+      }
+      return clamp(W / Math.max(1, slowest) * 60000, Params.MIN_DWELL_MS, cap);
+    }
+    /* the words a run has credited are one stretch, (low, frontier]: what is fresh in (from, to]
+       is what falls outside it. A run that begins where the reader landed — a jump, an anchor, a
+       slip corrected page by page — has an empty stretch, so everything it then reads is credited,
+       and re-reading inside the stretch is still never credited twice */
+    function fresh(r, from, to){
+      if (to <= from) return 0;
+      var a = Math.max(from, r.low), b = Math.min(to, r.frontier);
+      return (to - from) - Math.max(0, b - a);
+    }
+    function advance(r, from, to){
+      if (to <= from) return;
+      /* a run that has credited nothing carries an empty stretch wherever it was anchored, and a
+         credit that begins past the stretch (after a skim) starts a stretch of its own */
+      if (r.low === r.frontier || from > r.frontier){ r.low = from; r.frontier = to; return; }
+      r.low = Math.min(r.low, from); r.frontier = Math.max(r.frontier, to);
     }
     function statsNote(c){ if (c > 0){ if (kind === "w") Stats.noteWords(c); else Stats.notePages(c); } }
+    function statsUnnote(c){ if (c > 0) Stats.unnote(kind === "w" ? "words" : "pages", c); }
     function creditStats(c){ if (run.qualified) statsNote(c); else run.buffered += c; }
+    /* words scrolled past are held for a moment before they count as skimmed: a reader who peeks
+       ahead and comes back skimmed nothing, and will be credited for reading them next */
+    function noteSkimmed(n, origin, top, t){
+      var prev = pendSkim, joins;
+      pendSkim = null;
+      if (!(n > 0)) return;
+      Stats.noteSkimmed(n); sess.skimmed += n;
+      /* a scroll-through in several flicks is one skim: taken back whole when it turns out to
+         have been a peek, counted whole once the reader has read past it */
+      joins = !!prev && prev.docKey === docKey && t - prev.t <= Params.RESUME_MS &&
+              Math.abs(origin - prev.top) <= (kind === "w" ? Params.STILL_WORDS : 0);
+      pendSkim = { n: joins ? prev.n + n : n, origin: joins ? prev.origin : origin, top: top, t: t, docKey: docKey };
+    }
+    function dropSkim(){
+      if (!pendSkim) return;
+      Stats.unnote("skimmed", pendSkim.n); sess.skimmed = Math.max(0, sess.skimmed - pendSkim.n);
+      pendSkim = null;
+    }
+    /* a PDF flip-through's pages, once their text has arrived: counted as skimmed if the reader
+       is still past them */
+    function resolvePages(now){
+      var p = pendPages, kw;
+      if (p.doc !== state.pdfDoc || now - p.t > Params.RESUME_MS){ pendPages = null; return; }
+      kw = knownWordsIn(p.a, p.b);
+      if (kw === null) return;
+      pendPages = null;
+      if (kw > 0 && R && R.top >= p.top) noteSkimmed(kw, p.origin, p.top, p.t);
+    }
+    /* the reader moved on past the skipped words (they are skimmed), came back to where they were
+       (nothing was skimmed), or the moment passed */
+    function ageSkim(N){
+      if (!pendSkim) return;
+      var t = N ? N.t : Date.now();
+      if (pendSkim.docKey !== docKey || t - pendSkim.t > Params.RESUME_MS){ pendSkim = null; return; }
+      if (N && N.top <= pendSkim.origin + (kind === "w" ? Params.STILL_WORDS : 0)) dropSkim();
+    }
     /* a qualifying run enters the estimates; they are refreshed on each credited step once it has
        (a recompute is a sort of a few dozen runs, at most once per gesture; LIVE_RECOMPUTE_WORDS
        above 0 would make it every so many words instead) */
@@ -4434,9 +4551,14 @@
       var q = qualifies(r), entry = null;
       if (q) entry = storeRun(r, t);
       else if (r.n > 0 && !r.fragCounted){ fragments++; r.fragCounted = true; }
-      var cand = { run: r, entry: entry, tClose: t, endTop: R ? R.top : r.lastTop, V: R ? R.V : (r.V || 1), by: by, docKey: docKey, qualifiedAfter: false };
-      if (r.n > 0 || q || !lastClosed || lastClosed.docKey !== docKey || t - lastClosed.tClose > Params.RESUME_MS) lastClosed = cand;
-      run = null; pausedFlag = false;
+      var cand = { run: r, entry: entry, tClose: t, endTop: R ? R.top : r.lastTop, V: R ? R.V : (r.V || 1), by: by, docKey: docKey,
+                   pt: P ? P.t : t, softBlock: !hard, qualifiedAfter: false };
+      /* what is remembered is the run the reader might come back to: a fragment made during an
+         excursion (a nudge at the far end) must not push it out */
+      var live = lastClosed && lastClosed.docKey === docKey && !lastClosed.qualifiedAfter &&
+                 (lastClosed.by === "jump" || lastClosed.by === "block") && t - lastClosed.tClose <= Params.RESUME_MS;
+      if (q || !live) lastClosed = cand;
+      run = null; pausedFlag = false; undo = null;
       dirty = true; scheduleSave();
       return r;
     }
@@ -4449,84 +4571,164 @@
       if (Math.abs(N.top - lc.endTop) > (kind === "p" ? 1 : Params.RESUME_TOL * lc.V)) return false;
       if (lc.entry) unstoreRun(lc.entry);
       run = lc.run; run.held = []; run.V = N.V;
+      /* the excursion is a hole, but the reading done before it is reading: the run keeps the
+         credit origin it had when it closed, and the time away joins the blocked intervals */
+      if (lc.pt && lc.pt <= lc.tClose && N.t > lc.tClose){ P = { top: N.top, t: lc.pt }; blocks.push({ a: lc.tClose, b: N.t }); }
+      dropSkim(); undo = null;
       if (closed && closed !== run && !closed.fragCounted){ fragments++; closed.fragCounted = true; }
       lastClosed = null; dirty = true; scheduleSave();
       return true;
     }
+    /* the last credited or skimmed transition, kept so that the one after it can be judged with
+       it (a gesture in two parts) or take it back (a peek that came straight home) */
+    function remember(o){ undo = o; }
+    function undoLast(wide){
+      var u = undo, last = transitions[transitions.length - 1];
+      undo = null;
+      if (!u || u.run !== run) return false;
+      if (last && last.kind === u.kind && last.t === u.t) transitions.pop();   /* it never stood */
+      run.w = u.w; run.ms = u.ms; run.n = u.n; run.p = u.p; run.low = u.low; run.frontier = u.frontier;
+      run.lastTop = u.lastTop; run.V = u.V; run.wordsKnown = u.wordsKnown;
+      if (kind === "w"){ sess.words -= u.c; sess.ms -= u.dt; } else { sess.pages -= u.c; sess.pms -= u.dt; }
+      if (u.stats > 0){ if (run.buffered >= u.stats) run.buffered -= u.stats; else statsUnnote(u.stats); }
+      dropSkim();
+      docFrontier = u.docFrontier;
+      P = { top: u.P0.top, t: u.P0.t };
+      /* the rested window again — widened to the largest the reader has seen around it when the
+         move being merged had already uncovered part of the screen */
+      R = wide > u.R0.V ? { top: u.R0.top, bottom: u.R0.top + wide - 1, V: wide, page: u.R0.page } : u.R0;
+      skimStreak = u.skimStreak; lastKind = u.lastKind;
+      return true;
+    }
+    function snapFor(N, adv, dt, k, implied){
+      return { kind: k, t: N.t, adv: adv, dt: dt, implied: implied, c: 0, stats: 0, run: run, P0: { top: P.top, t: P.t }, R0: R,
+               w: run.w, ms: run.ms, n: run.n, p: run.p, low: run.low, frontier: run.frontier, lastTop: run.lastTop,
+               V: run.V, wordsKnown: run.wordsKnown, docFrontier: docFrontier, skimStreak: skimStreak, lastKind: lastKind };
+    }
     function credit(N, adv, dt, implied){
-      var c, from = Math.max(P.top, run.frontier);
-      if (kind === "w"){ c = Math.max(0, N.top - from); run.w += c; sess.words += c; sess.ms += dt; }
+      var from = P.top, c = fresh(run, from, N.top), u = snapFor(N, adv, dt, "credit", implied);
+      if (kind === "w"){ run.w += c; sess.words += c; sess.ms += dt; }
       else {
-        c = Math.max(0, N.top - from); run.p += c;
-        var kw = knownWordsIn(from, N.top - 1);
+        run.p += c;
+        var kw = knownWordsIn(N.top - c, N.top - 1);
         if (kw === null) run.wordsKnown = false; else run.w += kw;
         sess.pages += c; sess.pms += dt;
       }
-      run.ms += dt; run.n += 1; run.frontier = Math.max(run.frontier, N.top); run.lastTop = N.top; run.V = N.V;
+      run.ms += dt; run.n += 1; advance(run, from, N.top); run.lastTop = N.top; run.V = N.V;
+      docFrontier = Math.max(docFrontier, N.top);
+      if (pendSkim && N.top > pendSkim.top) pendSkim = null;      /* read past it: skimmed it is */
       record("credit", { t: N.t, adv: adv, credit: c, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
-      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "credit";
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "credit"; lastBack = null;
+      u.c = c; u.stats = c; remember(u);
       creditStats(c); afterCredit();
     }
     function skim(N, adv, dt, implied){
-      var from = Math.max(P.top, run.frontier), skipped = kind === "w" ? Math.max(0, N.top - from) : (knownWordsIn(from, N.top - 1) || 0);
-      if (skipped > 0){ Stats.noteSkimmed(skipped); sess.skimmed += skipped; }
+      var from = P.top, c = fresh(run, from, N.top), u = snapFor(N, adv, dt, "skim", implied);
+      var skipped = kind === "w" ? c : (knownWordsIn(N.top - c, N.top - 1) || 0);
       record("skim", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves, skimmed: skipped });
-      setP(N); skimStreak++; pausedFlag = false; lastKind = "skim";
+      var origin = P.top;
+      setP(N); skimStreak++; pausedFlag = false; lastKind = "skim"; lastBack = null;
+      remember(u);
+      noteSkimmed(skipped, origin, N.top, N.t);
       if (skimStreak >= Params.SKIM_STREAK_CUT){
         closeRun("skim", N.t);
-        run = newRun(N.t); run.frontier = N.top; skimStreak = 0;
+        run = newRun(N.t); skimStreak = 0;
       }
+    }
+    /* a move the reader did not make by reading — a search hit, a contents line, a note revealed
+       while the panel was up: neither the words it passed nor the dwell before it are reading */
+    function navStep(N, adv, dt){
+      record("nav", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, moves: moves, reason: "reveal" });
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "nav"; undo = null;
     }
     function pause(N, adv, dt, forward){
       var implied = dt > 0 ? adv / dt * 60000 : 0;
       if (forward && dt <= Params.HELD_MAX_MS && implied >= Params.FLOOR_WPM){
         run.held.push({ top: N.top, prevTop: P.top, adv: adv, dt: dt, implied: implied });
         record("held", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
-        setP(N); skimStreak = 0; pausedFlag = true; lastKind = "held";
+        setP(N); skimStreak = 0; pausedFlag = true; lastKind = "held"; undo = null;
         maybeAdmit(N);
         return;
       }
-      if (forward) statsNote(Math.max(0, N.top - Math.max(P.top, run.frontier)));
+      if (forward) statsNote(fresh(run, P.top, N.top));
       record("pause", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
       closeRun("pause", N.t);
-      setP(N); run = newRun(N.t); run.frontier = N.top; skimStreak = 0; pausedFlag = false; lastKind = "pause";
+      setP(N); run = newRun(N.t); skimStreak = 0; pausedFlag = false; lastKind = "pause";
     }
-    /* three held dwells within a 2× band are slow reading, not three breaks: all of them are credited */
+    /* three held dwells within a 2× band are slow reading, not three breaks: all of them are
+       credited — unless the run has a pace of its own that they are nowhere near, in which case
+       three interruptions in a row are still three interruptions */
     function maybeAdmit(N){
       var h = run.held;
       if (h.length < Params.HELD_N) return;
-      var mx = -Infinity, mn = Infinity;
+      var mx = -Infinity, mn = Infinity, rate = runRate(run);
       h.slice(-Params.HELD_N).forEach(function(x){ mx = Math.max(mx, x.implied); mn = Math.min(mn, x.implied); });
-      if (mx / mn > Params.HELD_BAND){
+      if (mx / mn > Params.HELD_BAND || (rate > 0 && mn < rate / Params.HELD_BAND)){
         var old = h.shift();
-        statsNote(Math.max(0, old.top - Math.max(old.prevTop, run.frontier)));
+        statsNote(fresh(run, old.prevTop, old.top));
         return;
       }
       var total = 0;
       h.forEach(function(x){
-        var from = Math.max(x.prevTop, run.frontier), c = Math.max(0, x.top - from);
+        var c = fresh(run, x.prevTop, x.top);
         if (kind === "w") run.w += c;
-        else { run.p += c; var kw = knownWordsIn(from, x.top - 1); if (kw === null) run.wordsKnown = false; else run.w += kw; }
-        run.ms += x.dt; run.n += 1; run.frontier = Math.max(run.frontier, x.top); run.lastTop = x.top;
+        else { run.p += c; var kw = knownWordsIn(x.top - c, x.top - 1); if (kw === null) run.wordsKnown = false; else run.w += kw; }
+        run.ms += x.dt; run.n += 1; advance(run, x.prevTop, x.top); run.lastTop = x.top;
+        docFrontier = Math.max(docFrontier, x.top);
         if (kind === "w"){ sess.words += c; sess.ms += x.dt; } else { sess.pages += c; sess.pms += x.dt; }
         total += c;
       });
-      run.held = []; run.slow = true; pausedFlag = false; lastKind = "credit";
+      run.held = []; run.slow = true; run.slowWpm = mn; pausedFlag = false; lastKind = "credit";
       record("admit", { t: N.t, credit: total, V: R.V, moves: moves });
       creditStats(total); afterCredit();
     }
     /* holds pending when a plausible step arrives: they were breaks after all. The run closes at
        its credited state and a new one starts at the last held position */
     function reopenAtHeld(){
-      var t = P.t, top = P.top;
+      var t = P.t;
       closeRun("pause", t);
-      run = newRun(t); run.frontier = top;
+      run = newRun(t);
+    }
+    /* a fast move a moment after a credited one is the rest of the same gesture: take that credit
+       back and judge the two together from where the reader was before it (two half-screen flicks
+       are one screen and reading; a flick out of a half-read window is a skim, not a 1 000-wpm read) */
+    function mergeBack(N){
+      var u = undo, tol, rate, lim, wide, partial;
+      if (!u || u.kind !== "credit" || u.run !== run || N.t - u.t > Params.MERGE_MS) return false;
+      wide = Math.max(u.R0.V, R.V, N.V);                /* the screen, as wide as it was seen around here */
+      tol = kind === "w" ? jumpTol(wide) : 1;
+      rate = u.ms > 0 && u.w > 0 ? u.w / u.ms * 60000 : 0;
+      lim = kind === "w" ? (rate > 0 ? Math.max(Params.MERGE_BAND * rate, Params.MERGE_FLOOR_WPM) : Params.SKIM_WPM / 2) : Infinity;
+      /* two motions that together uncover one screen are one gesture: the first uncovered only
+         part of it and the pair still lands within a screen of where the reader was reading */
+      partial = u.adv < Params.MERGE_PART * u.R0.V && N.top - u.P0.top - u.adv < Params.MERGE_PART * wide &&
+                N.top - u.P0.top <= wide + tol;
+      /* otherwise only a credit that was itself too fast for this run is taken back, once the
+         move after it shows what it was part of (a flick out of a half-read window) */
+      if (!partial && !(u.implied > lim)) return false;
+      if (!undoLast(partial ? wide : 0)) return false;
+      record("merge", { t: N.t, top: N.top, adv: N.top - u.P0.top, V: partial ? wide : u.R0.V });
+      classify(N);
+      return true;
+    }
+    /* the transition before this one stepped forward and this one comes straight back to where it
+       started: a peek. Its seconds are a hole and whatever it skimmed was not skimmed */
+    function peekReturn(N){
+      var u = undo;
+      if (!u || u.run !== run || (u.kind !== "credit" && u.kind !== "skim")) return false;
+      if (u.adv <= 0 || N.t - u.t > Params.RESUME_MS) return false;
+      return Math.abs(N.top - u.P0.top) <= (kind === "w" ? Params.STILL_WORDS : 0);
     }
     function step(N){
       var adv = N.top - P.top, dt = dtOf(N), cap = maxDwell(firstMove || N.t);
+      if (burstReveal){ navStep(N, adv, dt); return; }
       if (dt > cap){ pause(N, adv, dt, true); return; }
       if (run.held.length) reopenAtHeld();
-      var implied = dt > 0 ? adv / dt * 60000 : Infinity, fast;
+      /* a nudge back does not restart the window: the seconds before it count towards how fast
+         the step after it was, or a screen finished right after a correction looks flicked past */
+      var span = dt, implied, fast;
+      if (lastBack && lastBack.run === run && N.t - lastBack.t <= Params.MERGE_MS) span += lastBack.dt;
+      implied = span > 0 ? adv / span * 60000 : Infinity;
       if (kind === "w") fast = implied > Params.SKIM_WPM;
       else {
         var nonSparse = 0, known = 0;
@@ -4539,49 +4741,71 @@
           R = N;                                   /* the nudge merges into the next transition */
           return;
         }
+        if (mergeBack(N)) return;
         skim(N, adv, dt, implied); return;
       }
       credit(N, adv, dt, implied);
     }
     function backSmall(N){
-      var adv = N.top - P.top, dt = dtOf(N), cap = maxDwell(firstMove || N.t);
-      if (dt > cap){ pause(N, adv, dt, false); return; }
+      var adv = N.top - P.top, dt = dtOf(N), cap = maxDwell(firstMove || N.t), peek = peekReturn(N);
+      if (burstReveal){ navStep(N, adv, dt); return; }
+      if (!peek && dt > cap){ pause(N, adv, dt, false); return; }
       if (run.held.length) reopenAtHeld();
-      run.ms += dt; run.n += 1; if (kind === "w") sess.ms += dt; else sess.pms += dt;
-      record("back", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, moves: moves });
-      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "back";
+      var was = undo;
+      if (peek) dropSkim();
+      else { run.ms += dt; if (kind === "w") sess.ms += dt; else sess.pms += dt; }
+      run.n += 1;
+      lastBack = peek ? null : { t: N.t, dt: dt, run: run };
+      record("back", { t: N.t, adv: adv, dt: peek ? 0 : dt, blocked: blockedIn(P.t, N.t), V: R.V, moves: moves, reason: peek ? "peek" : undefined });
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "back"; undo = null;
+      /* a peek judged a skim dropped the dwell before it along with its words: the reader is back
+         in that window, so those seconds are its own again and only the peek is a hole */
+      if (peek && was.kind === "skim" && was.P0.t < N.t){ P.t = was.P0.t; blocks.push({ a: was.t, b: N.t }); }
       scheduleSave();
     }
     /* beyond the rested window: the run ends; a scroll-through skimmed the text in between, one
        move is navigation. Then the resume rule, or a fresh run where the reader landed */
     function jump(N, forward){
-      var nav = !forward || burstNav || moves < Params.MOVES_SKIM, skipped = 0;
+      var nav = !forward || burstNav || moves < Params.MOVES_SKIM, skipped = 0, from = 0;
+      if (!nav && N.top <= docFrontier) nav = true;      /* back inside what was already read */
       if (!nav){
-        skipped = kind === "w" ? Math.max(0, N.top - R.bottom - 1) : (knownWordsIn(R.bottom + 1, N.top - 1) || 0);
-        if (skipped > 0){ Stats.noteSkimmed(skipped); sess.skimmed += skipped; }
+        from = Math.max(R.bottom + 1, docFrontier);
+        if (kind === "w") skipped = Math.max(0, N.top - from);
+        else {
+          skipped = knownWordsIn(from, N.top - 1);
+          /* the pages of a flip-through were never on screen at rest, so nobody asked for their
+             text: ask now, and count them when the answer arrives (§resolvePages) */
+          if (skipped === null){ skipped = 0; askPdfWords(from, N.top - 1); pendPages = { a: from, b: N.top - 1, origin: R.top, top: N.top, t: N.t, doc: state.pdfDoc }; }
+        }
       }
       record("jump", { t: N.t, adv: N.top - P.top, dt: dtOf(N), blocked: blockedIn(P.t, N.t), V: R.V, moves: moves, reason: nav ? "navigation" : "skimmed", skimmed: skipped });
-      var closed = closeRun("jump", N.t);
+      var origin = R.top, closed = closeRun("jump", N.t);
       setP(N); skimStreak = 0; pausedFlag = false;
+      if (skipped > 0) noteSkimmed(skipped, origin, N.top, N.t);
       if (tryResume(N, closed)){ record("resume", { t: N.t, V: N.V, top: N.top }); lastKind = nav ? "resume" : "skimjump"; }
-      else { run = newRun(N.t); run.frontier = N.top; lastKind = nav ? "jump" : "skimjump"; }
+      else { run = newRun(N.t); lastKind = nav ? "jump" : "skimjump"; }
     }
     function classify(N){
-      var dist = Math.abs(N.top - R.top), still = kind === "w" ? dist <= Params.STILL_WORDS : N.top === R.top;
+      ageSkim(N);
       var tol = kind === "w" ? jumpTol(R.V) : 1, reach = Math.max(R.V, N.V);
+      /* stillness, direction and distance are judged from the credit origin, not from the last
+         window: a reader whose every swipe moves four words would otherwise never leave "still",
+         and a nudge back after a deferred nudge forward is still forward of where reading began */
+      var still = kind === "w" ? Math.abs(N.top - P.top) <= Params.STILL_WORDS : N.top === P.top;
       /* a relayout (zen, a resize, a flow switch, a text size) can put the page's first word later
          than the old top, even changing the page number: the reader did not move, so nothing is
-         skimmed; the origin stays and the next real step credits the words from there */
-      if (still || (relaid && N.top > R.top && N.top <= R.bottom + tol)){
-        record("still", { t: N.t, adv: N.top - R.top, blocked: blockedIn(P.t, N.t), V: N.V, moves: moves, reason: still ? undefined : "relayout" });
+         skimmed; the origin stays and the next real step credits the words from there. A move of
+         more than a fraction of the window is the reader scrolling, relayout or not */
+      if (still || (relaid && N.top > P.top && N.top <= R.bottom + tol)){
+        record("still", { t: N.t, adv: N.top - P.top, blocked: blockedIn(P.t, N.t), V: N.V, moves: moves, reason: still ? undefined : "relayout" });
         R = N; return;
       }
       /* forward: the new top was on screen at rest, or the text between was never seen; backward:
          the old top is on screen now (a page back, re-reading), or it is a jump */
-      if (N.top > R.top){
-        if (N.top > R.bottom + tol) jump(N, true); else step(N);
+      if (N.top > P.top){
+        if (N.top > R.top + reach + tol) jump(N, true); else step(N);
       } else {
-        if (R.top - N.top > (kind === "w" ? reach + tol : reach)) jump(N, false); else backSmall(N);
+        if (P.top - N.top > (kind === "w" ? reach + tol : reach)) jump(N, false); else backSmall(N);
       }
     }
     function settle(){
@@ -4603,7 +4827,7 @@
       N.t = lastChange || now;
       pending = false;
       classify(N);
-      moves = 0; firstMove = 0; burstNav = false; relaid = false;
+      moves = 0; firstMove = 0; burstNav = false; burstReveal = false; relaid = false;
       refreshPhase(now);
     }
 
@@ -4620,10 +4844,29 @@
       if (!N) return false;
       N.t = now;
       kind = state.mode === "pdf" ? "p" : "w"; docKey = docKeyNow(); bookId = id;
-      var closed = justClosed; justClosed = null;
-      setP(N); skimStreak = 0; pausedFlag = false; moves = 0; firstMove = 0; pending = false; relaid = false; burstNav = false; unmeasurable = false; failSince = 0;
+      var closed = justClosed, lc = lastClosed;
+      justClosed = null;
+      /* landing again on the window a long soft block interrupted (a hidden tab, a panel left
+         open): the minutes spent on this page before it are still this page's reading, and the
+         block itself is already excluded, so the run keeps the old credit origin's time */
+      var onOldPage = !!lc && lc.docKey === docKey && lc.by === "block" && lc.softBlock && lc.endTop !== null &&
+                      Math.abs(N.top - lc.endTop) <= (kind === "w" ? Params.STILL_WORDS : 0);
+      setP(N); skimStreak = 0; pausedFlag = false; moves = 0; firstMove = 0; pending = false; relaid = false; burstNav = false; burstReveal = false; unmeasurable = false; failSince = 0;
+      ageSkim(null); undo = null;
       if (tryResume(N, closed)){ record("resume", { t: now, V: N.V, top: N.top }); lastKind = "resume"; }
-      else { run = newRun(now); run.frontier = N.top; record("anchor", { t: now, V: N.V, top: N.top }); lastKind = null; }
+      else {
+        run = newRun(now);
+        if (onOldPage && lc.pt < now) P = { top: N.top, t: lc.pt };
+        record("anchor", { t: now, V: N.V, top: N.top }); lastKind = null;
+      }
+      /* read-aloud carried the reader past the window's top: those words were listened to, not
+         read, so the run starts owing nothing for them */
+      if (spokenTo !== null){
+        if (run && spokenTo > run.frontier && spokenTo <= N.bottom + (kind === "w" ? jumpTol(N.V) : 0)){
+          run.frontier = spokenTo; run.low = 0; P.t = now;
+        }
+        spokenTo = null;
+      }
       refreshPhase(now);
       return true;
     }
@@ -4631,8 +4874,9 @@
     function leaveDocument(now){
       if (run) closeRun("doc", now);
       lastClosed = null; justClosed = null;
-      P = null; R = null; posKey = null; layoutKey = null; moves = 0; firstMove = 0; pending = false; lastChange = 0; burstNav = false; relaid = false;
+      P = null; R = null; posKey = null; layoutKey = null; moves = 0; firstMove = 0; pending = false; lastChange = 0; burstNav = false; burstReveal = false; relaid = false;
       skimStreak = 0; lastKind = null; pausedFlag = false; unmeasurable = false; failSince = 0;
+      undo = null; lastBack = null; pendSkim = null; pendPages = null; docFrontier = 0; spokenTo = null; hbVoice = null;
       clearTimeout(settleTimer); settleTimer = null;
       blocks = blocks.filter(function(x){ return x.b === null; });
       docKey = null; bookId = null; hbFrac = null; hbPage = null;
@@ -4680,6 +4924,8 @@
       poke();
       updateBlockers(now, "heartbeat");
       if (softOpen && run && now - softOpen.a >= Params.BLOCK_MAX_MS){ justClosed = closeRun("block", now); record("block", { t: now, reason: "long" }); }
+      ageSkim(null);
+      if (pendPages) resolvePages(now);
       if (hard) hardCredit(now);
       if (run && !hard && !softActive()){
         if ((pending || unmeasurable) && now - lastChange >= Params.SETTLE_MS) settle();
@@ -4831,6 +5077,7 @@
       var now = Date.now();
       run = null; store = { runs: [], books: {} }; lastClosed = null; justClosed = null;
       P = null; R = null; moves = 0; firstMove = 0; pending = false; relaid = false; lastChange = 0; posKey = null; skimStreak = 0; lastKind = null; pausedFlag = false;
+      undo = null; lastBack = null; pendSkim = null; pendPages = null; docFrontier = 0; spokenTo = null; hbVoice = null; burstReveal = false;
       sess = { words: 0, ms: 0, pages: 0, pms: 0, skimmed: 0, listened: 0 };
       blocks = blocks.filter(function(x){ return x.b === null; });
       clearTimeout(saveTimer); saveTimer = null;
@@ -4880,6 +5127,8 @@
       anchorNow: function(){ var now = Date.now(); if (run){ run = null; } P = null; R = null; lastChange = 0; return tryAnchor(now, true); },
       live: function(){ return run; }, lastClosed: function(){ return lastClosed; }, store: function(){ return store; },
       blockers: function(){ return blockerList.slice(); }, pageWords: function(){ return Object.assign({}, pageWords); },
+      pendingSkim: function(){ return pendSkim && Object.assign({}, pendSkim); }, readFrontier: function(){ return docFrontier; },
+      origin: function(){ return P && { top: P.top, t: P.t }; },
       index: index
     };
     Object.defineProperty(debug, "fragments", { get: function(){ return fragments; } });
@@ -4896,7 +5145,7 @@
      Reading progress + time left, from your measured reading speed
      ============================================================ */
   var Progress = (function(){
-    var el = $("#progressInfo"), hideTimer = null;
+    var el = $("#progressInfo"), hideTimer = null, trailTimer = null;
     var docWords = 0, docLen = 0, lastTick = 0, docKey = null;
     function countWords(){
       var t = $("#doc").textContent;
@@ -4934,7 +5183,14 @@
       Pace.poke("tick");
       if (state.mode !== "doc" && state.mode !== "pdf") return;
       var now = Date.now();
-      if (now - lastTick < 250) return;
+      if (now - lastTick < 250){
+        /* a fling is a burst of scroll events: draw once more when the throttle is up, so the
+           readout is never left at the position the burst started from */
+        clearTimeout(trailTimer);
+        trailTimer = setTimeout(tick, 250 - (now - lastTick));
+        return;
+      }
+      clearTimeout(trailTimer); trailTimer = null;
       lastTick = now;
       var key = (Library.currentId() || "") + ":" + state.mode;
       if (key !== docKey){ docKey = key; docWords = 0; docLen = 0; }
@@ -5041,6 +5297,15 @@
        and no sign of the reader's own activity */
     function noteSkimmed(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).skimmed += dw; b.skimmed += dw; touch(); }
     function noteListened(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).listened += dw; b.listened += dw; touch(); }
+    /* the pace detector takes a note back when the seconds that followed showed what the movement
+       really was (a peek that came home, half a gesture judged on its own): the same counters, the
+       same day and book, never below zero */
+    function unnote(what, n){
+      var b = noteDoc(), t = day(todayKey());
+      if (!b || !(n > 0) || !t.hasOwnProperty(what)) return;
+      t[what] = Math.max(0, t[what] - n); b[what] = Math.max(0, b[what] - n);
+      touch();
+    }
 
     /* ---- goal and streak ---- */
     function met(key){ var d = data.days[key]; return !!d && d.ms >= data.goal * 60000; }
@@ -5230,7 +5495,7 @@
     function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); o.pace = Pace.summary(); return o; }
     /* for tests and other scripts */
     window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save };
-    return { noteWords: noteWords, notePages: notePages, noteSkimmed: noteSkimmed, noteListened: noteListened, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
+    return { noteWords: noteWords, notePages: notePages, noteSkimmed: noteSkimmed, noteListened: noteListened, unnote: unnote, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
   })();
 
   /* ============================================================

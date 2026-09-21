@@ -217,7 +217,9 @@ scenario("A4 check and return: 3 000 words ahead for 20 s, then back", { context
   tr = await trans(page);
   const s = await st(page), rs = await runs(page);
   c("one run at the end (live), the excursion a fragment", rs.length === 1 && rs[0].live === true && (await fragments(page)) === 1, rs.length + " runs, " + (await fragments(page)) + " fragments");
-  const expected = 9 * 14400 + 16400 + 8 * 14400;
+  /* the 14.4 s spent reading the ninth window before the peek are reading: the run keeps them
+     and only the excursion itself is a hole */
+  const expected = 10 * 14400 + 16400 + 8 * 14400;
   c("run.ms is the driven dwells only (the 20 s and the jumps are a hole)", within(s.run.ms, expected, 1000) && s.run.n === 18, s.run.ms + " vs " + expected + ", n=" + s.run.n);
   c("docWpm ≈ 250 ±12 %", near(await docWpm(page), 250, 12), (await docWpm(page)).toFixed(1));
   c("no page errors", !page._errors, errorsOf(page));
@@ -332,7 +334,7 @@ scenario("A7b auto-scroll: a hard blocker, words still counted for Stats", { con
   await readScroll(page, S, top - 1, 60, 8, 14400);
   await settle(page);
   const rs = await runs(page), totalMs = rs.reduce((a, r) => a + r.ms, 0), totalW = rs.reduce((a, r) => a + r.w, 0);
-  c("the runs hold the manual reading only: the auto-scrolled minute is a hole", rs.length === (resumed ? 1 : 2) && totalMs >= 57600 + 8 * 14400 && totalMs <= 57600 + 8 * 14400 + 2000 && near(totalW, 720, 10) && rs.every((r) => near(rateOf(r), 250, 12)), JSON.stringify(rs.map((r) => [r.w, r.ms, rateOf(r).toFixed(0)])));
+  c("the runs hold the manual reading only: the auto-scrolled minute is a hole", rs.length === (resumed ? 1 : 2) && totalMs >= 57600 + 8 * 14400 && totalMs <= 57600 + 8 * 14400 + 3500 && near(totalW, 720, 10) && rs.every((r) => near(rateOf(r), 250, 12)), JSON.stringify(rs.map((r) => [r.w, r.ms, rateOf(r).toFixed(0)])));
   c("no page errors", !page._errors, errorsOf(page));
 });
 
@@ -425,9 +427,11 @@ scenario("A10 PDF: page turns at 40 s, then a flip-through", { context: desktop 
   const n1 = (await trans(page)).length;
   for (let n = 2; n <= 5; n++){ await goPdfPage(page, n); await page.clock.runFor(600); }
   await settle(page);
-  const flip = (await trans(page)).slice(n1), j = ofKind(flip, "jump")[0], skipped = pw[2] + pw[3] + pw[4];
-  c("the flip-through is one jump of 4 moves, attributed to skimming, nothing credited", !!j && j.moves === 4 && j.reason === "skimmed" && ofKind(flip, "credit").length === 0, kinds(flip) + " " + JSON.stringify(j));
-  c("skimmed = the known words of pages 2–4", j && j.skimmed === skipped && (await today(page)).skimmed - sk0 === skipped, JSON.stringify([j && j.skimmed, skipped]));
+  const flip = (await trans(page)).slice(n1), j = ofKind(flip, "jump")[0];
+  /* the flip-through crosses pages this reader has already read: nothing is credited, and nothing
+     is skimmed either — they are not skipping text, they are going back to where they were */
+  c("the flip-through is one jump of 4 moves, nothing credited", !!j && j.moves === 4 && ofKind(flip, "credit").length === 0, kinds(flip) + " " + JSON.stringify(j));
+  c("pages already read are not skimmed again", j && j.reason === "navigation" && j.skimmed === 0 && (await today(page)).skimmed === sk0, JSON.stringify([j && j.reason, j && j.skimmed]));
   c("docPpm unchanged (Δ ≤ 0.01)", within(await page.evaluate(() => window.llPace.docPpm()), ppm, 0.01), String(await page.evaluate(() => window.llPace.docPpm())));
   c("no page errors", !page._errors, errorsOf(page));
 });
@@ -869,8 +873,10 @@ scenario("D1 re-reading a page: words credited once, time always", { context: de
   }
   await settle(page);
   const tr = await trans(page), credits = ofKind(tr, "credit"), backs = ofKind(tr, "back"), s = await st(page);
-  c("three credited turns with credit = V, three re-turns with credit 0, three backs", credits.length === 6 && credits.filter((t) => t.credit > 0).length === 3 && credits.filter((t) => t.credit === 0).every((t) => t.adv > 0) && backs.length === 3, JSON.stringify(credits.map((t) => [t.adv, t.credit])));
-  c("each page's words once, all the dwell time", within(s.run.words, Vs.reduce((a, v) => a + v, 0), 6) && s.run.ms === driven, JSON.stringify([s.run.words, Vs, s.run.ms, driven]));
+  c("three credited turns with credit = V, three re-turns with credit 0, three peek backs", credits.length === 6 && credits.filter((t) => t.credit > 0).length === 3 && credits.filter((t) => t.credit === 0).every((t) => t.adv > 0) && backs.length === 3 && backs.every((t) => t.reason === "peek" && t.dt === 0), JSON.stringify(credits.map((t) => [t.adv, t.credit])));
+  /* the glance at the next page and straight back is a peek: its one second is a hole, every
+     other second of the three pages is in the run */
+  c("each page's words once, all the dwell time", within(s.run.words, Vs.reduce((a, v) => a + v, 0), 6) && s.run.ms === driven - 3000, JSON.stringify([s.run.words, Vs, s.run.ms, driven]));
   const fronts = await page.evaluate(() => window.llPace._debug.live().frontier);
   c("the frontier never decreased: it is the last new page's end", fronts === s.window.top, String(fronts) + " vs " + s.window.top);
   c("no page errors", !page._errors, errorsOf(page));
@@ -893,8 +899,9 @@ scenario("D2 a footnote hop of 12 s", { context: desktop }, async (ctx, c, url) 
   await readScroll(page, S, k, 60, 1, 14400);
   await settle(page);
   const last = (await trans(page)).slice(-1)[0], rs = await runs(page);
-  c("the next credit's time runs from the return (the hop is a hole): dt 2 s + 14.4 s", last.kind === "credit" && last.dt === 16400 && last.adv === 60, JSON.stringify(last));
-  c("one run, 9 steps, no fragment stored", rs.length === 1 && rs[0].live && rs[0].n === 9 && rs[0].ms === 8 * 14400 + 16400, JSON.stringify(rs.map((r) => [r.n, r.ms])));
+  /* the hop itself is a hole; the 5 s spent reading before it and the 2 s + 14.4 s after are not */
+  c("the next credit's time is the reading around the hop: 5 s + 2 s + 14.4 s", last.kind === "credit" && last.dt === 21400 && last.blocked === 12000 && last.adv === 60, JSON.stringify(last));
+  c("one run, 9 steps, no fragment stored", rs.length === 1 && rs[0].live && rs[0].n === 9 && rs[0].ms === 8 * 14400 + 21400, JSON.stringify(rs.map((r) => [r.n, r.ms])));
   c("no page errors", !page._errors, errorsOf(page));
 });
 
@@ -948,16 +955,18 @@ scenario("D4 a search hit inside the window is a plausible step", { context: des
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => !document.getElementById("side").classList.contains("open"), null, { timeout: 5000 });
   await settle(page);
-  const after = (await trans(page)).slice(n0), last = after[after.length - 1];
-  c("a credit, not a jump: the hit landed inside the rested window", last.kind === "credit" && after.filter((t) => t.kind === "jump").length === 0 && last.adv > 60 && last.adv <= before.V, JSON.stringify(last));
-  /* the hit moved the view a moment after the panel opened: the credit's time ends there, so it
-     holds only the first moment of the block; the panel's remaining seconds come off the next step */
+  const after = (await trans(page)).slice(n0), last = after[after.length - 1], w0 = (await st(page)).run.words;
+  /* the panel put the reader there: the hit is not a jump (it landed inside the rested window),
+     but neither its words nor the dwell before it are reading — the reader searched, they did
+     not read their way down the page */
+  c("the hit inside the window is a move made by the panel, not a credit", last.kind === "nav" && after.filter((t) => t.kind === "jump").length === 0 && last.adv > 60 && last.adv <= before.V, JSON.stringify(last));
   c("its time is the 20 s dwell; the block up to the hit excluded", within(last.dt, 20000, 100) && last.blocked > 0 && last.blocked <= 1000, JSON.stringify([last.dt, last.blocked]));
   await page.clock.runFor(14400);
   await goWord(page, S[700]);
   await settle(page);
   const next = (await trans(page)).slice(-1)[0];
-  c("the next step's time (2 s + 14.4 s) excludes the panel's remaining seconds", next.kind === "credit" && within(next.dt, 16400, 100) && within(next.blocked, 3000, 700), JSON.stringify(next));
+  c("reading on from the hit credits only what was read there", next.kind === "credit" && within(next.dt, 16400, 100) && within(next.blocked, 3000, 700) && next.credit === next.adv, JSON.stringify(next));
+  c("the words the search skipped were never credited", (await st(page)).run.words === w0 + next.credit, JSON.stringify([w0, (await st(page)).run.words]));
   c("no page errors", !page._errors, errorsOf(page));
 });
 
@@ -1674,6 +1683,295 @@ scenario("J5 the Stats panel's speed block: pictures", { context: desktop }, asy
     c(name + ": no page errors", !page._errors, errorsOf(page));
     await C.close();
   }
+});
+
+/* ============================== K. what the first round of readers found ============================== */
+
+scenario("K1 a one-page peek and back: the look is a hole, nothing skimmed", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url, { flow: "pages", spread: false });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  let driven = 0, words = 0;
+  for (let i = 0; i < 2; i++){
+    const V = (await measure(page)).V, ms = Math.round(V / 230 * 60000);
+    await page.clock.runFor(ms); await page.keyboard.press("ArrowRight");
+    driven += ms; words += V;
+  }
+  const V = (await measure(page)).V, ms = Math.round(V / 230 * 60000);
+  await page.clock.runFor(30000);                  /* half the page read */
+  await page.keyboard.press("ArrowRight");         /* a look at the next page */
+  await page.clock.runFor(30000);
+  await page.keyboard.press("ArrowLeft");          /* and straight back */
+  await page.clock.runFor(ms - 30000);             /* the page finished */
+  await page.keyboard.press("ArrowRight");
+  driven += ms; words += V;
+  await settle(page);
+  const tr = await trans(page), back = ofKind(tr, "back"), s = await st(page), t = await today(page);
+  c("the return is a peek: its half minute is in no run", back.length === 1 && back[0].reason === "peek" && back[0].dt === 0, JSON.stringify(back));
+  c("three pages once, the page's own time whole", within(s.run.words, words, 8) && within(s.run.ms, driven, 1200), JSON.stringify([s.run.words, words, s.run.ms, driven]));
+  c("the rate is the reader's own ±8 %, nothing skimmed", near(s.run.words / s.run.ms * 60000, 230, 8) && t.skimmed === 0, (s.run.words / s.run.ms * 60000).toFixed(1) + " wpm, skimmed " + t.skimmed);
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K2 a screen uncovered in two flicks is one step", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  const S = await starts(page), V = (await measure(page)).V, dwell = Math.round(V / 250 * 60000);
+  let k = 0, driven = 0;
+  for (let i = 0; i < 6; i++){
+    await page.clock.runFor(dwell); driven += dwell;
+    await goWord(page, S[k + Math.round(0.4 * V)]);        /* the flick */
+    await page.clock.runFor(2000); driven += 2000;
+    k += V; await goWord(page, S[k]);                      /* and the adjustment that finishes it */
+  }
+  await settle(page);
+  const tr = await trans(page), s = await st(page), t = await today(page);
+  c("the second motion is judged with the first, never a skim", ofKind(tr, "merge").length >= 5 && ofKind(tr, "skim").length === 0 && t.skimmed === 0, kinds(tr));
+  c("every screen credited", within(s.run.words, k, V / 2), s.run.words + " vs " + k);
+  c("the rate is the driven one ±12 %", near(s.run.words / s.run.ms * 60000, k / driven * 60000, 12), (s.run.words / s.run.ms * 60000).toFixed(0) + " vs " + (k / driven * 60000).toFixed(0));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K3 a flick out of a half-read window is not reading", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  const S = await starts(page);
+  const k = await readScroll(page, S, 0, 60, 13, 14400);     /* thirteen windows at 250 wpm */
+  const V = (await measure(page)).V, w0 = (await today(page)).words;
+  await page.clock.runFor(15000);                            /* a quarter of the next window read */
+  let j = k;
+  for (let i = 0; i < 3; i++){ j += V; await goWord(page, S[j]); await page.clock.runFor(1200); }
+  await settle(page);
+  const rs = await runs(page), t = await today(page);
+  c("the run is stored at the reader's own pace (±5 %)", rs.length >= 1 && near(rateOf(rs[0]), 250, 5), rs.map((r) => rateOf(r).toFixed(0)).join(","));
+  c("docWpm ≈ 250 ±12 %", near(await docWpm(page), 250, 12), (await docWpm(page)).toFixed(1));
+  c("Stats did not gain the flicked window as read", t.words - w0 <= 70, String(t.words - w0));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K4 a double turn by mistake, one page back: what is read next is credited", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url, { flow: "pages", spread: false });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  let words = 0, driven = 0;
+  const readPage = async () => {
+    const V = (await measure(page)).V, ms = Math.round(V / 230 * 60000);
+    await page.clock.runFor(ms); await page.keyboard.press("ArrowRight");
+    words += V; driven += ms;
+  };
+  for (let i = 0; i < 3; i++) await readPage();
+  await page.clock.runFor(1000);                                             /* a moment on the next page */
+  await page.keyboard.press("ArrowRight"); await page.clock.runFor(400); await page.keyboard.press("ArrowRight");
+  await page.clock.runFor(1500); await page.keyboard.press("ArrowLeft");     /* noticed, one page back */
+  for (let i = 0; i < 4; i++) await readPage();
+  await settle(page);
+  const rs = await runs(page), totalW = rs.reduce((a, r) => a + r.w, 0), totalMs = rs.reduce((a, r) => a + r.ms, 0);
+  /* the page the slip skipped is not credited (it was not read); the four read after it are */
+  c("the seven pages read are credited once (±10)", within(totalW, words, 10), totalW + " vs " + words);
+  c("the slip costs one run boundary, no more", rs.length === 2 && rs[1].n >= 4, JSON.stringify(rs.map((r) => [r.w, r.n])));
+  c("the pace after the slip is the reader's own ±12 %", near(totalW / totalMs * 60000, 230, 12), (totalW / totalMs * 60000).toFixed(1));
+  c("docWpm ≈ 230 ±12 %", near(await docWpm(page), 230, 12), (await docWpm(page)).toFixed(1));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K5 a phone whose toolbar hides on the way down, with an overshoot corrected", { context: phone }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  const S = await starts(page), V = (await measure(page)).V, step = Math.round(V * 0.8), dwell = Math.round(step / 220 * 60000);
+  let bar = true, k = 0, driven = 0;
+  const go = async (w, down) => {
+    if (down && bar){ bar = false; await page.setViewportSize({ width: 390, height: 900 }); }
+    else if (!down && !bar){ bar = true; await page.setViewportSize({ width: 390, height: 844 }); }
+    await goWord(page, S[w]);
+  };
+  for (let i = 1; i <= 10; i++){
+    await page.clock.runFor(dwell); driven += dwell;
+    k = i * step;
+    await go(k + 12, true);                        /* the flick lands two lines too far */
+    await page.clock.runFor(1500); driven += 1500;
+    await go(k, false);                            /* nudged back up, and the toolbar returns */
+  }
+  await settle(page);
+  const s = await st(page), rs = await runs(page), t = await today(page), fair = k / driven * 60000;
+  c("the screens read are credited (±40 words)", s.run && within(s.run.words, k, 40), JSON.stringify([s.run && s.run.words, k]));
+  c("a run qualifies at the driven pace ±12 %", rs.length >= 1 && near(rateOf(rs[rs.length - 1]), fair, 12), rs.map((r) => rateOf(r).toFixed(0)).join(",") + " vs " + fair.toFixed(0));
+  c("Stats has the words read (±40)", within(t.words, k, 40), t.words + " vs " + k);
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K6 End and Home in Scroll flow are navigation, not skimming", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  const S = await starts(page);
+  await readScroll(page, S, 0, 60, 8, 14400);
+  await page.clock.runFor(5000);
+  const sk0 = (await today(page)).skimmed, n0 = (await trans(page)).length;
+  await page.keyboard.press("End");
+  await settle(page);
+  await page.clock.runFor(10000);
+  await page.keyboard.press("Home");
+  await settle(page);
+  const after = (await trans(page)).slice(n0), jumps = ofKind(after, "jump");
+  c("one key press is one move, not a dozen animation frames", jumps.length >= 1 && jumps.every((j) => j.moves <= 2), JSON.stringify(jumps.map((j) => [j.reason, j.moves])));
+  c("nothing skimmed", jumps.every((j) => j.reason === "navigation") && (await today(page)).skimmed === sk0, String((await today(page)).skimmed - sk0));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K7 a reader who moves one line at a time is measured", { context: phone }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url, { size: 28 });
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  const S = await starts(page);
+  let k = 0;
+  for (let i = 0; i < 90; i++){ await page.clock.runFor(1000); k += 5; await goWord(page, S[k]); }
+  await settle(page);
+  const s = await st(page), tr = await trans(page), t = await today(page);
+  c("one-line advances are credited, not swallowed as stillness", s.run && near(s.run.words, k, 20) && s.run.words > 0, JSON.stringify([s.run && s.run.words, k]));
+  c("Stats has them too, with no pause or hold for a reader who is there", near(t.words, k, 25) && ofKind(tr, "pause").length === 0 && ofKind(tr, "held").length === 0, t.words + " vs " + k + " " + kinds(tr).slice(-60));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K8 an odd page at half the pace is slow reading, not a break", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url, { flow: "pages", spread: false, size: 24 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  let words = 0, driven = 0;
+  for (let i = 0; i < 12; i++){
+    const V = (await measure(page)).V, ms = i % 3 === 2 ? 180000 : 90000;     /* every third page twice as slow */
+    await page.clock.runFor(ms); await page.keyboard.press("ArrowRight");
+    words += V; driven += ms;
+  }
+  await settle(page);
+  const tr = await trans(page), rs = await runs(page);
+  const totalW = rs.reduce((a, r) => a + r.w, 0), totalMs = rs.reduce((a, r) => a + r.ms, 0), fair = words / driven * 60000;
+  c("no page is held as a break", ofKind(tr, "held").length === 0 && ofKind(tr, "pause").length === 0, kinds(tr));
+  c("one run over the twelve pages", rs.length === 1 && rs[0].n === 12, JSON.stringify(rs.map((r) => [r.w, r.ms, r.n])));
+  c("the pace is the driven " + fair.toFixed(0) + " wpm ±12 %", near(totalW / totalMs * 60000, fair, 12), (totalW / totalMs * 60000).toFixed(1));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K9 three five-minute absences are three breaks, not slow reading", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url, { flow: "pages", spread: false });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  let words = 0, driven = 0;
+  const readPage = async () => {
+    const V = (await measure(page)).V;
+    await page.clock.runFor(90000); await page.keyboard.press("ArrowRight");
+    words += V; driven += 90000;
+  };
+  for (let i = 0; i < 4; i++) await readPage();
+  for (let i = 0; i < 3; i++){
+    const V = (await measure(page)).V;
+    await page.clock.runFor(60000);
+    await page.clock.runFor(300000);                 /* gone, with no input at all */
+    await page.clock.runFor(30000);
+    await page.keyboard.press("ArrowRight");
+    words += V; driven += 90000;
+  }
+  for (let i = 0; i < 4; i++) await readPage();
+  await settle(page);
+  const tr = await trans(page), rs = await runs(page), fair = words / driven * 60000;
+  c("the absences are never admitted as slow reading", ofKind(tr, "admit").length === 0 && ofKind(tr, "held").length >= 3, kinds(tr));
+  c("no run holds idle minutes: every rate ≈ the driven " + fair.toFixed(0) + " wpm ±15 %", rs.length >= 1 && rs.every((r) => near(rateOf(r), fair, 15)), rs.map((r) => rateOf(r).toFixed(0)).join(","));
+  c("docWpm ≈ the driven pace ±12 %", near(await docWpm(page), fair, 12), (await docWpm(page)).toFixed(1) + " vs " + fair.toFixed(0));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K10 read-aloud: the voice's words are listened, not read", { context: desktop, stub: true }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openText(page, "paras.txt", TXT_PARAS);
+  await page.evaluate(() => { window.__speakDelay = 6000; });
+  await start(page);
+  const S = await starts(page);
+  await readScroll(page, S, 0, 60, 4, 14400);
+  await page.clock.runFor(1000);
+  const top = (await measure(page)).top, w0 = (await today(page)).words;
+  await page.evaluate((o) => window.__ll.Speak.start(o), S[top]);
+  await page.waitForFunction(() => document.getElementById("tts").classList.contains("on"), null, { timeout: 5000 });
+  await page.clock.runFor(60000);
+  const t1 = await today(page);
+  c("the voice's words are listened, none of them read", t1.listened > 0 && t1.words === w0, JSON.stringify([t1.listened, t1.words, w0]));
+  await page.evaluate(() => window.__ll.Speak.stop());
+  await settle(page);
+  await page.clock.runFor(20000);
+  const after = (await measure(page)).top;
+  await goWord(page, S[after + 140]);
+  await settle(page);
+  const cr = (await trans(page)).slice(-1)[0];
+  c("reading on credits only what was read, not what was heard", cr.kind === "credit" && cr.credit < cr.adv && cr.credit <= 90, JSON.stringify(cr));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K11 a look back and the way forward again skims nothing", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  const S = await starts(page);
+  const k = await readScroll(page, S, 0, 60, 10, 14400);
+  await page.clock.runFor(5000);
+  const sk0 = (await today(page)).skimmed;
+  await goWord(page, S[k - 480]);                    /* two screens back to check something */
+  await settle(page);
+  await page.clock.runFor(20000);
+  for (let i = 1; i <= 4; i++){ await goWord(page, S[k - 480 + i * 120]); await page.clock.runFor(200); }
+  await settle(page);
+  const t = await today(page);
+  c("nothing skimmed on the way back to the reading place", t.skimmed === sk0, String(t.skimmed - sk0));
+  c("and the reader is not called a skimmer", (await phase(page)) !== "skimming", await phase(page));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K12 a PDF flipped through pages never seen: nothing credited, the pages skimmed", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openPdf(page);
+  await start(page);
+  await page.clock.runFor(40000);
+  await goPdfPage(page, 2);
+  await settle(page);
+  await page.clock.runFor(40000);
+  const n1 = (await trans(page)).length, sk0 = (await today(page)).skimmed;
+  for (const n of [3, 4, 5]){ await goPdfPage(page, n); await page.clock.runFor(300); }
+  await settle(page);
+  for (let i = 0; i < 20 && (await today(page)).skimmed === sk0; i++){ await page.clock.runFor(1000); await page.waitForTimeout(50); }
+  const flip = (await trans(page)).slice(n1), j = ofKind(flip, "jump")[0], pw = await page.evaluate(() => window.llPace._debug.pageWords());
+  c("the flip-through is a skimmed jump, nothing credited", !!j && j.reason === "skimmed" && ofKind(flip, "credit").length === 0, kinds(flip) + " " + JSON.stringify(j));
+  c("the pages flipped past are counted once their text arrives", (await today(page)).skimmed - sk0 === (pw[3] || 0) + (pw[4] || 0) && (await today(page)).skimmed > sk0, JSON.stringify([(await today(page)).skimmed - sk0, pw[3], pw[4]]));
+  c("the pace is untouched", (await runs(page)).every((r) => r.k !== "p" || r.p <= 1), JSON.stringify((await runs(page)).map((r) => [r.p, r.ms])));
+  c("no page errors", !page._errors, errorsOf(page));
+});
+
+scenario("K13 a check ahead every minute: the reading before each check counts", { context: desktop }, async (ctx, c, url) => {
+  const page = await openPage(ctx, url);
+  await openText(page, "paras.txt", TXT_PARAS);
+  await start(page);
+  const S = await starts(page);
+  let k = 0, driven = 0;
+  for (let cyc = 0; cyc < 5; cyc++){
+    k = await readScroll(page, S, k, 60, 3, 14400); driven += 3 * 14400;
+    await page.clock.runFor(10000); driven += 10000;       /* ten seconds into the next window */
+    await goWord(page, S[k + 900]);                        /* a look ahead */
+    await page.clock.runFor(10000);
+    await goWord(page, S[k]);                              /* back to the same word */
+    await settle(page); driven += 2000;
+  }
+  k = await readScroll(page, S, k, 60, 1, 14400); driven += 14400;   /* one more step, so the last check's reading is credited */
+  await settle(page);
+  const s = await st(page), tr = await trans(page);
+  c("the run keeps every reading second, the checks none", s.run && within(s.run.ms, driven, 1500), JSON.stringify([s.run && s.run.ms, driven]));
+  c("five resumes, one run", ofKind(tr, "resume").length >= 1 && (await runs(page)).length === 1, kinds(tr).slice(-70));
+  /* the driven pace is not 250: ten seconds of every fourth window are spent before the check,
+     and that window still advances by one step — the detector should report what was driven */
+  c("the rate is the driven " + (k / driven * 60000).toFixed(0) + " wpm ±8 %", near(s.run.words / s.run.ms * 60000, k / driven * 60000, 8), (s.run.words / s.run.ms * 60000).toFixed(1));
+  c("no page errors", !page._errors, errorsOf(page));
 });
 
 /* ===== more scenarios above ===== */
