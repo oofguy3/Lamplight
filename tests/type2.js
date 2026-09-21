@@ -83,6 +83,11 @@ function fakeClock(iso){
     R.check("Lexend is a variable family: the slider runs 300–800", lex.min === 300 && lex.max === 800 && lex.two === false, JSON.stringify(lex));
     const geo = await page.evaluate(() => window.llType.range("serif"));
     R.check("Georgia has two weights: 400 and 700 in one step", geo.min === 400 && geo.max === 700 && geo.two === true && geo.step === 300, JSON.stringify(geo));
+    /* a narrow variable file is still variable: Lora spans 400-700 in one file */
+    const lora = await page.evaluate(() => window.llType.range("lora"));
+    R.check("Lora's narrow variable file still gives every weight", lora.min === 400 && lora.max === 700 && lora.two === false && lora.step === 50, JSON.stringify(lora));
+    const dys = await page.evaluate(() => window.llType.range("dyslexic"));
+    R.check("a bundled static pair counts as two weights", dys.two === true && dys.step === 300, JSON.stringify(dys));
 
     await page.evaluate(() => { window.__ll.state.font = "lexend"; window.llType.apply(); });
     await page.waitForTimeout(400);

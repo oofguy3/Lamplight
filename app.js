@@ -119,8 +119,8 @@
      time they are chosen or previewed (see Fonts), so this table costs nothing at load; system
      entries have no files. The old ids (serif, sans, mono, hyper) keep their stacks.
      `range` is the family's weight range: the span of a variable file, or the two weights a pair
-     of static files (or a system stack, which the browser synthesises) can offer. A family whose
-     range is exactly 400–700 has only those two weights, and the Weight slider says so. */
+     of static files (or a system stack, which the browser synthesises) can offer. A family with
+     no variable file has only its two weights, and the Weight slider says so. */
   var FONTS = {
     /* easy reading */
     dyslexic:    { name: "OpenDyslexic", range: [400, 700], group: "easy", stack: "'OpenDyslexic', " + STACKS.sans, note: "weighted letter bottoms and wide spacing help letters stay put",
@@ -676,11 +676,19 @@
 
   /* ---------- text weight: what the chosen family can actually do ----------
      The slider never leaves 300–800, and never leaves the family's own range either. A family
-     with just the two static weights (400 and 700) gets a two-step slider and says so. */
+     with only two static weights (400 and 700) gets a two-step slider and says so; a variable
+     file gives every weight in its span, even a narrow one like Lora's 400–700. */
   var WEIGHT_MIN = 300, WEIGHT_MAX = 800;
+  /* a bundled variable file carries a weight span ("400 700"); a pair of static files and a
+     system stack carry single weights, so those families really do have only two */
+  function isVariable(font){
+    if (!font || !font.files) return false;
+    for (var i = 0; i < font.files.length; i++) if (/\s/.test(String(font.files[i].weight))) return true;
+    return false;
+  }
   function weightRange(font){
     var rg = (font && font.range) || [400, 700];
-    var two = rg[0] === 400 && rg[1] === 700;
+    var two = !isVariable(font);
     return { min: Math.max(WEIGHT_MIN, rg[0]), max: Math.min(WEIGHT_MAX, rg[1]), two: two, step: two ? 300 : 50 };
   }
   /* the chosen weight as this family can render it: inside its range, and on a two-weight
