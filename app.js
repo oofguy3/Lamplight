@@ -324,16 +324,18 @@
      the text unless the user picked them; the hairline always is */
   function customColors(c){
     var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
+    var panel = c.panel || mix(c.bg, ink, 0.05);
     return {
       name: c.name, bg: c.bg, ink: ink, accent: c.accent,
-      panel: c.panel || mix(c.bg, ink, 0.05),
+      panel: panel,
       line:  mix(c.bg, ink, 0.15),
-      muted: c.muted || deriveMuted(ink, c.bg)
+      muted: c.muted || deriveMuted(ink, c.bg, panel)
     };
   }
-  /* secondary text: the text mixed towards the background, but no further than still reads on it */
-  function deriveMuted(ink, bg){
-    for (var t = 0.42; t > 0; t -= 0.03){ var m = mix(ink, bg, t); if (contrast(m, bg) >= 4.5) return m; }
+  /* secondary text: the text mixed towards the background, but no further than still reads on it
+     and on the panel (the sheet, the bars; the subtle surface lies between the two) */
+  function deriveMuted(ink, bg, panel){
+    for (var t = 0.42; t > 0; t -= 0.03){ var m = mix(ink, bg, t); if (contrast(m, bg) >= 4.5 && contrast(m, panel) >= 4.5) return m; }
     return ink;
   }
   function resolveTheme(theme){
@@ -418,6 +420,7 @@
   var METER = [
     { id: "ink",         what: "text",           fg: "ink",    on: "bg" },
     { id: "muted",       what: "secondary text", fg: "muted",  on: "bg" },
+    { id: "mutedPanel",  what: "secondary text", fg: "muted",  on: "panel" },
     { id: "accent",      what: "accent",         fg: "accent", on: "bg" },
     { id: "accentPanel", what: "accent",         fg: "accent", on: "panel" }
   ];
@@ -472,7 +475,7 @@
     if (!c) return;
     var t = customColors(c);
     if (contrast(t.ink, t.bg) < 4.5){ c.ink = fixColor(t.ink, [t.bg]); c.autoInk = false; t = customColors(c); }
-    if (contrast(t.muted, t.bg) < 4.5){ c.muted = fixColor(t.muted, [t.bg]); t = customColors(c); }
+    if (contrast(t.muted, t.bg) < 4.5 || contrast(t.muted, t.panel) < 4.5){ c.muted = fixColor(t.muted, [t.bg, t.panel]); t = customColors(c); }
     if (contrast(t.accent, t.bg) < 4.5 || contrast(t.accent, t.panel) < 4.5) c.accent = fixColor(t.accent, [t.bg, t.panel]);
     syncCustomUI(); applyTheme();
   }
@@ -526,7 +529,9 @@
       syncUI();
     }
     function syncUI(){
-      document.querySelectorAll("#autoChips .chip").forEach(function(ch){ ch.classList.toggle("on", ch.dataset.auto === state.auto); });
+      document.querySelectorAll("#autoChips .chip").forEach(function(ch){
+        var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      });
       $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
       var opts = themeGroups().map(function(g){
@@ -737,6 +742,9 @@
       close:     svg('<path d="M6 6l12 12M18 6L6 18"/>'),
       open:      svg('<path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/>'),
       chevronR:  svg('<path d="M9 6l6 6-6 6"/>'),
+      chevronL:  svg('<path d="M15 6l-6 6 6 6"/>'),
+      more:      svg('<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/>'),
+      check:     svg('<path d="M5 12l4 4L19 7"/>'),
       goOn:      svg('<path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M10 8l4 4-4 4"/>'),
       books:     svg('<path d="M4 4h5v16H4z"/><path d="M9 4h5v16H9z"/><path d="M14 6l5-1.5L23 19l-5 1.5z"/>'),
       sun:       svg('<path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
@@ -755,12 +763,18 @@
      (A− / A+ keep their ids and their listeners). */
   var Pop = (function(){
     var el = $("#pop"), scrim = $("#popScrim"), panes = { type: $("#typePop"), theme: $("#themePop") };
-    var current = null, anchor = null, scrollY0 = 0;
+    var current = null, anchor = null, scrollY0 = 0, docH = 0;
     var reduce = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
     function phone(){ return window.matchMedia && window.matchMedia("(max-width:560px)").matches; }
+    /* where the page stands now, and how tall it is: the scroll-to-close rule below measures the
+       reader's own scrolling from here, and a reflow (a new spacing or font moves the text under
+       the window; scroll anchoring then shifts scrollY) moves the baseline instead of counting */
+    function rebase(){ void document.documentElement.offsetHeight; scrollY0 = window.scrollY; docH = document.documentElement.scrollHeight; }
     /* under the button, right edges aligned, kept inside the window */
     function place(){
       if (!current) return;
+      /* a resize across the phone breakpoint with the popover open: the scrim belongs to the sheet form only */
+      scrim.classList.toggle("on", phone());
       if (phone()){ el.style.top = ""; el.style.left = ""; el.style.right = ""; return; }
       var r = anchor.getBoundingClientRect();
       el.style.top = Math.round(r.bottom + 6) + "px";
@@ -772,7 +786,7 @@
     function open(id, btn, render, opts){
       if (current === id){ close(); return; }
       if (current) close(true);
-      Menu.close();
+      Menu.close(); Side.close();
       document.body.classList.remove("hidebar");
       current = id; anchor = btn;
       Object.keys(panes).forEach(function(k){ panes[k].hidden = k !== id; });
@@ -781,9 +795,15 @@
       sync();
       el.classList.add("open"); el.setAttribute("aria-hidden", "false");
       scrim.classList.toggle("on", phone());
+      /* a phone holds the page still under its sheet (the class is scoped to phones in the stylesheet) */
+      document.documentElement.classList.add("lock-pop");
       btn.setAttribute("aria-expanded", "true");
       place();
-      scrollY0 = window.scrollY;
+      /* the chosen theme scrolls into view only now that the popover has a layout (while it was
+         display:none scrollIntoView had nothing to measure); after place(), so "nearest" never
+         nudges the window */
+      if (id === "theme") showCurrent();
+      rebase();
       /* focus lands on the first control: the size (zoom) slider, or the chosen theme */
       var first = id === "type" ? (panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
                                 : (panes.theme.querySelector(".strip .chip.on") || panes.theme.querySelector(".strip .chip"));
@@ -795,6 +815,7 @@
       current = null; anchor = null;
       el.classList.remove("open"); el.setAttribute("aria-hidden", "true");
       scrim.classList.remove("on");
+      document.documentElement.classList.remove("lock-pop");
       btn.setAttribute("aria-expanded", "false");
       if (!quiet && btn.focus) btn.focus({ preventScroll: true });
     }
@@ -832,7 +853,8 @@
     fontQuick.addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
     $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
     $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
-    $("#typeMore").addEventListener("click", function(){ close(true); openSheetAt("#textGroup"); });
+    /* the footer link: the sheet opens at the group, and Escape there hands focus back to the bar button */
+    $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#textGroup", a); });
 
     /* ---- the theme pane: a strip of light themes, one of dark, and the auto choice ---- */
     function chip(k){
@@ -868,16 +890,27 @@
       var a = e.target.closest("#qAuto .chip");
       if (a){ state.auto = a.dataset.auto; Prefs.save(); AutoTheme.apply(); syncTheme(); }
     });
-    $("#themeMore").addEventListener("click", function(){ close(true); openSheetAt("#themeGroup"); });
+    /* the strips have no scrollbar: a mouse wheel over one moves it sideways instead of scrolling
+       the page away (which would also close the popover) */
+    Array.prototype.forEach.call(panes.theme.querySelectorAll(".strip"), function(s){
+      s.addEventListener("wheel", function(e){
+        if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || s.scrollWidth <= s.clientWidth) return;
+        e.preventDefault(); s.scrollLeft += e.deltaY;
+      }, { passive: false });
+    });
+    $("#themeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#themeGroup", a); });
 
-    /* the open pane follows the state (applyType / applyTheme call this) */
+    /* the open pane follows the state (applyType / applyTheme call this), and the page's height
+       is noted again: the change that called this may have reflowed the text */
     function sync(){
       if (!current) return;
       if (current === "type") syncType(); else syncTheme();
+      rebase();
     }
-    /* the settings sheet, scrolled so a group sits under its strip */
-    function openSheetAt(sel){
-      setSheet(true);
+    /* the settings sheet, scrolled so a group sits under its strip; `from` is the control that
+       asked for it (focus returns there when the sheet closes) */
+    function openSheetAt(sel, from){
+      setSheet(true, from);
       var sheet = $("#sheet"), g = $(sel), strip = $("#sheetTabs");
       if (!g) return;
       var top = g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop - (strip ? strip.offsetHeight : 0) - 2;
@@ -898,12 +931,22 @@
       close(true);
     }, true);
     scrim.addEventListener("click", function(){ close(); });
-    window.addEventListener("scroll", function(){ if (current && Math.abs(window.scrollY - scrollY0) > 80) close(true); }, { passive: true });
+    el.querySelector(".pop-handle").addEventListener("click", function(){ close(); });
+    /* scrolling away from the popover closes it — on a desktop, where it hangs from the bar. A
+       phone's sheet stays: Escape, the scrim or the handle close it, and the page is held still
+       under it anyway. A scroll that comes with a change of the page's height is the text
+       reflowing (a font or an image landed, a slider moved), not the reader: the baseline moves */
+    window.addEventListener("scroll", function(){
+      if (!current) return;
+      var h = document.documentElement.scrollHeight;
+      if (h !== docH){ docH = h; scrollY0 = window.scrollY; return; }
+      if (!phone() && Math.abs(window.scrollY - scrollY0) > 80) close(true);
+    }, { passive: true });
     window.addEventListener("resize", place);
 
     /* the bar buttons */
     $("#gear").addEventListener("click", function(e){ e.stopPropagation(); open("type", this, syncType); });
-    $("#lamp").addEventListener("click", function(e){ e.stopPropagation(); open("theme", this, function(){ renderTheme(); syncTheme(); showCurrent(); }); });
+    $("#lamp").addEventListener("click", function(e){ e.stopPropagation(); open("theme", this, function(){ renderTheme(); syncTheme(); }); });
 
     window.llPop = { open: open, close: close, is: is, sync: sync, sheet: setSheet, sheetAt: openSheetAt };
     return { open: open, close: close, is: is, sync: sync, sheetAt: openSheetAt };
@@ -949,13 +992,25 @@
     st.setProperty("--dockH", h + "px"); st.setProperty("--pagerH", pagerH + "px"); st.setProperty("--ttsH", ttsH + "px");
     return h;
   }
-  if (window.ResizeObserver) new ResizeObserver(function(){ dockVar(); }).observe($("#dock"));
+  /* the dock changed height without a window resize (the read-aloud bar came, went, or wrapped to
+     two rows for the sleep timer): the pages are laid out to clear it, so lay them out again
+     unless the last layout already saw this height. relayoutPaged never changes the dock, so
+     there is no loop. The header is watched the same way: the tabs strip appearing or going
+     changes --headH, which the progress pill and the sheet hang from. */
+  var dockLaidOut = -1;
+  function printing(){ return document.body.classList.contains("printing") || (window.matchMedia && window.matchMedia("print").matches); }
+  if (window.ResizeObserver){
+    /* not while printing: the print layout hides the dock, and Print lays the pages out again itself once the screen is back */
+    new ResizeObserver(function(){ var h = dockVar(); if (h !== dockLaidOut && pagedActive() && !printing()) relayoutPaged(); }).observe($("#dock"));
+    new ResizeObserver(headVar).observe(document.querySelector("header"));
+  }
   else window.addEventListener("resize", dockVar);
   function availHeight(){
     headVar();
     var head = document.querySelector("header"), zen = document.body.classList.contains("zen");
     var headH = document.body.classList.contains("immersive") || zen ? 0 : head.offsetHeight;
     var dockH = dockVar();
+    dockLaidOut = dockH;
     /* measured before the page-turn bar is shown (the first layout): assume its usual height */
     if (!zen && pagedActive() && !$("#pager").offsetHeight) dockH += 56;
     return Math.max(160, window.innerHeight - headH - dockH - 26);
@@ -1100,7 +1155,7 @@
     var off = state.mode === "doc" ? (state.flow === "pages" ? pageTopOffset() : Library.topCharOffset()) : null;
     state.flow = f;
     document.querySelectorAll("#flowChips .chip").forEach(function(ch){
-      ch.classList.toggle("on", ch.dataset.flow === f);
+      var on = ch.dataset.flow === f; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
     });
     Prefs.save();
     if (state.mode === "pdf" && state.pdfDoc && f === "pages")
@@ -1128,19 +1183,14 @@
       if (n !== state.pdfPageNum){ state.pdfPageNum = n; renderPdfSingle(); }
     }
   }
-  /* the section the current page is in: the last heading at or before it (a PDF's outline
-     arrives later; the readout is drawn again when it does) */
+  /* the section the current page is in: the heading at the page's first character, the same
+     rule as the title readout (Section), so the two never name different sections for one page
+     (a PDF's outline arrives later; the readout is drawn again when it does) */
   var pdfSections = { doc: null, list: null };
   function currentSection(){
     if (state.mode === "doc"){
-      var entries = Toc.entries(), docRect = null, cur = null;
-      for (var i = 0; i < entries.length; i++){
-        if (!docRect) docRect = $("#doc").getBoundingClientRect();
-        var r = entries[i].el.getBoundingClientRect();
-        if (pageOfOffset(r.left - docRect.left + 1) > state.page) break;
-        cur = entries[i];
-      }
-      return cur ? cur.title : "";
+      var e = Section ? Section.at(pageTopOffset()) : null;
+      return e ? e.title : "";
     }
     if (state.mode === "pdf" && state.pdfDoc){
       var doc = state.pdfDoc;
@@ -1175,7 +1225,13 @@
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
     else { cur = state.pdfPageNum; total = state.pdfDoc ? state.pdfDoc.numPages : 1; }
-    $("#progress").style.width = (total > 0 ? (cur / total) * 100 : 0) + "%";
+    setProgressBar(total > 0 ? (cur / total) * 100 : 0);
+  }
+  /* the 3px line at the top, and its value for assistive technology */
+  function setProgressBar(pct){
+    var bar = $("#progress");
+    bar.style.width = pct + "%";
+    bar.setAttribute("aria-valuenow", String(Math.round(pct)));
   }
 
   /* ---------- file opening ---------- */
@@ -1603,6 +1659,7 @@
     holder.style.height = "";
     holder.innerHTML = "";
     holder.classList.remove("spread");
+    holder.style.display = "block";
     state.perPage = 1;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     doc.getPage(1).then(function(page1){
@@ -1709,6 +1766,9 @@
         if (gen !== renderGen) return;
         holder.innerHTML = "";
         holder.classList.toggle("spread", two);
+        /* show() sets the holder to display:block inline, which would beat the stylesheet's flex
+           row for a spread and stack the second page under the first, out of sight */
+        holder.style.display = two ? "flex" : "block";
         canvases.forEach(function(c){ holder.appendChild(c.canvas); });
         updatePager(); updateProgress();
         Library.pdfReady();
@@ -1854,12 +1914,22 @@
       if (!b || !list || b.dataset.panel === current) return;
       list.forEach(function(p){ if (p.name === b.dataset.panel) p.open(); });
     });
+    /* the drawer is modal: while it is open the rest of the page is inert, so Tab cannot reach the
+       bar under the scrim and open a menu or a popover behind it. The card, the toasts and the
+       highlight popover sit over the drawer and stay live. */
+    var BEHIND = "header, #sheet, #main, #dock, #pop, .skip";
+    function holdRest(on){
+      Array.prototype.forEach.call(document.querySelectorAll(BEHIND), function(n){ n.inert = on; });
+    }
+    /* a body with more than fits gets a focusable, named scroll region (Keyboard shortcuts has no
+       controls); a short one gains no extra Tab stop */
+    function scrollable(){ body.tabIndex = body.scrollHeight > body.clientHeight ? 0 : -1; }
     function open(name, ttl, render, closeFn, opts){
       var wasOpen = !!current;
       /* a panel replaced in place tidies up as if it had closed; the drawer itself stays */
       if (wasOpen && current !== name && onClose) onClose();
       current = name; onClose = closeFn || null; family = (opts && opts.family) || null;
-      if (!wasOpen) opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#more");
+      if (!wasOpen) opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#main");
       title.textContent = ttl;
       drawSwitch();
       body.innerHTML = ""; foot.innerHTML = ""; foot.style.display = "none";
@@ -1867,18 +1937,25 @@
       if (foot.children.length) foot.style.display = "flex";
       body.scrollTop = 0;
       el.classList.add("open"); scrim.classList.add("on"); el.setAttribute("aria-hidden", "false");
-      Menu.close();
-      /* move focus into the panel; the first control if there is one, else the close button */
+      document.documentElement.classList.add("lock-side");
+      Menu.close(); Pop.close(true);
+      holdRest(true);
+      /* move focus into the panel; the first control if there is one, else the scrolling body,
+         else the close button */
       setTimeout(function(){
         if (current !== name) return;
+        scrollable();
         var first = body.querySelector("input, [tabindex='0'], button");
-        (first || $("#sideClose")).focus({ preventScroll: true });
+        (first || (body.tabIndex === 0 ? body : $("#sideClose"))).focus({ preventScroll: true });
       }, 60);
     }
     function close(){
       if (!current) return;
       var fn = onClose; current = null; onClose = null; family = null;
       el.classList.remove("open"); scrim.classList.remove("on"); el.setAttribute("aria-hidden", "true");
+      document.documentElement.classList.remove("lock-side");
+      /* the page comes back to life before focus returns to it: focus() on an inert element is a no-op */
+      holdRest(false);
       if (fn) fn();
       if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
       opener = null;
@@ -1892,9 +1969,19 @@
     document.addEventListener("keydown", function(e){
       if (e.key === "Escape" && current){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
     });
+    /* Tab wraps inside the drawer (the one hop to the document's edge that inert leaves, and the
+       whole of the containment where inert is not known) */
+    el.addEventListener("keydown", function(e){
+      if (e.key !== "Tab" || !current) return;
+      var all = Array.prototype.filter.call(el.querySelectorAll("button, input, select, textarea, a[href], [tabindex='0']"), function(n){ return !n.disabled && n.getClientRects().length; });
+      if (!all.length) return;
+      var first = all[0], last = all[all.length - 1];
+      if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    });
     return { open: open, close: close, is: function(name){ return current === name; }, body: body, foot: foot,
              current: function(){ return current; },
-             refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; } } };
+             refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; scrollable(); } } };
   })();
 
   /* ---------- "more" menu: features register their entries here ----------
@@ -1930,7 +2017,9 @@
         list.forEach(function(it){
           var label = text(it), b = document.createElement("button");
           b.type = "button"; b.setAttribute("role", "menuitem");
-          b.innerHTML = '<i class="mi">' + (it.icon || "") + '</i><span>' + label + '</span>' + (it.key ? '<kbd>' + it.key + '</kbd>' : '');
+          /* the key hint is decoration to a screen reader; the shortcut itself is declared */
+          b.innerHTML = '<i class="mi">' + (it.icon || "") + '</i><span>' + label + '</span>' + (it.key ? '<kbd aria-hidden="true">' + it.key + '</kbd>' : '');
+          if (it.key) b.setAttribute("aria-keyshortcuts", it.key);
           if (isOn(label)) b.classList.add("on");
           if (it.enabled && !it.enabled()) b.disabled = true;
           b.addEventListener("click", function(){ close(true); it.run(); });
@@ -2217,23 +2306,28 @@
     function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     /* the start screen: a Continue card for the book opened last, then every book as a card */
     function pctOf(b){ var pos = positions[b.id]; return pos ? pos.pct : 0; }
+    /* a card is a plain wrapper holding two sibling buttons: the book (opens it) and the remove;
+       nesting the remove inside a button-role card would give the card the remove's name too */
     function item(b){
       var pct = pctOf(b), name = escapeHtml(b.title || b.name), done = pct >= 98;
-      return '<div class="lib-item" role="button" tabindex="0" data-id="' + escapeHtml(b.id) + '" title="' + escapeHtml(b.name) + '">' +
+      return '<div class="lib-item" data-id="' + escapeHtml(b.id) + '">' +
+        '<button type="button" class="lib-open" data-id="' + escapeHtml(b.id) + '" title="' + escapeHtml(b.name) + '">' +
         '<span class="lib-type">' + escapeHtml(b.type) + '</span>' +
-        '<span class="lib-main"><div class="lib-name">' + name + '</div>' +
-        '<div class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
-        (done ? '<span class="lib-done">Finished</span>' : '') + '</div></span>' +
-        '<button class="lib-x" data-x="' + escapeHtml(b.id) + '" title="Remove from library" aria-label="Remove ' + name + ' from the library">' + ICONS.close + '</button>' +
+        '<span class="lib-main"><span class="lib-name">' + name + '</span>' +
+        '<span class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
+        (done ? '<span class="lib-done">Finished</span>' : '') + '</span></span>' +
+        '</button>' +
+        '<button type="button" class="lib-x" data-x="' + escapeHtml(b.id) + '" title="Remove from library" aria-label="Remove ' + name + ' from the library">' + ICONS.close + '</button>' +
         '</div>';
     }
+    /* a finished book starts again from the beginning; the words on the card say so */
     function continueHtml(b){
-      var pct = pctOf(b), name = escapeHtml(b.title || b.name);
-      return '<button type="button" id="continueCard" title="Continue reading ' + name + '">' +
+      var pct = pctOf(b), name = escapeHtml(b.title || b.name), again = pct >= 98;
+      return '<button type="button" id="continueCard" title="' + (again ? "Read " + name + " again" : "Continue reading " + name) + '">' +
         '<span class="cc-ring" style="--p:' + pct + '%" aria-hidden="true"><span>' + (pct ? pct + "%" : "new") + '</span></span>' +
-        '<span class="cc-main"><span class="label">' + (pct >= 98 ? "Read again" : "Continue reading") + '</span><span class="cc-title">' + name + '</span>' +
+        '<span class="cc-main"><span class="label">' + (again ? "Read again" : "Continue reading") + '</span><span class="cc-title">' + name + '</span>' +
         '<span class="cc-meta"><span class="lib-type">' + escapeHtml(b.type) + '</span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span></span></span>' +
-        '<span class="cc-go">Continue' + ICONS.goOn + '</span>' +
+        '<span class="cc-go">' + (again ? "Start again" : "Continue") + ICONS.goOn + '</span>' +
         '</button>';
     }
     function render(){
@@ -2248,17 +2342,14 @@
       cont.innerHTML = books.length ? continueHtml(books[0]) : "";
     }
     $("#continue").addEventListener("click", function(e){
-      if (e.target.closest("#continueCard") && books.length) openId(books[0].id);
+      if (e.target.closest("#continueCard") && books.length) openId(books[0].id, pctOf(books[0]) >= 98);
     });
+    /* native buttons deliver Enter and Space as clicks, so one listener covers keys and pointers */
     $("#libList").addEventListener("click", function(e){
       var x = e.target.closest(".lib-x");
-      if (x){ e.stopPropagation(); remove(x.dataset.x); return; }
-      var it = e.target.closest(".lib-item");
+      if (x){ remove(x.dataset.x); return; }
+      var it = e.target.closest(".lib-open");
       if (it) openId(it.dataset.id);
-    });
-    $("#libList").addEventListener("keydown", function(e){
-      var it = e.target.closest(".lib-item");
-      if (it && (e.key === "Enter" || e.key === " ")){ e.preventDefault(); openId(it.dataset.id); }
     });
     $("#libClear").addEventListener("click", function(){
       if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device?")) return;
@@ -2269,12 +2360,13 @@
       tx("marks", "readwrite", function(st){ st.clear(); }).catch(function(){});
       render(); show("empty");
     });
-    function openId(id){
+    /* fresh: open at the beginning instead of the saved place (a finished book read again) */
+    function openId(id, fresh){
       var b = books.filter(function(x){ return x.id === id; })[0];
       if (!b || !b.blob) return;
       var f = b.blob;
       if (!(f instanceof File)){ try { f = new File([b.blob], b.name, { type: b.blob.type }); } catch(_){ f = b.blob; f.name = b.name; } }
-      openFile(f, { fromLibrary: true });
+      openFile(f, { fromLibrary: true, fresh: !!fresh });
     }
     function remove(id){
       books = books.filter(function(x){ return x.id !== id; });
@@ -2298,6 +2390,7 @@
       setSheet(false);
       $("#fname").textContent = "";
       Section.reset();
+      $("#progressInfo").classList.remove("on");   /* the readout belongs to the document just left */
       document.title = "lamplight — reader";
       show("empty");
       render();
@@ -2477,6 +2570,13 @@
       } else {
         var off = Library.topCharOffset();
         if (off === null){ toast("Couldn't find the spot"); return null; }
+        /* the probe lands inside the first word when its first glyph is wide: back up to its start */
+        var at = Anchor.rangeAt(off);
+        if (at && at.startContainer.nodeType === 3){
+          var tx = at.startContainer.textContent, ci = at.startOffset;
+          while (ci > 0 && !/\s/.test(tx[ci - 1])) ci--;
+          var o2 = Anchor.offsetOf(at.startContainer, ci); if (o2 !== null) off = o2;
+        }
         m.start = off; m.end = off;
         var r = Anchor.rangeBetween(off, Math.min(Anchor.textLength(), off + 160));
         var words = (r ? r.toString() : "").replace(/\s+/g, " ").trim().split(" ").slice(0, 9).join(" ");
@@ -2536,6 +2636,10 @@
     $("#doc").addEventListener("click", function(e){
       var mk = e.target.closest && e.target.closest("mark.ll-mark");
       if (!mk){ hidePop(); return; }
+      /* the mouse-up of a drag-selection inside a highlight also fires this click: the selection
+         belongs to the pill, so leave the popover closed */
+      var sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()){ hidePop(); return; }
       e.stopImmediatePropagation(); e.preventDefault();
       if (popKey === mk.dataset.key) hidePop(); else showPop(mk);
     }, true);
@@ -2632,7 +2736,7 @@
     Menu.add({ order: 31, group: "marks", icon: ICONS.notes, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
 
     return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, addHighlight: addHighlight, highlightSelection: highlightSelection,
-             selectionOffsets: selectionOffsets, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
+             selectionOffsets: selectionOffsets, hidePop: hidePop, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
              toMarkdown: toMarkdown, toJSON: toJSON };
   })();
 
@@ -2705,15 +2809,12 @@
         entries.forEach(function(e, i){ if (e.page && e.page <= pg) cur = i; });
         return cur;
       }
+      /* Pages flow: the section at the page's first character, as the title and the pager say */
+      if (state.flow === "pages"){ var hit = Section.at(pageTopOffset()); return hit ? hit.i : -1; }
       var head = Library.headerHeight();
-      var line = state.flow === "pages" ? null : head + (window.innerHeight - head) * 0.35;
+      var line = head + (window.innerHeight - head) * 0.35;
       entries.forEach(function(e, i){
-        var r = e.el.getBoundingClientRect();
-        if (state.flow === "pages"){
-          var docRect = $("#doc").getBoundingClientRect();
-          var col = pageOfOffset(r.left - docRect.left + 1);
-          if (col <= state.page) cur = i;
-        } else if (r.top <= line) cur = i;
+        if (e.el.getBoundingClientRect().top <= line) cur = i;
       });
       return cur;
     }
@@ -2900,7 +3001,7 @@
     }
     function render(body, foot){
       body.innerHTML = '<div class="find-row"><input type="search" id="findInput" aria-label="Find in this document" placeholder="Find in this ' + (state.mode === "pdf" ? "PDF" : "document") + '\u2026" autocomplete="off" spellcheck="false">' +
-        '<button class="ctl" id="findPrev" title="Previous match" aria-label="Previous match">\u2039</button><button class="ctl" id="findNext" title="Next match" aria-label="Next match">\u203A</button></div>' +
+        '<button class="ctl" id="findPrev" title="Previous match" aria-label="Previous match">' + ICONS.chevronL + '</button><button class="ctl" id="findNext" title="Next match" aria-label="Next match">' + ICONS.chevronR + '</button></div>' +
         '<div class="find-status" id="findStatus" aria-live="polite"></div><div id="findList"></div>';
       input = body.querySelector("#findInput"); listEl = body.querySelector("#findList"); statusEl = body.querySelector("#findStatus");
       input.value = query;
@@ -3931,7 +4032,7 @@
           '<option value=""' + (!dialogueName ? ' selected' : '') + '>Auto — the other voice</option>' +
           '<option value="same"' + (dialogueName === "same" ? ' selected' : '') + '>Same as narrator</option>' + voiceOptions(vs, dialogueName) + '</select></div>' +
         '<div class="hint" id="ttsDlgHint">' + esc(hintText()) + '</div>' +
-        '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
+        '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
         '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
         '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
         '<div class="rowline"><label id="ttsSleepL">Stop after</label><div class="chips tts-sleep-chips" role="group" aria-labelledby="ttsSleepL" id="ttsSleepChips">' + sleepChips() + '</div></div>' +
@@ -4031,7 +4132,9 @@
       return h + " h" + (m ? " " + m + " min" : "") + " left";
     }
     function show(text){
-      /* in Pages flow the page-turn bar carries the readout; the pill is for Scroll flow */
+      /* in Pages flow the page-turn bar carries the readout; the pill is for Scroll flow, and
+         for a document (the start screen's scroll has nothing to report) */
+      if (state.mode !== "doc" && state.mode !== "pdf") return;
       if (pagedActive()){ el.classList.remove("on"); return; }
       el.textContent = text; el.classList.add("on");
       clearTimeout(hideTimer);
@@ -4605,15 +4708,25 @@
     tabs = tabs.filter(function(t){ return t && t.id && t.name; }).map(function(t){ return { id: t.id, name: t.name, file: null }; });
     function save(){ try { Store.set(KEY, JSON.stringify(tabs.map(function(t){ return { id: t.id, name: t.name }; }))); } catch(_){} }
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    /* one Tab stop for the strip (the active tab; arrows move along it), and the close is a plain
+       mark inside the tab rather than a second control nested in it: Delete, Backspace or the
+       menu's Close document close a tab from the keyboard */
     function render(){
       strip.classList.toggle("on", tabs.length >= 2);
+      var hadFocus = strip.contains(document.activeElement);
+      var stop = tabs.some(function(t){ return t.id === activeId; }) ? activeId : (tabs[0] && tabs[0].id);
       strip.innerHTML = tabs.map(function(t){
-        return '<div class="tab' + (t.id === activeId ? ' on' : '') + '" role="tab" tabindex="0" aria-selected="' + (t.id === activeId) + '" data-id="' + esc(t.id) + '" title="' + esc(t.name) + '">' +
-          '<span class="tab-name">' + esc(t.name) + '</span><button class="tab-x" data-x="' + esc(t.id) + '" aria-label="Close ' + esc(t.name) + '">\u00D7</button></div>';
+        var on = t.id === activeId;
+        return '<button type="button" class="tab' + (on ? ' on' : '') + '" role="tab" tabindex="' + (t.id === stop ? 0 : -1) + '" aria-selected="' + on + '" aria-keyshortcuts="Delete" data-id="' + esc(t.id) + '" title="' + esc(t.name) + '">' +
+          '<span class="tab-name">' + esc(t.name) + '</span><span class="tab-x" aria-hidden="true" data-x="' + esc(t.id) + '">' + ICONS.close + '</span></button>';
       }).join("");
       var on = strip.querySelector(".tab.on"); if (on) on.scrollIntoView({ inline: "nearest", block: "nearest" });
+      /* the strip is drawn again when a document opens: keyboard focus that was in it stays in it */
+      if (hadFocus && stop) focusTab(stop);
       if (state.flow === "pages" && (state.mode === "doc" || state.mode === "pdf")) relayoutPaged();
     }
+    function tabEl(id){ return strip.querySelector('.tab[data-id="' + CSS.escape(id) + '"]'); }
+    function focusTab(id){ var t = tabEl(id); if (t) t.focus({ preventScroll: true }); }
     function noteOpen(id, name, file){
       var t = tabs.filter(function(x){ return x.id === id; })[0];
       if (!t){ t = { id: id, name: name, file: file }; tabs.push(t); }
@@ -4632,7 +4745,7 @@
     function close(id){
       var i = tabs.findIndex(function(x){ return x.id === id; });
       if (i < 0) return;
-      var wasActive = tabs[i].id === activeId;
+      var wasActive = tabs[i].id === activeId, hadFocus = strip.contains(document.activeElement);
       tabs.splice(i, 1); save();
       if (wasActive) abandonOpen();
       if (wasActive){
@@ -4640,6 +4753,9 @@
         else { activeId = null; Library.home(); }
       }
       render();
+      /* a keyboard close keeps focus in the strip (render moves it to the tab that is left), or
+         on the document once the strip has gone (one document left, or none) */
+      if (hadFocus && !strip.classList.contains("on")) $("#main").focus({ preventScroll: true });
     }
     function drop(id){ var i = tabs.findIndex(function(x){ return x.id === id; }); if (i >= 0){ tabs.splice(i, 1); save(); render(); } }
     function clear(){ tabs = []; activeId = null; save(); render(); }
@@ -4657,12 +4773,23 @@
       var x = e.target.closest(".tab-x"); if (x){ e.stopPropagation(); close(x.dataset.x); return; }
       var t = e.target.closest(".tab"); if (t) activate(t.dataset.id);
     });
+    /* arrows, Home and End move along the strip and open the tab they land on */
     strip.addEventListener("keydown", function(e){
       var t = e.target.closest(".tab"); if (!t) return;
-      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(t.dataset.id); }
+      var step = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
+      if (e.key in step){
+        e.preventDefault();
+        var i = tabs.findIndex(function(x){ return x.id === t.dataset.id; }), n = tabs.length;
+        var j = e.key === "Home" ? 0 : e.key === "End" ? n - 1 : (i + step[e.key] + n) % n;
+        if (tabs[j] && tabs[j].id !== t.dataset.id){ activate(tabs[j].id); focusTab(tabs[j].id); }
+        return;
+      }
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(t.dataset.id); focusTab(t.dataset.id); }
       if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); close(t.dataset.id); }
       if (e.key === "w" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); close(t.dataset.id); }
     });
+    /* the × is hidden from assistive technology, so the menu carries the same action */
+    Menu.add({ order: 3, group: "app", icon: ICONS.close, label: "Close document", show: function(){ return !!activeId && (state.mode === "doc" || state.mode === "pdf"); }, run: function(){ if (activeId) close(activeId); } });
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && e.key === "Tab" && tabs.length > 1){
         e.preventDefault();
@@ -4788,14 +4915,18 @@
      Scroll flow, opening it should push the text down so what was at the top reappears just
      under the sheet, and closing it should pull the text back up; browsers with scroll
      anchoring undo exactly that shift, so the document is put where it belongs afterwards. */
-  function setSheet(open){
+  var sheetOpener = null;
+  /* `from` is the control that asked for the sheet; without one, the element that had focus */
+  function setSheet(open, from){
     var sheet = $("#sheet");
     var was = sheet.classList.contains("open");
     if (open === undefined) open = !was;
     if (open === was) return;
     var paged = document.body.classList.contains("paged"), ref = $("#main");
     var before = ref.getBoundingClientRect().top, h = was ? sheet.offsetHeight : 0;
-    if (open) Pop.close(true);
+    /* read before the class flips: the browser only drops focus from a hidden element lazily */
+    var active = document.activeElement, inside = sheet.contains(active);
+    if (open){ Pop.close(true); Side.close(); }
     sheet.classList.toggle("open", open);
     sheet.setAttribute("aria-hidden", open ? "false" : "true");
     if (!paged){
@@ -4804,6 +4935,19 @@
       if (Math.abs(actual - wanted) > 1) window.scrollBy(0, actual - wanted);
     }
     if (open && SheetTabs) SheetTabs.pick();
+    /* keyboard focus: opened from the document (or the s key), it lands on the section strip;
+       opened from a bar button it stays there and Tab flows into the sheet. Closing with focus
+       inside hands it back to the opener, else to the ⋯ button; focus elsewhere is left alone */
+    if (open){
+      sheetOpener = from || (active && active !== document.body && !inside ? active : null);
+      if (!sheetOpener || sheetOpener.tabIndex < 0){ var first = $("#sheetTabs button"); if (first) first.focus({ preventScroll: true }); }
+    } else {
+      if (inside){
+        var to = sheetOpener && document.contains(sheetOpener) && sheetOpener.getClientRects().length ? sheetOpener : $("#more");
+        if (to) to.focus({ preventScroll: true });
+      }
+      sheetOpener = null;
+    }
   }
 
   /* ---- the sheet's section strip: built once every group exists (the dictionary and translation
@@ -4857,7 +5001,8 @@
     /* room under the last group, so that it too can be scrolled up under the strip like the others */
     function pad(){
       var last = groups[groups.length - 1], inner = sheet.querySelector(".sheet-inner");
-      var extra = sheet.clientHeight - strip.offsetHeight - last.offsetHeight - 40;
+      /* the slack is under the 12px pick line below, so the last group can be the one under the strip */
+      var extra = sheet.clientHeight - strip.offsetHeight - last.offsetHeight - 8;
       inner.style.paddingBottom = Math.max(24, Math.round(extra)) + "px";
     }
     function mark(id, hold){
@@ -4903,20 +5048,28 @@
     function entries(){
       var len = Anchor.textLength();
       if (offs && offsLen === len) return offs;
-      offs = Toc.entries().map(function(e){
+      offs = Toc.entries().map(function(e, i){
         var w = document.createTreeWalker(e.el, NodeFilter.SHOW_TEXT), n = w.nextNode();
-        return { title: e.title, off: n ? Anchor.offsetOf(n, 0) : null };
+        return { title: e.title, i: i, off: n ? Anchor.offsetOf(n, 0) : null };
       }).filter(function(e){ return e.off !== null; });
       offsLen = len;
       return offs;
+    }
+    /* the section holding character offset `top`: the last heading at or before it (with its
+       index in the contents). The title, the page-turn bar and the contents panel all use this
+       one rule, so they name the same section for the same place */
+    function at(top){
+      if (top === null || top === undefined) return null;
+      var cur = null;
+      entries().forEach(function(e){ if (e.off <= top + 1) cur = e; });
+      return cur;
     }
     function pick(){
       if (state.mode === "doc"){
         var top = Library.topCharOffset();
         if (top === null) return;
-        var cur = "";
-        entries().forEach(function(e){ if (e.off <= top + 1) cur = e.title; });
-        set(cur);
+        var cur = at(top);
+        set(cur ? cur.title : "");
       } else if (state.mode === "pdf" && state.pdfDoc){
         var doc = state.pdfDoc;
         Toc.pdfEntries().then(function(es){
@@ -4935,7 +5088,7 @@
     window.addEventListener("scroll", update, { passive: true });
     if (window.MutationObserver) new MutationObserver(update).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
     document.addEventListener("ll:fileopened", function(){ reset(); Pop.close(true); });
-    return { update: update, reset: reset };
+    return { update: update, reset: reset, at: at };
   })();
 
   /* ---- first-run tips on the start screen, and one toast on the first document ever opened ---- */
@@ -5150,6 +5303,7 @@
   document.addEventListener("keydown", function(e){
     if (e.key === "Escape"){ setSheet(false); return; }
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
+    if (Side.current()) return;   /* the keys scroll the open drawer, not the pages behind it */
     if (!pagedActive()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " "){ e.preventDefault(); turn(1); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp"){ e.preventDefault(); turn(-1); }
@@ -5184,7 +5338,8 @@
     var extra = [
       ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],
       ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
-      ["Esc", "Close panels and cards"], ["Right-click a sentence", "Explain it (desktop)"], ["Hold a sentence", "Explain it (touch)"]
+      ["Esc", "Close panels and cards"], ["Right-click a sentence", "Explain it (desktop)"], ["Hold a sentence", "Explain it (touch)"],
+      ["Select text, then d or Shift+F10", "Define or explain it (F7 turns on caret browsing)"]
     ];
     function openHelp(){
       Side.open("keys", "Keyboard shortcuts", function(body){
@@ -5204,7 +5359,7 @@
       hit.run();
     });
     Menu.add({ order: 80, group: "app", icon: ICONS.keyboard, label: "Keyboard shortcuts", key: "?", run: openHelp, show: function(){ return window.matchMedia ? !window.matchMedia("(pointer: coarse)").matches : true; } });
-    return { openHelp: openHelp, list: function(){ return list; } };
+    return { openHelp: openHelp, add: add, list: function(){ return list; } };
   })();
 
   var rz = null;
@@ -5231,7 +5386,7 @@
     if (document.body.classList.contains("paged")) return;
     var h = document.documentElement;
     var max = h.scrollHeight - h.clientHeight;
-    $("#progress").style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+    setProgressBar(max > 0 ? (h.scrollTop / max) * 100 : 0);
     Progress.tick();
 
     if (state.mode !== "doc" && state.mode !== "pdf") return;
@@ -5239,7 +5394,8 @@
     var y = h.scrollTop;
     var dy = y - lastY;
     lastY = y;
-    if ($("#sheet").classList.contains("open") || y < 90){
+    /* the sheet and the popovers hang from the bar: it stays while one of them is open */
+    if ($("#sheet").classList.contains("open") || $("#pop").classList.contains("open") || y < 90){
       document.body.classList.remove("hidebar");
       upAcc = 0;
     } else if (dy > 4){
@@ -5292,7 +5448,9 @@
       "  }",
       "}",
       ".ll-hit{background:var(--accent); color:var(--bg); border-radius:3px;}",
-      "#dictScrim{position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.18); display:none;}",
+      /* text for screen readers only (the pill's announcement) */
+      ".ll-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}",
+      "#dictScrim{position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.18); display:none; touch-action:none;}",
       "#dictScrim.on{display:block;}",
       "#dictCard{",
       "  position:fixed; left:0; right:0; bottom:0; z-index:60;",
@@ -5324,6 +5482,7 @@
       "  background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer;",
       "}",
       "#dictCard .x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}",
+      "@media (pointer: coarse){ #dictCard .x{width:44px; height:44px; margin-right:-12px;} }",
       /* the sentence itself, cut at three lines with a way to see it all */
       "#dictCard .quote{",
       "  flex:none; margin:10px 16px 0; padding:8px 12px; font-family:var(--reader-font); font-size:0.9375rem; line-height:1.5;",
@@ -5370,6 +5529,13 @@
       "  border-top:1px solid var(--line);",
       "}",
       "#dictCard .empty{color:var(--muted); font-size:0.875rem; line-height:1.5; text-align:center; padding:22px 8px;}",
+      /* the keyboard's way in: a field to type a word or a sentence into */
+      "#dictCard .lookup{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:2px 0 4px;}",
+      "#dictCard .lookup input{",
+      "  flex:1; min-width:0; min-height:40px; padding:0 12px; border:1px solid var(--line); border-radius:10px;",
+      "  background:var(--bg); color:var(--ink); font:inherit; font-size:0.9375rem;",
+      "}",
+      "#dictCard .lookup .hint{flex-basis:100%; color:var(--muted); font-size:0.78rem; line-height:1.45;}",
       /* meaning: senses with the part of speech as an italic accent word, synonyms in muted */
       "#dictCard .senses{display:grid; gap:9px;}",
       "#dictCard .sense{font-size:0.9375rem; line-height:1.5;}",
@@ -5385,20 +5551,22 @@
       "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
       "#dictCard .brk i{color:var(--muted); font-style:italic;}",
-      /* word parts: a row of tiles, one per prefix / root / suffix, joined by plus signs */
+      /* word parts: a row of tiles, one per prefix / root / suffix, joined by plus signs (drawn
+         as part of the tile that follows, so a wrapped row never starts with a stray sign) */
       "#dictCard .parts{display:flex; flex-wrap:wrap; align-items:stretch; gap:6px 4px; margin:2px 0 6px;}",
       "#dictCard .part{",
-      "  display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:12em;",
+      "  display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:12em; position:relative;",
       "  padding:6px 9px 7px; border-radius:10px; border:1px solid var(--line);",
       "  background:var(--panel); font:inherit; color:var(--ink); text-align:left;",
       "}",
+      "#dictCard .part + .part{margin-left:18px;}",
+      "#dictCard .part + .part::before{content:\"+\"; position:absolute; left:-15px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:0.9375rem;}",
       "#dictCard button.part{cursor:pointer; border-color:color-mix(in srgb, var(--accent) 45%, var(--line));}",
       "#dictCard button.part:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
       "#dictCard .part .pt{font-family:var(--reader-font); font-size:1.0625rem; line-height:1.2; font-weight:600;}",
       "#dictCard .part .pk{font-size:0.7812rem; line-height:1.3; color:var(--accent); margin-top:1px;}",
       "#dictCard .part .pm{font-size:0.7812rem; line-height:1.35; margin-top:2px;}",
       "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
-      "#dictCard .plus{align-self:center; color:var(--muted); font-size:0.9375rem; padding:0 1px;}",
       "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
       /* translation (filled by translate.js): the translation in the reader font, an engine line */
       "#dictCard .tr-out{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 4px; overflow-wrap:break-word;}",
@@ -5412,9 +5580,10 @@
       "  text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
       "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 14%, transparent);}",
+      /* text on the ink tint is ink: muted slips under 4.5:1 on the tint on eight themes */
       "#dictCard .chgnote{",
       "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
-      "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--muted);",
+      "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--ink);",
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
       /* explain: one box per clause, its roles as small tiles */
@@ -5430,8 +5599,8 @@
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
       "#dictCard .role b{",
-      "  display:block; font-size:0.625rem; font-weight:700; letter-spacing:.08em;",
-      "  text-transform:uppercase; color:var(--muted); margin-bottom:1px;",
+      "  display:block; font-size:0.6875rem; font-weight:700; letter-spacing:.08em;",
+      "  text-transform:uppercase; color:var(--ink); margin-bottom:1px;",
       "}",
       "#dictCard .tense{font-size:0.7812rem; color:var(--muted); margin-top:7px; line-height:1.4;}",
       "#dictCard .tense b{color:var(--ink); font-weight:600;}",
@@ -5449,7 +5618,7 @@
       "#dictCard .act[aria-pressed=true]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}",
       "#dictCard .act.go{background:var(--accent); border-color:var(--accent); color:var(--panel);}",
       "#dictCard .act.go:hover{background:var(--accent);}",
-      "@media (pointer: coarse){ #dictCard .act{min-height:38px;} }",
+      "@media (pointer: coarse){ #dictCard .act{min-height:40px;} }",
       /* the selection pill: Define / Explain and Highlight, a small popover above the selection */
       "#dictPill{",
       "  position:fixed; z-index:58; display:none; padding:3px; border-radius:999px;",
@@ -5470,8 +5639,10 @@
       /* wider screens: a floating card by the bottom-right corner, no scrim */
       "@media (min-width:561px){",
       "  #dictScrim{background:transparent;}",
+      /* above the dock (the read-aloud bar, the page-turn bar) and under the header */
       "  #dictCard{",
-      "    left:auto; right:22px; bottom:22px; width:460px; max-width:calc(100vw - 44px); max-height:72vh;",
+      "    left:auto; right:22px; bottom:calc(var(--dockH, 0px) + 22px); width:460px; max-width:calc(100vw - 44px);",
+      "    max-height:min(72vh, calc(100vh - var(--headH, 0px) - var(--dockH, 0px) - 44px));",
       "    border:1px solid var(--line); border-radius:12px; box-shadow:0 2px 14px rgba(0,0,0,.12);",
       "    transform:translateY(12px); opacity:0;",
       "    transition:transform .22s ease, opacity .22s ease, visibility 0s linear .22s;",
@@ -5502,19 +5673,36 @@
     pill.innerHTML = '<button type="button" data-act="lookup">' + icon("explain", 16) + '<span>Explain</span></button>' +
                      '<button type="button" data-act="mark">' + icon("highlight", 16) + '<span>Highlight</span></button>';
     document.body.appendChild(pill);
+    /* the pill is announced when it appears (it never takes focus) */
+    var pillLive = document.createElement("div"); pillLive.className = "ll-sr"; pillLive.setAttribute("aria-live", "polite");
+    document.body.appendChild(pillLive);
 
     var openedAt = 0, cardOpener = null;
     card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "false"); card.setAttribute("aria-label", "Dictionary"); card.tabIndex = -1;
-    function openCard(){
+    /* focusEl: a control inside the card to land on instead of the card itself */
+    function openCard(focusEl){
       openedAt = Date.now(); scrim.classList.add("on"); card.classList.add("open"); hidePill();
+      document.documentElement.classList.add("lock-card");   /* a phone holds the page still under the sheet */
       if (!cardOpener) cardOpener = document.activeElement;
-      setTimeout(function(){ if (card.classList.contains("open")) card.focus({ preventScroll: true }); }, 60);
+      setTimeout(function(){
+        if (!card.classList.contains("open")) return;
+        var f = typeof focusEl === "function" ? focusEl() : focusEl;
+        (f && card.contains(f) ? f : card).focus({ preventScroll: true });
+      }, 60);
     }
     function closeCard(){
       var wasOpen = card.classList.contains("open");
       scrim.classList.remove("on"); card.classList.remove("open");
+      document.documentElement.classList.remove("lock-card");
       clearHit();
-      if (wasOpen && cardOpener && cardOpener.focus && document.contains(cardOpener) && cardOpener !== document.body) cardOpener.focus({ preventScroll: true });
+      /* focus goes back where the card came from: the pill is shown again first when it came
+         from there (the selection is still there), and a control no longer on screen gives way
+         to the document itself rather than letting focus fall to the body */
+      if (wasOpen && cardOpener && cardOpener.focus && document.contains(cardOpener) && cardOpener !== document.body){
+        if (cardOpener.closest("#dictPill")) updatePill();
+        var to = cardOpener.getClientRects().length ? cardOpener : document.getElementById("main");
+        if (to) to.focus({ preventScroll: true });
+      }
       cardOpener = null;
     }
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
@@ -5549,22 +5737,30 @@
               '<button type="button" class="x" aria-label="Close" title="Close">' + icon("close", 20) + '</button></div>';
       if (o.quote) h += '<div class="quote clamp" id="dictQuote">' + esc(o.quote) + '</div>' +
                         '<button type="button" class="more" hidden aria-expanded="false" aria-controls="dictQuote">Show all</button>';
-      h += '<div class="tabs" role="tablist" aria-label="' + esc(o.tabsLabel) + '">';
+      /* one tab needs no strip (the lookup field): its panel is a plain region then */
+      var tabbed = o.tabs.length > 1;
+      if (tabbed){
+        h += '<div class="tabs" role="tablist" aria-label="' + esc(o.tabsLabel) + '">';
+        o.tabs.forEach(function(t){
+          var d = TABS[t];
+          h += '<button type="button" role="tab" id="dictTab-' + t + '" aria-controls="dictPanel-' + t + '" aria-selected="false" tabindex="-1" data-tab="' + t + '"' +
+               (d.attr || '') + (o.off && o.off[t] ? ' aria-disabled="true"' : '') + '>' + icon(d.icon, 18) + '<span>' + d.label + '</span></button>';
+        });
+        h += '</div>';
+      }
+      h += '<div class="body">';
       o.tabs.forEach(function(t){
-        var d = TABS[t];
-        h += '<button type="button" role="tab" id="dictTab-' + t + '" aria-controls="dictPanel-' + t + '" aria-selected="false" tabindex="-1" data-tab="' + t + '"' +
-             (d.attr || '') + (o.off && o.off[t] ? ' aria-disabled="true"' : '') + '>' + icon(d.icon, 18) + '<span>' + d.label + '</span></button>';
-      });
-      h += '</div><div class="body">';
-      o.tabs.forEach(function(t){
-        h += '<div class="panel" role="tabpanel" id="dictPanel-' + t + '" aria-labelledby="dictTab-' + t + '" data-tab="' + t + '" tabindex="0" hidden>' +
+        h += '<div class="panel" id="dictPanel-' + t + '" data-tab="' + t + '"' + (tabbed ? ' role="tabpanel" aria-labelledby="dictTab-' + t + '" tabindex="0"' : '') + ' hidden>' +
              ((o.panels && o.panels[t]) || '') + '</div>';
       });
-      h += '</div><div class="foot" id="dictMarkActs">';
-      o.foot.forEach(function(a){
-        h += '<button type="button" class="act" data-m="' + a.m + '"' + (a.id ? ' id="' + a.id + '"' : '') + (a.pressed ? ' aria-pressed="false"' : '') + '>' + esc(a.label) + '</button>';
-      });
       h += '</div>';
+      if (o.foot.length){
+        h += '<div class="foot" id="dictMarkActs">';
+        o.foot.forEach(function(a){
+          h += '<button type="button" class="act" data-m="' + a.m + '"' + (a.id ? ' id="' + a.id + '"' : '') + (a.pressed ? ' aria-pressed="false"' : '') + '>' + esc(a.label) + '</button>';
+        });
+        h += '</div>';
+      }
       inner.innerHTML = h;
       card.setAttribute("aria-label", o.dialogLabel);
       inner.querySelector(".x").addEventListener("click", closeCard);
@@ -5575,21 +5771,24 @@
         more.setAttribute("aria-expanded", open ? "true" : "false");
       });
       var strip = inner.querySelector(".tabs");
-      strip.addEventListener("click", function(e){
-        var b = e.target.closest("[role=tab]");
-        if (b && b.getAttribute("aria-disabled") !== "true") select(b.dataset.tab, false);
-      });
-      /* arrow keys walk the tabs that have something to show; Home and End jump */
-      strip.addEventListener("keydown", function(e){
-        var step = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
-        if (!(e.key in step)) return;
-        var list = tabButtons().filter(function(b){ return b.getAttribute("aria-disabled") !== "true"; });
-        var i = list.indexOf(inner.querySelector("[role=tab][aria-selected=true]"));
-        var j = e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : (i + step[e.key] + list.length) % list.length;
-        e.preventDefault();
-        if (list[j]) select(list[j].dataset.tab, true);
-      });
-      inner.querySelector(".foot").addEventListener("click", function(e){ var b = e.target.closest("button"); if (b) footAct(b); });
+      if (strip){
+        strip.addEventListener("click", function(e){
+          var b = e.target.closest("[role=tab]");
+          if (b && b.getAttribute("aria-disabled") !== "true") select(b.dataset.tab, false);
+        });
+        /* arrow keys walk the tabs that have something to show; Home and End jump */
+        strip.addEventListener("keydown", function(e){
+          var step = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
+          if (!(e.key in step)) return;
+          var list = tabButtons().filter(function(b){ return b.getAttribute("aria-disabled") !== "true"; });
+          var i = list.indexOf(inner.querySelector("[role=tab][aria-selected=true]"));
+          var j = e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : (i + step[e.key] + list.length) % list.length;
+          e.preventDefault();
+          if (list[j]) select(list[j].dataset.tab, true);
+        });
+      }
+      var foot = inner.querySelector(".foot");
+      if (foot) foot.addEventListener("click", function(e){ var b = e.target.closest("button"); if (b) footAct(b); });
       select(o.active);
       if (more){ var q = inner.querySelector("#dictQuote"); if (q.scrollHeight > q.clientHeight + 2) more.hidden = false; }
     }
@@ -5894,8 +6093,7 @@
         for (var i = 0; i < words.length && !r; i++) r = window.llMorph.analyse(words[i], partLookup);
         if (!r) return;
         var h = '<div class="parts">';
-        r.parts.forEach(function(p, i){
-          if (i) h += '<span class="plus" aria-hidden="true">+</span>';
+        r.parts.forEach(function(p){
           /* a base is shown as the word it is (hurry, not the hurri- of "unhurried") */
           var tile = '<span class="pt">' + esc(p.kind === "base" && p.word ? p.word : p.text) + '</span><small class="pk">' + esc(p.kind) + '</small>' +
                      (p.meaning ? '<span class="pm">' + esc(p.meaning) + '</span>' : '') +
@@ -6293,11 +6491,13 @@
 
     function wordAt(x, y){
       var r = rangeAt(x, y);
-      if (!r) return null;
-      var n = r.startContainer;
-      if (n.nodeType !== 3) return null;
+      return r ? wordInNode(r.startContainer, r.startOffset) : null;
+    }
+    /* the word around character `offset` of text node `n` inside the document (a tap, or the caret) */
+    function wordInNode(n, offset){
+      if (!n || n.nodeType !== 3) return null;
       if (!n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
-      var t = n.textContent, i = Math.min(r.startOffset, t.length - 1);
+      var t = n.textContent, i = Math.min(offset, t.length - 1);
       if (i < 0) return null;
       if (!WORDCH.test(t[i]) && i > 0 && WORDCH.test(t[i-1])) i--;
       if (!WORDCH.test(t[i])) return null;
@@ -6453,6 +6653,41 @@
       });
     }
 
+    /* the keyboard's way in (the card otherwise opens from a tap, a hold or the pill): d looks up
+       the selection, else the word at the caret (caret browsing), else it opens the card with a
+       field to type into — a route that needs no pointer and no caret browsing at all */
+    function lookupKey(){
+      var s = selectionText();
+      if (s){ lookupText(s, window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null); return; }
+      var sel = window.getSelection();
+      if (sel && sel.isCollapsed && sel.focusNode){
+        var w = wordInNode(sel.focusNode, sel.focusOffset);
+        if (w){
+          var s0 = Anchor.offsetOf(w.node, w.s);
+          markHit(w.node, w.s, w.e);
+          defineWord(w.word, s0 === null ? null : { start: s0, end: s0 + (w.e - w.s) });
+          return;
+        }
+      }
+      openLookup();
+    }
+    function openLookup(){
+      buildCard({ kind: "lookup", title: "Look up", icon: "meaning", dialogLabel: "Dictionary", tabsLabel: "Word",
+        tabs: ["meaning"], active: "meaning", span: null, foot: [],
+        panels: { meaning: '<form class="lookup" id="dictLookup"><input type="search" id="dictLookupIn" aria-label="Word or sentence to look up" placeholder="A word, or a sentence to explain…" autocomplete="off" spellcheck="false">' +
+                           '<button type="submit" class="act go">Look up</button>' +
+                           '<div class="hint">One word is defined; more words are explained.</div></form>' } });
+      openCard(function(){ return inner.querySelector("#dictLookupIn"); });
+      inner.querySelector("#dictLookup").addEventListener("submit", function(e){
+        e.preventDefault();
+        var v = inner.querySelector("#dictLookupIn").value.replace(/\s+/g, " ").trim();
+        if (v) lookupText(v, null);
+      });
+    }
+    function docOpen(){ return state.mode === "doc"; }
+    Keys.add("d", "Define or explain the selected text", lookupKey, function(){ return docOpen() && dictMode !== "off"; });
+    Menu.add({ order: 61, group: "tools", icon: icon("meaning", 20), label: "Define or explain…", key: "D", run: lookupKey, show: docOpen });
+
     /* selected text (mouse drag, or the native handles when the dictionary is off): a small
        pill offers to define one word or explain a longer selection, and to highlight it.
        Simpler and Translate are tabs of the card the first button opens. */
@@ -6461,7 +6696,7 @@
       if (words.length === 1) defineWord(words[0].replace(/^[^A-Za-zÀ-ɏ]+|[^A-Za-zÀ-ɏ]+$/g, "") || words[0], off);
       else explainSentence(s, off);
     }
-    function hidePill(){ pill.classList.remove("on"); }
+    function hidePill(){ pill.classList.remove("on"); pillLive.textContent = ""; }
     function updatePill(){
       var s = selectionText();
       if (!s || card.classList.contains("open")){ hidePill(); return; }
@@ -6473,7 +6708,12 @@
       }
       var rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
       if (!rect || (!rect.width && !rect.height)){ hidePill(); return; }
+      var was = pill.classList.contains("on");
       pill.classList.add("on");
+      /* the selection is the pill's: a highlight's own popover never sits under it */
+      if (window.Marks_hidePop) window.Marks_hidePop();
+      var said = "Selected text: " + (kind === "explain" ? "Explain" : "Define") + ", Highlight";
+      if (!was || pillLive.textContent !== said) pillLive.textContent = said;
       var pw = pill.offsetWidth, ph = pill.offsetHeight;
       var x = Math.min(Math.max(8, rect.left + rect.width / 2 - pw / 2), window.innerWidth - pw - 8);
       var y = rect.top - ph - 10;
@@ -6506,11 +6746,11 @@
       var g = document.createElement("div");
       g.className = "group"; g.id = "dictGroup";
       g.innerHTML =
-        '<div class="label">Dictionary</div>' +
-        '<div class="chips" id="dictChips">' +
-          '<button class="chip" data-dm="tap">Tap a word</button>' +
-          '<button class="chip" data-dm="hold">Hold only</button>' +
-          '<button class="chip" data-dm="off">Off</button>' +
+        '<div class="label" id="dictLabel">Dictionary</div>' +
+        '<div class="chips seg" id="dictChips" role="group" aria-labelledby="dictLabel">' +
+          '<button type="button" class="chip" data-dm="tap" aria-pressed="false">Tap a word</button>' +
+          '<button type="button" class="chip" data-dm="hold" aria-pressed="false">Hold only</button>' +
+          '<button type="button" class="chip" data-dm="off" aria-pressed="false">Off</button>' +
         '</div>' +
         '<div class="hint">' +
           'Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline. ' +
@@ -6519,7 +6759,7 @@
       sheet.appendChild(g);
       function syncChips(){
         g.querySelectorAll("#dictChips .chip").forEach(function(c){
-          c.classList.toggle("on", c.dataset.dm === dictMode);
+          var on = c.dataset.dm === dictMode; c.classList.toggle("on", on); c.setAttribute("aria-pressed", on ? "true" : "false");
         });
       }
       g.querySelectorAll("#dictChips .chip").forEach(function(c){
@@ -6610,6 +6850,7 @@
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
+  window.Marks_hidePop = Marks.hidePop;
 
   /* ---------- boot ---------- */
   Prefs.load();
@@ -6623,7 +6864,7 @@
   syncCustomUI();
   $("#softenPdf").checked = !!state.soften;
   document.querySelectorAll("#flowChips .chip").forEach(function(ch){
-    ch.classList.toggle("on", ch.dataset.flow === state.flow);
+    var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
   });
   applyTheme();
   applyType();
@@ -6653,14 +6894,23 @@
       if (toastEl) return;
       toastEl = document.createElement("div");
       toastEl.id = "updateToast"; toastEl.setAttribute("role", "status");
-      toastEl.innerHTML = '<span>A new version of Lamplight is ready.</span><button type="button" id="updateReload">Reload</button><button type="button" id="updateLater" aria-label="Later">\u00D7</button>';
+      toastEl.innerHTML = '<span>A new version of Lamplight is ready.</span><button type="button" id="updateReload">Reload</button><button type="button" id="updateLater" aria-label="Later" title="Later">' + ICONS.close + '</button>';
       document.body.appendChild(toastEl);
+      /* the offer keeps the bottom row and reports its height (--updateH, like the dock's --dockH):
+         the small toast and the translation pill step up over it instead of hiding behind it */
+      var ro = null, setH = function(){ if (toastEl && toastEl.isConnected) document.body.style.setProperty("--updateH", (toastEl.offsetHeight + 8) + "px"); };
+      setH();
+      if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(toastEl); }
       toastEl.querySelector("#updateReload").addEventListener("click", function(){
         wantReload = true;
         if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
         else location.reload();
       });
-      toastEl.querySelector("#updateLater").addEventListener("click", function(){ toastEl.remove(); toastEl = null; });
+      toastEl.querySelector("#updateLater").addEventListener("click", function(){
+        if (ro) ro.disconnect();
+        document.body.style.removeProperty("--updateH");
+        toastEl.remove(); toastEl = null;
+      });
     }
     function watch(worker){
       if (!worker) return;
@@ -6686,7 +6936,7 @@
         location.reload();
       });
     }
-    return { register: register, hasToast: function(){ return !!toastEl; } };
+    return { register: register, hasToast: function(){ return !!toastEl; }, offer: toast };
   })();
   Updates.register();
   if (window.__ll) window.__ll.Updates = Updates;

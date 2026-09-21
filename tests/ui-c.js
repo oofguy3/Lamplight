@@ -209,6 +209,95 @@ const CONTRAST = `(el, behind) => {
     await ctx.close();
   });
 
+  /* ---------------- the keyboard's way in, the card over the dock, the pill over a highlight, the tints ---------------- */
+  await guard("keys", async () => {
+    const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
+    await ctx.addInitScript(STUB);
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    const cardOpen = () => page.evaluate(() => document.getElementById("dictCard").classList.contains("open"));
+    const term = () => page.$eval("#dictCard", (c) => (c.querySelector(".term") || {}).textContent || "");
+    /* d with a selection */
+    await page.evaluate(() => { const w = document.createTreeWalker(document.getElementById("doc"), NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (n.textContent.indexOf("extraordinary") >= 0) break;
+      const i = n.textContent.indexOf("extraordinary"), r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 13); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+    await page.waitForTimeout(300);
+    await page.keyboard.press("d");
+    await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open") && /^extraordinary/.test((document.querySelector("#dictCard .term") || {}).textContent || ""), null, { timeout: 20000 }).catch(() => null);
+    R.check("d with a word selected opens its card", (await cardOpen()) && /^extraordinary/.test(await term()), await term());
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    await page.evaluate(() => { const w = document.createTreeWalker(document.getElementById("doc"), NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (n.textContent.indexOf("Nobody could have") >= 0) break;
+      const i = n.textContent.indexOf("Nobody could have"), r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 40); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+    await page.waitForTimeout(300);
+    R.check("the pill is announced to a screen reader when it appears", await page.evaluate(() => { const l = document.querySelector('[aria-live="polite"].ll-sr'); return document.getElementById("dictPill").classList.contains("on") && !!l && /Selected text: Explain, Highlight/.test(l.textContent); }));
+    await page.keyboard.press("d");
+    await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open") && document.querySelector("#dictCard .quote"), null, { timeout: 20000 }).catch(() => null);
+    R.check("d with a sentence selected explains it", (await cardOpen()) && /Nobody could have/.test(await page.$eval("#dictCard .quote", (q) => q.textContent)));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    await page.evaluate(() => getSelection().removeAllRanges()); await page.waitForTimeout(300);
+    /* d with nothing selected: a field to type into */
+    await page.keyboard.press("d"); await page.waitForTimeout(300);
+    R.check("d with no selection opens the card on a lookup field, focused, with no tab strip", (await cardOpen()) && (await page.evaluate(() => document.activeElement && document.activeElement.id === "dictLookupIn" && !document.querySelector("#dictCard [role=tablist]"))), await page.evaluate(() => document.activeElement && document.activeElement.id));
+    await page.keyboard.type("chair"); await page.keyboard.press("Enter");
+    await page.waitForFunction(() => /^chair/.test((document.querySelector("#dictCard .term") || {}).textContent || "") && /noun/.test(document.getElementById("dictPanel-meaning").textContent), null, { timeout: 20000 }).catch(() => null);
+    R.check("typing a word and Enter defines it", /^chair/.test(await term()) && /noun/.test(await page.$eval("#dictPanel-meaning", (p) => p.textContent)), await term());
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    R.check("the menu lists Define or explain… with its key", await page.evaluate(() => { document.getElementById("more").click(); const ok = Array.from(document.querySelectorAll("#moreMenu button")).some((b) => /^Define or explain/.test((b.querySelector("span") || {}).textContent || "") && (b.querySelector("kbd") || {}).textContent === "D"); document.getElementById("more").click(); return ok; }));
+    await page.keyboard.press("?"); await page.waitForTimeout(300);
+    R.check("the shortcuts panel lists d and tells how to select from the keyboard", await page.$eval("#sideBody", (b) => /Define or explain the selected text/.test(b.textContent) && /caret browsing/.test(b.textContent)));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(400);
+    /* a selection made inside a highlight belongs to the pill: the highlight's popover stays shut */
+    await selectPhrase(page, "extraordinary consequences");
+    await page.click("#dictPill [data-act=mark]"); await page.waitForTimeout(300);
+    await page.evaluate(() => getSelection().removeAllRanges()); await page.waitForTimeout(300);
+    await selectPhrase(page, "consequences");
+    const both = await page.evaluate(() => ({ pill: document.getElementById("dictPill").classList.contains("on"), pop: document.getElementById("markPop").classList.contains("on"), mark: !!document.querySelector("#doc mark.ll-mark") }));
+    R.check("drag-selecting inside a highlight shows the pill and not the highlight's popover", both.mark && both.pill && !both.pop, JSON.stringify(both));
+    await page.evaluate(() => getSelection().removeAllRanges()); await page.waitForTimeout(300);
+    await page.click("#doc mark.ll-mark"); await page.waitForTimeout(200);
+    R.check("a plain click on the highlight still opens its popover", await page.evaluate(() => document.getElementById("markPop").classList.contains("on") && !document.getElementById("dictPill").classList.contains("on")));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+    /* the card clears the dock: with read aloud on, in Scroll and in Pages flow */
+    await page.keyboard.press("r"); await page.waitForTimeout(400);
+    await holdSentence(page, "Nobody could have"); await page.waitForTimeout(300);
+    const dock = () => page.evaluate(() => ({ card: Math.round(document.getElementById("dictCard").getBoundingClientRect().bottom), dock: Math.round(document.getElementById("dock").getBoundingClientRect().top), head: document.querySelector("header").getBoundingClientRect().bottom, top: document.getElementById("dictCard").getBoundingClientRect().top }));
+    let d = await dock();
+    R.check("read aloud on: the card sits above the read-aloud bar", d.card <= d.dock - 20 && d.top >= d.head, JSON.stringify(d));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    await page.keyboard.press("p"); await page.waitForTimeout(500);
+    await holdSentence(page, "Nobody could have"); await page.waitForTimeout(300);
+    d = await dock();
+    R.check("Pages flow with both bars: the card sits above the dock", d.card <= d.dock - 20, JSON.stringify(d));
+    await page.evaluate(() => window.__ll.Speak.stop()); await page.waitForTimeout(300);
+    d = await dock();
+    R.check("the card follows the dock down when read aloud stops", d.card <= d.dock - 20 && d.card >= d.dock - 80, JSON.stringify(d));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    await page.keyboard.press("p"); await page.waitForTimeout(400);
+    /* the role labels and the change notes on the ink tint read on the themes where muted did not */
+    const TINTED = `(el, tint, behind) => {
+      const parse = (s) => { if (/^color\\(srgb/.test(s)){ const m = s.match(/[\\d.]+/g).map(Number); return { rgb: m.slice(0, 3).map((c) => c * 255), a: m.length > 3 ? m[3] : 1 }; }
+        const m = (s.match(/[\\d.]+/g) || [0, 0, 0]).map(Number); return { rgb: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; };
+      const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
+      const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+      const base = parse(getComputedStyle(behind).backgroundColor).rgb, bg = over(parse(getComputedStyle(tint).backgroundColor), base), fg = over(parse(getComputedStyle(el).color), bg);
+      const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
+    }`;
+    for (const th of ["day", "ink", "slate", "forest"]){
+      await theme(page, th); await page.waitForTimeout(150);
+      await holdSentence(page, "Nobody could have");
+      await page.waitForFunction(() => document.querySelector("#dictCard .role b"), null, { timeout: 20000 });
+      await page.click('#dictCard [data-m="simplify"]');
+      await page.waitForSelector("#dictCard .chg", { timeout: 30000 });
+      await page.click("#dictCard .chg"); await page.waitForTimeout(200);
+      const rs = await page.evaluate((src) => { const f = eval(src), card = document.getElementById("dictCard"), role = document.querySelector("#dictCard .role"), note = document.querySelector("#dictCard .chgnote");
+        return { role: f(role.querySelector("b"), role, card), note: note ? f(note, note, card) : 99, size: parseFloat(getComputedStyle(role.querySelector("b")).fontSize) }; }, TINTED);
+      R.check(th + ": role labels and change notes on the ink tint ≥ 4.5:1, the labels at 11px", rs.role >= 4.5 && rs.note >= 4.5 && rs.size >= 11, JSON.stringify(rs));
+      await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+    }
+    await theme(page, "day");
+    R.check("no page errors (keys)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
   /* ---------------- phone: a bottom sheet ---------------- */
   await guard("phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
@@ -228,6 +317,16 @@ const CONTRAST = `(el, behind) => {
     R.check("phone: the card is a bottom sheet with a grab handle", sheet.left === 0 && Math.round(sheet.right) === 390 && Math.round(sheet.bottom) === 844 && sheet.radius === "16px" && sheet.grab && sheet.height <= 844 * 0.66 + 1, JSON.stringify(sheet));
     R.check("phone: tabs are equal width and 44px tall", Math.max.apply(null, sheet.tabW) - Math.min.apply(null, sheet.tabW) <= 1 && sheet.tabH.every((h) => h === 44), JSON.stringify({ w: sheet.tabW, h: sheet.tabH }));
     R.check("phone: a scrim dims the page; the footer fits in one row; nothing overflows sideways", /0\.18\)$/.test(sheet.scrim) && sheet.footH < 64 && !sheet.overflow, JSON.stringify({ scrim: sheet.scrim, footH: sheet.footH, overflow: sheet.overflow }));
+    const small = await page.evaluate(() => Array.from(document.querySelectorAll("#dictCard button")).filter((x) => x.getClientRects().length && x.getBoundingClientRect().height < 40).map((x) => x.className + ":" + Math.round(x.getBoundingClientRect().height)));
+    R.check("phone: every button in the card is at least 40px tall (the close 44)", small.length === 0 && (await page.$eval("#dictCard .x", (x) => Math.round(x.getBoundingClientRect().height) === 44)), small.join(","));
+    /* a finger drag on the scrim neither scrolls the page nor closes the card */
+    const y0 = await page.evaluate(() => window.scrollY);
+    const cdp = await page.context().newCDPSession(page), pt = (x, y) => ({ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [pt(195, 200)] });
+    for (let i = 1; i <= 8; i++){ await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [pt(195, 200 - 20 * i)] }); await page.waitForTimeout(16); }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await cdp.detach(); await page.waitForTimeout(400);
+    const held = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("dictCard").classList.contains("open") }));
+    R.check("phone: a drag on the scrim leaves the page still and the card open", held.y === y0 && held.open, JSON.stringify(held) + " y0 " + y0);
     await page.tap("#dictScrim", { position: { x: 120, y: 120 } }); await page.waitForTimeout(300);
     R.check("phone: a tap on the scrim closes it", await page.evaluate(() => !document.getElementById("dictCard").classList.contains("open")));
     R.check("no page errors (phone)", !(page._errors || []).length, (page._errors || []).join(" | "));

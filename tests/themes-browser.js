@@ -182,6 +182,19 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     const val = await page.evaluate(() => ({ theme: window.__ll.state.theme, customs: window.llThemes.customs() }));
     R.check("bad saved themes are dropped and an unknown selection falls back to Day", val.customs.length === 1 && val.customs[0].id === "ok" && val.customs[0].name === "Fine" && val.theme === "day", JSON.stringify(val));
 
+    /* 7b. a theme saved from a light built-in derives secondary text that reads on the panel too */
+    const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    for (const seed of ["day", "newsprint", "paper"]){
+      await page.evaluate((s) => window.llThemes.select(s), seed);
+      await openSheet();
+      await page.click("#themeChips .chip-new"); await page.waitForTimeout(100);
+      const got = await page.evaluate(() => { const st = document.documentElement.style; return { muted: st.getPropertyValue("--muted").trim(), panel: st.getPropertyValue("--panel").trim(), bg: st.getPropertyValue("--bg").trim(),
+        low: Array.from(document.querySelectorAll("#cMeter .meter-row.low")).map((r) => r.dataset.k), rows: document.querySelectorAll("#cMeter .meter-row").length, panelRow: !!document.querySelector('#cMeter [data-k="mutedPanel"]') }; });
+      const onPanel = ratio(got.muted, got.panel), onBg = ratio(got.muted, got.bg);
+      R.check("saved from " + seed + ": secondary text reads on the panel (" + onPanel.toFixed(2) + ") and the background (" + onBg.toFixed(2) + "), no meter row low", onPanel >= 4.5 && onBg >= 4.5 && !got.low.length && got.panelRow, JSON.stringify(got));
+    }
+
     /* 8. screenshots of the editor: desktop and phone, light and dark */
     await page.evaluate(() => localStorage.removeItem("ll_prefs"));
     await page.reload({ waitUntil: "load" });

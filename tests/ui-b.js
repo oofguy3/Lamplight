@@ -123,6 +123,11 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.click("#more"); await page.waitForTimeout(200);
     await page.click("#moreMenu .menu-grab"); await page.waitForTimeout(200);
     R.check("phone: the handle closes it", !(await isOpen(page, "#moreMenu")));
+    /* a toast is as wide as its words (up to the margins), not the half of the screen right of the middle */
+    await page.evaluate(() => { window.__ll.Marks.toast("Zen mode — press z or Esc to leave"); window.__ll.Updates.offer(); }); await page.waitForTimeout(250);
+    const tw = await page.evaluate(() => { const t = document.getElementById("toast").getBoundingClientRect(), u = document.getElementById("updateToast").getBoundingClientRect(); return { toastW: Math.round(t.width), toastH: Math.round(t.height), centre: Math.round(t.left + t.width / 2), updW: Math.round(u.width), updH: Math.round(u.height), updLeft: Math.round(u.left), iw: window.innerWidth }; });
+    R.check("phone: the zen toast is one line, centred; the update offer spans the width with two lines at most", tw.toastW >= 250 && tw.toastH < 44 && Math.abs(tw.centre - tw.iw / 2) <= 1 && tw.updW >= 340 && tw.updH < 70 && tw.updLeft >= 16, JSON.stringify(tw));
+    await page.click("#updateLater"); await page.waitForTimeout(100);
     R.check("phone menu: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
   } catch (err){ R.check("phone menu (exception)", false, String(err).split("\n")[0]); }
@@ -168,6 +173,32 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.keyboard.press("i"); await page.waitForTimeout(600);
     R.check("About: the switcher, its headings carry .sec", !(await sw()).hidden && (await page.$$eval("#sideBody .about-h.sec", (e) => e.length)) >= 3);
     await page.keyboard.press("Escape"); await page.waitForTimeout(350);
+    /* the drawer is modal: Tab stays inside it, and what opens elsewhere closes it first */
+    R.check("the drawer is a div with role=dialog (no aside carrying a dialog role)", await page.$eval("#side", (s) => s.tagName === "DIV" && s.getAttribute("role") === "dialog" && s.getAttribute("aria-modal") === "true"));
+    await page.keyboard.press("c"); await page.waitForTimeout(350);
+    let inside = true;
+    for (let k = 0; k < 12; k++){ await page.keyboard.press("Tab"); if (!(await page.evaluate(() => !!(document.activeElement && document.activeElement.closest("#side"))))) inside = false; }
+    R.check("Tab twelve times from Contents never leaves the drawer", inside, await active(page));
+    R.check("the page behind the drawer is inert", await page.evaluate(() => document.querySelector("header").inert === true && document.getElementById("main").inert === true));
+    await page.keyboard.press("s"); await page.waitForTimeout(300);
+    R.check("s opens the sheet and closes the drawer rather than opening under it", (await isOpen(page, "#sheet")) && !(await sw()).open && (await page.evaluate(() => document.querySelector("header").inert !== true)));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+    /* a panel with no controls (Keyboard shortcuts) scrolls from the keyboard: its body takes focus */
+    await page.evaluate(() => window.scrollTo(0, 300)); await page.waitForTimeout(200);
+    const y0 = await page.evaluate(() => window.scrollY);
+    await page.keyboard.press("?"); await page.waitForTimeout(400);
+    R.check("Keyboard shortcuts: focus lands on the scrolling body, a named region", (await active(page)) === "sideBody" && (await page.$eval("#sideBody", (b) => b.getAttribute("role") === "region" && b.getAttribute("aria-labelledby") === "sideTitle" && b.tabIndex === 0)), await active(page));
+    await page.keyboard.press("PageDown"); await page.waitForTimeout(400);
+    const sc = await page.evaluate(() => ({ body: document.getElementById("sideBody").scrollTop, win: window.scrollY }));
+    R.check("PageDown scrolls the panel, not the page behind it", sc.body > 0 && sc.win === y0, JSON.stringify(sc) + " y0 " + y0);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(350);
+    await page.keyboard.press("p"); await page.waitForTimeout(500);
+    const pg0 = await page.$eval("#pgInfo", (e) => e.textContent);
+    await page.keyboard.press("?"); await page.waitForTimeout(400);
+    await page.keyboard.press("PageDown"); await page.waitForTimeout(300);
+    R.check("in Pages flow PageDown in the panel does not turn the page", (await page.$eval("#pgInfo", (e) => e.textContent)) === pg0 && (await page.evaluate(() => document.getElementById("sideBody").scrollTop > 0)));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(350);
+    await page.keyboard.press("p"); await page.waitForTimeout(400);
     R.check("side panel: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
   } catch (err){ R.check("side panel (exception)", false, String(err).split("\n")[0]); }
@@ -182,15 +213,22 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.keyboard.press("p"); await page.waitForTimeout(450);
     R.check("pages flow: the readout starts with the fraction and ends with the time left", /^1 \/ \d+ · .* · .*left$/.test(await pg()) || /^1 \/ \d+ · .*left$/.test(await pg()), await pg());
     R.check("scroll flow's pill stays off in Pages flow", !(await page.$eval("#progressInfo", (e) => e.classList.contains("on"))));
-    await page.keyboard.press("End"); await page.waitForTimeout(400);
-    let t = await pg();
-    R.check("the last page names its section (chapter 4) after the fraction", /^\d+ \/ \d+ · Chapter 4/.test(t), t);
-    await page.evaluate(() => { const h = document.getElementById("doc").querySelector("h2, h1"); });
-    await page.keyboard.press("Home"); await page.waitForTimeout(300);
-    let n = 0;
-    while (n++ < 12 && !/Chapter 2/.test(await pg())){ await page.keyboard.press("ArrowRight"); await page.waitForTimeout(250); }
+    /* the pager and the title follow one rule: the section at the page's first character */
+    const secOf = () => page.evaluate(() => ({ pager: (document.querySelector("#pgInfo .pg-sec") || {}).textContent || "", title: document.getElementById("fname").dataset.sec || "" }));
+    await page.keyboard.press("End"); await page.waitForTimeout(700);
+    let t = await pg(), s = await secOf();
+    R.check("the last page names a late chapter after the fraction, the same one the title names", /^\d+ \/ \d+ · Chapter [34]/.test(t) && s.pager === " · " + s.title, t + " vs " + JSON.stringify(s));
+    await page.keyboard.press("Home"); await page.waitForTimeout(700);
+    s = await secOf();
+    R.check("the first page reads The Lamp in both readouts", s.title === "The Lamp" && s.pager === " · The Lamp", JSON.stringify(s));
+    let n = 0, agree = true;
+    while (n++ < 12 && !/Chapter 2/.test(await pg())){
+      await page.keyboard.press("ArrowRight"); await page.waitForTimeout(700);
+      s = await secOf(); if (s.pager !== " · " + s.title) agree = false;
+    }
     t = await pg();
     R.check("moving into chapter 2 shows Chapter 2", /^\d+ \/ \d+ · Chapter 2/.test(t), t);
+    R.check("on every page turned the pager's section equalled the title's", agree);
     const chevrons = await page.evaluate(() => ["prevPg", "nextPg", "ttsPrev", "ttsNext", "ttsStop", "autoStop", "autoPlay", "autoSlower", "autoFaster"].every((id) => !!document.getElementById(id).querySelector("svg")));
     R.check("the bars' buttons are icons", chevrons);
     await page.keyboard.press("r"); await page.waitForTimeout(500);
@@ -224,13 +262,52 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     R.check("zen: the dock is the read-aloud bar alone, --pagerH is 0", z.dockH === Math.round(z.ttsH) + "px" && z.pagerH === "0px", JSON.stringify(z));
     await page.keyboard.press("z"); await page.waitForTimeout(300);
     await page.evaluate(() => window.__ll.Speak.stop());
-    /* a PDF: the readout keeps the fraction first */
+    /* a PDF: the readout keeps the fraction first, and a spread shows both of its pages side by side */
     await openFixture(page, "sample.pdf"); await page.waitForTimeout(300);
     R.check("pdf: the readout starts with the page fraction", /^\d+(–\d+)? \/ \d+/.test(await pg()), await pg());
+    if (!(await page.evaluate(() => document.body.classList.contains("paged")))){ await page.keyboard.press("p"); }
+    await page.waitForTimeout(600);
+    const sp = await page.evaluate(() => ({ disp: getComputedStyle(document.getElementById("pdf")).display, pg: document.getElementById("pgInfo").textContent,
+      cv: Array.from(document.querySelectorAll("#pdf canvas")).map((c) => { const r = c.getBoundingClientRect(); return { left: Math.round(r.left), bottom: Math.round(r.bottom) }; }), ih: window.innerHeight }));
+    R.check("pdf spread: two pages side by side, both on screen, the readout counting both", sp.disp === "flex" && sp.cv.length === 2 && sp.cv[0].left < sp.cv[1].left && sp.cv.every((c) => c.bottom <= sp.ih) && /^1–2 \//.test(sp.pg), JSON.stringify(sp));
+    await page.keyboard.press("p"); await page.waitForTimeout(400);
     R.check("dock: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
   } catch (err){ R.check("dock (exception)", false, String(err).split("\n")[0]); }
   await dockCtx.close();
+
+  /* ---------------- 4b. the dock grows without a resize: the pages follow; --headH follows the tabs strip ---------------- */
+  const growCtx = await context(760, 800);
+  try {
+    const page = await newPage(growCtx, url);
+    await openFixture(page, "sample.md");
+    await page.keyboard.press("p"); await page.waitForTimeout(450);
+    await page.evaluate(() => { window.__ll.Speak.start(); }); await page.waitForTimeout(300);
+    await page.evaluate(() => window.llSpeak.setSleep(15)); await page.waitForTimeout(400);
+    const g1 = await page.evaluate(() => { const d = document.getElementById("dock").getBoundingClientRect(), v = document.getElementById("docView").getBoundingClientRect(); return { wrap: document.getElementById("tts").classList.contains("tts-wrap"), dockH: getComputedStyle(document.documentElement).getPropertyValue("--dockH").trim(), dockTop: d.top, dockHpx: Math.round(d.height), viewBottom: v.bottom }; });
+    R.check("the sleep timer wraps the bar to two rows and --dockH follows", g1.wrap && g1.dockH === g1.dockHpx + "px", JSON.stringify(g1));
+    R.check("the pages are laid out again to clear the taller dock", g1.viewBottom <= g1.dockTop + 0.5, JSON.stringify(g1));
+    await page.evaluate(() => window.llSpeak.setSleep(0)); await page.waitForTimeout(400);
+    const g2 = await page.evaluate(() => { const d = document.getElementById("dock").getBoundingClientRect(), v = document.getElementById("docView").getBoundingClientRect(); return { dockTop: d.top, viewBottom: v.bottom }; });
+    R.check("clearing the timer gives the room back to the pages", Math.abs(g2.dockTop - g2.viewBottom - 12) <= 1, JSON.stringify(g2));
+    await page.evaluate(() => window.__ll.Speak.stop());
+    R.check("dock growth: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await page.close();
+  } catch (err){ R.check("dock growth (exception)", false, String(err).split("\n")[0]); }
+  await growCtx.close();
+  const tabsCtx = await context(390, 844);
+  try {
+    const page = await newPage(tabsCtx, url);
+    await page.setInputFiles("#fileInput", [path.join(__dirname, "fixtures", "sample.md"), path.join(__dirname, "fixtures", "sample.txt")]);
+    await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length === 2 && document.getElementById("docView").style.display === "block", null, { timeout: 20000 });
+    await page.waitForTimeout(400);
+    await page.mouse.move(200, 500); await page.mouse.wheel(0, 60); await page.waitForTimeout(400);
+    const h = await page.evaluate(() => ({ headH: getComputedStyle(document.documentElement).getPropertyValue("--headH").trim(), header: document.querySelector("header").offsetHeight + "px",
+      pillTop: document.getElementById("progressInfo").getBoundingClientRect().top, tabsBottom: document.getElementById("tabs").getBoundingClientRect().bottom, on: document.getElementById("progressInfo").classList.contains("on") }));
+    R.check("phone, two tabs: --headH is the taller header and the progress pill sits under the tabs strip", h.headH === h.header && h.on && h.pillTop >= h.tabsBottom, JSON.stringify(h));
+    await page.close();
+  } catch (err){ R.check("tabs strip height (exception)", false, String(err).split("\n")[0]); }
+  await tabsCtx.close();
 
   /* ---------------- 5. toasts: one style, readable on the hard themes ---------------- */
   for (const theme of ["candle", "terminal", "newsprint", "hidark"]){
@@ -240,9 +317,7 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
       await openFixture(page, "sample.md");
       await page.evaluate(() => {
         window.__ll.Marks.toast("Bookmarked");
-        const t = document.createElement("div"); t.id = "updateToast"; t.setAttribute("role", "status");
-        t.innerHTML = '<span>A new version of Lamplight is ready.</span><button type="button" id="updateReload">Reload</button><button type="button" id="updateLater" aria-label="Later">×</button>';
-        document.body.appendChild(t);
+        window.__ll.Updates.offer();   /* the real update toast, which reports its height */
         const s = document.createElement("div"); s.id = "trStatus"; s.className = "on"; s.innerHTML = '<span class="tr-msg">Translating… 3 of 12</span><button type="button" class="tr-x">Cancel</button>';
         document.body.appendChild(s);
         window.scrollTo(0, 400); window.__ll.Progress.tick();
@@ -252,18 +327,54 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
         const cs = (el) => getComputedStyle(el);
         const pick = (id) => { const el = document.getElementById(id), s = cs(el); return { color: s.color, bg: s.backgroundColor, radius: s.borderTopLeftRadius, border: s.borderTopWidth, shadow: s.boxShadow !== "none", bottom: s.bottom }; };
         const btn = (sel) => { const el = document.querySelector(sel), s = cs(el); return { color: s.color, bg: s.backgroundColor, radius: s.borderTopLeftRadius }; };
+        const rt = (id) => document.getElementById(id).getBoundingClientRect();
         return { toast: pick("toast"), update: pick("updateToast"), tr: pick("trStatus"), pill: pick("progressInfo"), reload: btn("#updateReload"), later: btn("#updateLater"), cancel: btn("#trStatus .tr-x"),
-          panel: cs(document.body).getPropertyValue("--panel").trim(), rects: { toast: document.getElementById("toast").getBoundingClientRect().bottom, dockTop: document.getElementById("dock").getBoundingClientRect().top, tr: document.getElementById("trStatus").getBoundingClientRect().bottom, toastTop: document.getElementById("toast").getBoundingClientRect().top } };
+          panel: cs(document.body).getPropertyValue("--panel").trim(), rects: { toast: rt("toast").bottom, dockTop: rt("dock").top, tr: rt("trStatus").bottom, toastTop: rt("toast").top, updateTop: rt("updateToast").top, updateBottom: rt("updateToast").bottom },
+          under: (() => { const r = rt("toast"), el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return el ? (el.closest("#updateToast") ? "updateToast" : (el.id || el.tagName)) : ""; })(), laterIcon: !!document.querySelector("#updateLater svg") };
       });
       const same = (x) => x.radius === "12px" && x.border === "1px" && x.shadow && x.bg === c.toast.bg;
       R.check(theme + ": the toast, the update toast, the translate pill and the progress pill share one style", same(c.toast) && same(c.update) && same(c.tr) && same(c.pill), JSON.stringify(c));
       const ratios = { toast: contrast(c.toast.color, c.toast.bg), update: contrast(c.update.color, c.update.bg), tr: contrast(c.tr.color, c.tr.bg), pill: contrast(c.pill.color, c.pill.bg), later: contrast(c.later.color, c.update.bg), cancel: contrast(c.cancel.color, c.tr.bg), reload: contrast(c.reload.color, c.reload.bg) };
       R.check(theme + ": text on every toast ≥ 4.5:1 (the accent chip ≥ 3:1)", Object.keys(ratios).every((k) => k === "reload" ? ratios[k] >= 3 : ratios[k] >= 4.5), JSON.stringify(ratios));
-      R.check(theme + ": the buttons are chips", c.reload.radius === "999px" && c.later.radius === "999px" && c.cancel.radius === "999px", JSON.stringify([c.reload.radius, c.later.radius, c.cancel.radius]));
+      R.check(theme + ": the buttons are chips, Later carries the shared close icon", c.reload.radius === "999px" && c.later.radius === "999px" && c.cancel.radius === "999px" && c.laterIcon, JSON.stringify([c.reload.radius, c.later.radius, c.cancel.radius]));
       R.check(theme + ": the translate pill sits above the toast, both above the foot", c.rects.tr < c.rects.toastTop && c.rects.toast <= 800 - 18, JSON.stringify(c.rects));
+      R.check(theme + ": the toast steps up over the update offer instead of hiding behind it", c.rects.toast <= c.rects.updateTop && c.rects.updateBottom <= 800 - 18 && c.under !== "updateToast", JSON.stringify({ toast: c.rects.toast, updateTop: c.rects.updateTop, under: c.under }));
+      await page.click("#updateLater"); await page.waitForTimeout(100);
+      R.check(theme + ": Later removes the offer and its height", await page.evaluate(() => !document.getElementById("updateToast") && !document.body.style.getPropertyValue("--updateH")));
       await shot(page, "toasts-1200-" + theme);
       await page.close();
     } catch (err){ R.check("toasts " + theme + " (exception)", false, String(err).split("\n")[0]); }
+    await ctx.close();
+  }
+
+  /* ---------------- 5b. the menu's key hints and the search list's current row read on the hard themes ---------------- */
+  /* text on a translucent tint: the tint over what is behind it, then the text over that */
+  const TINTED = `(el, tint, behind) => {
+    const parse = (s) => { if (/^color\\(srgb/.test(s)){ const m = s.match(/[\\d.]+/g).map(Number); return { rgb: m.slice(0, 3).map((c) => c * 255), a: m.length > 3 ? m[3] : 1 }; }
+      const m = (s.match(/[\\d.]+/g) || [0, 0, 0]).map(Number); return { rgb: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; };
+    const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
+    const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+    const base = parse(getComputedStyle(behind).backgroundColor).rgb, bg = over(parse(getComputedStyle(tint).backgroundColor), base), fg = over(parse(getComputedStyle(el).color), bg);
+    const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
+  }`;
+  for (const theme of ["day", "dusk", "newsprint", "terminal", "ink", "slate"]){
+    const ctx = await context(1200, 800, theme);
+    try {
+      const page = await newPage(ctx, url);
+      await openFixture(page, "sample.md");
+      await page.click("#more"); await page.waitForTimeout(150);
+      const kbd = await page.evaluate((src) => { const f = eval(src), k = document.querySelector("#moreMenu kbd"); return f(k, k, document.getElementById("moreMenu")); }, TINTED);
+      R.check(theme + ": the menu's key pills read at ≥ 4.5:1", kbd >= 4.5, String(kbd));
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("/"); await page.waitForTimeout(300);
+      await page.keyboard.type("chair"); await page.waitForTimeout(600);
+      await page.keyboard.press("Enter"); await page.waitForTimeout(400);
+      const f = await page.evaluate((src) => { const f = eval(src), row = document.querySelector(".find-item.cur"), side = document.getElementById("side");
+        return row ? { where: f(row.querySelector(".find-where"), row, side), match: f(row.querySelector("b"), row, side) } : null; }, TINTED);
+      R.check(theme + ": the current search result's location and match read at ≥ 4.5:1", f && f.where >= 4.5 && f.match >= 4.5, JSON.stringify(f));
+      await page.keyboard.press("Escape");
+      await page.close();
+    } catch (err){ R.check("tints " + theme + " (exception)", false, String(err).split("\n")[0]); }
     await ctx.close();
   }
 
