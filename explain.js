@@ -914,16 +914,33 @@
     if (pos === "verb" || !pos) d = d.replace(/^to\s+/i, "");
     return d;
   }
+  /* a definition that reads like another part of speech is not this word's meaning: a noun
+     explained as "having important effects" is the adjective's sense wearing the noun's label */
+  var SHAPE = {
+    noun: /^(having|being|relating|pertaining|characterized|consisting|marked by|lacking|full of|able to|capable of|not )/i,
+    verb: /^(a |an |the |someone |something |one who )/i,
+    adjective: /^(a |an |the |someone who|something that|one who)/i,
+    adverb: /^(a |an |the )/i
+  };
   function bestSense(entry, pos, rank){
     if (!entry) return null;
     var senses = entry.m.filter(function(m){ return !pos || !m.p || m.p === pos; });
     if (!senses.length) senses = entry.m;
-    var scored = senses.map(function(m){
+    var scored = senses.map(function(m, i){
       var d = cleanDef(m.d, m.p || pos), words = d.split(" ");
       var hard = words.filter(function(x){ return rank(x.toLowerCase().replace(/[^a-z]/g, "")) > 5000; }).length;
-      return { m: m, d: d, score: words.length + hard * 3 + (m.p && pos && m.p !== pos ? 8 : 0) };
+      var odd = pos && SHAPE[pos] && SHAPE[pos].test(d) ? 9 : 0;
+      /* the entry lists its senses roughly by how common they are, so a later one has to be
+         clearly plainer to win; the weight is small because the order is only roughly right */
+      return { m: m, d: d, score: words.length + hard * 3 + (m.p && pos && m.p !== pos ? 8 : 0) + i * 1.2 + odd };
     }).sort(function(a, b){ return a.score - b.score; });
     return scored[0];
+  }
+  /* the curated meaning, if word parts are loaded; only its first clause, so the gloss stays short */
+  function CURATED(word){
+    var B = typeof window !== "undefined" && window.llMorph && window.llMorph.BASES;
+    var d = B && Object.prototype.hasOwnProperty.call(B, word) ? B[word] : null;
+    return d ? String(d).split(";")[0].trim() : null;
   }
   function inflectPhrase(phrase, form){
     var ws = phrase.split(" ");
@@ -1839,20 +1856,49 @@
           var adj = dict(t.l);
           if (adj && adj.m.some(function(m){ return m.p === "adjective"; })){ entry = adj; pos = "adjective"; lem = t.l; }
         }
-        if (!entry) return;
-        var best = bestSense(entry, pos, rank);
+        /* morph.js carries a plain meaning for seven hundred everyday words, written because the
+           dictionary's own first sense is so often an odd one ("predict: indicate by signs").
+           It is only there once word parts have been loaded, so the dictionary still answers. */
+        var curated = CURATED(lem);
+        if (!entry && !curated) return;
+        /* a gloss is read as the meaning, so it is only offered where it can be trusted: a
+           curated plain meaning, or a word the dictionary gives exactly one sense of for this
+           part of speech. Where it lists several and nothing says which is meant here, guessing
+           puts "patience (= a card game)" in front of a child; saying nothing is better. */
+        if (!curated){
+          var fits = entry.m.filter(function(m){ return !m.p || m.p === pos; });
+          if (fits.length !== 1) return;
+        }
+        var best = curated ? { d: curated, m: { p: pos } } : bestSense(entry, pos, rank);
         /* a sense of another part of speech is not this word's meaning here */
         if (!best || !best.d || !best.m || (best.m.p && best.m.p !== pos)) return;
-        /* four words at most; a cut that lands inside a phrase ("shining with a bright |
-           reflected light") steps back to the last joining word instead */
-        var full = best.d.split(" "), n = Math.min(4, full.length);
-        if (full.length > n && !BREAK.test(full[n])){
-          while (n > 1 && !BREAK.test(full[n - 1])) n--;
-          if (n > 1) n--;
+        /* a gloss is read inline, so it has to be short — and a dictionary sense cut short stops
+           meaning what it meant ("clergyman (= a member)", "laughing (= make the sound)"), so a
+           sense is either short enough to be given whole or it is not given at all. The curated
+           meanings are written to this length; the four that run long are cut at a joining word */
+        var full = best.d.split(" "), cap = curated ? 10 : 6;
+        if (full.length > cap) {
+          if (!curated) return;
+          var n = cap;
+          if (!BREAK.test(full[n])){
+            while (n > 1 && !BREAK.test(full[n - 1])) n--;
+            if (n > 1) n--;
+          }
+          full = full.slice(0, n);
         }
-        var d = full.slice(0, n).join(" ").replace(/[\s,;:.]+$/, "");
+        var d = full.join(" ").replace(/[\s,;:.]+$/, "");
         while (d && TRAIL.test(d)) d = d.replace(TRAIL, "");
         if (!d || sameFamily(d.toLowerCase(), lem)) return;
+        /* one word explains nothing ("ancestors (= someone)") */
+        if (d.split(" ").length < 2) return;
+        /* and a gloss built out of the word it explains explains nothing
+           ("photosynthesis (= synthesis of compounds)"); the word as written is checked too,
+           since a lemma can come back clipped */
+        var self = [lem, t.l];
+        if (d.toLowerCase().split(/[^a-zà-ɏ]+/).some(function(x){
+              if (x.length < 5) return false;
+              return self.some(function(w){ return w.indexOf(x) >= 0 || x.indexOf(w) >= 0; });
+            })) return;
         glossed[lem] = 1;
         edits.push(simpleEdit(src, t.s, t.e, t.w + " (= " + d + ")", "glossed"));
         used[t.i] = true;

@@ -66,8 +66,16 @@ check("a describing clause between dashes is left where it is", r.text.indexOf("
 /* kid: shortening, abbreviations, numbers and glosses */
 check("kid cuts the closing clause loose and repeats the subject",
   kid.text.indexOf("of the agreement. The jury was already weary, though.") > 0 && whys(kid).indexOf("shortened") >= 0, kid.text);
-check("kid glosses ‘consequences’ in four words or fewer",
-  /consequences \(= [^)]+\)/.test(kid.text) && kid.text.match(/consequences \(= ([^)]+)\)/)[1].split(" ").length <= 4 && whys(kid).indexOf("glossed") >= 0, kid.text);
+/* a gloss is only offered where the meaning can be trusted: a word the dictionary gives one
+   sense of for this part of speech (or one of morph.js's curated plain meanings, which are not
+   loaded here). Where it lists several and nothing says which is meant, nothing is said. */
+r = run("The clergyman tried to eavesdrop, absentminded as ever.", "kid");
+check("kid glosses a word the dictionary gives one meaning of, in six words or fewer",
+  /eavesdrop \(= [^)]+\)/.test(r.text) && r.text.match(/eavesdrop \(= ([^)]+)\)/)[1].split(" ").length <= 6 && whys(r).indexOf("glossed") >= 0, r.text);
+check("…and says nothing where the sense would have to be cut to fit",
+  !/clergyman \(= /.test(r.text), r.text);
+check("…and leaves a word with several meanings alone rather than guessing",
+  !/consequences \(= /.test(kid.text), kid.text);
 r = run("She smiled, although she was tired.", "kid");
 check("‘She smiled, although she was tired.’ → ‘She smiled. She was tired, though.’", r.text === "She smiled. She was tired, though." && whys(r).every((w) => w === "shortened"), r.text);
 check("…and no other level touches it", ["light", "plain", "very"].every((l) => run("She smiled, although she was tired.", l).changes.length === 0));

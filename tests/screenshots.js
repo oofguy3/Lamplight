@@ -181,12 +181,16 @@ const STATS = (() => {
     const ctx = await desktop(1000, 760), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await theme(page, "parchment");
+    /* a sentence with something to simplify, shown at the plainest strength */
     await page.evaluate(() => {
-      const t = document.getElementById("doc").textContent, i = t.indexOf(". ", 200) + 2, j = t.indexOf(". ", i + 60) + 1;
+      const t = document.getElementById("doc").textContent;
+      const i = t.indexOf("Nobody could have predicted"), j = t.indexOf(".", i + 20) + 1;
       window.llDict.explainSentence(t.slice(i, j), { start: i, end: j });
     });
     await page.waitForTimeout(2200);
     await page.evaluate(() => { const t = document.querySelector('#dictCard [role=tab][data-tab="simpler"]'); if (t) t.click(); });
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => { const b = document.querySelector('#simpLevels [data-l="kid"]'); if (b) b.click(); });
     await page.waitForTimeout(1600);
     await shot(page, "simplify");
     await ctx.close();

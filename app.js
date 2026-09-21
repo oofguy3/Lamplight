@@ -8836,8 +8836,12 @@
       return "Plain";
     }
     function simplifyText(text, level){
-      return Promise.all([simplifyWords(text), need(["explain"])]).then(function(){
-        return window.llExplain.simplify(text, find, window.llExplain.rank, { level: level || simpLevel() });
+      var lv = level || simpLevel();
+      /* the plainest level glosses words as it goes, and the plain meanings it glosses them with
+         live in morph.js, so that table is fetched with the rest */
+      var libs = lv === "kid" ? ["explain", "morph"] : ["explain"];
+      return Promise.all([simplifyWords(text), need(libs)]).then(function(){
+        return window.llExplain.simplify(text, find, window.llExplain.rank, { level: lv });
       });
     }
     function simpleSummary(changes, level){
