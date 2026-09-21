@@ -165,38 +165,44 @@
 <div id="progressInfo" aria-live="off"></div>
 <div id="ruler" aria-hidden="true"><div class="rt"></div><div class="rl"></div><div class="rb"></div><div class="grip"></div></div>
 <div id="autoBar" role="region" aria-label="Auto-scroll">
-  <button id="autoSlower" title="Slower" aria-label="Slower">−</button>
+  <button id="autoSlower" title="Slower" aria-label="Slower"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
   <span class="speed" id="autoSpeed">1.0×</span>
-  <button id="autoFaster" title="Faster" aria-label="Faster">+</button>
-  <button id="autoPlay" title="Pause / resume" aria-label="Pause">❚❚</button>
-  <button id="autoStop" title="Stop auto-scroll" aria-label="Stop">×</button>
+  <button id="autoFaster" title="Faster" aria-label="Faster"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14 M5 12h14"/></svg></button>
+  <button id="autoPlay" title="Pause / resume" aria-label="Pause"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5h3.5v14H7z M13.5 5H17v14h-3.5z" fill="currentColor" stroke="none"/></svg></button>
+  <button id="autoStop" title="Stop auto-scroll" aria-label="Stop"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
 </div>
-<div id="tts" role="region" aria-label="Read aloud">
-  <button class="ctl" id="ttsPrev" title="Previous sentence" aria-label="Previous sentence">‹</button>
-  <button class="ctl primary" id="ttsPlay" title="Play / pause" aria-label="Play">▶</button>
-  <button class="ctl" id="ttsNext" title="Next sentence" aria-label="Next sentence">›</button>
-  <button class="ctl tts-sex" id="ttsWoman" title="Use a woman's voice" aria-label="Use a woman's voice" aria-pressed="false" hidden>♀</button>
-  <button class="ctl tts-sex" id="ttsMan" title="Use a man's voice" aria-label="Use a man's voice" aria-pressed="false" hidden>♂</button>
-  <button class="ctl tts-voices" id="ttsVoices" title="Voices, dialogue voice and expression" aria-label="Read-aloud voices" aria-haspopup="dialog">Voices…</button>
-  <button class="ctl tts-sleep" id="ttsSleep" title="Sleep timer — tap to change" aria-live="off" aria-haspopup="dialog" hidden><span id="ttsSleepW"></span><span id="ttsSleepV"></span></button>
-  <i class="tts-break" aria-hidden="true"></i>
-  <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
-  <select id="ttsVoice" aria-label="Voice"></select>
-  <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading">×</button>
+<!-- the dock: the read-aloud bar sits on top of the page-turn bar; app.js measures its height into --dockH -->
+<div id="dock">
+  <div id="tts" role="region" aria-label="Read aloud">
+    <button class="ctl" id="ttsPrev" title="Previous sentence" aria-label="Previous sentence"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="ctl primary" id="ttsPlay" title="Play / pause" aria-label="Play"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg></button>
+    <button class="ctl" id="ttsNext" title="Next sentence" aria-label="Next sentence"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <button class="ctl tts-sex" id="ttsWoman" title="Use a woman's voice" aria-label="Use a woman's voice" aria-pressed="false" hidden>♀</button>
+    <button class="ctl tts-sex" id="ttsMan" title="Use a man's voice" aria-label="Use a man's voice" aria-pressed="false" hidden>♂</button>
+    <button class="ctl tts-voices" id="ttsVoices" title="Voices, dialogue voice and expression" aria-label="Read-aloud voices" aria-haspopup="dialog">Voices…</button>
+    <button class="ctl tts-sleep" id="ttsSleep" title="Sleep timer — tap to change" aria-live="off" aria-haspopup="dialog" hidden><span id="ttsSleepW"></span><span id="ttsSleepV"></span></button>
+    <i class="tts-break" aria-hidden="true"></i>
+    <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
+    <select id="ttsVoice" aria-label="Voice"></select>
+    <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+  </div>
+  <div id="pager">
+    <button class="ctl" id="prevPg" title="Previous page" aria-label="Previous page"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <span id="pgInfo" aria-live="polite">1 / 1</span>
+    <button class="ctl" id="nextPg" title="Next page" aria-label="Next page"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
 </div>
 <div id="sideScrim"></div>
 <aside id="side" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sideTitle">
-  <div class="side-head"><div class="side-title" id="sideTitle"></div><button class="side-x" id="sideClose" aria-label="Close">×</button></div>
+  <div class="side-top">
+    <div class="side-grab" aria-hidden="true"></div>
+    <div class="side-head"><div class="side-title" id="sideTitle"></div><button class="side-x" id="sideClose" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button></div>
+    <div class="side-switch" id="sideSwitch" role="group" aria-label="Panels" hidden></div>
+  </div>
   <div class="side-body" id="sideBody"></div>
   <div class="side-foot" id="sideFoot"></div>
 </aside>
 <div id="markPop"></div>
-
-<div id="pager">
-  <button class="ctl" id="prevPg" title="Previous page" aria-label="Previous page">‹</button>
-  <span id="pgInfo" aria-live="polite">1 / 1</span>
-  <button class="ctl" id="nextPg" title="Next page" aria-label="Next page">›</button>
-</div>
 
 <input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" multiple hidden>
 

@@ -149,7 +149,7 @@ async function textPoint(page, word){
     await page.keyboard.press("p"); await page.waitForTimeout(500);
     await page.keyboard.press("End"); await page.waitForTimeout(400);
     const info = await page.$eval("#pgInfo", (e) => e.textContent);
-    R.check("End goes to the last page", (() => { const m = /(\d+) \/ (\d+)$/.exec(info); return m && m[1] === m[2]; })(), info);
+    R.check("End goes to the last page", (() => { const m = /^(\d+) \/ (\d+)/.exec(info); return m && m[1] === m[2]; })(), info);   /* the readout goes on: "· Chapter 4 · 1 min left" */
     await page.keyboard.press("Home"); await page.waitForTimeout(400);
     R.check("Home goes to the first page", /^1 \//.test(await page.$eval("#pgInfo", (e) => e.textContent)));
     await page.keyboard.press("p");

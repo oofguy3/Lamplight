@@ -689,7 +689,7 @@
     function render(body){
       var h = '<div class="font-list">';
       FONT_GROUPS.forEach(function(g){
-        h += '<div class="font-set" role="group" aria-labelledby="fontGroup-' + g.id + '"><div class="font-group" id="fontGroup-' + g.id + '">' + g.name + '</div>';
+        h += '<div class="font-set" role="group" aria-labelledby="fontGroup-' + g.id + '"><div class="font-group sec" id="fontGroup-' + g.id + '">' + g.name + '</div>';
         ids(g.id).forEach(function(id){ h += item(id); });
         h += '</div>';
       });
@@ -756,14 +756,26 @@
   }
   function headVar(){ var head = document.querySelector("header"); if (head) document.documentElement.style.setProperty("--headH", head.offsetHeight + "px"); }
   window.addEventListener("resize", headVar);
+  /* the dock at the foot of the screen holds the read-aloud bar over the page-turn bar. Its
+     height goes into --dockH: the pages clear it, and the toasts and the auto-scroll pill float
+     above it. --pagerH and --ttsH stay set for anything still reading them. */
+  function dockVar(){
+    var zen = document.body.classList.contains("zen"), dock = $("#dock"), ttsEl = $("#tts");
+    var pagerH = zen ? 0 : $("#pager").offsetHeight, ttsH = ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
+    var h = dock ? dock.offsetHeight : pagerH + ttsH, st = document.documentElement.style;
+    st.setProperty("--dockH", h + "px"); st.setProperty("--pagerH", pagerH + "px"); st.setProperty("--ttsH", ttsH + "px");
+    return h;
+  }
+  if (window.ResizeObserver) new ResizeObserver(function(){ dockVar(); }).observe($("#dock"));
+  else window.addEventListener("resize", dockVar);
   function availHeight(){
     headVar();
-    var head = document.querySelector("header");
-    var headH = document.body.classList.contains("immersive") || document.body.classList.contains("zen") ? 0 : head.offsetHeight;
-    var pagerH = document.body.classList.contains("zen") ? 0 : ($("#pager").offsetHeight || 56);
-    document.documentElement.style.setProperty("--pagerH", pagerH + "px");
-    var ttsEl = $("#tts"), ttsH = ttsEl && ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
-    return Math.max(160, window.innerHeight - headH - pagerH - ttsH - 26);
+    var head = document.querySelector("header"), zen = document.body.classList.contains("zen");
+    var headH = document.body.classList.contains("immersive") || zen ? 0 : head.offsetHeight;
+    var dockH = dockVar();
+    /* measured before the page-turn bar is shown (the first layout): assume its usual height */
+    if (!zen && pagedActive() && !$("#pager").offsetHeight) dockH += 56;
+    return Math.max(160, window.innerHeight - headH - dockH - 26);
   }
   function spreadOn(){ return state.spread !== false && window.innerWidth >= 1000; }
   /* Pages flow lays the text out in fixed-height columns and shows one column (or two,
@@ -933,12 +945,46 @@
       if (n !== state.pdfPageNum){ state.pdfPageNum = n; renderPdfSingle(); }
     }
   }
+  /* the section the current page is in: the last heading at or before it (a PDF's outline
+     arrives later; the readout is drawn again when it does) */
+  var pdfSections = { doc: null, list: null };
+  function currentSection(){
+    if (state.mode === "doc"){
+      var entries = Toc.entries(), docRect = null, cur = null;
+      for (var i = 0; i < entries.length; i++){
+        if (!docRect) docRect = $("#doc").getBoundingClientRect();
+        var r = entries[i].el.getBoundingClientRect();
+        if (pageOfOffset(r.left - docRect.left + 1) > state.page) break;
+        cur = entries[i];
+      }
+      return cur ? cur.title : "";
+    }
+    if (state.mode === "pdf" && state.pdfDoc){
+      var doc = state.pdfDoc;
+      if (pdfSections.doc !== doc){
+        pdfSections.doc = doc; pdfSections.list = null;
+        Toc.pdfEntries().then(function(list){ if (state.pdfDoc === doc){ pdfSections.list = list; updatePager(); } });
+      }
+      var hit = null, pg = state.pdfPageNum;
+      (pdfSections.list || []).forEach(function(e){ if (e.page && e.page <= pg) hit = e; });
+      return hit ? hit.title : "";
+    }
+    return "";
+  }
+  /* the page-turn bar's readout: "12 / 40 · Chapter 3 · 18 min left" — the page fraction first,
+     then the section when the document has one, then the time left at the measured speed */
   function updatePager(){
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
     else if (state.pdfDoc){ cur = state.pdfPageNum; total = state.pdfDoc.numPages; if (state.perPage === 2 && state.flow === "pages" && cur < total) cur = cur + "\u2013" + (cur + 1); }
     else { cur = 1; total = 1; }
-    $("#pgInfo").textContent = cur + " / " + total;
+    var info = $("#pgInfo"), part = function(cls, text){ var el = document.createElement("span"); el.className = cls; el.textContent = text; info.appendChild(el); };
+    info.textContent = "";
+    part("pg-n", cur + " / " + total);
+    if (!pagedActive()) return;
+    var sec = currentSection(), left = Progress.left();
+    if (sec) part("pg-sec", " \u00B7 " + sec);
+    if (left) part("pg-left", " \u00B7 " + left);
   }
   function updateProgress(){
     if (!pagedActive()) return;
@@ -1567,28 +1613,87 @@
              textLength: textLength, startOf: startOf, invalidate: invalidate };
   })();
 
-  /* ---------- side panel: contents, marks, search share one drawer ---------- */
+  /* ---------- icons: the shared set, drawn inline in the text colour (24×24 boxes) ---------- */
+  var ICONS = (function(){
+    var head = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+    var dots = 'stroke-width="2.6"', solid = 'fill="currentColor" stroke="none"';
+    function path(d, attrs){ return '<path d="' + d + '"' + (attrs ? " " + attrs : "") + '/>'; }
+    function icon(){ return head + Array.prototype.join.call(arguments, "") + "</svg>"; }
+    return {
+      search:   icon(path("M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"), path("M20 20l-3.5-3.5")),
+      contents: icon(path("M9 6h11 M9 12h11 M9 18h11"), path("M4 6h.01 M4 12h.01 M4 18h.01", dots)),
+      info:     icon(path("M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"), path("M12 11v5"), path("M12 8h.01", dots)),
+      bookmark: icon(path("M6 3h12v18l-6-4-6 4V3z")),
+      notes:    icon(path("M4 20h4L18 10l-4-4L4 16v4z"), path("M13 7l4 4")),
+      speaker:  icon(path("M4 9v6h4l5 4V5L8 9H4z"), path("M16 9a4 4 0 0 1 0 6")),
+      auto:     icon(path("M6 7l6 6 6-6"), path("M6 13l6 6 6-6")),
+      ruler:    icon(path("M3 9h18v6H3z"), path("M7 9v3 M11 9v3 M15 9v3")),
+      zen:      icon(path("M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5")),
+      print:    icon(path("M6 9V3h12v6"), path("M6 17H4V9h16v8h-2"), path("M6 14h12v7H6z")),
+      chart:    icon(path("M5 20V12 M12 20V6 M19 20V10", dots)),
+      books:    icon(path("M4 4h5v16H4z"), path("M9 4h5v16H9z"), path("M14 6l5-1.5L23 19l-5 1.5z")),
+      keyboard: icon(path("M3 7h18v10H3z"), path("M7 11h.01 M11 11h.01 M15 11h.01 M7 14h10", dots)),
+      open:     icon(path("M3 7V5h6l2 2h10v12H3z"), path("M3 11h18")),
+      sliders:  icon(path("M4 7h10 M18 7h2 M4 17h4 M12 17h8"), path("M14 7m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0"), path("M8 17m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0")),
+      close:    icon(path("M6 6l12 12 M18 6L6 18")),
+      play:     icon(path("M8 5v14l11-7z", solid)),
+      pause:    icon(path("M7 5h3.5v14H7z M13.5 5H17v14h-3.5z", solid))
+    };
+  })();
+  /* a bar's play / pause button: the icon follows the state, the callers set the label */
+  function playIcon(btn, playing){ btn.innerHTML = playing ? ICONS.pause : ICONS.play; }
+
+  /* ---------- side panel: contents, marks, search share one drawer ----------
+     The four document panels (contents, search, notes, about) are one family: a segmented
+     switcher under the title moves between them in place, without closing the drawer. */
   var Side = (function(){
-    var el = $("#side"), scrim = $("#sideScrim"), body = $("#sideBody"), foot = $("#sideFoot"), title = $("#sideTitle");
-    var current = null, onClose = null, opener = null;
-    function open(name, ttl, render, closeFn){
-      current = name; onClose = closeFn || null;
-      opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#more");
+    var el = $("#side"), scrim = $("#sideScrim"), body = $("#sideBody"), foot = $("#sideFoot"), title = $("#sideTitle"), sw = $("#sideSwitch");
+    var current = null, onClose = null, opener = null, family = null;
+    var FAMILIES = {
+      doc: [
+        { name: "toc",   label: "Contents", icon: "contents", open: function(){ Toc.openPanel(); } },
+        { name: "find",  label: "Search",   icon: "search",   open: function(){ Search.openPanel(); } },
+        { name: "marks", label: "Notes",    icon: "notes",    open: function(){ Marks.openPanel(); } },
+        { name: "about", label: "About",    icon: "info",     open: function(){ About.openPanel(); } }
+      ]
+    };
+    function drawSwitch(){
+      var list = FAMILIES[family];
+      if (!list){ sw.hidden = true; sw.innerHTML = ""; return; }
+      sw.innerHTML = list.map(function(p){
+        return '<button type="button" data-panel="' + p.name + '" aria-pressed="' + (p.name === current) + '">' + ICONS[p.icon] + '<span>' + p.label + '</span></button>';
+      }).join("");
+      sw.hidden = false;
+    }
+    sw.addEventListener("click", function(e){
+      var b = e.target.closest("button[data-panel]"), list = FAMILIES[family];
+      if (!b || !list || b.dataset.panel === current) return;
+      list.forEach(function(p){ if (p.name === b.dataset.panel) p.open(); });
+    });
+    function open(name, ttl, render, closeFn, opts){
+      var wasOpen = !!current;
+      /* a panel replaced in place tidies up as if it had closed; the drawer itself stays */
+      if (wasOpen && current !== name && onClose) onClose();
+      current = name; onClose = closeFn || null; family = (opts && opts.family) || null;
+      if (!wasOpen) opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#more");
       title.textContent = ttl;
+      drawSwitch();
       body.innerHTML = ""; foot.innerHTML = ""; foot.style.display = "none";
       render(body, foot);
       if (foot.children.length) foot.style.display = "flex";
+      body.scrollTop = 0;
       el.classList.add("open"); scrim.classList.add("on"); el.setAttribute("aria-hidden", "false");
-      $("#moreMenu").classList.remove("open");
-      /* move focus into the panel; the first control if there is one, else the heading */
+      Menu.close();
+      /* move focus into the panel; the first control if there is one, else the close button */
       setTimeout(function(){
+        if (current !== name) return;
         var first = body.querySelector("input, [tabindex='0'], button");
         (first || $("#sideClose")).focus({ preventScroll: true });
       }, 60);
     }
     function close(){
       if (!current) return;
-      var fn = onClose; current = null; onClose = null;
+      var fn = onClose; current = null; onClose = null; family = null;
       el.classList.remove("open"); scrim.classList.remove("on"); el.setAttribute("aria-hidden", "true");
       if (fn) fn();
       if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
@@ -1596,6 +1701,7 @@
     }
     scrim.addEventListener("click", close);
     $("#sideClose").addEventListener("click", close);
+    el.querySelector(".side-grab").addEventListener("click", close);
     /* Escape closes only the topmost layer: the key stops here once it has closed a panel, so the
        settings sheet and the menu, whose listeners come after this one, keep their state; the
        dictionary card, which sits over the panel, takes the key first in the capture phase */
@@ -1603,35 +1709,111 @@
       if (e.key === "Escape" && current){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
     });
     return { open: open, close: close, is: function(name){ return current === name; }, body: body, foot: foot,
+             current: function(){ return current; },
              refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; } } };
   })();
 
-  /* ---------- "more" menu: features register their entries here ---------- */
+  /* ---------- "more" menu: features register their entries here ----------
+     An entry has a group (navigate · marks · reading · tools · app) and an icon. On a desktop
+     the menu drops from the ⋯ button; on a phone it rises as a sheet of tiles. Arrow keys move
+     through the items, Escape closes and hands focus back to the button. */
   var Menu = (function(){
-    var items = [], btn = $("#more"), menu = $("#moreMenu");
-    function add(item){ if (item.order === undefined) item.order = 100 + items.length; items.push(item); }
+    var items = [], btn = $("#more"), menu = $("#moreMenu"), wrap = $("#moreWrap"), scrim = null;
+    var GROUPS = [["navigate", "Navigate"], ["marks", "Bookmarks"], ["reading", "Reading"], ["tools", "Tools"], ["app", "Lamplight"]];
+    menu.setAttribute("aria-labelledby", "more");
+    function add(item){
+      if (item.order === undefined) item.order = 100 + items.length;
+      if (!item.group) item.group = "tools";
+      items.push(item);
+    }
+    function text(it){ return typeof it.label === "function" ? it.label() : it.label; }
+    /* a toggle that is on reads "Stop…", "Hide…", "Leave…" or "Show original": it gets a dot */
+    function isOn(label){ return /^(Stop|Hide|Leave|Show original)\b/.test(label); }
     function render(){
       menu.innerHTML = "";
-      items.slice().sort(function(a, b){ return a.order - b.order; }).forEach(function(it){
-        if (it.sep){ var d = document.createElement("div"); d.className = "sep"; menu.appendChild(d); return; }
-        if (it.show && !it.show()) return;
-        var b = document.createElement("button");
-        b.type = "button"; b.setAttribute("role", "menuitem");
-        b.innerHTML = '<span>' + (typeof it.label === "function" ? it.label() : it.label) + '</span>' + (it.key ? '<kbd>' + it.key + '</kbd>' : '');
-        if (it.enabled && !it.enabled()) b.disabled = true;
-        b.addEventListener("click", function(){ close(); it.run(); });
-        menu.appendChild(b);
+      var grab = document.createElement("div");
+      grab.className = "menu-grab"; grab.setAttribute("aria-hidden", "true");
+      grab.addEventListener("click", function(){ close(true); });
+      menu.appendChild(grab);
+      var sorted = items.slice().sort(function(a, b){ return a.order - b.order; }), groups = [], rows = 0;
+      GROUPS.forEach(function(g){
+        var list = sorted.filter(function(it){ return !it.sep && it.group === g[0] && !(it.show && !it.show()); });
+        if (!list.length) return;
+        var sec = document.createElement("div"), head = document.createElement("div"), grid = document.createElement("div");
+        sec.className = "menu-group"; sec.setAttribute("role", "group"); sec.setAttribute("aria-labelledby", "menuG-" + g[0]);
+        head.className = "label"; head.id = "menuG-" + g[0]; head.textContent = g[1];
+        grid.className = "menu-items";
+        list.forEach(function(it){
+          var label = text(it), b = document.createElement("button");
+          b.type = "button"; b.setAttribute("role", "menuitem");
+          b.innerHTML = '<i class="mi">' + (it.icon || "") + '</i><span>' + label + '</span>' + (it.key ? '<kbd>' + it.key + '</kbd>' : '');
+          if (isOn(label)) b.classList.add("on");
+          if (it.enabled && !it.enabled()) b.disabled = true;
+          b.addEventListener("click", function(){ close(true); it.run(); });
+          grid.appendChild(b);
+        });
+        sec.appendChild(head); sec.appendChild(grid);
+        groups.push({ el: sec, rows: list.length }); rows += list.length;
       });
-      /* drop a trailing / doubled separator */
-      var kids = Array.prototype.slice.call(menu.children);
-      kids.forEach(function(k, i){ if (k.className === "sep" && (i === kids.length - 1 || i === 0 || (kids[i+1] && kids[i+1].className === "sep"))) k.remove(); });
+      /* a long menu on a desktop reads better as two columns than as one tall list: the groups
+         stay whole and the split falls where the columns come out most even */
+      var wide = rows > 9 && window.innerWidth > 560, cols = [document.createElement("div"), document.createElement("div")], cut = groups.length;
+      if (wide){
+        var best = Infinity, sum = 0;
+        groups.forEach(function(g, i){ sum += g.rows; var d = Math.abs(sum - (rows - sum)); if (d < best){ best = d; cut = i + 1; } });
+      }
+      menu.classList.toggle("wide", wide);
+      cols.forEach(function(c){ c.className = "menu-col"; });
+      groups.forEach(function(g, i){ (wide && i >= cut ? cols[1] : cols[0]).appendChild(g.el); });
+      if (wide){ var box = document.createElement("div"); box.className = "menu-cols"; box.appendChild(cols[0]); box.appendChild(cols[1]); menu.appendChild(box); }
+      else menu.appendChild(cols[0]);
     }
-    function open(){ render(); menu.classList.add("open"); btn.setAttribute("aria-expanded", "true"); document.body.classList.remove("hidebar"); }
-    function close(){ menu.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); }
-    btn.addEventListener("click", function(e){ e.stopPropagation(); if (menu.classList.contains("open")) close(); else open(); });
-    document.addEventListener("click", function(e){ if (!e.target.closest("#moreWrap")) close(); });
-    document.addEventListener("keydown", function(e){ if (e.key === "Escape") close(); });
-    return { add: add, close: close };
+    function focusables(){ return Array.prototype.filter.call(menu.querySelectorAll("button[role=menuitem]"), function(b){ return !b.disabled; }); }
+    function isOpen(){ return menu.classList.contains("open"); }
+    function open(){
+      render();
+      if (!scrim){
+        scrim = document.createElement("div"); scrim.id = "moreScrim"; scrim.setAttribute("aria-hidden", "true");
+        scrim.addEventListener("click", function(){ close(true); });
+        wrap.appendChild(scrim);
+      }
+      menu.classList.add("open"); scrim.classList.add("on"); menu.scrollTop = 0;
+      btn.setAttribute("aria-expanded", "true");
+      document.body.classList.remove("hidebar");
+      var first = focusables()[0];
+      if (first) first.focus({ preventScroll: true });
+    }
+    /* back: hand focus to the ⋯ button (a key, the scrim, the handle or an item did it) */
+    function close(back){
+      if (!isOpen()) return;
+      menu.classList.remove("open"); if (scrim) scrim.classList.remove("on");
+      btn.setAttribute("aria-expanded", "false");
+      if (back) btn.focus({ preventScroll: true });
+    }
+    btn.addEventListener("click", function(e){ e.stopPropagation(); if (isOpen()) close(); else open(); });
+    document.addEventListener("click", function(e){ if (isOpen() && !e.target.closest("#moreWrap")) close(); });
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !isOpen()) return;
+      e.preventDefault(); e.stopImmediatePropagation(); close(true);
+    });
+    /* arrows move through the items (wrapping), Home and End jump, Tab leaves and closes */
+    menu.addEventListener("keydown", function(e){
+      var list = focusables(), n = list.length, i = list.indexOf(document.activeElement), to = null;
+      if (!n) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") to = list[(i + 1) % n];
+      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") to = list[i < 0 ? n - 1 : (i - 1 + n) % n];
+      else if (e.key === "Home") to = list[0];
+      else if (e.key === "End") to = list[n - 1];
+      else if (e.key === "Tab"){ close(); return; }
+      else return;
+      e.preventDefault(); e.stopPropagation(); to.focus();
+    });
+    /* the menu hangs from the bar, which slides away on a scroll: close rather than drift off */
+    window.addEventListener("scroll", function(){ if (isOpen()) close(); }, { passive: true });
+    var narrow = window.matchMedia ? window.matchMedia("(max-width: 560px)") : null;
+    if (narrow && narrow.addEventListener) narrow.addEventListener("change", function(){ close(); });
+    window.llMenu = { open: open, close: close, isOpen: isOpen, items: function(){ return items.slice(); } };
+    return { add: add, close: close, open: open, isOpen: isOpen };
   })();
 
   var Library = (function(){
@@ -2186,7 +2368,7 @@
     }
     function openPanel(focusKey){
       editKey = focusKey || null;
-      Side.open("marks", "Bookmarks & notes", renderPanel, function(){ editKey = null; });
+      Side.open("marks", "Bookmarks & notes", renderPanel, function(){ editKey = null; }, { family: "doc" });
     }
     Side.body.addEventListener("click", function(e){
       if (!Side.is("marks")) return;
@@ -2241,8 +2423,8 @@
       else if (navigator.clipboard) navigator.clipboard.writeText(toMarkdown()).then(function(){ toast("Copied"); }, function(){ toast("Couldn\u2019t copy"); });
     }
 
-    Menu.add({ order: 30, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
-    Menu.add({ order: 31, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 30, group: "marks", icon: ICONS.bookmark, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 31, group: "marks", icon: ICONS.notes, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
 
     return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, addHighlight: addHighlight, highlightSelection: highlightSelection,
              selectionOffsets: selectionOffsets, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
@@ -2368,8 +2550,8 @@
         renderList(body, docEntries());
       }
     }
-    function openPanel(){ Side.open("toc", "Contents", render, function(){ shown = null; }); }
-    Menu.add({ order: 10, label: "Contents", key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    function openPanel(){ Side.open("toc", "Contents", render, function(){ shown = null; }, { family: "doc" }); }
+    Menu.add({ order: 10, group: "navigate", icon: ICONS.contents, label: "Contents", key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, entries: docEntries, pdfEntries: pdfEntries, goPdfPage: goPdfPage };
   })();
 
@@ -2530,7 +2712,7 @@
       setTimeout(function(){ input.focus(); if (query) input.select(); }, 60);
     }
     function openPanel(){
-      Side.open("find", "Search", render, function(){ /* keep matches painted until the next document */ });
+      Side.open("find", "Search", render, function(){ /* keep matches painted until the next document */ }, { family: "doc" });
     }
     function reset(){ query = ""; results = []; cur = -1; clearPaint(); }
     function refresh(){ if (results.length && state.mode === "doc") paint(); }
@@ -2539,7 +2721,7 @@
         e.preventDefault(); openPanel();
       }
     });
-    Menu.add({ order: 20, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 20, group: "navigate", icon: ICONS.search, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, reset: reset, refresh: refresh, clearPaint: clearPaint, go: go, results: function(){ return results; } };
   })();
 
@@ -2805,20 +2987,20 @@
         return;
       }
       var bd = band(st.flesch), share = Math.round(st.dialogue / st.words * 100);
-      h += '<h2 class="about-h">At a glance</h2><div class="about-grid">' +
+      h += '<h2 class="about-h sec">At a glance</h2><div class="about-grid">' +
         tile(fmtN(st.words), "Words") + tile(fmtN(st.unique), "Unique words") + tile(fmtN(st.sentences), "Sentences") +
         tile(esc(readingTime(st.words)), "Reading time at your speed", "full") +
         tile(one(st.avgSentence), "Words per sentence") + tile(one(st.avgWord), "Letters per word") +
         (share > 0 ? tile(share + "%", "Dialogue") : "") + '</div>';
-      h += '<h2 class="about-h">Reading level</h2><div class="about-level">' +
+      h += '<h2 class="about-h sec">Reading level</h2><div class="about-level">' +
         '<div class="about-score"><b>' + st.flesch + '</b><span>' + bd[1] + '</span><small>Flesch reading ease</small></div>' +
         '<div class="about-scale" aria-hidden="true"><i style="left:' + st.flesch + '%"></i></div>' +
         '<div class="about-ends" aria-hidden="true"><span>harder</span><span>easier</span></div>' +
         '<p class="about-note">' + esc(bd[2]) + '</p>' +
         '<p class="about-note muted">Flesch–Kincaid: ' + gradeText(st.grade) + '<br>Coleman–Liau, as a second opinion: ' + gradeText(st.cli) + '</p></div>';
-      h += '<h2 class="about-h">Vocabulary</h2><div class="about-grid">' +
+      h += '<h2 class="about-h sec">Vocabulary</h2><div class="about-grid">' +
         tile(ttrLabel(st.ttr), "Vocabulary richness (" + st.ttr.toFixed(2) + ")", "wide") + tile(fmtN(st.hapax), "Words used only once") + '</div>';
-      h += '<h2 class="about-h">Hardest words</h2><div class="about-words" id="aboutWords"><div class="empty-note">Preparing…</div></div>';
+      h += '<h2 class="about-h sec">Hardest words</h2><div class="about-words" id="aboutWords"><div class="empty-note">Preparing…</div></div>';
       body.innerHTML = h;
       foot.innerHTML = '<button class="chip" data-about="copy">Copy</button>' +
         '<div class="about-foot-note">Counts are from the text as shown; numbers, headings and captions are included.</div>';
@@ -2864,7 +3046,7 @@
     }
     function openPanel(){
       if (!docOpen()) return;
-      Side.open("about", "About this text", render, function(){ gen++; statusEl = null; });
+      Side.open("about", "About this text", render, function(){ gen++; statusEl = null; }, { family: "doc" });
     }
     /* a plain-text summary for the clipboard */
     function summary(st, name){
@@ -2910,7 +3092,7 @@
     /* a new document (a file, or another tab) replaces the text under the panel: its numbers
        would be the old document's, so the panel closes, which also stops a count under way */
     document.addEventListener("ll:fileopened", function(){ if (Side.is("about")) Side.close(); });
-    Menu.add({ order: 60, label: "About this text", key: "I", run: openPanel, show: docOpen });
+    Menu.add({ order: 60, group: "navigate", icon: ICONS.info, label: "About this text", key: "I", run: openPanel, show: docOpen });
     window.llAbout = { openPanel: openPanel, stats: analyse, syllables: syllables, sentences: sentencesIn, hardest: hardest, summary: summary };
     return { openPanel: openPanel, stats: analyse, syllables: syllables, hardest: hardest };
   })();
@@ -3404,7 +3586,7 @@
     }
     function play(){
       if (!units.length) return;
-      playing = true; playBtn.textContent = "❚❚"; playBtn.setAttribute("aria-label", "Pause");
+      playing = true; playIcon(playBtn, true); playBtn.setAttribute("aria-label", "Pause");
       armSleep(); mediaPlay();
       speakCurrent();
     }
@@ -3412,7 +3594,7 @@
       playing = false; between = false; gen++; sampleGen++; clearTimeout(wait);
       try { speechSynthesis.cancel(); } catch(_){}
       mediaPause();
-      playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play");
+      playIcon(playBtn, false); playBtn.setAttribute("aria-label", "Play");
     }
     function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); clearSleep(); }
     function stop(){
@@ -3433,6 +3615,7 @@
       var lab = rateEl.parentNode;
       if ((narrow && narrow.matches) || lab.scrollWidth > lab.clientWidth + 1) bar.classList.add("tts-wrap");
       document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
+      dockVar();
     }
     function startFrom(offset){
       if (!supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
@@ -3579,7 +3762,7 @@
     window.addEventListener("resize", measure);
     window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} if (silence) try { silence.pause(); } catch(_){} });
 
-    Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
+    Menu.add({ order: 40, group: "reading", icon: ICONS.speaker, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
     /* test hook: the pure pieces, and what the panel would choose */
     window.llSpeak = {
@@ -3631,6 +3814,8 @@
       return h + " h" + (m ? " " + m + " min" : "") + " left";
     }
     function show(text){
+      /* in Pages flow the page-turn bar carries the readout; the pill is for Scroll flow */
+      if (pagedActive()){ el.classList.remove("on"); return; }
       el.textContent = text; el.classList.add("on");
       clearTimeout(hideTimer);
       hideTimer = setTimeout(function(){ el.classList.remove("on"); }, 2600);
@@ -3674,7 +3859,20 @@
         if (sample.pms > 60000 && sample.pages > 3){ ppm = currentPpm(); Store.set("ll_ppm", ppm.toFixed(2)); }
       }, 1500);
     }
-    return { tick: tick, wpm: currentWpm, ppm: currentPpm, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
+    /* the time left from here, worded for the page-turn bar ("18 min left"), or "" when the
+       document is too short to say */
+    function left(){
+      if (state.mode === "doc"){
+        if (!docWords || docLen !== $("#doc").textContent.length) countWords();
+        return docWords > 80 ? fmt((1 - Math.max(0, Math.min(1, readFrac()))) * docWords / currentWpm()) : "";
+      }
+      if (state.mode === "pdf" && state.pdfDoc){
+        var pages = state.pdfDoc.numPages;
+        return pages > 3 ? fmt((pages - Library.currentPdfPage()) / currentPpm()) : "";
+      }
+      return "";
+    }
+    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
   })();
 
   /* ============================================================
@@ -3845,19 +4043,19 @@
       /* today */
       var also = [plural(Math.round(t.words), "word", "words")];
       if (t.pages >= 1) also.push(plural(Math.round(t.pages), "page", "pages"));
-      h += '<section class="st-sec"><div class="label">Today</div><div class="st-today">' +
+      h += '<section class="st-sec"><div class="label sec">Today</div><div class="st-today">' +
         '<div class="st-ring" style="--p:' + Math.min(100, Math.round(t.ms / goalMs * 100)) + '%" aria-hidden="true"></div>' +
         '<div><div class="st-big">' + mins(t.ms) + '<span> of ' + data.goal + ' min</span></div>' +
         '<div class="st-sub">' + (done ? "Goal reached" : plural(left, "minute", "minutes") + " to go") + ' · ' + also.join(" · ") + '</div></div></div></section>';
       /* streak */
-      h += '<section class="st-sec"><div class="label">Streak</div>' + dots(14) +
+      h += '<section class="st-sec"><div class="label sec">Streak</div>' + dots(14) +
         '<div class="st-line">' + (s ? s + "-day streak" : "No streak yet") + (data.best.streak ? ' · best ' + plural(data.best.streak, "day", "days") : '') + '</div>' +
         (done ? '' : '<div class="st-hint">Read ' + plural(left, "more minute", "more minutes") + ' today to ' + (s ? "keep it" : "start one") + '.</div>') + '</section>';
       /* the last four weeks, a bar per day */
       var max = data.goal, keys = [];
       for (var i = 27; i >= 0; i--){ var kk = addDays(k, -i); keys.push(kk); if (data.days[kk]) max = Math.max(max, data.days[kk].ms / 60000); }
       var ws = weekStart(k);
-      h += '<section class="st-sec"><div class="label">Last 4 weeks</div><div class="st-chart">' +
+      h += '<section class="st-sec"><div class="label sec">Last 4 weeks</div><div class="st-chart">' +
         '<div class="st-goal" style="bottom:' + (data.goal / max * 100).toFixed(1) + '%"></div>' +
         keys.map(function(key){
           var m = data.days[key] ? data.days[key].ms / 60000 : 0, pct = m > 0 ? Math.max(3, m / max * 100) : 0;
@@ -3868,13 +4066,13 @@
       var all = { ms: 0, words: 0, pages: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
       dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; });
       var finished = ids.filter(function(id){ return data.books[id].finished; }).length, first = dayKeys.length ? dateOf(dayKeys[0]) : null;
-      h += '<section class="st-sec"><div class="label">All time</div><dl class="st-grid">' +
+      h += '<section class="st-sec"><div class="label sec">All time</div><dl class="st-grid">' +
         row("Time read", dur(all.ms)) + row("Words", count(all.words)) + row("Pages", count(all.pages)) +
         row("Documents opened", count(ids.length)) + row("Books finished", count(finished)) +
         row("Average speed", Math.round(Progress.wpm()) + " words per minute") +
         row("First day recorded", first ? first.getDate() + " " + MO[first.getMonth()] + " " + first.getFullYear() : "—") + '</dl></section>';
       /* goal */
-      h += '<section class="st-sec"><div class="label">Daily goal</div><div class="chips st-goals" role="group" aria-label="Daily goal in minutes">' +
+      h += '<section class="st-sec"><div class="label sec">Daily goal</div><div class="chips st-goals" role="group" aria-label="Daily goal in minutes">' +
         GOALS.map(function(g){ return '<button type="button" class="chip' + (g === data.goal ? ' on' : '') + '" data-goal="' + g + '" aria-pressed="' + (g === data.goal) + '" aria-label="' + plural(g, "minute", "minutes") + ' a day">' + g + '</button>'; }).join("") +
         '</div><div class="hint">Minutes of reading a day. A day counts toward the streak once the goal is met.</div></section>';
       body.innerHTML = h;
@@ -3920,7 +4118,7 @@
       var b = e.target.closest("button[data-st]"); if (!b) return;
       if (b.dataset.st === "export") exportJson(); else reset();
     });
-    Menu.add({ order: 61, label: "Reading stats", key: "G", run: openPanel });
+    Menu.add({ order: 61, group: "app", icon: ICONS.chart, label: "Reading stats", key: "G", run: openPanel });
 
     function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); return o; }
     /* for tests and other scripts */
@@ -3954,7 +4152,7 @@
     grip.addEventListener("mousedown", function(e){ dragging = true; e.preventDefault(); });
     document.addEventListener("mouseup", function(){ dragging = false; });
     window.addEventListener("resize", place);
-    Menu.add({ order: 50, label: function(){ return on ? "Hide reading ruler" : "Reading ruler"; }, key: "L", run: toggle, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 50, group: "reading", icon: ICONS.ruler, label: function(){ return on ? "Hide reading ruler" : "Reading ruler"; }, key: "L", run: toggle, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { toggle: toggle, set: set, isOn: function(){ return on; }, place: place };
   })();
 
@@ -4033,7 +4231,7 @@
     }
     $("#docView").addEventListener("click", middleTap);
     $("#pdf").addEventListener("click", middleTap);
-    Menu.add({ order: 52, label: function(){ return on ? "Leave zen mode" : "Zen mode"; }, key: "Z", run: toggle, show: docOpen });
+    Menu.add({ order: 52, group: "reading", icon: ICONS.zen, label: function(){ return on ? "Leave zen mode" : "Zen mode"; }, key: "Z", run: toggle, show: docOpen });
     /* for tests and other scripts */
     window.llZen = { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
     return { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
@@ -4106,7 +4304,7 @@
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "p" || e.key === "P") && state.mode === "pdf"){ e.preventDefault(); printPdf(); }
     });
-    Menu.add({ order: 70, label: "Print…", run: print, show: canPrint });
+    Menu.add({ order: 70, group: "tools", icon: ICONS.print, label: "Print…", run: print, show: canPrint });
     /* for tests and other scripts */
     window.llPrint = { print: print, canPrint: canPrint };
     return { print: print, canPrint: canPrint };
@@ -4156,12 +4354,12 @@
     }
     function start(){
       if (state.mode !== "doc" && state.mode !== "pdf") return;
-      on = true; paused = false; bar.classList.add("on"); label(); playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause");
+      on = true; paused = false; bar.classList.add("on"); document.body.classList.add("auto-on"); label(); playIcon(playBtn, true); playBtn.setAttribute("aria-label", "Pause");
       run();
     }
-    function stop(){ on = false; paused = false; cancelAnimationFrame(raf); clearTimeout(pageTimer); bar.classList.remove("on"); }
-    function pause(){ paused = true; cancelAnimationFrame(raf); clearTimeout(pageTimer); playBtn.textContent = "\u25B6"; playBtn.setAttribute("aria-label", "Resume"); }
-    function resume(){ paused = false; playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause"); run(); }
+    function stop(){ on = false; paused = false; cancelAnimationFrame(raf); clearTimeout(pageTimer); bar.classList.remove("on"); document.body.classList.remove("auto-on"); }
+    function pause(){ paused = true; cancelAnimationFrame(raf); clearTimeout(pageTimer); playIcon(playBtn, false); playBtn.setAttribute("aria-label", "Resume"); }
+    function resume(){ paused = false; playIcon(playBtn, true); playBtn.setAttribute("aria-label", "Pause"); run(); }
     playBtn.addEventListener("click", function(){ if (paused) resume(); else pause(); });
     $("#autoStop").addEventListener("click", stop);
     $("#autoSlower").addEventListener("click", function(){ mult = Math.max(0.3, +(mult - 0.1).toFixed(1)); label(); Store.set("ll_autoscroll", String(mult)); if (on && !paused) run(); });
@@ -4170,12 +4368,15 @@
     window.addEventListener("wheel", function(){ if (on && !paused) pause(); }, { passive: true });
     document.addEventListener("touchstart", function(e){ if (on && !paused && !e.target.closest("#autoBar")) pause(); }, { passive: true });
     document.addEventListener("visibilitychange", function(){ if (on && document.visibilityState === "hidden") pause(); });
-    Menu.add({ order: 51, label: function(){ return on ? "Stop auto-scroll" : "Auto-scroll"; }, key: "A", run: function(){ if (on) stop(); else start(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 51, group: "reading", icon: ICONS.auto, label: function(){ return on ? "Stop auto-scroll" : "Auto-scroll"; }, key: "A", run: function(){ if (on) stop(); else start(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { start: start, stop: stop, pause: pause, resume: resume, isOn: function(){ return on; }, isPaused: function(){ return paused; }, pxPerSec: pxPerSec, mult: function(){ return mult; } };
   })();
 
-  Menu.add({ order: 90, sep: true });
-  Menu.add({ order: 91, label: "Library", run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+  /* the app's own entries: opening a file (the bar's Open button goes away while reading), the
+     library, and the settings sheet (the ⋯ menu and the s key open it) */
+  Menu.add({ order: 1, group: "app", icon: ICONS.open, label: "Open a file\u2026", key: "O", run: function(){ $("#fileInput").click(); } });
+  Menu.add({ order: 2, group: "app", icon: ICONS.books, label: "Library", run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+  Menu.add({ order: 85, group: "app", icon: ICONS.sliders, label: "Settings", key: "S", run: function(){ setSheet(true); } });
 
   /* ============================================================
      Tabs — several open documents; switching re-renders from the library copy
@@ -4608,7 +4809,7 @@
       e.preventDefault();
       hit.run();
     });
-    Menu.add({ order: 80, label: "Keyboard shortcuts", key: "?", run: openHelp, show: function(){ return window.matchMedia ? !window.matchMedia("(pointer: coarse)").matches : true; } });
+    Menu.add({ order: 80, group: "app", icon: ICONS.keyboard, label: "Keyboard shortcuts", key: "?", run: openHelp, show: function(){ return window.matchMedia ? !window.matchMedia("(pointer: coarse)").matches : true; } });
     return { openHelp: openHelp, list: function(){ return list; } };
   })();
 
