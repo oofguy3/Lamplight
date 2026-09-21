@@ -360,12 +360,14 @@ const SPEECH_STUB = `(() => {
     const s0 = await page.evaluate(() => window.__ll.state.size), sr = await rect(page, "#qSize");
     await touchDrag(page, sr.left + 8 + (sr.width - 16) * ((s0 - 14) / 14), sr.top + sr.height / 2, sr.right - 4, sr.top + sr.height / 2 + 10);
     R.check("a sideways drag on the Size slider still changes the size", (await page.evaluate(() => window.__ll.state.size)) > s0 && (await popOpen(page)), String(await page.evaluate(() => window.__ll.state.size)));
-    await page.tap("#popScrim"); await page.waitForTimeout(400);
+    /* near the top: the popover is a bottom sheet and may stand up to 70vh tall, so the middle
+       of the scrim is behind it */
+    await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(400);
     R.check("the scrim closes it", !(await popOpen(page)) && !(await page.$eval("#popScrim", (s) => s.classList.contains("on"))));
     await page.tap("#lamp"); await page.waitForTimeout(400);
     const t = await rect(page, "#pop");
     R.check("the theme popover is a bottom sheet too", (await page.evaluate(() => window.llPop.is("theme"))) && Math.abs(t.bottom - 844) <= 1 && t.height <= 844 * 0.7 + 1, JSON.stringify(t));
-    await page.tap("#popScrim"); await page.waitForTimeout(300);
+    await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(300);
     /* the side panel's scrim holds the page too */
     await page.tap("#tocBtn"); await page.waitForTimeout(400);
     await touchDrag(page, 195, 60, 195, 300);

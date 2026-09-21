@@ -117,51 +117,54 @@
   function fontFile(file, weight, style){ return { url: "./fonts/" + file + ".woff2", weight: weight, style: style || "normal" }; }
   /* the type catalogue, in menu order. Families with files are bundled and fetched the first
      time they are chosen or previewed (see Fonts), so this table costs nothing at load; system
-     entries have no files. The old ids (serif, sans, mono, hyper) keep their stacks. */
+     entries have no files. The old ids (serif, sans, mono, hyper) keep their stacks.
+     `range` is the family's weight range: the span of a variable file, or the two weights a pair
+     of static files (or a system stack, which the browser synthesises) can offer. A family whose
+     range is exactly 400–700 has only those two weights, and the Weight slider says so. */
   var FONTS = {
     /* easy reading */
-    dyslexic:    { name: "OpenDyslexic", group: "easy", stack: "'OpenDyslexic', " + STACKS.sans, note: "weighted letter bottoms and wide spacing help letters stay put",
+    dyslexic:    { name: "OpenDyslexic", range: [400, 700], group: "easy", stack: "'OpenDyslexic', " + STACKS.sans, note: "weighted letter bottoms and wide spacing help letters stay put",
                    files: [fontFile("opendyslexic-latin-400-normal", "400"), fontFile("opendyslexic-latin-700-normal", "700"), fontFile("opendyslexic-latin-400-italic", "400", "italic"), fontFile("opendyslexic-latin-700-italic", "700", "italic")] },
-    lexend:      { name: "Lexend", group: "easy", stack: "'Lexend', " + STACKS.sans, note: "wide, even shapes shown to raise reading speed",
+    lexend:      { name: "Lexend", range: [100, 900], group: "easy", stack: "'Lexend', " + STACKS.sans, note: "wide, even shapes shown to raise reading speed",
                    files: [fontFile("lexend-latin-wght-normal", "100 900")] },
-    hyper:       { name: "Atkinson Hyperlegible", group: "easy", stack: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", note: "designed for low vision readers" },   /* its @font-face rules are in app.css */
-    andika:      { name: "Andika", group: "easy", stack: "'Andika', " + STACKS.sans, note: "clear letterforms for beginning readers",
+    hyper:       { name: "Atkinson Hyperlegible", range: [400, 700], group: "easy", stack: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", note: "designed for low vision readers" },   /* its @font-face rules are in app.css */
+    andika:      { name: "Andika", range: [400, 700], group: "easy", stack: "'Andika', " + STACKS.sans, note: "clear letterforms for beginning readers",
                    files: [fontFile("andika-latin-400-normal", "400"), fontFile("andika-latin-700-normal", "700"), fontFile("andika-latin-400-italic", "400", "italic")] },
     /* serif */
-    serif:       { name: "Georgia", group: "serif", stack: STACKS.serif, note: "the classic screen serif, on nearly every device" },
-    palatino:    { name: "Palatino", group: "serif", stack: "'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', serif", note: "a calligraphic book face, where the device has it" },
-    times:       { name: "Times", group: "serif", stack: "'Times New Roman', Times, 'Nimbus Roman', serif", note: "the newspaper serif everyone knows" },
-    literata:    { name: "Literata", group: "serif", stack: "'Literata', " + STACKS.serif, note: "made for e-reading",
+    serif:       { name: "Georgia", range: [400, 700], group: "serif", stack: STACKS.serif, note: "the classic screen serif, on nearly every device" },
+    palatino:    { name: "Palatino", range: [400, 700], group: "serif", stack: "'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', serif", note: "a calligraphic book face, where the device has it" },
+    times:       { name: "Times", range: [400, 700], group: "serif", stack: "'Times New Roman', Times, 'Nimbus Roman', serif", note: "the newspaper serif everyone knows" },
+    literata:    { name: "Literata", range: [200, 900], group: "serif", stack: "'Literata', " + STACKS.serif, note: "made for e-reading",
                    files: [fontFile("literata-latin-wght-normal", "200 900"), fontFile("literata-latin-wght-italic", "200 900", "italic")] },
-    sourceserif: { name: "Source Serif", family: "Source Serif 4", group: "serif", stack: "'Source Serif 4', " + STACKS.serif, note: "a sturdy, open text serif",
+    sourceserif: { name: "Source Serif", family: "Source Serif 4", range: [200, 900], group: "serif", stack: "'Source Serif 4', " + STACKS.serif, note: "a sturdy, open text serif",
                    files: [fontFile("source-serif-4-latin-wght-normal", "200 900"), fontFile("source-serif-4-latin-wght-italic", "200 900", "italic")] },
-    lora:        { name: "Lora", group: "serif", stack: "'Lora', " + STACKS.serif, note: "brushed curves with a modern feel",
+    lora:        { name: "Lora", range: [400, 700], group: "serif", stack: "'Lora', " + STACKS.serif, note: "brushed curves with a modern feel",
                    files: [fontFile("lora-latin-wght-normal", "400 700"), fontFile("lora-latin-wght-italic", "400 700", "italic")] },
-    merriweather:{ name: "Merriweather", group: "serif", stack: "'Merriweather', " + STACKS.serif, note: "large x-height, pleasant on screens",
+    merriweather:{ name: "Merriweather", range: [300, 900], group: "serif", stack: "'Merriweather', " + STACKS.serif, note: "large x-height, pleasant on screens",
                    files: [fontFile("merriweather-latin-wght-normal", "300 900"), fontFile("merriweather-latin-wght-italic", "300 900", "italic")] },
-    garamond:    { name: "EB Garamond", group: "serif", stack: "'EB Garamond', " + STACKS.serif, note: "a faithful old-style Garamond",
+    garamond:    { name: "EB Garamond", range: [400, 800], group: "serif", stack: "'EB Garamond', " + STACKS.serif, note: "a faithful old-style Garamond",
                    files: [fontFile("eb-garamond-latin-wght-normal", "400 800"), fontFile("eb-garamond-latin-wght-italic", "400 800", "italic")] },
-    crimson:     { name: "Crimson Pro", group: "serif", stack: "'Crimson Pro', " + STACKS.serif, note: "an old-style face in the spirit of printed books",
+    crimson:     { name: "Crimson Pro", range: [200, 900], group: "serif", stack: "'Crimson Pro', " + STACKS.serif, note: "an old-style face in the spirit of printed books",
                    files: [fontFile("crimson-pro-latin-wght-normal", "200 900"), fontFile("crimson-pro-latin-wght-italic", "200 900", "italic")] },
-    baskerville: { name: "Libre Baskerville", group: "serif", stack: "'Libre Baskerville', " + STACKS.serif, note: "a Baskerville tuned for reading on screens",
+    baskerville: { name: "Libre Baskerville", range: [400, 700], group: "serif", stack: "'Libre Baskerville', " + STACKS.serif, note: "a Baskerville tuned for reading on screens",
                    files: [fontFile("libre-baskerville-latin-400-normal", "400"), fontFile("libre-baskerville-latin-700-normal", "700"), fontFile("libre-baskerville-latin-400-italic", "400", "italic")] },
-    bitter:      { name: "Bitter", group: "serif", stack: "'Bitter', " + STACKS.serif, note: "a slab serif, solid at any size",
+    bitter:      { name: "Bitter", range: [100, 900], group: "serif", stack: "'Bitter', " + STACKS.serif, note: "a slab serif, solid at any size",
                    files: [fontFile("bitter-latin-wght-normal", "100 900")] },
     /* sans */
-    sans:        { name: "System sans", group: "sans", stack: STACKS.sans, note: "whatever your device uses for its own text" },
-    helvetica:   { name: "Helvetica / Arial", group: "sans", stack: "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif", note: "neutral and familiar" },
-    verdana:     { name: "Verdana", group: "sans", stack: "Verdana, 'DejaVu Sans', Geneva, sans-serif", note: "wide and generous, made for small screens" },
-    inter:       { name: "Inter", group: "sans", stack: "'Inter', " + STACKS.sans, note: "a clean interface sans with tall letters",
+    sans:        { name: "System sans", range: [400, 700], group: "sans", stack: STACKS.sans, note: "whatever your device uses for its own text" },
+    helvetica:   { name: "Helvetica / Arial", range: [400, 700], group: "sans", stack: "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif", note: "neutral and familiar" },
+    verdana:     { name: "Verdana", range: [400, 700], group: "sans", stack: "Verdana, 'DejaVu Sans', Geneva, sans-serif", note: "wide and generous, made for small screens" },
+    inter:       { name: "Inter", range: [100, 900], group: "sans", stack: "'Inter', " + STACKS.sans, note: "a clean interface sans with tall letters",
                    files: [fontFile("inter-latin-wght-normal", "100 900")] },
-    plex:        { name: "IBM Plex Sans", group: "sans", stack: "'IBM Plex Sans', " + STACKS.sans, note: "a warm, even sans with a slight edge",
+    plex:        { name: "IBM Plex Sans", range: [100, 700], group: "sans", stack: "'IBM Plex Sans', " + STACKS.sans, note: "a warm, even sans with a slight edge",
                    files: [fontFile("ibm-plex-sans-latin-wght-normal", "100 700"), fontFile("ibm-plex-sans-latin-wght-italic", "100 700", "italic")] },
-    nunito:      { name: "Nunito", group: "sans", stack: "'Nunito', " + STACKS.sans, note: "rounded and soft on the eye",
+    nunito:      { name: "Nunito", range: [200, 1000], group: "sans", stack: "'Nunito', " + STACKS.sans, note: "rounded and soft on the eye",
                    files: [fontFile("nunito-latin-wght-normal", "200 1000")] },
     /* mono */
-    mono:        { name: "System mono", group: "mono", stack: STACKS.mono, note: "fixed width, for code and plain text" },
-    jetbrains:   { name: "JetBrains Mono", group: "mono", stack: "'JetBrains Mono', " + STACKS.mono, note: "a tall, open monospace made for long reads",
+    mono:        { name: "System mono", range: [400, 700], group: "mono", stack: STACKS.mono, note: "fixed width, for code and plain text" },
+    jetbrains:   { name: "JetBrains Mono", range: [100, 800], group: "mono", stack: "'JetBrains Mono', " + STACKS.mono, note: "a tall, open monospace made for long reads",
                    files: [fontFile("jetbrains-mono-latin-wght-normal", "100 800")] },
-    plexmono:    { name: "IBM Plex Mono", group: "mono", stack: "'IBM Plex Mono', " + STACKS.mono, note: "a typewriter-flavoured monospace",
+    plexmono:    { name: "IBM Plex Mono", range: [400, 700], group: "mono", stack: "'IBM Plex Mono', " + STACKS.mono, note: "a typewriter-flavoured monospace",
                    files: [fontFile("ibm-plex-mono-latin-400-normal", "400"), fontFile("ibm-plex-mono-latin-700-normal", "700")] }
   };
   var FONT_GROUPS = [{ id: "easy", name: "Easy reading" }, { id: "serif", name: "Serif" }, { id: "sans", name: "Sans" }, { id: "mono", name: "Mono" }];
@@ -177,6 +180,9 @@
     /* saved custom themes {id, name, bg, ink, autoInk, accent, panel?, muted?}; "c:" + id selects one */
     customs:[],
     font:"serif", size:19, lh:1.75, width:720, margin:0, justify:false, hyphens:false,
+    /* weight 300–800 (clamped to the family's range), letter and word spacing in em, and the
+       gap under a paragraph in em; warmth 0–100 with its own night schedule */
+    weight:400, ls:0, ws:0, pgap:0.95, warmth:0, warmAuto:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
@@ -186,8 +192,14 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
     var loading = false;
+    /* a number inside its range, or the default when the stored value is nonsense */
+    function num(v, lo, hi, dflt){
+      v = typeof v === "number" ? v : NaN;
+      if (!isFinite(v)) return dflt;
+      return Math.max(lo, Math.min(hi, v));
+    }
     function save(){
       if (loading) return;
       var o = {};
@@ -243,6 +255,13 @@
       if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
+      /* a stored number that is missing, not finite or out of range goes back to its default */
+      state.weight = num(state.weight, 300, 800, 400);
+      state.ls = num(state.ls, 0, 0.12, 0);
+      state.ws = num(state.ws, 0, 0.4, 0);
+      state.pgap = num(state.pgap, 0.4, 2, 0.95);
+      state.warmth = Math.round(num(state.warmth, 0, 100, 0));
+      state.warmAuto = state.warmAuto === true;
       if (state.flow !== "pages") state.flow = "scroll";
       loading = false;
     }
@@ -497,6 +516,9 @@
     });
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
+    /* the evening tint blends differently on a light and a dark page, and its ceiling depends
+       on how much contrast this theme has to spare */
+    if (Warmth) Warmth.apply();
     if (Pop) Pop.sync();
     Prefs.save();
   }
@@ -566,6 +588,78 @@
     return { apply: apply, userPicked: userPicked, isNight: isNight, syncUI: syncUI };
   })();
 
+  /* ---------- warmth: a warm film over the screen for the evening ----------
+     `#warmth` is a fixed sheet of amber above everything. On a light page it multiplies (the
+     page darkens towards amber, the way a lamp shade would); on a dark page it screens at a
+     much lower strength (a dark page multiplied by amber only turns muddy). Warmth is a
+     percentage of the theme's ceiling, and that ceiling is whatever the theme can give up
+     without any of its text — ink and secondary text, on the page and on the panel — falling
+     under 4.5:1 once the film is over it. Roomy themes reach the full 35 % (12 % dark); tight
+     ones (Sepia, Rose, Ink) stop earlier. */
+  var Warmth = (function(){
+    var el = $("#warmth"), MAX_LIGHT = 0.35, MAX_DARK = 0.12, WARM = [255, 150, 50];
+    var PAIRS = [["ink", "bg"], ["ink", "panel"], ["muted", "bg"], ["muted", "panel"]];
+    var caps = {}, timer = null;
+    function hex2(v){ return Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0"); }
+    /* one colour as it looks through the film */
+    function through(color, screen, a){
+      var c = hexToRgb(color);
+      return "#" + c.map(function(v, i){
+        var s = WARM[i], b = screen ? 255 - (255 - s) * (255 - v) / 255 : s * v / 255;
+        return hex2(v + (b - v) * a);
+      }).join("");
+    }
+    function lowest(t, screen, a){
+      var lo = 99;
+      PAIRS.forEach(function(p){
+        var r = contrast(through(t[p[0]], screen, a), through(t[p[1]], screen, a));
+        if (r < lo) lo = r;
+      });
+      return lo;
+    }
+    /* the strongest film this theme can wear, in 0.5 % steps down from the ceiling */
+    function cap(t){
+      var key = t.bg + t.ink + t.muted + t.panel;
+      if (caps[key] !== undefined) return caps[key];
+      var screen = isDarkColor(t.bg), top = screen ? MAX_DARK : MAX_LIGHT, a = top;
+      while (a > 0.0001 && lowest(t, screen, a) < 4.5) a -= 0.005;
+      caps[key] = a = Math.max(0, Math.round(a * 1000) / 1000);
+      return a;
+    }
+    /* the night window: the one Auto is using, or 21:00–07:00 when Auto is off */
+    function isNight(){
+      var n = AutoTheme.isNight();
+      if (n !== null) return n;
+      var d = new Date(), now = d.getHours() * 60 + d.getMinutes();
+      return now >= 21 * 60 || now < 7 * 60;
+    }
+    /* what the film is showing right now: nothing by day when it is set to warm at night only */
+    function level(){ return state.warmAuto && !isNight() ? 0 : Math.max(0, Math.min(100, state.warmth || 0)); }
+    function opacity(){ return level() / 100 * cap(currentTheme()); }
+    function apply(){
+      var t = currentTheme();
+      document.body.classList.toggle("warm-dark", isDarkColor(t.bg));
+      el.style.opacity = String(opacity());
+      syncUI();
+    }
+    function syncUI(){
+      $("#rWarm").value = state.warmth; $("#qWarm").value = state.warmth;
+      $("#vWarm").textContent = state.warmth + " %"; $("#qWarmV").textContent = state.warmth + " %";
+      $("#cWarmAuto").checked = !!state.warmAuto; $("#qWarmAuto").checked = !!state.warmAuto;
+      $("#warmHint").textContent = !state.warmAuto ? "A warm film over the screen for evening reading. At 0 % nothing is added."
+        : isNight() ? "It\u2019s night now \u2014 the warm film is on." : "Off until the night window; it comes back on then.";
+    }
+    function set(v){ state.warmth = Math.max(0, Math.min(100, Math.round(v))); Prefs.save(); apply(); }
+    function setAuto(v){ state.warmAuto = !!v; Prefs.save(); apply(); }
+    $("#rWarm").addEventListener("input", function(e){ set(+e.target.value); });
+    $("#qWarm").addEventListener("input", function(e){ set(+e.target.value); });
+    $("#cWarmAuto").addEventListener("change", function(e){ setAuto(e.target.checked); });
+    $("#qWarmAuto").addEventListener("change", function(e){ setAuto(e.target.checked); });
+    /* the night window is checked every minute, and again whenever the page comes back */
+    timer = setInterval(function(){ if (state.warmAuto) apply(); }, 60000);
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && state.warmAuto) apply(); });
+    return { apply: apply, cap: cap, level: level, opacity: opacity, isNight: isNight, set: set, setAuto: setAuto, through: through };
+  })();
   /* ---------- keep the screen on while a document is open ---------- */
   var Wake = (function(){
     var lock = null, wanted = false;
@@ -580,11 +674,55 @@
     return { set: set, active: function(){ return !!lock; } };
   })();
 
+  /* ---------- text weight: what the chosen family can actually do ----------
+     The slider never leaves 300–800, and never leaves the family's own range either. A family
+     with just the two static weights (400 and 700) gets a two-step slider and says so. */
+  var WEIGHT_MIN = 300, WEIGHT_MAX = 800;
+  function weightRange(font){
+    var rg = (font && font.range) || [400, 700];
+    var two = rg[0] === 400 && rg[1] === 700;
+    return { min: Math.max(WEIGHT_MIN, rg[0]), max: Math.min(WEIGHT_MAX, rg[1]), two: two, step: two ? 300 : 50 };
+  }
+  /* the chosen weight as this family can render it: inside its range, and on a two-weight
+     family one of the two (600 and up reads as bold) */
+  function weightFor(font){
+    var rg = weightRange(font), w = state.weight;
+    if (typeof w !== "number" || !isFinite(w)) w = 400;
+    if (rg.two) return w >= 550 ? 700 : 400;
+    return Math.max(rg.min, Math.min(rg.max, Math.round(w / 50) * 50));
+  }
+  /* spacings are set in em, so they follow the text size; the row shows them that way */
+  function emVal(v){ return v.toFixed(2) + " em"; }
+  /* one Weight row (the sheet's and the popover's are the same control twice) */
+  function setWeightRow(row, input, val, rg){
+    input.min = rg.min; input.max = rg.max; input.step = rg.step;
+    input.value = state.weight;
+    val.textContent = String(state.weight);
+    row.classList.toggle("two-weights", rg.two);
+  }
+  /* for tests (not a public API): the typography controls and the evening tint */
+  window.llType = {
+    apply: function(){ applyType(); },
+    reset: function(){ resetType(); },
+    range: function(id){ return weightRange(FONTS[id] || FONTS.serif); },
+    weight: function(){ return state.weight; },
+    warmth: Warmth
+  };
+
   function applyType(){
     var r = document.documentElement.style, font = FONTS[state.font] || FONTS.serif;
+    var rg = weightRange(font);
+    state.weight = weightFor(font);
     r.setProperty("--fsN", String(state.size));
     r.setProperty("--lh", String(state.lh));
     r.setProperty("--w", state.width + "px");
+    r.setProperty("--fw", String(state.weight));
+    /* headings stay at 700 until the text itself is half-bold, then keep a step ahead of it */
+    r.setProperty("--fwh", String(state.weight >= 600 ? Math.min(900, state.weight + 100) : 700));
+    r.setProperty("--fwb", String(Math.min(900, Math.max(700, state.weight + 200))));
+    r.setProperty("--ls", (state.ls || 0) + "em");
+    r.setProperty("--ws", (state.ws || 0) + "em");
+    r.setProperty("--pgap", (state.pgap || 0.95) + "em");
     /* the stack goes in at once (its system fallback shows first); a bundled family is fetched
        on first use and swaps in when it lands, and the loadingdone listener re-lays-out Pages flow */
     r.setProperty("--reader-font", font.stack);
@@ -600,6 +738,11 @@
     $("#vLh").textContent   = state.lh.toFixed(2);
     $("#vW").textContent    = state.width + " px";
     $("#vM").textContent    = (state.margin || 0) + " px";
+    $("#rLs").value = state.ls || 0; $("#vLs").textContent = emVal(state.ls || 0);
+    $("#rWs").value = state.ws || 0; $("#vWs").textContent = emVal(state.ws || 0);
+    $("#rPgap").value = state.pgap || 0.95; $("#vPgap").textContent = emVal(state.pgap || 0.95);
+    setWeightRow($("#weightRow"), $("#rWeight"), $("#vWeight"), rg);
+    $("#weightNote").hidden = !rg.two;
     if (Pop) Pop.sync();
     if (state.mode === "doc" && state.flow === "pages") relayoutDocPages();
     Prefs.save();
@@ -836,6 +979,11 @@
       $("#qSizeV").textContent = pdf ? z + " %" : state.size + " px";
       $("#qLh").value = state.lh; $("#qLhV").textContent = state.lh.toFixed(2);
       $("#qW").value = state.width; $("#qWV").textContent = state.width + " px";
+      var rg = weightRange(FONTS[state.font] || FONTS.serif);
+      setWeightRow($("#qWeightRow"), $("#qWeight"), $("#qWeightV"), rg);
+      $("#qWeightNote").hidden = !rg.two;
+      $("#qLs").value = state.ls || 0; $("#qLsV").textContent = emVal(state.ls || 0);
+      $("#qWs").value = state.ws || 0; $("#qWsV").textContent = emVal(state.ws || 0);
       fontQuick.value = state.font;
       $("#qSoften").checked = !!state.soften;
       Array.prototype.forEach.call(panes.type.querySelectorAll("#qFlow .chip"), function(ch){
@@ -850,6 +998,9 @@
     });
     $("#qLh").addEventListener("input", function(e){ state.lh = +e.target.value; applyType(); });
     $("#qW").addEventListener("input", function(e){ state.width = +e.target.value; applyType(); });
+    $("#qWeight").addEventListener("input", function(e){ state.weight = +e.target.value; applyType(); });
+    $("#qLs").addEventListener("input", function(e){ state.ls = +e.target.value; applyType(); });
+    $("#qWs").addEventListener("input", function(e){ state.ws = +e.target.value; applyType(); });
     fontQuick.addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
     $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
     $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
@@ -5235,8 +5386,21 @@
   $("#rLh").addEventListener("input",  function(e){ state.lh   = +e.target.value; applyType(); });
   $("#rW").addEventListener("input",   function(e){ state.width= +e.target.value; applyType(); });
   $("#rM").addEventListener("input",   function(e){ state.margin = +e.target.value; applyType(); });
+  $("#rWeight").addEventListener("input", function(e){ state.weight = +e.target.value; applyType(); });
+  $("#rLs").addEventListener("input",  function(e){ state.ls   = +e.target.value; applyType(); });
+  $("#rWs").addEventListener("input",  function(e){ state.ws   = +e.target.value; applyType(); });
+  $("#rPgap").addEventListener("input", function(e){ state.pgap = +e.target.value; applyType(); });
   $("#cJustify").addEventListener("change", function(e){ state.justify = e.target.checked; applyType(); });
   $("#cHyphens").addEventListener("change", function(e){ state.hyphens = e.target.checked; applyType(); });
+  /* back to the typography this reader ships with — the family and the theme are left alone */
+  function resetType(){
+    state.size = 19; state.lh = 1.75; state.width = 720; state.margin = 0;
+    state.weight = 400; state.ls = 0; state.ws = 0; state.pgap = 0.95;
+    state.justify = false; state.hyphens = false;
+    applyType();
+    Marks.toast("Text settings reset");
+  }
+  $("#typeReset").addEventListener("click", resetType);
   $("#cSpread").addEventListener("change", function(e){ state.spread = e.target.checked; Prefs.save(); relayoutPaged(); });
 
   $("#rZoom").addEventListener("input", function(e){

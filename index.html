@@ -63,6 +63,15 @@
     </div>
     <div class="prow doc-row"><label for="qLh">Spacing</label><input type="range" id="qLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="qLhV">1.75</span></div>
     <div class="prow doc-row"><label for="qW">Width</label><input type="range" id="qW" min="320" max="960" step="20" value="720"><span class="val" id="qWV">720 px</span></div>
+    <!-- weight and the fine spacings are a step in: the popover stays a short glance, and the
+         sheet's Text group has the same controls in full -->
+    <details class="pop-more doc-row" id="qMore">
+      <summary>More</summary>
+      <div class="prow" id="qWeightRow"><label for="qWeight">Weight</label><input type="range" id="qWeight" min="300" max="800" step="50" value="400" aria-describedby="qWeightNote"><span class="val" id="qWeightV">400</span></div>
+      <div class="phint" id="qWeightNote" hidden>This font has two weights.</div>
+      <div class="prow"><label for="qLs">Letters</label><input type="range" id="qLs" min="0" max="0.12" step="0.01" value="0"><span class="val" id="qLsV">0.00 em</span></div>
+      <div class="prow"><label for="qWs">Words</label><input type="range" id="qWs" min="0" max="0.4" step="0.02" value="0"><span class="val" id="qWsV">0.00 em</span></div>
+    </details>
     <div class="prow doc-row"><label for="fontQuick">Font</label><select id="fontQuick" class="sel"></select></div>
     <div class="prow pdf-row"><label class="check"><input type="checkbox" id="qSoften" checked>Soften pages in dark themes</label></div>
     <div class="prow">
@@ -86,6 +95,11 @@
         <button type="button" class="chip" data-auto="time" aria-pressed="false">By time</button>
       </div>
     </div>
+    <div class="prow">
+      <svg class="ricon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <label for="qWarm">Warmth</label><input type="range" id="qWarm" min="0" max="100" step="1" value="0"><span class="val" id="qWarmV">0 %</span>
+    </div>
+    <div class="prow"><label class="check"><input type="checkbox" id="qWarmAuto">Warm at night</label></div>
     <button type="button" class="pop-link" id="themeMore">All themes and the editor…<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   </div>
 </div>
@@ -120,6 +134,13 @@
         <div class="rowline" id="autoTimes"><label for="nightFrom">Night from</label><input type="time" id="nightFrom" class="sel" value="21:00"><label for="nightTo">until</label><input type="time" id="nightTo" class="sel" value="07:00"></div>
         <div class="hint" id="autoHint"></div>
       </div>
+      <!-- the evening tint: a warm amber film over the whole screen, on its own or only at night -->
+      <div class="rowline" id="warmRow">
+        <svg class="ricon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <label for="rWarm">Warmth</label><input type="range" id="rWarm" min="0" max="100" step="1" value="0"><span class="val" id="vWarm">0 %</span>
+        <label class="check"><input type="checkbox" id="cWarmAuto">Warm at night</label>
+      </div>
+      <div class="hint" id="warmHint">A warm film over the screen for evening reading. At 0 % nothing is added.</div>
       <div id="customRow" class="card">
         <div class="cst-head">
           <div class="cst-name" id="cName">Custom</div>
@@ -178,8 +199,14 @@
       <div class="label">Text</div>
       <div class="rowline"><label for="rSize">Size</label><input type="range" id="rSize" min="14" max="28" step="1" value="19"><span class="val" id="vSize">19 px</span></div>
       <div class="rowline"><label for="rLh">Spacing</label><input type="range" id="rLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="vLh">1.75</span></div>
+      <div class="rowline"><label for="rLs">Letters</label><input type="range" id="rLs" min="0" max="0.12" step="0.01" value="0"><span class="val" id="vLs">0.00 em</span></div>
+      <div class="rowline"><label for="rWs">Words</label><input type="range" id="rWs" min="0" max="0.4" step="0.02" value="0"><span class="val" id="vWs">0.00 em</span></div>
+      <div class="rowline"><label for="rPgap">Paragraphs</label><input type="range" id="rPgap" min="0.4" max="2" step="0.1" value="0.95"><span class="val" id="vPgap">0.95 em</span></div>
       <div class="rowline"><label for="rW">Width</label><input type="range" id="rW" min="320" max="960" step="20" value="720"><span class="val" id="vW">720 px</span></div>
       <div class="rowline"><label for="rM">Margins</label><input type="range" id="rM" min="0" max="64" step="4" value="0"><span class="val" id="vM">0 px</span></div>
+      <div class="rowline" id="weightRow"><label for="rWeight">Weight</label><input type="range" id="rWeight" min="300" max="800" step="50" value="400" aria-describedby="weightNote"><span class="val" id="vWeight">400</span>
+        <span class="hint" id="weightNote" hidden>This font has two weights.</span>
+      </div>
       <div class="rowline"><label for="fontSel">Font</label>
         <select id="fontSel" class="sel"></select>
         <button class="chip" id="fontBrowse" aria-haspopup="dialog">Browse fonts…</button>
@@ -188,6 +215,7 @@
         <label class="check"><input type="checkbox" id="cJustify">Justify text</label>
         <label class="check"><input type="checkbox" id="cHyphens">Hyphenate</label>
       </div>
+      <div class="rowline"><button type="button" class="link-btn" id="typeReset">Reset text settings</button></div>
       <div id="typePreview">The lamp hums quietly as she turns the page — this is exactly how your book will look.</div>
       <div class="hint" id="textHint">Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).</div>
     </div>
@@ -286,6 +314,10 @@
   <div class="side-foot" id="sideFoot"></div>
 </div>
 <div id="markPop"></div>
+
+<!-- the evening tint: a warm film over everything, driven by the Warmth setting. Never on paper,
+     and never under forced colours (the system palette is the point there). -->
+<div id="warmth" aria-hidden="true"></div>
 
 <input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" multiple hidden>
 

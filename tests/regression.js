@@ -301,7 +301,10 @@ async function textPoint(page, word){
     R.check("no horizontal overflow on a phone", !overflow);
     await page.tap("#gear"); await page.waitForTimeout(300);
     R.check("the type popover opens as a bottom sheet on touch", await page.evaluate(() => document.getElementById("pop").classList.contains("open") && window.llPop.is("type")));
-    await page.tap("#popScrim"); await page.waitForTimeout(300);
+    /* near the top of the screen: the popover is a bottom sheet, and the middle of the scrim is
+       behind it (the sheet may stand up to 70vh tall) */
+    await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(300);
+    R.check("tapping the scrim closes the type popover", !(await page.evaluate(() => document.getElementById("pop").classList.contains("open"))));
     await page.keyboard.press("s"); await page.waitForTimeout(300);
     const sheetOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     R.check("sheet fits the phone width", (await page.$eval("#sheet", (s) => s.classList.contains("open"))) && !sheetOverflow);

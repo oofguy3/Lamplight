@@ -2,6 +2,9 @@
     --bg:#EDEDE6; --ink:#1F2323; --muted:#646B68; --panel:#F5F5EF;
     --line:#D8D9CF; --accent:#2F6D5B;
     --fsN:19; --fs:calc(var(--fsN) * 1rem / 16); --lh:1.75; --w:720px; --margin:0px;
+    /* typography set in applyType: text weight, the heading and bold weights derived from it,
+       letter and word spacing in em, and the gap under a paragraph */
+    --fw:400; --fwh:700; --fwb:700; --ls:0em; --ws:0em; --pgap:0.95em;
     --reader-font: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
     --ui-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
@@ -329,12 +332,29 @@
   #typePreview{
     border:1.5px dashed var(--line); border-radius:10px; padding:10px 14px;
     font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
+    font-weight:var(--fw); letter-spacing:var(--ls); word-spacing:var(--ws);
     max-height:110px; overflow:hidden;
   }
+  /* a 16px icon standing in front of a row's label (the sun before Warmth) */
+  .rowline > .ricon, .prow > .ricon{width:16px; height:16px; color:var(--accent); flex:none; margin-right:-4px;}
+  /* a quiet button that reads as a link (Reset text settings) */
+  .link-btn{
+    border:0; background:transparent; color:var(--accent); font-family:var(--ui-font);
+    font-size:0.8125rem; font-weight:600; padding:6px 8px; border-radius:10px; cursor:pointer;
+  }
+  .link-btn:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  /* a family with only two weights: the slider still picks between them, but it says so and
+     steps back visually. Only the control fades — the words keep their full contrast. */
+  .rowline.two-weights input[type=range], .prow.two-weights input[type=range]{opacity:.55;}
+  /* the note sits under the slider, so the value stays in the column with the others */
+  #weightNote{flex:0 0 100%; margin-left:100px;}
+  #weightNote[hidden]{display:none;}
+  .phint{font-size:0.75rem; color:var(--muted); margin:-4px 0 2px;}
   /* touch: 44px rows and 40px chips (44 inside a 3px-padded segment would make the pill 52px) */
   @media (pointer: coarse){
     .rowline{min-height:44px;}
     .check{min-height:44px;}
+    .link-btn{min-height:44px;}
     .sheet-tabs button{height:44px;}
     .sheet-tabs .sheet-x{width:44px;}
     .seg .chip, .chips .chip{min-height:40px;}
@@ -394,6 +414,12 @@
   }
   .strip::-webkit-scrollbar{display:none;}
   .strip .chip{flex:none; scroll-snap-align:start; padding:7px 12px 7px 9px; font-size:0.8125rem;}
+  /* a step in from the popover: the rows most readers set once (weight, letter and word spacing) */
+  .pop-more{border:1px solid var(--line); border-radius:10px; padding:0 10px;}
+  .pop-more summary{cursor:pointer; padding:10px 0; font-size:0.8125rem; color:var(--ink); border-radius:8px;}
+  .pop-more summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .pop-more[open] summary{border-bottom:1px solid var(--line); border-radius:0;}
+  .pop-more[open] > :last-child{margin-bottom:8px;}
   /* the footer link to the full settings */
   .pop-link{
     display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; margin-top:4px;
@@ -418,6 +444,7 @@
     #themePop .prow{flex-wrap:wrap;}
     .ctl.mini{min-width:40px; width:40px; height:40px;}
     .strip .chip{padding:9px 13px 9px 10px;}
+    .pop-more summary{padding:14px 0;}
   }
   @media (forced-colors: active){
     #pop{border-color:ButtonText;}
@@ -653,20 +680,24 @@
   body.paged.spread #docView{max-width:calc(2 * var(--w) + 48px);}
   #doc{
     font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
+    font-weight:var(--fw); letter-spacing:var(--ls); word-spacing:var(--ws);
     overflow-wrap:break-word;
   }
+  /* bold stays bolder than the text: max(700, weight + 200), capped at 900 (computed in applyType) */
+  #doc b, #doc strong{font-weight:var(--fwb);}
   #doc.justify p, #doc.justify li, #doc.justify blockquote, #doc.justify dd, #doc.justify .plain{text-align:justify;}
   #doc.hyphens{-webkit-hyphens:auto; hyphens:auto;}
   #doc.hyphens pre, #doc.hyphens code{-webkit-hyphens:none; hyphens:none;}
   body.paged #doc{height:100%; column-fill:auto;}
   body.paged #doc::after{content:""; display:block; break-before:column; height:1px;}
   body.paged #doc img, body.paged #doc pre, body.paged #doc blockquote, body.paged #doc table{break-inside:avoid;}
-  #doc h1,#doc h2,#doc h3,#doc h4{line-height:1.3; margin:1.6em 0 .55em; font-weight:700;}
+  #doc h1,#doc h2,#doc h3,#doc h4{line-height:1.3; margin:1.6em 0 .55em; font-weight:var(--fwh);}
   #doc h1{font-size:1.55em;} #doc h2{font-size:1.3em;} #doc h3{font-size:1.12em;} #doc h4{font-size:1em;}
-  #doc p{margin:0 0 .95em;}
+  #doc p{margin:0 0 var(--pgap);}
+  #doc li{margin-bottom:var(--pgap);}
   #doc a{color:var(--accent);}
   #doc img{max-width:100%; height:auto; border-radius:6px;}
-  #doc blockquote{margin:1.2em 0; padding:.2em 0 .2em 1.1em; border-left:2.5px solid var(--accent); color:var(--muted);}
+  #doc blockquote{margin:1.2em 0 var(--pgap); padding:.2em 0 .2em 1.1em; border-left:2.5px solid var(--accent); color:var(--muted);}
   #doc hr{border:none; border-top:1px solid var(--line); margin:2.2em auto; width:40%;}
   #doc pre{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; overflow-x:auto; font-size:.85em;}
   #doc code{font-family:ui-monospace, Menlo, Consolas, monospace;}
@@ -1141,6 +1172,22 @@
   #markPop.on{display:flex;}
   #markPop .dot{width:22px; height:22px; border-radius:50%; border:1px solid var(--line); padding:0; cursor:pointer;}
   #markPop .dot.accent{background:var(--accent);} #markPop .dot.sun{background:#E8C547;} #markPop .dot.leaf{background:#7FB069;} #markPop .dot.rose{background:#E07A9A;}
+
+  /* ---------- warmth (the evening tint) ---------- */
+  /* a fixed film of warm amber over the whole page — bars, panels and cards included, the way a
+     night-light sits in front of the screen. app.js sets its opacity from the Warmth setting and
+     flips the blend: light themes are multiplied (the page darkens towards amber), dark ones are
+     screened at a much lower strength (the page glows amber instead of turning muddy). The
+     strength is capped per theme so no theme's text falls under 4.5:1 — see Warmth in app.js. */
+  #warmth{
+    position:fixed; inset:0; z-index:1000; pointer-events:none;
+    background:rgb(255, 150, 50); mix-blend-mode:multiply; opacity:0;
+    transition:opacity .35s ease;
+  }
+  body.warm-dark #warmth{mix-blend-mode:screen;}
+  /* paper has no night, and under forced colours the system palette is the whole point */
+  @media print{ #warmth{display:none !important;} }
+  @media (forced-colors: active){ #warmth{display:none !important;} }
 
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}
