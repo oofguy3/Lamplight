@@ -688,6 +688,41 @@
   .st-grid dt{color:var(--muted);}
   .st-grid dd{margin:0; text-align:right; font-variant-numeric:tabular-nums;}
   .st-goals .chip{flex:1 1 auto; min-width:2.5rem; padding:7px 8px; text-align:center;}
+  /* twelve weeks of reading speed, and this week's number beside it */
+  .st-speed{display:flex; align-items:center; gap:14px;}
+  .st-spark{flex:1; min-width:0; height:1.75rem; color:var(--accent);}
+  .st-speed-n{font-family:var(--reader-font); font-size:1.375rem; line-height:1; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .st-speed-n span{font-family:var(--ui-font); font-size:0.75rem; color:var(--muted);}
+  /* a thin bar shared by the yearly goals and the per-book progress */
+  .st-pbar{display:block; height:4px; border-radius:2px; background:color-mix(in srgb, var(--line) 85%, transparent); overflow:hidden; margin:6px 0 0;}
+  .st-pbar i{display:block; height:100%; background:var(--accent);}
+  .st-year + .st-year{margin-top:14px;}
+  .st-year-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:0.8438rem;}
+  .st-year-v{color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .st-year-goal{display:flex; align-items:center; gap:6px; margin-top:8px;}
+  .st-year-goal button{
+    width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center; padding:0;
+    border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:0.9375rem; line-height:1; cursor:pointer;
+  }
+  .st-year-goal button:hover{border-color:var(--accent);}
+  .st-yg-in{
+    width:4.5rem; padding:5px 8px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink);
+    font-family:var(--ui-font); font-size:0.8125rem; font-variant-numeric:tabular-nums;
+  }
+  .st-year-hint{font-size:0.75rem; color:var(--muted);}
+  /* the books in the library, with what is left of each */
+  .st-book{padding:8px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent);}
+  .st-book:last-child{border-bottom:0; padding-bottom:0;}
+  .st-book-n{font-size:0.8438rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .st-book-m{display:flex; align-items:center; gap:10px; margin-top:4px; font-size:0.75rem; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .st-book-m .st-pbar{flex:1; max-width:7.5rem; margin:0;}
+  .st-book-f{font-size:0.7188rem; color:var(--muted); margin-top:3px; font-variant-numeric:tabular-nums;}
+  @media (pointer: coarse){ .st-year-goal button{width:36px; height:36px;} .st-yg-in{min-height:36px;} }
+  @media (forced-colors: active){
+    .st-spark{forced-color-adjust:none; color:Highlight;}
+    .st-pbar{forced-color-adjust:none; background:GrayText;} .st-pbar i{background:Highlight;}
+  }
   @media (forced-colors: active){
     .st-day, .st-bar, .st-ring{forced-color-adjust:none;}
     .st-day{border-color:CanvasText; background:Canvas; box-shadow:none;} .st-day.half{background:GrayText;} .st-day.lit{background:Highlight; border-color:Highlight;}

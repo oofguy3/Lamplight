@@ -4698,21 +4698,26 @@
     function todayKey(){ return keyOf(new Date()); }
 
     /* ---- storage: one JSON record, saved at most every 5 s and when the page goes away ---- */
-    function fresh(){ return { v: 1, goal: 10, days: {}, books: {}, best: { streak: 0, day: "" }, notified: "" }; }
+    function fresh(){ return { v: 1, goal: 10, goals: { booksPerYear: 12, pagesPerYear: 0 }, days: {}, books: {}, best: { streak: 0, day: "" }, notified: "" }; }
     function num(x){ return typeof x === "number" && isFinite(x) && x > 0 ? x : 0; }
+    function clamp(x, hi){ return Math.max(0, Math.min(hi, Math.round(num(x)))); }
     function load(){
       var o = null, out = fresh();
       try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
       if (!o || typeof o !== "object") return out;
       if (GOALS.indexOf(o.goal) >= 0) out.goal = o.goal;
+      /* yearly goals: 0 turns one off, so an explicit record replaces the suggestion whole */
+      if (o.goals && typeof o.goals === "object") out.goals = { booksPerYear: clamp(o.goals.booksPerYear, 999), pagesPerYear: clamp(o.goals.pagesPerYear, 99999) };
       Object.keys(o.days && typeof o.days === "object" ? o.days : {}).forEach(function(k){
         var d = o.days[k];
         if (!/^\d{4}-\d\d-\d\d$/.test(k) || !d || typeof d !== "object") return;
         out.days[k] = { ms: num(d.ms), words: num(d.words), pages: num(d.pages), docs: Array.isArray(d.docs) ? d.docs.filter(function(x){ return typeof x === "string"; }) : [] };
+        if (num(d.wpm)) out.days[k].wpm = Math.round(num(d.wpm));
       });
       Object.keys(o.books && typeof o.books === "object" ? o.books : {}).forEach(function(k){
         var b = o.books[k];
-        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), opened: Math.round(num(b.opened)), finished: !!b.finished };
+        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), opened: Math.round(num(b.opened)),
+                                                        finished: !!b.finished, finishedAt: Math.round(num(b.finishedAt)) };
       });
       if (o.best && typeof o.best === "object") out.best = { streak: Math.round(num(o.best.streak)), day: typeof o.best.day === "string" ? o.best.day : "" };
       if (typeof o.notified === "string") out.notified = o.notified;
@@ -4734,7 +4739,7 @@
 
     /* ---- records ---- */
     function day(key){ return data.days[key] || (data.days[key] = { ms: 0, words: 0, pages: 0, docs: [] }); }
-    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, opened: 0, finished: false }); }
+    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, opened: 0, finished: false, finishedAt: 0 }); }
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
     /* the open document belongs to today; an opening is counted once per open (the id arrives a moment after the file) */
     function noteDoc(){
@@ -4746,7 +4751,7 @@
       if (id !== docKey){ docKey = id; b.opened++; touch(); }
       return b;
     }
-    function noteFinished(b){ if (b && !b.finished && readFrac() >= 0.98){ b.finished = true; touch(); } }
+    function noteFinished(b){ if (b && !b.finished && readFrac() >= 0.98){ b.finished = true; b.finishedAt = Date.now(); touch(); } }
     /* forward reading, as Progress measures it */
     function noteWords(dw){ var b = noteDoc(); if (!b) return; day(todayKey()).words += dw; b.words += dw; lastActive = Date.now(); noteFinished(b); touch(); }
     function notePages(dp){ var b = noteDoc(); if (!b) return; day(todayKey()).pages += dp; b.pages += dp; lastActive = Date.now(); noteFinished(b); touch(); }
@@ -4783,6 +4788,19 @@
     if (window.MutationObserver) new MutationObserver(active).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
     document.addEventListener("ll:fileopened", function(){ docKey = null; active(); renderWidget(); });
     function busy(){ return Speak.isPlaying() || (Auto.isOn() && !Auto.isPaused()); }
+    /* ---- a day's reading speed, kept as it is earned: only while both the words and the time
+       are still growing, and only once the day holds enough reading to mean anything ---- */
+    var paceDay = "", paceWords = 0, paceMs = 0;
+    function notePace(){
+      var k = todayKey(), d = data.days[k];
+      if (!d) return;
+      if (paceDay !== k){ paceDay = k; paceWords = 0; paceMs = 0; }
+      if (d.ms >= 5 * 60000 && d.words > paceWords && d.ms > paceMs){
+        d.wpm = Math.round(d.words / (d.ms / 60000));
+        touch();
+      }
+      paceWords = d.words; paceMs = d.ms;
+    }
     function tick(){
       var now = Date.now();
       if (docOpen() && document.visibilityState === "visible" && (busy() || now - lastActive <= IDLE)){
@@ -4790,6 +4808,7 @@
         day(todayKey()).ms += TICK;
         if (b){ b.ms += TICK; noteFinished(b); }
         touch();
+        notePace();
         checkGoal();
       }
       renderWidget();
@@ -4823,6 +4842,72 @@
         if (d && d.ms > 0){ total += d.ms; days++; }
       }
       return days ? total / days / 60000 : 0;
+    }
+    /* ---- the speed trend: one average per week over the days that recorded a speed ---- */
+    function weekPace(start){
+      var sum = 0, n = 0;
+      for (var i = 0; i < 7; i++){
+        var d = data.days[addDays(start, i)];
+        if (d && d.wpm > 0){ sum += d.wpm; n++; }
+      }
+      return n ? sum / n : null;
+    }
+    function paceWeeks(n){
+      var ws = weekStart(todayKey()), out = [];
+      for (var i = n - 1; i >= 0; i--) out.push(weekPace(addDays(ws, -7 * i)));
+      return out;
+    }
+    function mean(a){ return a.length ? a.reduce(function(x, y){ return x + y; }, 0) / a.length : null; }
+    function live(a){ return a.filter(function(v){ return v !== null; }); }
+    /* a polyline of the weeks that have a speed; the label carries the range for a screen reader */
+    function spark(weeks){
+      var have = live(weeks);
+      if (have.length < 3) return "";        /* the same threshold the trend line uses */
+      var lo = Math.min.apply(null, have), hi = Math.max.apply(null, have), span = Math.max(1, hi - lo), pts = [];
+      weeks.forEach(function(v, i){
+        if (v === null) return;
+        var x = (i / (weeks.length - 1)) * 100, y = 26 - ((v - lo) / span) * 22;
+        pts.push(x.toFixed(1) + "," + y.toFixed(1));
+      });
+      var label = "Reading speed over " + weeks.length + " weeks: " + Math.round(lo) + " to " + Math.round(hi) + " words per minute";
+      return '<svg class="st-spark" viewBox="0 0 100 28" preserveAspectRatio="none" role="img" aria-label="' + label + '">' +
+        '<polyline points="' + pts.join(" ") + '" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+        'stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
+    }
+    /* one sentence about where the speed is going */
+    function paceLine(weeks){
+      var have = live(weeks);
+      if (have.length < 3) return "Not enough reading yet to see a trend";
+      var latest = Math.round(have[have.length - 1]);
+      var last = mean(live(weeks.slice(-4))), before = mean(live(weeks.slice(-8, -4)));
+      if (last === null || before === null || before <= 0) return "Steady at about " + latest + " words per minute";
+      var pct = Math.round((last - before) / before * 100);
+      if (Math.abs(pct) < 5) return "Steady at about " + latest + " words per minute";
+      return "Speed is " + (pct > 0 ? "up " : "down ") + Math.abs(pct) + " % on last month";
+    }
+
+    /* ---- this year ---- */
+    /* older records carry no finishing date; the position's last update says when it was read */
+    function finishedThisYear(){
+      var y = new Date().getFullYear(), n = 0;
+      Object.keys(data.books).forEach(function(id){
+        var b = data.books[id];
+        if (!b.finished) return;
+        var t = b.finishedAt;
+        if (!t){ var p = Library.positionFor(id); t = (p && p.updated) || 0; }
+        if (t && new Date(t).getFullYear() === y) n++;
+      });
+      return n;
+    }
+    /* pages read: a PDF's are counted, a text document's are estimated at 275 words to the page */
+    function pagesThisYear(){
+      var y = String(new Date().getFullYear()), pages = 0;
+      Object.keys(data.days).forEach(function(k){
+        if (k.slice(0, 4) !== y) return;
+        var d = data.days[k];
+        pages += d.pages + d.words / 275;
+      });
+      return pages;
     }
     /* a library record and its saved position -> "about 2 h 10 min left · ≈ 4 more evenings" */
     function forecast(rec, pos){
@@ -4864,6 +4949,7 @@
         if (s) parts.push(s + "-day streak");
         parts.push(mins(t ? t.ms : 0) + " min today");
         parts.push("goal " + data.goal + " min");
+        if (data.goals.booksPerYear) parts.push(finishedThisYear() + " of " + data.goals.booksPerYear + " books this year");
         html = '<button type="button" class="st-widget" title="Reading stats"><span>' + parts.join(" · ") + '</span>' + dots(7, true) + '</button>';
       }
       widget.classList.toggle("show", on);
@@ -4872,7 +4958,30 @@
     if (widget) widget.addEventListener("click", function(e){ if (e.target.closest(".st-widget")) openPanel(); });
 
     /* ---- panel ---- */
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     function row(k, v){ return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
+    /* one yearly goal: what has been done, a bar when a goal is set, and the goal itself */
+    var YG = { books: { field: "booksPerYear", step: 1, max: 999, one: "book", many: "books" },
+               pages: { field: "pagesPerYear", step: 50, max: 99999, one: "page", many: "pages" } };
+    function yearRow(label, value, key){
+      var y = YG[key], goal = data.goals[y.field], pct = goal ? Math.min(100, Math.round(value / goal * 100)) : 0;
+      return '<div class="st-year"><div class="st-year-head"><span>' + label + '</span><span class="st-year-v">' +
+        (goal ? count(value) + " of " + count(goal) : plural(Math.round(value), y.one, y.many)) + '</span></div>' +
+        (goal ? '<div class="st-pbar" role="img" aria-label="' + label + ': ' + count(value) + ' of ' + count(goal) + '"><i style="width:' + pct + '%"></i></div>' : '') +
+        '<div class="st-year-goal"><button type="button" data-yg="' + key + '" data-d="-1" aria-label="Lower the yearly ' + y.one + ' goal">−</button>' +
+        '<input type="number" class="st-yg-in" id="yg-' + key + '" min="0" max="' + y.max + '" step="' + y.step + '" value="' + goal +
+        '" aria-label="' + y.many.charAt(0).toUpperCase() + y.many.slice(1) + ' a year — zero for no goal">' +
+        '<button type="button" data-yg="' + key + '" data-d="1" aria-label="Raise the yearly ' + y.one + ' goal">+</button>' +
+        '<span class="st-year-hint">' + (goal ? "a year" : "no goal") + '</span></div></div>';
+    }
+    function setYearGoal(key, v){
+      var y = YG[key];
+      if (!y) return;
+      v = Math.max(0, Math.min(y.max, Math.round(v) || 0));
+      if (data.goals[y.field] === v) return;
+      data.goals[y.field] = v; dirty = true;
+      save(); renderWidget();
+    }
     function renderPanel(body, foot){
       var k = todayKey(), t = data.days[k] || { ms: 0, words: 0, pages: 0 }, goalMs = data.goal * 60000, done = t.ms >= goalMs;
       var s = streak(), left = Math.max(0, Math.ceil((goalMs - t.ms) / 60000)), h = "";
@@ -4898,6 +5007,30 @@
           return '<div class="st-bar' + (met(key) ? ' met' : '') + '" style="height:' + pct.toFixed(1) + '%" role="img" aria-label="' + dayTitle(key) + '"></div>';
         }).join("") + '</div>' +
         '<div class="st-line">This week ' + dur(sum(ws, 7)) + ' · last week ' + dur(sum(addDays(ws, -7), 7)) + '</div></section>';
+      /* reading speed: twelve weeks of it, and a word about where it is going */
+      var weeks = paceWeeks(12), latest = live(weeks);
+      h += '<section class="st-sec"><div class="label sec">Reading speed</div>' +
+        (latest.length ? '<div class="st-speed">' + spark(weeks) +
+          '<div class="st-speed-n">' + Math.round(latest[latest.length - 1]) + '<span> wpm</span></div></div>' : '') +
+        '<div class="st-line">' + paceLine(weeks) + '</div></section>';
+      /* this year, against the goals the reader set */
+      var yb = finishedThisYear(), yp = Math.round(pagesThisYear());
+      h += '<section class="st-sec"><div class="label sec">This year</div>' +
+        yearRow("Books finished", yb, "books") + yearRow("Pages read", yp, "pages") + '</section>';
+      /* the books in the library, most recently opened first, with what is left of each */
+      var recent = [];
+      try { recent = Library.books().slice(0, 5); } catch(_){}
+      if (recent.length){
+        h += '<section class="st-sec"><div class="label sec">Books</div>';
+        recent.forEach(function(r){
+          var rb = data.books[r.id], pos = Library.positionFor(r.id), pct = pos ? pos.pct : 0, fc = forecast(r, pos);
+          h += '<div class="st-book"><div class="st-book-n">' + esc(r.title || r.name) + '</div>' +
+            '<div class="st-book-m"><span class="st-pbar" aria-hidden="true"><i style="width:' + pct + '%"></i></span>' +
+            '<span>' + pct + '% · ' + dur(rb ? rb.ms : 0) + ' read</span></div>' +
+            (fc ? '<div class="st-book-f">' + esc(fc) + '</div>' : '') + '</div>';
+        });
+        h += '</section>';
+      }
       /* all time */
       var all = { ms: 0, words: 0, pages: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
       dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; });
@@ -4918,7 +5051,13 @@
     function refreshPanel(){
       if (!Side.is("stats")) return;
       var body = Side.body, top = body.scrollTop, a = document.activeElement, sel = null;
-      if (a && (body.contains(a) || Side.foot.contains(a))) sel = a.dataset.goal ? '[data-goal="' + a.dataset.goal + '"]' : a.dataset.st ? '[data-st="' + a.dataset.st + '"]' : null;
+      /* a goal being typed is not pulled out from under the reader by the 15-second tick */
+      if (a && a.classList && a.classList.contains("st-yg-in") && body.contains(a)) return;
+      if (a && (body.contains(a) || Side.foot.contains(a))){
+        sel = a.dataset.goal ? '[data-goal="' + a.dataset.goal + '"]'
+            : a.dataset.st ? '[data-st="' + a.dataset.st + '"]'
+            : a.dataset.yg ? '[data-yg="' + a.dataset.yg + '"][data-d="' + a.dataset.d + '"]' : null;
+      }
       Side.refresh("stats", renderPanel);
       body.scrollTop = top;
       var again = sel && (body.querySelector(sel) || Side.foot.querySelector(sel));
@@ -4949,7 +5088,15 @@
     }
     Side.body.addEventListener("click", function(e){
       if (!Side.is("stats")) return;
-      var b = e.target.closest("button[data-goal]"); if (b) setGoal(+b.dataset.goal);
+      var b = e.target.closest("button[data-goal]");
+      if (b){ setGoal(+b.dataset.goal); return; }
+      var y = e.target.closest("button[data-yg]");
+      if (y){ setYearGoal(y.dataset.yg, data.goals[YG[y.dataset.yg].field] + (+y.dataset.d) * YG[y.dataset.yg].step); refreshPanel(); }
+    });
+    Side.body.addEventListener("change", function(e){
+      if (!Side.is("stats") || !e.target.classList || !e.target.classList.contains("st-yg-in")) return;
+      setYearGoal(e.target.id === "yg-books" ? "books" : "pages", +e.target.value);
+      refreshPanel();
     });
     Side.foot.addEventListener("click", function(e){
       if (!Side.is("stats")) return;
@@ -4961,7 +5108,7 @@
     function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); return o; }
     /* for tests and other scripts */
     window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save,
-                       forecast: forecast, reset: reset };
+                       forecast: forecast, reset: reset, setYearGoal: setYearGoal };
     return { noteWords: noteWords, notePages: notePages, onMode: onMode, openPanel: openPanel, snapshot: snapshot,
              forecast: forecast, reset: reset };
   })();
