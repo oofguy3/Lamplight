@@ -1,4 +1,4 @@
-/* Translate: the settings group and its hint, the word / sentence / selection slots, the whole
+/* Translate: the settings group and its hint, the card's Translate tab for a word / sentence / selection, the whole
    document under each block in shadow roots (offsets, highlights, search and read-aloud units
    untouched), the cache (reopen, offline), the engine fallbacks (MyMemory, an Anthropic key),
    the download flow, right-to-left output, PDFs. The browser's Translator / LanguageDetector
@@ -65,6 +65,11 @@ async function tapWord(page, word){
   await page.waitForTimeout(150);
   await page.mouse.click(pt.x, pt.y);
   await page.waitForFunction((w) => document.getElementById("dictCard").classList.contains("open") && new RegExp("^" + w, "i").test((document.querySelector("#dictCard .term") || {}).textContent || ""), word, { timeout: 30000 });
+}
+/* the translation lives in the card's Translate tab */
+async function openTranslateTab(page){
+  await page.waitForSelector('#dictCard [role=tab][data-tab="translate"]', { timeout: 15000 });
+  await page.click('#dictCard [role=tab][data-tab="translate"]');
 }
 async function menu(page, re){
   await page.click("#more");
@@ -149,34 +154,41 @@ async function waitPrecache(page){
     R.check("choice is remembered", (await page.evaluate(() => localStorage.getItem("ll_tr_to"))) === "es");
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
-    /* 2. the word card translates by itself; the explain card's slot; the pill's Translate */
+    /* 2. the word card's Translate tab fills by itself (a dot until it is opened); the sentence card's; the pill's Explain leads there */
     await tapWord(page, "quietly");
+    await page.waitForFunction(() => document.querySelector('#dictCard .tr-slot[data-kind="word"] .tr-out'), null, { timeout: 15000 });
+    const dot = await page.evaluate(() => !!document.querySelector('#dictCard [role=tab][data-tab="translate"] .dot'));
+    await openTranslateTab(page);
     await page.waitForSelector('#dictCard .tr-slot[data-kind="word"] .tr-out', { timeout: 15000 });
     const word = await page.evaluate(() => ({ out: document.querySelector("#dictCard .tr-slot .tr-out").textContent, eng: document.querySelector("#dictCard .tr-slot .tr-eng").textContent,
-      lang: document.querySelector("#dictCard .tr-slot .tr-out").getAttribute("lang"), copy: !!document.querySelector("#dictCard .tr-slot .tr-copy") }));
+      lang: document.querySelector("#dictCard .tr-slot .tr-out").getAttribute("lang"), copy: !!document.querySelector("#dictMarkActs [data-m=copy]"),
+      dotGone: !document.querySelector('#dictCard [role=tab][data-tab="translate"] .dot') }));
     R.check("word translated without a press", word.out === "[es] quietly", word.out);
-    R.check("engine line says on-device; Copy offered", /on-device/.test(word.eng) && word.copy && word.lang === "es", JSON.stringify(word));
+    R.check("engine line says on-device; the tab had a dot until opened; Copy in the footer", /on-device/.test(word.eng) && word.copy && word.lang === "es" && dot && word.dotGone, JSON.stringify(Object.assign({ dot }, word)));
     await shot(page, "translate-word-desktop-day");
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
     const sp = await textPoint(page, "Nobody could have");
     await page.mouse.click(sp.x, sp.y, { button: "right" });
+    await openTranslateTab(page);
     await page.waitForSelector('#dictCard .tr-slot[data-kind="sentence"] .tr-out', { timeout: 20000 });
     const sent = await page.$eval('#dictCard .tr-slot[data-kind="sentence"] .tr-out', (e) => e.textContent);
-    R.check("explain card shows the sentence translation", /^\[es\] Nobody could have predicted/.test(sent), sent.slice(0, 60));
+    R.check("sentence card's Translate tab shows the translation", /^\[es\] Nobody could have predicted/.test(sent), sent.slice(0, 60));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
     const pt = await textPoint(page, "extraordinary");
     await page.mouse.move(pt.x, pt.y); await page.mouse.down(); await page.mouse.move(pt.right + 80, pt.y, { steps: 6 }); await page.mouse.up();
     await page.waitForFunction(() => document.getElementById("dictPill").classList.contains("on"), null, { timeout: 5000 }).catch(() => null);
     const pillBtns = await page.$$eval("#dictPill button", (bs) => bs.map((x) => x.dataset.act + ":" + x.textContent));
-    R.check("pill has Translate as its last button", pillBtns[pillBtns.length - 1] === "translate:Translate", pillBtns.join(","));
-    await page.click("#dictPill [data-act=translate]");
-    await page.waitForSelector('#dictCard .tr-slot[data-kind="show"] .tr-out', { timeout: 15000 });
+    R.check("pill has Explain and Highlight only", pillBtns.join(",") === "lookup:Explain,mark:Highlight", pillBtns.join(","));
+    await page.click("#dictPill [data-act=lookup]");
+    await openTranslateTab(page);
+    await page.waitForSelector('#dictCard .tr-slot[data-kind="sentence"] .tr-out', { timeout: 15000 });
     const show = await page.evaluate(() => ({ title: document.querySelector("#dictCard .term").textContent, quote: document.querySelector("#dictCard .quote").textContent,
-      out: document.querySelector("#dictCard .tr-out").textContent, hl: !!document.querySelector("#dictCard .tr-hl"), copy: !!document.querySelector("#dictCard .tr-copy") }));
-    R.check("Translation card: title, original, translation, Copy and Highlight", show.title === "Translation" && /extraordinary/.test(show.quote) && show.out === "[es] " + show.quote && show.hl && show.copy, JSON.stringify(show));
-    await page.click("#dictCard .tr-hl"); await page.waitForTimeout(300);
+      out: document.querySelector("#dictCard .tr-out").textContent, hl: !!document.querySelector("#dictMarkActs [data-m=hl]"), copy: !!document.querySelector("#dictMarkActs [data-m=copy]"),
+      tab: document.querySelector("#dictCard [role=tab][aria-selected=true]").dataset.tab }));
+    R.check("selection's Translate tab: title, original, translation, Copy and Highlight in the footer", show.title === "This sentence" && show.tab === "translate" && /extraordinary/.test(show.quote) && show.out === "[es] " + show.quote && show.hl && show.copy, JSON.stringify(show));
+    await page.click("#dictMarkActs [data-m=hl]"); await page.waitForTimeout(300);
     const marks0 = await page.evaluate(() => Array.from(document.querySelectorAll("#doc mark.ll-mark")).map((m) => m.textContent));
     R.check("Highlight from the translation card marks the selection", marks0.length === 1 && /extraordinary/.test(marks0[0]), marks0.join("|"));
 
@@ -251,6 +263,7 @@ async function waitPrecache(page){
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await tapWord(page, "quietly");
+    await openTranslateTab(page);
     await page.waitForSelector("#dictCard .tr-slot .tr-go", { timeout: 15000 });
     const label = await page.$eval("#dictCard .tr-slot .tr-go", (b) => b.textContent);
     R.check("without an engine that is ready, a button waits for a press", label === "Translate to Spanish", label);
@@ -298,6 +311,7 @@ async function waitPrecache(page){
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await tapWord(page, "quietly");
+    await openTranslateTab(page);
     await page.waitForFunction(() => /download/.test((document.querySelector("#dictCard .tr-slot .tr-go") || {}).textContent || ""), null, { timeout: 15000 }).catch(() => null);
     const label = await page.$eval("#dictCard .tr-slot .tr-go", (b) => b.textContent).catch(() => "");
     R.check("the button says it will download", /Translate to Spanish \(downloads the translator\)/.test(label), label);
@@ -377,6 +391,7 @@ async function waitPrecache(page){
     R.check("Translate the rest finishes the document", done.done === done.total && done.missing.length === 0 && (await page.evaluate(() => document.querySelectorAll("#doc .ll-tr").length)) === done.total, JSON.stringify(done));
     /* the word card on a phone, dusk */
     await tapWord(page, "quietly");
+    await openTranslateTab(page);
     await page.waitForSelector('#dictCard .tr-slot[data-kind="word"] .tr-out', { timeout: 15000 });
     await shot(page, "translate-word-phone-dusk");
     await page.keyboard.press("Escape");

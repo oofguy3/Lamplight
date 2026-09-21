@@ -44,7 +44,7 @@ async function openFixture(page, name){
   const file = path.join(__dirname, "fixtures", name);
   await page.setInputFiles("#fileInput", file);
   const isPdf = /\.pdf$/i.test(name);
-  if (isPdf) await page.waitForFunction(() => document.getElementById("pdf").style.display === "block" && document.querySelector("#pdf canvas"), null, { timeout: 30000 });
+  if (isPdf) await page.waitForFunction(() => /^(block|flex)$/.test(document.getElementById("pdf").style.display) && document.querySelector("#pdf canvas"), null, { timeout: 30000 });   /* flex: a two-page spread */
   else await page.waitForFunction(() => document.getElementById("docView").style.display === "block" && document.getElementById("doc").textContent.length > 100, null, { timeout: 30000 });
   await page.waitForTimeout(150);
 }

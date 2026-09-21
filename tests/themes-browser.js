@@ -21,7 +21,7 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
   const customs = () => page.evaluate(() => window.llThemes.customs());
   const badges = () => page.$$eval("#cMeter .meter-badge", (els) => els.map((e) => e.textContent));
   const text = (sel) => page.$eval(sel, (e) => e.textContent);
-  const openSheet = () => page.evaluate(() => { if (!document.getElementById("sheet").classList.contains("open")) document.getElementById("gear").click(); });
+  const openSheet = () => page.evaluate(() => { window.llPop.sheet(true); });
   const pick = (sel, v) => page.$eval(sel, (el, v) => { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); }, v);
   try {
     /* 1. every built-in theme applies */
@@ -45,18 +45,25 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     const pressed = await page.$$eval("#themeChips .chip[aria-pressed=true]", (els) => els.map((e) => e.dataset.theme).join(","));
     R.check("the selected chip is marked", pressed === ids[ids.length - 1], pressed);
 
-    /* 2. the lamp cycles */
+    /* 2. the lamp opens the theme popover; t switches day / night */
     const CYCLE = await page.evaluate(() => window.llThemes.CYCLE);
     await page.evaluate(() => window.llThemes.select("day"));
-    await page.click("#lamp");
-    R.check("the lamp goes to the next theme", (await state("theme")) === CYCLE[1], await state("theme"));
+    await page.click("#lamp"); await page.waitForTimeout(150);
+    R.check("the lamp opens the theme popover", await page.evaluate(() => window.llPop.is("theme") && document.getElementById("pop").classList.contains("open") && document.getElementById("lamp").getAttribute("aria-expanded") === "true"));
+    const rows = await page.evaluate(() => ({ light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length,
+      on: Array.from(document.querySelectorAll("#pop .strip .chip[aria-pressed=true]")).map((c) => c.dataset.theme).join(",") }));
+    const gs = await page.evaluate(() => window.llThemes.groups());
+    R.check("the popover lists the light and dark themes (the two high-contrast ones join their rows) with the current one marked", rows.light === gs[0].ids.length + 1 && rows.dark === gs[1].ids.length + 1 && rows.on === "day", JSON.stringify(rows));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(100);
     await page.keyboard.press("t");
-    R.check("the t key goes to the next theme", (await state("theme")) === CYCLE[2], await state("theme"));
-    await page.evaluate((last) => window.llThemes.select(last), CYCLE[CYCLE.length - 1]);
-    await page.click("#lamp");
-    R.check("the lamp wraps round to the first theme", (await state("theme")) === CYCLE[0], await state("theme"));
+    R.check("the t key goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
+    await page.keyboard.press("t");
+    R.check("t again goes back to the day theme", (await state("theme")) === "day", await state("theme"));
+    await page.evaluate(() => window.llThemes.select("paper"));
+    await page.keyboard.press("t");
+    R.check("from a light theme that is neither, t goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
     const order = await page.evaluate(() => window.llThemes.groups().reduce((a, g) => a.concat(g.ids), []).join(","));
-    R.check("the cycle is lights, then darks, then high contrast", CYCLE.join(",") === order && CYCLE[0] === "day" && CYCLE[CYCLE.length - 1] === "hidark" && CYCLE.indexOf("dusk") > CYCLE.indexOf("mint"), CYCLE.join(","));
+    R.check("the theme order is lights, then darks, then high contrast", CYCLE.join(",") === order && CYCLE[0] === "day" && CYCLE[CYCLE.length - 1] === "hidark" && CYCLE.indexOf("dusk") > CYCLE.indexOf("mint"), CYCLE.join(","));
 
     /* 7. theme-color meta */
     await page.evaluate(() => window.llThemes.select("dusk"));
@@ -174,6 +181,19 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     await page.reload({ waitUntil: "load" });
     const val = await page.evaluate(() => ({ theme: window.__ll.state.theme, customs: window.llThemes.customs() }));
     R.check("bad saved themes are dropped and an unknown selection falls back to Day", val.customs.length === 1 && val.customs[0].id === "ok" && val.customs[0].name === "Fine" && val.theme === "day", JSON.stringify(val));
+
+    /* 7b. a theme saved from a light built-in derives secondary text that reads on the panel too */
+    const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    for (const seed of ["day", "newsprint", "paper"]){
+      await page.evaluate((s) => window.llThemes.select(s), seed);
+      await openSheet();
+      await page.click("#themeChips .chip-new"); await page.waitForTimeout(100);
+      const got = await page.evaluate(() => { const st = document.documentElement.style; return { muted: st.getPropertyValue("--muted").trim(), panel: st.getPropertyValue("--panel").trim(), bg: st.getPropertyValue("--bg").trim(),
+        low: Array.from(document.querySelectorAll("#cMeter .meter-row.low")).map((r) => r.dataset.k), rows: document.querySelectorAll("#cMeter .meter-row").length, panelRow: !!document.querySelector('#cMeter [data-k="mutedPanel"]') }; });
+      const onPanel = ratio(got.muted, got.panel), onBg = ratio(got.muted, got.bg);
+      R.check("saved from " + seed + ": secondary text reads on the panel (" + onPanel.toFixed(2) + ") and the background (" + onBg.toFixed(2) + "), no meter row low", onPanel >= 4.5 && onBg >= 4.5 && !got.low.length && got.panelRow, JSON.stringify(got));
+    }
 
     /* 8. screenshots of the editor: desktop and phone, light and dark */
     await page.evaluate(() => localStorage.removeItem("ll_prefs"));

@@ -20,28 +20,97 @@
 
 <header>
   <div class="bar">
-    <div class="wordmark" id="wordmark" title="Library" role="button" tabindex="0">lamp<span>light</span></div>
+    <div class="wordmark" id="wordmark" title="Library" aria-label="lamplight — library" role="button" tabindex="0">lamp<span>light</span></div>
     <div id="fname"></div>
-    <button class="ctl" id="smaller" title="Smaller text / zoom out" aria-label="Smaller text or zoom out">A−</button>
-    <button class="ctl" id="bigger" title="Larger text / zoom in" aria-label="Larger text or zoom in">A+</button>
-    <button class="ctl" id="lamp" title="Switch theme" aria-label="Switch to the next theme"><span class="bulb" aria-hidden="true"></span></button>
-    <button class="ctl" id="gear" title="Reading settings" aria-label="Reading settings" aria-expanded="false" aria-controls="sheet">Aa</button>
+    <!-- while a document is open: find, contents, read aloud -->
+    <div class="grp grp-doc">
+      <button class="ctl" id="searchBtn" title="Search in the document" aria-label="Search in the document"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"/><path d="M20 20l-3.5-3.5"/></svg></button>
+      <button class="ctl" id="tocBtn" title="Contents" aria-label="Contents"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="2.6"/></svg></button>
+      <button class="ctl" id="speakBtn" title="Read aloud" aria-label="Read aloud" aria-pressed="false"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg><i class="dot" aria-hidden="true"></i></button>
+    </div>
+    <span class="sep sep-doc" aria-hidden="true"></span>
+    <!-- type and theme: each opens a popover -->
+    <div class="grp">
+      <button class="ctl" id="gear" title="Text settings" aria-label="Text settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="pop">Aa</button>
+      <button class="ctl" id="lamp" title="Theme" aria-label="Theme" aria-haspopup="dialog" aria-expanded="false" aria-controls="pop"><span class="bulb" aria-hidden="true"></span></button>
+    </div>
+    <span class="sep" aria-hidden="true"></span>
     <div id="moreWrap">
-      <button class="ctl" id="more" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="false">⋯</button>
+      <button class="ctl" id="more" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/></svg></button>
       <div id="moreMenu" role="menu"></div>
     </div>
-    <button class="ctl primary" id="openBtn">Open</button>
+    <button class="ctl primary" id="openBtn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/></svg>Open</button>
   </div>
   <div id="tabs" role="tablist" aria-label="Open documents"></div>
 </header>
 
-<div id="sheet" aria-hidden="true" aria-label="Reading settings">
+<!-- the two popovers under the bar (a bottom sheet on phones): text settings and themes.
+     Both panes live here so their controls exist from the start; Pop shows one at a time. -->
+<div id="popScrim"></div>
+<div id="pop" role="dialog" aria-label="Text settings" aria-hidden="true" tabindex="-1">
+  <div class="pop-handle" aria-hidden="true"></div>
+  <div class="pop-pane" id="typePop" hidden>
+    <div class="pop-head"><span class="label">Text</span></div>
+    <div class="prow prow-size">
+      <label for="qSize" id="qSizeL">Size</label>
+      <div class="prow-in">
+        <button class="ctl mini" id="smaller" title="Smaller text / zoom out" aria-label="Smaller text or zoom out">A−</button>
+        <input type="range" id="qSize" min="14" max="28" step="1" value="19" aria-labelledby="qSizeL">
+        <input type="range" id="qZoom" min="60" max="250" step="5" value="100" aria-labelledby="qSizeL">
+        <button class="ctl mini" id="bigger" title="Larger text / zoom in" aria-label="Larger text or zoom in">A+</button>
+      </div>
+      <span class="val" id="qSizeV">19 px</span>
+    </div>
+    <div class="prow doc-row"><label for="qLh">Spacing</label><input type="range" id="qLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="qLhV">1.75</span></div>
+    <div class="prow doc-row"><label for="qW">Width</label><input type="range" id="qW" min="320" max="960" step="20" value="720"><span class="val" id="qWV">720 px</span></div>
+    <!-- weight and the fine spacings are a step in: the popover stays a short glance, and the
+         sheet's Text group has the same controls in full -->
+    <details class="pop-more doc-row" id="qMore">
+      <summary>More</summary>
+      <div class="prow" id="qWeightRow"><label for="qWeight">Weight</label><input type="range" id="qWeight" min="300" max="800" step="50" value="400" aria-describedby="qWeightNote"><span class="val" id="qWeightV">400</span></div>
+      <div class="phint" id="qWeightNote" hidden>This font has two weights.</div>
+      <div class="prow"><label for="qLs">Letters</label><input type="range" id="qLs" min="0" max="0.12" step="0.01" value="0"><span class="val" id="qLsV">0.00 em</span></div>
+      <div class="prow"><label for="qWs">Words</label><input type="range" id="qWs" min="0" max="0.4" step="0.02" value="0"><span class="val" id="qWsV">0.00 em</span></div>
+    </details>
+    <div class="prow doc-row"><label for="fontQuick">Font</label><select id="fontQuick" class="sel"></select></div>
+    <div class="prow pdf-row"><label class="check"><input type="checkbox" id="qSoften" checked>Soften pages in dark themes</label></div>
+    <div class="prow">
+      <span class="plabel" id="qFlowL">Flow</span>
+      <div class="seg" id="qFlow" role="group" aria-labelledby="qFlowL">
+        <button type="button" class="chip" data-flow="scroll" aria-pressed="false">Scroll</button>
+        <button type="button" class="chip" data-flow="pages" aria-pressed="false">Pages</button>
+      </div>
+    </div>
+    <button type="button" class="pop-link" id="typeMore">All text settings…<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+  <div class="pop-pane" id="themePop" hidden>
+    <div class="pop-head"><span class="label">Theme</span></div>
+    <div class="pop-sec"><div class="plabel" id="qLightL">Light</div><div class="strip" id="qLight" role="group" aria-labelledby="qLightL"></div></div>
+    <div class="pop-sec"><div class="plabel" id="qDarkL">Dark</div><div class="strip" id="qDark" role="group" aria-labelledby="qDarkL"></div></div>
+    <div class="prow">
+      <span class="plabel" id="qAutoL">Auto</span>
+      <div class="seg" id="qAuto" role="group" aria-labelledby="qAutoL">
+        <button type="button" class="chip" data-auto="off" aria-pressed="false">Manual</button>
+        <button type="button" class="chip" data-auto="system" aria-pressed="false">System</button>
+        <button type="button" class="chip" data-auto="time" aria-pressed="false">By time</button>
+      </div>
+    </div>
+    <div class="prow">
+      <svg class="ricon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <label for="qWarm">Warmth</label><input type="range" id="qWarm" min="0" max="100" step="1" value="0"><span class="val" id="qWarmV">0 %</span>
+    </div>
+    <div class="prow"><label class="check"><input type="checkbox" id="qWarmAuto">Warm at night</label></div>
+    <button type="button" class="pop-link" id="themeMore">All themes and the editor…<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+</div>
+
+<div id="sheet" role="region" aria-hidden="true" aria-label="Reading settings">
   <div class="sheet-inner">
-    <div class="group">
+    <div class="group" id="readingGroup">
       <div class="label">Reading</div>
-      <div class="chips" id="flowChips">
-        <button class="chip" data-flow="scroll">Scroll</button>
-        <button class="chip" data-flow="pages">Pages</button>
+      <div class="chips seg" id="flowChips" role="group" aria-label="Reading flow">
+        <button type="button" class="chip" data-flow="scroll" aria-pressed="false">Scroll</button>
+        <button type="button" class="chip" data-flow="pages" aria-pressed="false">Pages</button>
       </div>
       <div class="hint">Scroll: the top bar hides while you read and comes back when you scroll up. Pages: tap the edges or swipe to turn — tap the middle to hide or show the bars.</div>
       <div class="rowline">
@@ -50,14 +119,14 @@
       </div>
     </div>
 
-    <div class="group">
+    <div class="group" id="themeGroup">
       <div class="label">Theme</div>
       <div id="themeChips"></div>
-      <div class="rowline"><label>Auto</label>
-        <div class="chips" id="autoChips">
-          <button class="chip" data-auto="off">Manual</button>
-          <button class="chip" data-auto="system">Follow system</button>
-          <button class="chip" data-auto="time">By time</button>
+      <div class="rowline"><label id="autoLabel">Auto</label>
+        <div class="chips seg" id="autoChips" role="group" aria-labelledby="autoLabel">
+          <button type="button" class="chip" data-auto="off" aria-pressed="false">Manual</button>
+          <button type="button" class="chip" data-auto="system" aria-pressed="false">Follow system</button>
+          <button type="button" class="chip" data-auto="time" aria-pressed="false">By time</button>
         </div>
       </div>
       <div id="autoRow" style="display:none;">
@@ -65,7 +134,14 @@
         <div class="rowline" id="autoTimes"><label for="nightFrom">Night from</label><input type="time" id="nightFrom" class="sel" value="21:00"><label for="nightTo">until</label><input type="time" id="nightTo" class="sel" value="07:00"></div>
         <div class="hint" id="autoHint"></div>
       </div>
-      <div id="customRow">
+      <!-- the evening tint: a warm amber film over the whole screen, on its own or only at night -->
+      <div class="rowline" id="warmRow">
+        <svg class="ricon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <label for="rWarm">Warmth</label><input type="range" id="rWarm" min="0" max="100" step="1" value="0"><span class="val" id="vWarm">0 %</span>
+        <label class="check"><input type="checkbox" id="cWarmAuto">Warm at night</label>
+      </div>
+      <div class="hint" id="warmHint">A warm film over the screen for evening reading. At 0 % nothing is added.</div>
+      <div id="customRow" class="card">
         <div class="cst-head">
           <div class="cst-name" id="cName">Custom</div>
           <div class="cst-acts">
@@ -104,6 +180,7 @@
           <dl class="meter">
             <div class="meter-row" data-k="ink"><dt>Text on background</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
             <div class="meter-row" data-k="muted"><dt>Secondary text on background</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
+            <div class="meter-row" data-k="mutedPanel"><dt>Secondary text on panel</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
             <div class="meter-row" data-k="accent"><dt>Accent on background</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
             <div class="meter-row" data-k="accentPanel"><dt>Accent on panel</dt><dd><span class="meter-bar" aria-hidden="true"><i></i></span><span class="meter-n">0.0:1</span><span class="meter-badge">AA</span></dd></div>
           </dl>
@@ -122,8 +199,14 @@
       <div class="label">Text</div>
       <div class="rowline"><label for="rSize">Size</label><input type="range" id="rSize" min="14" max="28" step="1" value="19"><span class="val" id="vSize">19 px</span></div>
       <div class="rowline"><label for="rLh">Spacing</label><input type="range" id="rLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="vLh">1.75</span></div>
+      <div class="rowline"><label for="rLs">Letters</label><input type="range" id="rLs" min="0" max="0.12" step="0.01" value="0"><span class="val" id="vLs">0.00 em</span></div>
+      <div class="rowline"><label for="rWs">Words</label><input type="range" id="rWs" min="0" max="0.4" step="0.02" value="0"><span class="val" id="vWs">0.00 em</span></div>
+      <div class="rowline"><label for="rPgap">Paragraphs</label><input type="range" id="rPgap" min="0.4" max="2" step="0.1" value="0.95"><span class="val" id="vPgap">0.95 em</span></div>
       <div class="rowline"><label for="rW">Width</label><input type="range" id="rW" min="320" max="960" step="20" value="720"><span class="val" id="vW">720 px</span></div>
       <div class="rowline"><label for="rM">Margins</label><input type="range" id="rM" min="0" max="64" step="4" value="0"><span class="val" id="vM">0 px</span></div>
+      <div class="rowline" id="weightRow"><label for="rWeight">Weight</label><input type="range" id="rWeight" min="300" max="800" step="50" value="400" aria-describedby="weightNote"><span class="val" id="vWeight">400</span>
+        <span class="hint" id="weightNote" hidden>This font has two weights.</span>
+      </div>
       <div class="rowline"><label for="fontSel">Font</label>
         <select id="fontSel" class="sel"></select>
         <button class="chip" id="fontBrowse" aria-haspopup="dialog">Browse fonts…</button>
@@ -132,11 +215,12 @@
         <label class="check"><input type="checkbox" id="cJustify">Justify text</label>
         <label class="check"><input type="checkbox" id="cHyphens">Hyphenate</label>
       </div>
+      <div class="rowline"><button type="button" class="link-btn" id="typeReset">Reset text settings</button></div>
       <div id="typePreview">The lamp hums quietly as she turns the page — this is exactly how your book will look.</div>
       <div class="hint" id="textHint">Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).</div>
     </div>
 
-    <div class="group">
+    <div class="group" id="pdfGroup">
       <div class="label">PDF</div>
       <div class="rowline"><label for="rZoom">Zoom</label><input type="range" id="rZoom" min="60" max="250" step="5" value="100"><span class="val" id="vZoom">100 %</span></div>
       <label class="check"><input type="checkbox" id="softenPdf" checked>Soften PDF pages in dark themes</label>
@@ -146,16 +230,43 @@
 
 <main id="main" tabindex="-1">
   <div id="printHead" aria-hidden="true"></div>
+  <!-- the start screen: the lamp hero until the library has a book, then a Continue card, the
+       streak, first-run tips and the recent files -->
   <div id="empty">
-    <h1>A quiet place to read.</h1>
-    <p>Drop a file anywhere on this page, or open one below.<br>Works fully offline — nothing you open leaves your device.</p>
-    <button class="ctl primary" id="openBtn2" style="margin:0 auto;">Open a file</button>
-    <div class="formats">PDF · EPUB · DOCX · TXT · MARKDOWN · HTML</div>
+    <div class="hero">
+      <svg class="hero-lamp" viewBox="0 0 160 132" aria-hidden="true">
+        <defs>
+          <radialGradient id="heroGlow" cx="50%" cy="42%" r="55%"><stop offset="0" stop-opacity=".16"/><stop offset="1" stop-opacity="0"/></radialGradient>
+          <linearGradient id="heroCone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-opacity=".14"/><stop offset="1" stop-opacity="0"/></linearGradient>
+        </defs>
+        <ellipse class="glow" cx="80" cy="84" rx="76" ry="46"/>
+        <path class="cone" d="M40 58h80l30 70H10z"/>
+        <path class="shade" d="M55 14h50l17 42H38z"/>
+        <path class="bulb" d="M66 56h28a14 14 0 0 1-28 0z"/>
+        <path class="stem" d="M80 70v40"/>
+        <path class="base" d="M50 114h60"/>
+      </svg>
+      <h1>A quiet place to read.</h1>
+      <p>Drop a file anywhere on this page, or open one below.<br>Works fully offline — nothing you open leaves your device.</p>
+      <button class="ctl primary big" id="openBtn2"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/></svg>Open a file</button>
+      <div class="formats" aria-label="Supported formats"><span>PDF</span><span>EPUB</span><span>DOCX</span><span>TXT</span><span>MD</span><span>HTML</span></div>
+    </div>
   </div>
+  <div id="continue"></div>
   <div id="streak"></div>
-  <div id="library" aria-label="Recent files">
-    <div class="lib-head"><div class="label">Continue reading</div><button id="libClear" title="Remove all files from this device">Clear library</button></div>
+  <div id="tips" hidden>
+    <div class="tip-row"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg><span>Tap a word for its meaning and its parts</span></div>
+    <div class="tip-row"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7"/><path d="M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7"/></svg><span>Hold a sentence to explain, simplify or translate it</span></div>
+    <div class="tip-row"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg><span>Press ⋯ for read aloud, stats, zen mode and more</span></div>
+    <div class="tip-foot"><button type="button" class="chip" id="tipsOk">Got it</button></div>
+  </div>
+  <div id="library" role="region" aria-label="Recent files">
+    <div class="lib-head"><div class="label">Recent <span class="lib-count" id="libCount"></span></div><button id="libClear" title="Remove all files from this device">Clear library</button></div>
     <div class="lib-list" id="libList"></div>
+    <div class="lib-foot">
+      <button class="ctl" id="libOpen"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/></svg>Open another file</button>
+      <span class="hint">or drop a file anywhere on this page</span>
+    </div>
   </div>
   <div id="status"></div>
   <div id="docView"><article id="doc"></article></div>
@@ -165,38 +276,47 @@
 <div id="progressInfo" aria-live="off"></div>
 <div id="ruler" aria-hidden="true"><div class="rt"></div><div class="rl"></div><div class="rb"></div><div class="grip"></div></div>
 <div id="autoBar" role="region" aria-label="Auto-scroll">
-  <button id="autoSlower" title="Slower" aria-label="Slower">−</button>
+  <button id="autoSlower" title="Slower" aria-label="Slower"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
   <span class="speed" id="autoSpeed">1.0×</span>
-  <button id="autoFaster" title="Faster" aria-label="Faster">+</button>
-  <button id="autoPlay" title="Pause / resume" aria-label="Pause">❚❚</button>
-  <button id="autoStop" title="Stop auto-scroll" aria-label="Stop">×</button>
+  <button id="autoFaster" title="Faster" aria-label="Faster"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14 M5 12h14"/></svg></button>
+  <button id="autoPlay" title="Pause / resume" aria-label="Pause"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5h3.5v14H7z M13.5 5H17v14h-3.5z" fill="currentColor" stroke="none"/></svg></button>
+  <button id="autoStop" title="Stop auto-scroll" aria-label="Stop"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
 </div>
-<div id="tts" role="region" aria-label="Read aloud">
-  <button class="ctl" id="ttsPrev" title="Previous sentence" aria-label="Previous sentence">‹</button>
-  <button class="ctl primary" id="ttsPlay" title="Play / pause" aria-label="Play">▶</button>
-  <button class="ctl" id="ttsNext" title="Next sentence" aria-label="Next sentence">›</button>
-  <button class="ctl tts-sex" id="ttsWoman" title="Use a woman's voice" aria-label="Use a woman's voice" aria-pressed="false" hidden>♀</button>
-  <button class="ctl tts-sex" id="ttsMan" title="Use a man's voice" aria-label="Use a man's voice" aria-pressed="false" hidden>♂</button>
-  <button class="ctl tts-voices" id="ttsVoices" title="Voices, dialogue voice and expression" aria-label="Read-aloud voices" aria-haspopup="dialog">Voices…</button>
-  <button class="ctl tts-sleep" id="ttsSleep" title="Sleep timer — tap to change" aria-live="off" aria-haspopup="dialog" hidden><span id="ttsSleepW"></span><span id="ttsSleepV"></span></button>
-  <i class="tts-break" aria-hidden="true"></i>
-  <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
-  <select id="ttsVoice" aria-label="Voice"></select>
-  <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading">×</button>
+<!-- the dock: the read-aloud bar sits on top of the page-turn bar; app.js measures its height into --dockH -->
+<div id="dock">
+  <div id="tts" role="region" aria-label="Read aloud">
+    <button class="ctl" id="ttsPrev" title="Previous sentence" aria-label="Previous sentence"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="ctl primary" id="ttsPlay" title="Play / pause" aria-label="Play"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg></button>
+    <button class="ctl" id="ttsNext" title="Next sentence" aria-label="Next sentence"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <button class="ctl tts-sleep" id="ttsSleep" title="Sleep timer — tap to change" aria-live="off" aria-haspopup="dialog" hidden><span id="ttsSleepW"></span><span id="ttsSleepV"></span></button>
+    <i class="tts-break" aria-hidden="true"></i>
+    <label for="ttsRate">Speed <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1"><span class="val" id="ttsRateV">1.0×</span></label>
+    <button class="ctl tts-voice" id="ttsVoiceBtn" title="Voices" aria-label="Voices" aria-haspopup="dialog"><span class="tts-voice-name" id="ttsVoiceName">Voices</span><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    <!-- the picker is the voice button and its panel; this select mirrors the choice for scripts -->
+    <select id="ttsVoice" class="tts-mirror" tabindex="-1" aria-hidden="true"></select>
+    <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+  </div>
+  <div id="pager">
+    <button class="ctl" id="prevPg" title="Previous page" aria-label="Previous page"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <span id="pgInfo" aria-live="polite">1 / 1</span>
+    <button class="ctl" id="nextPg" title="Next page" aria-label="Next page"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
 </div>
 <div id="sideScrim"></div>
-<aside id="side" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sideTitle">
-  <div class="side-head"><div class="side-title" id="sideTitle"></div><button class="side-x" id="sideClose" aria-label="Close">×</button></div>
-  <div class="side-body" id="sideBody"></div>
+<div id="side" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sideTitle">
+  <div class="side-top">
+    <div class="side-grab" aria-hidden="true"></div>
+    <div class="side-head"><div class="side-title" id="sideTitle"></div><button class="side-x" id="sideClose" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button></div>
+    <div class="side-switch" id="sideSwitch" role="group" aria-label="Panels" hidden></div>
+  </div>
+  <div class="side-body" id="sideBody" role="region" aria-labelledby="sideTitle" tabindex="-1"></div>
   <div class="side-foot" id="sideFoot"></div>
-</aside>
+</div>
 <div id="markPop"></div>
 
-<div id="pager">
-  <button class="ctl" id="prevPg" title="Previous page" aria-label="Previous page">‹</button>
-  <span id="pgInfo" aria-live="polite">1 / 1</span>
-  <button class="ctl" id="nextPg" title="Next page" aria-label="Next page">›</button>
-</div>
+<!-- the evening tint: a warm film over everything, driven by the Warmth setting. Never on paper,
+     and never under forced colours (the system palette is the point there). -->
+<div id="warmth" aria-hidden="true"></div>
 
 <input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" multiple hidden>
 

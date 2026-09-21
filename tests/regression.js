@@ -139,7 +139,7 @@ async function textPoint(page, word){
     R.check("settings sheet opens with s", await page.$eval("#sheet", (s) => s.classList.contains("open")));
     const t0 = await page.evaluate(() => window.__ll.state.theme);
     await page.keyboard.press("t"); await page.waitForTimeout(100);
-    R.check("t cycles the theme", (await page.evaluate(() => window.__ll.state.theme)) !== t0);
+    R.check("t switches between the day and night themes", (await page.evaluate(() => window.__ll.state.theme)) === (t0 === "day" ? "dusk" : "day"), t0 + " -> " + (await page.evaluate(() => window.__ll.state.theme)));
     const s0 = await page.evaluate(() => window.__ll.state.size);
     await page.keyboard.press("+"); await page.waitForTimeout(100);
     R.check("+ grows the text", (await page.evaluate(() => window.__ll.state.size)) === s0 + 1);
@@ -149,7 +149,7 @@ async function textPoint(page, word){
     await page.keyboard.press("p"); await page.waitForTimeout(500);
     await page.keyboard.press("End"); await page.waitForTimeout(400);
     const info = await page.$eval("#pgInfo", (e) => e.textContent);
-    R.check("End goes to the last page", (() => { const m = /(\d+) \/ (\d+)$/.exec(info); return m && m[1] === m[2]; })(), info);
+    R.check("End goes to the last page", (() => { const m = /^(\d+) \/ (\d+)/.exec(info); return m && m[1] === m[2]; })(), info);   /* the readout goes on: "· Chapter 4 · 1 min left" */
     await page.keyboard.press("Home"); await page.waitForTimeout(400);
     R.check("Home goes to the first page", /^1 \//.test(await page.$eval("#pgInfo", (e) => e.textContent)));
     await page.keyboard.press("p");
@@ -208,8 +208,8 @@ async function textPoint(page, word){
     const hits = await page.evaluate(() => document.querySelectorAll(".find-item").length);
     R.check("search finds text in the PDF", hits >= 1, String(hits));
     await page.keyboard.press("Escape");
-    /* dark theme softens pages */
-    await page.evaluate(() => { window.__ll.state.theme = "dusk"; });
+    /* dark theme softens pages: t goes from the day theme to the night one */
+    await page.evaluate(() => window.llThemes.select("day"));
     await page.keyboard.press("t"); await page.waitForTimeout(200);
     R.check("dark theme softens PDF pages", await page.evaluate(() => document.body.classList.contains("soften")));
     R.check("no page errors (pdf)", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -300,10 +300,15 @@ async function textPoint(page, word){
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     R.check("no horizontal overflow on a phone", !overflow);
     await page.tap("#gear"); await page.waitForTimeout(300);
-    R.check("settings sheet opens on touch", await page.$eval("#sheet", (s) => s.classList.contains("open")));
+    R.check("the type popover opens as a bottom sheet on touch", await page.evaluate(() => document.getElementById("pop").classList.contains("open") && window.llPop.is("type")));
+    /* near the top of the screen: the popover is a bottom sheet, and the middle of the scrim is
+       behind it (the sheet may stand up to 70vh tall) */
+    await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(300);
+    R.check("tapping the scrim closes the type popover", !(await page.evaluate(() => document.getElementById("pop").classList.contains("open"))));
+    await page.keyboard.press("s"); await page.waitForTimeout(300);
     const sheetOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-    R.check("sheet fits the phone width", !sheetOverflow);
-    await page.tap("#gear");
+    R.check("sheet fits the phone width", (await page.$eval("#sheet", (s) => s.classList.contains("open"))) && !sheetOverflow);
+    await page.keyboard.press("s"); await page.waitForTimeout(200);
     /* every button has an accessible name */
     const unnamed = await page.evaluate(() => Array.from(document.querySelectorAll("button")).filter((b) => b.offsetParent !== null && !(b.textContent.trim() || b.getAttribute("aria-label") || b.getAttribute("title"))).map((b) => b.id || b.className));
     R.check("all visible buttons have a name", unnamed.length === 0, unnamed.join(","));

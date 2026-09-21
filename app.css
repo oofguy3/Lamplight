@@ -2,6 +2,9 @@
     --bg:#EDEDE6; --ink:#1F2323; --muted:#646B68; --panel:#F5F5EF;
     --line:#D8D9CF; --accent:#2F6D5B;
     --fsN:19; --fs:calc(var(--fsN) * 1rem / 16); --lh:1.75; --w:720px; --margin:0px;
+    /* typography set in applyType: text weight, the heading and bold weights derived from it,
+       letter and word spacing in em, and the gap under a paragraph */
+    --fw:400; --fwh:700; --fwb:700; --ls:0em; --ws:0em; --pgap:0.95em;
     --reader-font: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
     --ui-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
@@ -16,8 +19,13 @@
   .skip:focus{top:8px; outline:2px solid var(--ink);}
   /* keyboard shortcuts panel */
   .keys{display:grid; gap:6px;}
-  .key-row{display:grid; grid-template-columns:minmax(90px, auto) 1fr; gap:12px; align-items:center; font-size:.85rem; padding:5px 4px; border-bottom:1px solid var(--line);}
-  .key-row kbd{font-family:var(--ui-font); font-size:.78rem; padding:3px 8px; border:1px solid var(--line); border-radius:6px; background:color-mix(in srgb, var(--ink) 6%, transparent); white-space:nowrap;}
+  .key-row{display:grid; grid-template-columns:minmax(72px, auto) 1fr; gap:12px; align-items:center; font-size:.85rem; padding:5px 4px; border-bottom:1px solid var(--line);}
+  /* one key pill for the shortcuts panel and the menu's hints; its text is ink (muted on the ink
+     tint misses 4.5:1 on Day and seven other themes) */
+  .key-row kbd, #moreMenu kbd{
+    flex:none; min-width:24px; padding:2px 7px; border:1px solid var(--line); border-radius:999px; text-align:center; white-space:nowrap;
+    font-family:var(--ui-font); font-size:0.6875rem; color:var(--ink); background:color-mix(in srgb, var(--ink) 6%, transparent);
+  }
   /* Windows High Contrast / forced colours: let the system palette through */
   @media (forced-colors: active){
     .ctl, .chip, .act, .tab, .lib-item, .mark-item, .clause{border:1px solid ButtonText;}
@@ -32,7 +40,11 @@
   body.paged{overflow:hidden; height:100vh;}
   ::selection{background:var(--accent); color:var(--bg);}
   button{font-family:var(--ui-font);}
-  button:focus-visible, input:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, [tabindex="0"]:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  /* main is the skip link's target and, with tabindex=-1, takes focus from any click inside it;
+     the browser's own ring would frame the whole page after the next key press (or when the
+     dictionary card hands focus back on Escape). It is a landmark, not a control, so it gets no ring. */
+  #main:focus{outline:none;}
 
   /* ---------- reading progress (always at the very top of the screen) ---------- */
   #progress{
@@ -49,77 +61,161 @@
   body.hidebar:not(.paged) > header{transform:translateY(-105%);}
   body.paged.immersive > header{display:none;}
   .bar{
-    display:flex; align-items:center; gap:8px;
-    padding:10px 14px; max-width:1100px; margin:0 auto;
+    display:flex; align-items:center; gap:6px;
+    padding:8px 18px; max-width:1100px; margin:0 auto; min-height:56px;
   }
   .wordmark{
     font-family:var(--reader-font); font-style:italic; font-size:1.188rem;
-    letter-spacing:.01em; user-select:none; white-space:nowrap;
+    letter-spacing:.01em; user-select:none; white-space:nowrap; margin-right:6px; cursor:pointer;
+    border-radius:8px; padding:2px 4px; margin-left:-4px;
   }
   .wordmark span{color:var(--accent);}
+  .wordmark:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  /* the title; while reading, the current section follows it in the secondary colour (a data
+     attribute, so the modules that read the title's text — exports, print, About — see only it) */
   #fname{
-    flex:1; min-width:0; text-align:center; font-size:0.7812rem; color:var(--muted);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 4px;
+    flex:1; min-width:0; text-align:center; font-size:0.8125rem; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 6px;
   }
+  #fname[data-sec]::after{content:"  \00B7  " attr(data-sec); color:var(--muted); white-space:pre;}
+  /* button groups: doc-only ones appear with a document; hairlines between groups on wide screens */
+  .grp{display:flex; align-items:center; gap:6px;}
+  .grp-doc, .sep-doc{display:none;}
+  body[data-mode="doc"] .grp-doc, body[data-mode="pdf"] .grp-doc{display:flex;}
+  .sep{width:1px; height:22px; flex:none; background:var(--line); margin:0 4px;}
+  body[data-mode="doc"] .sep-doc, body[data-mode="pdf"] .sep-doc{display:block;}
+  /* Open lives in the bar on the start screen (and after a failed open) only; while reading it is in the ⋯ menu (and o) */
+  #openBtn{display:none; margin-left:4px;}
+  body[data-mode="empty"] #openBtn, body[data-mode="status"] #openBtn{display:inline-flex;}
   .ctl{
-    display:flex; align-items:center; justify-content:center;
-    min-width:40px; height:40px; padding:0 10px;
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    min-width:40px; height:40px; padding:0 12px;
     border:1px solid var(--line); border-radius:10px;
     background:transparent; color:var(--ink);
-    font-size:0.875rem; font-weight:600; cursor:pointer;
-    transition:border-color .2s, background .2s;
+    font-size:0.875rem; font-weight:600; cursor:pointer; white-space:nowrap;
+    transition:border-color .2s, background .2s, transform .12s;
   }
-  .ctl:hover{border-color:var(--accent);}
+  .ctl:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .ctl:active{transform:scale(.97);}
+  .ctl svg{width:20px; height:20px; flex:none;}
   .ctl.primary{background:var(--accent); border-color:var(--accent); color:var(--panel);}
+  .ctl.primary:hover{box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);}
+  .ctl.primary svg{width:18px; height:18px;}
+  /* in the bar the icon buttons are quiet squares: no hairline until hovered, a tint when open */
+  .bar .ctl:not(.primary){border-color:transparent; padding:0; width:40px;}
+  .bar .ctl:not(.primary):hover{background:color-mix(in srgb, var(--accent) 10%, transparent); border-color:transparent;}
+  .bar .ctl[aria-expanded="true"]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}
+  /* "Aa" in the reader's own face says "type" better than any icon */
+  #gear{font-family:var(--reader-font); font-size:1.125rem; font-weight:600; letter-spacing:-.01em; line-height:1;}
+  /* read aloud: a dot lights while it is on */
+  #speakBtn{position:relative;}
+  #speakBtn .dot{
+    position:absolute; top:7px; right:7px; width:7px; height:7px; border-radius:50%; background:var(--accent);
+    opacity:0; transform:scale(.5); transition:opacity .2s, transform .2s;
+  }
+  #speakBtn.on{color:var(--accent);}
+  #speakBtn.on .dot{opacity:1; transform:none;}
 
   /* open documents as tabs (shown when more than one is open) */
   #tabs{
-    display:none; gap:4px; padding:0 10px 8px; max-width:1100px; margin:0 auto; overflow-x:auto; scrollbar-width:none;
+    display:none; gap:6px; padding:0 18px 8px; max-width:1100px; margin:0 auto; overflow-x:auto; scrollbar-width:none;
     -webkit-overflow-scrolling:touch;
   }
   #tabs::-webkit-scrollbar{display:none;}
   #tabs.on{display:flex;}
+  /* a tab is one button (the strip has one Tab stop; arrows move along it); the close is a mark
+     inside it, a 28px target with the shared 16px icon */
   .tab{
-    display:inline-flex; align-items:center; gap:6px; flex:none; max-width:220px;
-    padding:5px 6px 5px 11px; border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--muted);
-    font-family:var(--ui-font); font-size:0.7812rem; cursor:pointer; white-space:nowrap;
+    position:relative; display:inline-flex; align-items:center; gap:4px; flex:none; max-width:220px; height:32px;
+    padding:0 2px 0 12px; border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--muted);
+    font:inherit; font-family:var(--ui-font); font-size:0.7812rem; cursor:pointer; white-space:nowrap; transition:border-color .2s, background .2s;
+    -webkit-appearance:none; appearance:none;
   }
-  .tab.on{color:var(--ink); border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent);}
+  .tab:hover{color:var(--ink); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .tab.on{color:var(--ink); border-color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent);}
+  .tab:focus-visible{outline-offset:1px;}
+  /* the open tab is underlined on the bar's bottom edge (the strip's padding keeps it visible) */
+  .tab.on::after{content:""; position:absolute; left:12px; right:12px; bottom:-9px; height:2px; border-radius:1px; background:var(--accent);}
   .tab .tab-name{overflow:hidden; text-overflow:ellipsis; max-width:170px;}
-  .tab .tab-x{border:0; background:transparent; color:inherit; font-size:0.9375rem; line-height:1; padding:2px 5px; border-radius:50%; cursor:pointer; opacity:.7;}
-  .tab .tab-x:hover{opacity:1; background:color-mix(in srgb, var(--ink) 10%, transparent);}
+  .tab .tab-x{
+    display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; color:var(--muted); flex:none;
+  }
+  .tab .tab-x svg{width:16px; height:16px;}
+  .tab .tab-x:hover, .tab.on .tab-x, .tab:hover .tab-x{color:var(--ink);}
+  .tab .tab-x:hover{background:color-mix(in srgb, var(--ink) 10%, transparent);}
 
-  /* the lamp — theme cycle button */
+  /* the lamp — the theme button */
   #lamp .bulb{
-    width:14px; height:14px; border-radius:50%;
+    width:12px; height:12px; border-radius:50%;
     background:var(--accent);
-    box-shadow:0 0 10px 3px color-mix(in srgb, var(--accent) 55%, transparent);
+    box-shadow:0 0 8px 2px color-mix(in srgb, var(--accent) 45%, transparent);
     transition:background .35s, box-shadow .35s;
   }
+  #lamp:hover .bulb, #lamp[aria-expanded="true"] .bulb{box-shadow:0 0 12px 4px color-mix(in srgb, var(--accent) 55%, transparent);}
 
   /* ---------- settings sheet ---------- */
   #sheet{
     display:none; border-bottom:1px solid var(--line); background:var(--panel);
     transition:background .35s ease, border-color .35s ease;
-    max-height:72vh; overflow-y:auto;
+    max-height:min(78vh, 900px); overflow-y:auto; overscroll-behavior:contain;
   }
   /* the sheet drops from the bar and stays under it while the page scrolls, so settings can
      be changed from anywhere in a document */
   #sheet.open{display:block; animation:drop .22s ease; position:sticky; top:var(--headH, 0px); z-index:19;}
   @keyframes drop{from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:none;}}
-  .sheet-inner{max-width:1100px; margin:0 auto; padding:14px 16px 18px; display:grid; gap:16px;}
-  .group{display:grid; gap:8px;}
+  .sheet-inner{max-width:1100px; margin:0 auto; padding:0 16px 24px; display:grid; grid-template-columns:minmax(0, 1fr); gap:18px;}
+  /* the section strip stays at the top of the sheet while it scrolls; each button jumps to its
+     group and the one for the group under the strip is marked */
+  .sheet-tabs{
+    position:sticky; top:0; z-index:1; background:var(--panel);
+    display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:4px; padding:10px 0 8px; margin-bottom:-2px;
+    border-bottom:1px solid var(--line);
+  }
+  /* the buttons scroll as one row when they don't fit (phones), fading at the end; the close stays put */
+  .sheet-tabs-row{
+    min-width:0; display:flex; align-items:center; gap:4px; overflow-x:auto; scrollbar-width:none; padding-right:24px;
+    -webkit-mask:linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask:linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  }
+  .sheet-tabs-row::-webkit-scrollbar{display:none;}
+  .sheet-tabs button{
+    flex:none; height:32px; padding:0 12px; border:1px solid transparent; border-radius:999px; background:transparent;
+    color:var(--muted); font-family:var(--ui-font); font-size:0.8125rem; font-weight:600; cursor:pointer; white-space:nowrap;
+    transition:background .2s, color .2s, border-color .2s;
+  }
+  .sheet-tabs button:hover{color:var(--ink); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .sheet-tabs button.on{color:var(--ink); background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}
+  .sheet-tabs .sheet-x{flex:none; width:32px; padding:0; display:inline-flex; align-items:center; justify-content:center; color:var(--muted);}
+  .sheet-tabs .sheet-x svg{width:18px; height:18px;}
+  .group{display:grid; gap:14px;}
+  .group + .group{border-top:1px solid var(--line); padding-top:18px;}
   .group.dim{opacity:.45; pointer-events:none;}
   .label{
     font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
     color:var(--muted);
   }
+  /* section headers: a 16px icon in the accent before the label */
+  .group > .label{display:flex; align-items:center; gap:8px; min-height:18px;}
+  .group > .label svg{width:16px; height:16px; color:var(--accent); flex:none;}
+  .group > .label .label-aa{font-family:var(--reader-font); font-size:0.9375rem; font-weight:600; letter-spacing:0; text-transform:none; color:var(--accent); line-height:1;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
   .chip{
     padding:8px 14px; border-radius:999px; border:1px solid var(--line);
     background:transparent; color:var(--ink); font-size:0.8438rem; cursor:pointer;
+    transition:border-color .2s, background .2s, transform .12s;
   }
-  .chip.on{background:var(--accent); border-color:var(--accent); color:var(--panel); font-weight:600;}
+  .chip:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .chip:active{transform:scale(.97);}
+  .chip.on, .chip[aria-pressed="true"]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent); color:var(--ink); font-weight:600;}
+  /* segmented control: a pill holding its options; the chosen one is tinted */
+  .seg{
+    display:inline-flex; flex-wrap:nowrap; align-items:center; gap:2px; padding:3px;
+    border:1px solid var(--line); border-radius:999px; background:color-mix(in srgb, var(--panel) 60%, var(--bg));
+    width:max-content; max-width:100%; justify-self:start; overflow-x:auto; scrollbar-width:none;
+  }
+  .seg::-webkit-scrollbar{display:none;}
+  .seg .chip{border-color:transparent; padding:6px 13px; font-weight:500; flex:none;}
+  .seg .chip:hover{border-color:transparent;}
+  .seg .chip.on, .seg .chip[aria-pressed="true"]{border-color:var(--accent); font-weight:600;}
   /* theme swatch: the theme's page colour with its accent as the lamp in the middle; the colours
      are kept under forced colours (they are the information), with a system-colour rim */
   .chip i{
@@ -128,10 +224,14 @@
     box-shadow:inset 0 0 0 1px color-mix(in srgb, currentColor 32%, transparent);
   }
   .chip i::after{content:""; position:absolute; inset:4px; border-radius:50%; background:var(--sw-acc, var(--accent));}
-  .chip.on i{box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--panel) 60%, transparent);}
   @media (forced-colors: active){
     .chip i{outline:1px solid ButtonText; outline-offset:1px;}
+    .seg{border-color:ButtonText;}
+    .seg .chip.on, .seg .chip[aria-pressed="true"]{border-color:Highlight; border-width:2px;}
+    .sheet-tabs button.on{border-color:Highlight; border-width:2px;}
   }
+  /* a nested card inside a sheet or panel (the custom theme editor) */
+  .card{background:color-mix(in srgb, var(--panel) 60%, var(--bg)); border:1px solid var(--line); border-radius:12px; padding:14px;}
 
   /* custom theme builder */
   #customRow{display:none; --warn:#c8372d;}
@@ -163,12 +263,12 @@
   .cpick > label{font-size:0.8125rem; color:var(--muted); min-width:64px;}
   .cpick-in{display:inline-flex; align-items:center; gap:6px;}
   .cpick input[type=color]{
-    width:38px; height:38px; border:1px solid var(--line); border-radius:9px;
+    width:38px; height:38px; border:1px solid var(--line); border-radius:10px;
     padding:2px; background:transparent; cursor:pointer;
   }
   .cpick input[type=color]:disabled{cursor:default; opacity:.55;}
   .cpick .hex{
-    width:6.6em; height:38px; padding:0 9px; border:1px solid var(--line); border-radius:9px;
+    width:6.6em; height:38px; padding:0 9px; border:1px solid var(--line); border-radius:10px;
     background:var(--bg); color:var(--ink); font-family:ui-monospace, Menlo, Consolas, monospace; font-size:0.8125rem;
   }
   .cpick .hex:disabled{opacity:.55;}
@@ -216,22 +316,139 @@
     .cst-name{flex-basis:100%;}
   }
 
-  .rowline{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
-  .rowline label{font-size:0.8125rem; color:var(--muted); min-width:64px;}
+  /* rows: an 88px label, the control filling, the value right-aligned in tabular figures */
+  .rowline{display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-height:32px;}
+  .rowline label{font-size:0.8125rem; color:var(--muted); min-width:88px;}
   .rowline .sel{
-    padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:transparent; color:var(--ink);
+    padding:7px 9px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
     font-family:var(--ui-font); font-size:0.8125rem; min-width:0;
   }
   .rowline label.check{min-width:0;}
   input[type=range]{flex:1; min-width:140px; accent-color:var(--accent);}
   .val{font-size:0.7812rem; color:var(--muted); min-width:52px; text-align:right; font-variant-numeric:tabular-nums;}
-  .check{display:flex; align-items:center; gap:9px; font-size:0.8438rem; color:var(--ink); cursor:pointer;}
+  .check{display:flex; align-items:center; gap:9px; font-size:0.8438rem; color:var(--ink); cursor:pointer; min-height:28px;}
   .check input{width:17px; height:17px; accent-color:var(--accent);}
   .hint{font-size:0.75rem; color:var(--muted);}
   #typePreview{
     border:1.5px dashed var(--line); border-radius:10px; padding:10px 14px;
     font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
+    font-weight:var(--fw); letter-spacing:var(--ls); word-spacing:var(--ws);
     max-height:110px; overflow:hidden;
+  }
+  /* a 16px icon standing in front of a row's label (the sun before Warmth) */
+  .rowline > .ricon, .prow > .ricon{width:16px; height:16px; color:var(--accent); flex:none; margin-right:-4px;}
+  /* a quiet button that reads as a link (Reset text settings) */
+  .link-btn{
+    border:0; background:transparent; color:var(--accent); font-family:var(--ui-font);
+    font-size:0.8125rem; font-weight:600; padding:6px 8px; border-radius:10px; cursor:pointer;
+  }
+  .link-btn:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  /* a family with only two weights: the slider still picks between them, but it says so and
+     steps back visually. Only the control fades — the words keep their full contrast. */
+  .rowline.two-weights input[type=range], .prow.two-weights input[type=range]{opacity:.55;}
+  /* the note sits under the slider, so the value stays in the column with the others */
+  #weightNote{flex:0 0 100%; margin-left:100px;}
+  #weightNote[hidden]{display:none;}
+  .phint{font-size:0.75rem; color:var(--muted); margin:-4px 0 2px;}
+  /* touch: 44px rows and 40px chips (44 inside a 3px-padded segment would make the pill 52px) */
+  @media (pointer: coarse){
+    .rowline{min-height:44px;}
+    .check{min-height:44px;}
+    .link-btn{min-height:44px;}
+    .sheet-tabs button{height:44px;}
+    .sheet-tabs .sheet-x{width:44px;}
+    .seg .chip, .chips .chip{min-height:40px;}
+    .pop-link{min-height:44px;}
+  }
+
+  /* ---------- popovers ---------- */
+  /* one surface for the type and theme popovers: under its bar button on wide screens, a bottom
+     sheet with a scrim on phones. Only one is open; the panes swap inside it. */
+  #popScrim{position:fixed; inset:0; z-index:31; background:rgba(0,0,0,.18); display:none; touch-action:none;}
+  #popScrim.on{display:block;}
+  /* a phone holds the page still under a bottom sheet (the popover, the side panel, the card),
+     one class per surface so the layers stack; a desktop keeps its scrollbar and scroll-to-close */
+  @media (max-width:560px){ html.lock-pop, html.lock-side, html.lock-card{overflow:hidden;} }
+  #pop{
+    position:fixed; z-index:32; display:none; width:340px; max-width:calc(100vw - 16px);
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.18); padding:12px; font-family:var(--ui-font);
+    transition:background .35s ease, border-color .35s ease;
+  }
+  #pop.open{display:block; animation:drop .18s ease;}
+  #pop:focus{outline:none;}
+  .pop-handle{display:none;}
+  /* the column can shrink (an implicit auto track would grow to the font select's longest option
+     and push the rows past the popover's edge) */
+  .pop-pane{display:grid; grid-template-columns:minmax(0, 1fr); gap:8px;}
+  .pop-pane[hidden]{display:none;}
+  .pop-head{display:flex; align-items:center; justify-content:space-between; padding:2px 2px 4px;}
+  .prow{display:flex; align-items:center; gap:10px; min-height:36px; min-width:0;}
+  .prow > label, .prow > .plabel{font-size:0.8125rem; color:var(--muted); width:60px; flex:none;}
+  .prow .prow-in{flex:1; min-width:0; display:flex; align-items:center; gap:6px;}
+  .prow input[type=range]{flex:1; min-width:60px;}
+  .prow .val{min-width:46px;}
+  .prow .sel{
+    flex:1; min-width:0; padding:7px 9px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:0.8125rem;
+  }
+  .prow .check{flex:1;}
+  .prow .seg{flex:none;}
+  .prow .seg .chip{padding:6px 11px;}
+  /* the A− / A+ pair, quiet in the row */
+  .ctl.mini{min-width:32px; width:32px; height:32px; padding:0; border-radius:10px; font-family:var(--reader-font); font-weight:600; font-size:0.9375rem; flex:none;}
+  /* a PDF gets Zoom and Soften instead of the text rows; Flow stays */
+  #typePop #qZoom, #typePop .pdf-row{display:none;}
+  #typePop.pdf #qSize, #typePop.pdf .doc-row{display:none;}
+  #typePop.pdf #qZoom{display:block;}
+  #typePop.pdf .pdf-row{display:flex;}
+  /* the theme rows: one scrolling strip of swatches each */
+  .pop-sec{display:grid; gap:6px;}
+  .plabel{font-size:0.8125rem; color:var(--muted);}
+  .pop-sec .plabel{font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;}
+  .strip{
+    display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding:2px 24px 4px 2px; margin:0 -2px;
+    scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch;
+    /* the row fades out at its end: there is more to the right */
+    -webkit-mask:linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask:linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  }
+  .strip::-webkit-scrollbar{display:none;}
+  .strip .chip{flex:none; scroll-snap-align:start; padding:7px 12px 7px 9px; font-size:0.8125rem;}
+  /* a step in from the popover: the rows most readers set once (weight, letter and word spacing) */
+  .pop-more{border:1px solid var(--line); border-radius:10px; padding:0 10px;}
+  .pop-more summary{cursor:pointer; padding:10px 0; font-size:0.8125rem; color:var(--ink); border-radius:8px;}
+  .pop-more summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .pop-more[open] summary{border-bottom:1px solid var(--line); border-radius:0;}
+  .pop-more[open] > :last-child{margin-bottom:8px;}
+  /* the footer link to the full settings */
+  .pop-link{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; margin-top:4px;
+    padding:9px 10px; border:0; border-top:1px solid var(--line); border-radius:0 0 8px 8px; background:transparent; color:var(--accent);
+    font-family:var(--ui-font); font-size:0.8125rem; font-weight:600; cursor:pointer; text-align:left;
+  }
+  .pop-link:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .pop-link svg{width:16px; height:16px; flex:none;}
+  @media (max-width:560px){
+    #pop{
+      display:block; left:0; right:0; bottom:0; top:auto !important; width:auto; max-width:none;
+      border-radius:16px 16px 0 0; border-width:1px 0 0; box-shadow:0 -10px 40px rgba(0,0,0,.28);
+      max-height:70vh; overflow-y:auto; overscroll-behavior:contain;
+      padding:0 16px max(16px, env(safe-area-inset-bottom));
+      transform:translateY(105%); visibility:hidden; transition:transform .22s ease, visibility 0s linear .22s, background .35s ease;
+    }
+    #pop.open{animation:none; transform:none; visibility:visible; transition:transform .22s ease, visibility 0s, background .35s ease;}
+    .pop-handle{display:block; width:40px; height:4px; border-radius:999px; background:var(--line); margin:10px auto 8px; cursor:pointer;}
+    .prow{min-height:44px;}
+    .prow > label, .prow > .plabel{width:64px;}
+    /* the Auto segment drops under its label on the narrowest phones rather than being cut */
+    #themePop .prow{flex-wrap:wrap;}
+    .ctl.mini{min-width:40px; width:40px; height:40px;}
+    .strip .chip{padding:9px 13px 9px 10px;}
+    .pop-more summary{padding:14px 0;}
+  }
+  @media (forced-colors: active){
+    #pop{border-color:ButtonText;}
+    .pop-link{border-top-color:ButtonText;}
   }
 
   /* ---------- fonts ---------- */
@@ -263,62 +480,183 @@
   /* ---------- content ---------- */
   body > main{padding:26px 18px 90px;}
   body.paged main{padding:14px 14px 0;}
-  #empty{
-    max-width:560px; margin:9vh auto 0; text-align:center;
-    border:1.5px dashed var(--line); border-radius:18px; padding:52px 26px;
-    position:relative; overflow:hidden; transition:border-color .2s;
+  /* the start screen. The hero shows until the library has a book; then the Continue card, the
+     streak, the first-run tips and the recent files take the same 560px column */
+  #empty{max-width:560px; margin:5vh auto 0; position:relative;}
+  #empty .hero{
+    text-align:center; padding:22px 26px 28px; border:1.5px dashed transparent; border-radius:18px;
+    position:relative; transition:border-color .2s;
   }
-  #empty::before{ /* pool of lamplight */
-    content:""; position:absolute; inset:-40% -20% auto -20%; height:120%;
-    background:radial-gradient(closest-side, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%);
-    pointer-events:none;
+  #empty.drag .hero{border-color:var(--accent);}
+  body.has-books #empty .hero{display:none;}
+  /* the lamp: shade and stand in the text colour, the light in the accent, a pool of it beneath */
+  .hero-lamp{display:block; width:150px; height:auto; margin:0 auto 4px;}
+  .hero-lamp stop{stop-color:var(--accent);}
+  .hero-lamp .glow{fill:url(#heroGlow);}
+  .hero-lamp .cone{fill:url(#heroCone);}
+  .hero-lamp .shade{fill:var(--panel); stroke:var(--ink); stroke-width:2.4; stroke-linejoin:round;}
+  .hero-lamp .bulb{fill:var(--accent);}
+  .hero-lamp .stem, .hero-lamp .base{fill:none; stroke:var(--ink); stroke-width:2.4; stroke-linecap:round;}
+  #empty h1{font-family:var(--reader-font); font-style:italic; font-weight:400; font-size:1.75rem; margin:0 0 8px; position:relative;}
+  #empty p{color:var(--muted); font-size:0.875rem; line-height:1.55; margin:0 0 22px; position:relative;}
+  .ctl.big{height:44px; padding:0 18px; font-size:0.9375rem; margin:0 auto;}
+  .formats{display:flex; justify-content:center; flex-wrap:wrap; gap:6px; margin-top:22px; position:relative;}
+  .formats span{
+    font-size:0.6875rem; font-weight:600; letter-spacing:.08em; color:var(--muted);
+    border:1px solid var(--line); border-radius:999px; padding:4px 9px;
   }
-  #empty.drag{border-color:var(--accent);}
-  #empty h1{font-family:var(--reader-font); font-style:italic; font-weight:400; font-size:1.688rem; margin:0 0 6px; position:relative;}
-  #empty p{color:var(--muted); font-size:0.875rem; margin:0 0 22px; position:relative;}
-  #empty .formats{font-size:0.75rem; color:var(--muted); letter-spacing:.08em; margin-top:20px; position:relative;}
-  .wordmark{cursor:pointer;}
+  /* dragging a file anywhere: a dashed frame around the window says where it can land, and the
+     words sit on a pill so they read over whatever is under them */
+  body.dragging::after{
+    content:""; position:fixed; inset:10px; z-index:90; pointer-events:none;
+    border:2px dashed var(--accent); border-radius:16px; background:color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  body.dragging::before{
+    content:"Drop to open"; position:fixed; left:50%; top:50%; transform:translate(-50%, -50%); z-index:91; pointer-events:none;
+    padding:10px 16px; border-radius:999px; background:var(--panel); color:var(--accent); border:1px solid var(--accent);
+    box-shadow:0 10px 30px rgba(0,0,0,.18); font-family:var(--ui-font); font-size:1rem; font-weight:600; white-space:nowrap;
+  }
+  /* the Continue card: the book opened last, a progress ring, and the way back in */
+  #continue{max-width:560px; margin:0 auto; display:none;}
+  body[data-mode="empty"] #continue.show{display:block;}
+  #continueCard{
+    display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:14px; width:100%; text-align:left;
+    padding:14px 16px; border-radius:12px; border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    font-family:var(--ui-font); cursor:pointer; box-shadow:0 2px 14px rgba(0,0,0,.12);
+    transition:border-color .2s, background .35s ease, transform .12s;
+  }
+  #continueCard:hover{border-color:var(--accent);}
+  #continueCard:active{transform:scale(.99);}
+  .cc-ring{
+    --p:0%; width:44px; height:44px; border-radius:50%; position:relative; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    background:conic-gradient(var(--accent) var(--p), color-mix(in srgb, var(--line) 85%, transparent) 0);
+    font-size:0.6875rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink);
+  }
+  .cc-ring::before{content:""; position:absolute; inset:4px; border-radius:50%; background:var(--panel);}
+  .cc-ring span{position:relative;}
+  .cc-main{min-width:0; display:grid; gap:2px;}
+  .cc-title{font-family:var(--reader-font); font-size:1.0625rem; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .cc-meta{font-size:0.75rem; color:var(--muted); display:flex; align-items:center; gap:4px 8px; flex-wrap:wrap;}
+  .cc-left{font-variant-numeric:tabular-nums;}
+  .cc-go{display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-size:0.8438rem; font-weight:600; white-space:nowrap;}
+  .cc-go svg{width:18px; height:18px;}
+  /* first-run tips: three lines and a Got it */
+  #tips{
+    max-width:560px; margin:12px auto 0; padding:12px 16px 12px; border-radius:12px; border:1px solid var(--line);
+    background:color-mix(in srgb, var(--panel) 60%, var(--bg)); display:grid; gap:2px;
+  }
+  #tips[hidden], body:not([data-mode="empty"]) #tips{display:none;}
+  .tip-row{display:flex; align-items:center; gap:12px; min-height:34px; font-size:0.875rem; line-height:1.4;}
+  .tip-row svg{width:18px; height:18px; color:var(--accent); flex:none;}
+  .tip-foot{display:flex; justify-content:flex-end; margin-top:4px;}
+  .tip-foot .chip{padding:7px 14px;}
+  @media print{ #continue, #tips, #pop, #popScrim{display:none !important;} }
+  @media (forced-colors: active){
+    .hero-lamp .shade, .hero-lamp .stem, .hero-lamp .base{stroke:CanvasText; forced-color-adjust:none;}
+    .hero-lamp .bulb{fill:Highlight; forced-color-adjust:none;}
+    .cc-ring{forced-color-adjust:none; background:conic-gradient(Highlight var(--p), GrayText 0);}
+    .cc-ring::before{background:Canvas;}
+  }
 
   /* ---------- library (recent files, kept on this device) ---------- */
   #library{max-width:560px; margin:22px auto 0; display:none;}
   #library.show{display:block;}
   .lib-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 4px 8px;}
   .lib-head .label{margin:0;}
+  .lib-count{font-weight:500; letter-spacing:0; margin-left:2px;}
+  .lib-count:empty{display:none;}
   .lib-head button{
-    border:0; background:transparent; color:var(--muted); font-size:0.7812rem; cursor:pointer; padding:4px 6px;
+    border:0; background:transparent; color:var(--muted); font-family:var(--ui-font); font-size:0.7812rem; cursor:pointer; padding:6px 8px; border-radius:8px;
   }
-  .lib-head button:hover{color:var(--accent);}
+  .lib-head button:hover{color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
   .lib-list{display:grid; gap:8px;}
+  /* "Pinned" and "Recent" over the two halves of the list; only drawn once something is pinned */
+  .lib-group{margin:6px 4px 0;}
+  .lib-group:first-child{margin-top:0;}
+  /* a card per file: an accent bar on the left, then sibling buttons — the book (type, name,
+     progress), move up and down for a pinned one, the pin and the remove. The card clips its
+     corners, so the book button's focus ring is drawn on the card instead */
   .lib-item{
-    display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:12px;
-    width:100%; text-align:left; padding:11px 12px; border-radius:12px;
-    border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer;
+    position:relative; overflow:hidden; display:flex; align-items:center;
+    width:100%; padding-right:8px; border-radius:12px;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink);
     font-family:var(--ui-font); transition:border-color .2s, background .35s ease;
   }
+  .lib-item::before{content:""; position:absolute; left:0; top:0; bottom:0; width:6px; background:var(--accent);}
   .lib-item:hover{border-color:var(--accent);}
+  .lib-item.pinned::before{background:var(--accent); width:6px;}
+  .lib-open{
+    display:grid; grid-template-columns:auto 1fr; align-items:center; gap:12px; min-width:0; flex:1 1 auto; text-align:left;
+    padding:11px 12px 11px 18px; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer;
+  }
+  .lib-open:focus-visible{outline:none;}
+  .lib-item:has(> .lib-open:focus-visible){outline:2px solid var(--accent); outline-offset:2px;}
   .lib-type{
     font-size:0.625rem; font-weight:700; letter-spacing:.1em; color:var(--accent);
     border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:6px; padding:3px 6px;
-    min-width:44px; text-align:center;
+    min-width:44px; text-align:center; white-space:nowrap;
   }
-  .lib-name{font-size:0.875rem; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .lib-meta{font-size:0.75rem; color:var(--muted); margin-top:2px; display:flex; align-items:center; gap:8px;}
+  .lib-main{min-width:0; display:block;}
+  .lib-name{display:block; font-size:0.9062rem; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lib-meta{font-size:0.75rem; color:var(--muted); margin-top:3px; display:flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums;}
   .lib-bar{flex:1; max-width:120px; height:3px; border-radius:2px; background:var(--line); overflow:hidden;}
   .lib-bar i{display:block; height:100%; background:var(--accent);}
-  .lib-x{
-    border:0; background:transparent; color:var(--muted); font-size:1.25rem; line-height:1;
-    padding:6px 4px; cursor:pointer; border-radius:8px;
+  .lib-done{
+    font-size:0.625rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent);
+    border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:999px; padding:2px 7px;
   }
-  .lib-x:hover{color:var(--accent);}
+  /* the finish forecast, under the progress line */
+  .lib-left{display:block; font-size:0.7188rem; color:var(--muted); margin-top:3px; font-variant-numeric:tabular-nums;}
+  .lib-x, .lib-pin, .lib-move{
+    display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; flex:none;
+    border:0; background:transparent; color:var(--muted); padding:0; cursor:pointer; border-radius:8px;
+    transition:color .2s, background .2s, opacity .2s;
+  }
+  .lib-x svg, .lib-pin svg, .lib-move svg{width:18px; height:18px;}
+  .lib-x:hover, .lib-pin:hover, .lib-move:hover{color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .lib-pin.on{color:var(--accent);}
+  .lib-pin.on svg{fill:currentColor;}
+  /* move up / down stay out of the way on a desktop until the card is hovered or has the focus */
+  .lib-move{opacity:0;}
+  .lib-item:hover .lib-move, .lib-item:focus-within .lib-move{opacity:1;}
+  .lib-move:disabled{opacity:0; cursor:default;}
+  .lib-item:hover .lib-move:disabled, .lib-item:focus-within .lib-move:disabled{opacity:.35;}
+  /* touch: the remove deletes without asking, so it gets the full target; the header's Clear and
+     the footer's buttons grow to the row size */
+  @media (pointer: coarse){
+    .lib-x, .lib-pin, .lib-move{width:44px; height:44px;}
+    .lib-move, .lib-move:disabled{opacity:1;}
+    .lib-move:disabled{opacity:.35;}
+    .lib-head button{min-height:40px; padding:0 12px;}
+    #tipsOk{min-height:40px;}
+    #libOpen{height:44px;}
+  }
+  /* a pinned card carries four controls; on a phone they take their room out of the padding,
+     not out of the title */
+  @media (max-width:480px){
+    .lib-x, .lib-pin, .lib-move{width:40px;}
+    .lib-open{padding:11px 6px 11px 14px; gap:9px;}
+    .lib-type{min-width:38px; padding:3px 4px;}
+    /* a pinned card has two controls more: the bar gives way, the percentage still says it */
+    .lib-item.pinned .lib-bar{display:none;}
+  }
+  @media (prefers-reduced-motion: reduce){ .lib-move{transition:none;} }
   .lib-empty{font-size:0.8125rem; color:var(--muted); text-align:center; padding:14px;}
+  .lib-foot{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px; padding:0 2px;}
+  .lib-foot .hint{font-size:0.8125rem;}
+  @media (forced-colors: active){
+    .lib-item::before{background:Highlight;}
+    .lib-type, .lib-done{border-color:ButtonText;}
+  }
 
   /* ---------- reading stats ---------- */
-  #streak{max-width:560px; margin:22px auto 0; display:none;}
+  #streak{max-width:560px; margin:12px auto 0; display:none;}
   #streak.show{display:block;}
   .st-widget{
-    display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 16px; width:100%;
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; width:100%;
     padding:12px 16px; border-radius:12px; border:1px solid var(--line); background:var(--panel); color:var(--ink);
-    font-family:var(--ui-font); font-size:0.8438rem; cursor:pointer; transition:border-color .2s, background .35s ease;
+    font-family:var(--ui-font); font-size:0.8438rem; text-align:left; cursor:pointer; transition:border-color .2s, background .35s ease;
   }
   .st-widget:hover{border-color:var(--accent);}
   /* lamp dots, one per day */
@@ -350,12 +688,73 @@
   .st-grid dt{color:var(--muted);}
   .st-grid dd{margin:0; text-align:right; font-variant-numeric:tabular-nums;}
   .st-goals .chip{flex:1 1 auto; min-width:2.5rem; padding:7px 8px; text-align:center;}
+  /* twelve weeks of reading speed, and this week's number beside it */
+  .st-speed{display:flex; align-items:center; gap:14px;}
+  .st-spark{flex:1; min-width:0; height:1.75rem; color:var(--accent);}
+  .st-speed-n{font-family:var(--reader-font); font-size:1.375rem; line-height:1; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .st-speed-n span{font-family:var(--ui-font); font-size:0.75rem; color:var(--muted);}
+  /* a thin bar shared by the yearly goals and the per-book progress */
+  .st-pbar{display:block; height:4px; border-radius:2px; background:color-mix(in srgb, var(--line) 85%, transparent); overflow:hidden; margin:6px 0 0;}
+  .st-pbar i{display:block; height:100%; background:var(--accent);}
+  .st-year + .st-year{margin-top:14px;}
+  .st-year-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:0.8438rem;}
+  .st-year-v{color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .st-year-goal{display:flex; align-items:center; gap:6px; margin-top:8px;}
+  .st-year-goal button{
+    width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center; padding:0;
+    border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:0.9375rem; line-height:1; cursor:pointer;
+  }
+  .st-year-goal button:hover{border-color:var(--accent);}
+  .st-yg-in{
+    width:4.5rem; padding:5px 8px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink);
+    font-family:var(--ui-font); font-size:0.8125rem; font-variant-numeric:tabular-nums;
+  }
+  .st-year-hint{font-size:0.75rem; color:var(--muted);}
+  /* the books in the library, with what is left of each */
+  .st-book{padding:8px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent);}
+  .st-book:last-child{border-bottom:0; padding-bottom:0;}
+  .st-book-n{font-size:0.8438rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .st-book-m{display:flex; align-items:center; gap:10px; margin-top:4px; font-size:0.75rem; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .st-book-m .st-pbar{flex:1; max-width:7.5rem; margin:0;}
+  .st-book-f{font-size:0.7188rem; color:var(--muted); margin-top:3px; font-variant-numeric:tabular-nums;}
+  @media (pointer: coarse){ .st-year-goal button{width:36px; height:36px;} .st-yg-in{min-height:36px;} }
+  @media (forced-colors: active){
+    .st-spark{forced-color-adjust:none; color:Highlight;}
+    .st-pbar{forced-color-adjust:none; background:GrayText;} .st-pbar i{background:Highlight;}
+  }
   @media (forced-colors: active){
     .st-day, .st-bar, .st-ring{forced-color-adjust:none;}
     .st-day{border-color:CanvasText; background:Canvas; box-shadow:none;} .st-day.half{background:GrayText;} .st-day.lit{background:Highlight; border-color:Highlight;}
     .st-day.today{outline-color:CanvasText;}
     .st-bar{background:GrayText;} .st-bar.met{background:Highlight;}
     .st-ring{background:conic-gradient(Highlight var(--p), GrayText 0);} .st-ring::after{background:Canvas;}
+  }
+
+  /* ---------- storage ---------- */
+  .so-sec{padding:12px 2px 14px; border-bottom:1px solid var(--line);}
+  .so-sec:last-child{border-bottom:0;}
+  .so-sec .label{margin-bottom:9px;}
+  /* how much of what the browser allows is in use */
+  .so-meter{height:.5rem; border-radius:999px; background:color-mix(in srgb, var(--line) 85%, transparent); overflow:hidden;}
+  .so-meter i{display:block; height:100%; background:var(--accent);}
+  .so-line{font-size:0.8125rem; color:var(--muted); margin-top:8px; line-height:1.45;}
+  /* one kind of stored thing: what it is on the left, how big on the right, its action below */
+  .so-row{
+    display:grid; grid-template-columns:1fr auto; gap:2px 12px; align-items:baseline;
+    padding:9px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  .so-row:last-child{border-bottom:0; padding-bottom:0;}
+  .so-name{font-size:0.875rem;}
+  .so-sub{font-size:0.75rem; color:var(--muted); margin-top:2px;}
+  .so-val{font-size:0.8125rem; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .so-act{grid-column:1 / -1; justify-self:start; margin-top:7px;}
+  .so-acts{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .so-sec .chip{font-size:0.7812rem; padding:7px 12px;}
+  @media (pointer: coarse){ .so-sec .chip, #side .side-foot .so-danger{min-height:40px;} }
+  @media (forced-colors: active){
+    .so-meter{forced-color-adjust:none; background:GrayText;}
+    .so-meter i{background:Highlight;}
   }
 
   #status{max-width:var(--w); margin:30px auto; text-align:center; color:var(--muted); font-size:0.875rem; display:none;}
@@ -368,20 +767,24 @@
   body.paged.spread #docView{max-width:calc(2 * var(--w) + 48px);}
   #doc{
     font-family:var(--reader-font); font-size:var(--fs); line-height:var(--lh);
+    font-weight:var(--fw); letter-spacing:var(--ls); word-spacing:var(--ws);
     overflow-wrap:break-word;
   }
+  /* bold stays bolder than the text: max(700, weight + 200), capped at 900 (computed in applyType) */
+  #doc b, #doc strong{font-weight:var(--fwb);}
   #doc.justify p, #doc.justify li, #doc.justify blockquote, #doc.justify dd, #doc.justify .plain{text-align:justify;}
   #doc.hyphens{-webkit-hyphens:auto; hyphens:auto;}
   #doc.hyphens pre, #doc.hyphens code{-webkit-hyphens:none; hyphens:none;}
   body.paged #doc{height:100%; column-fill:auto;}
   body.paged #doc::after{content:""; display:block; break-before:column; height:1px;}
   body.paged #doc img, body.paged #doc pre, body.paged #doc blockquote, body.paged #doc table{break-inside:avoid;}
-  #doc h1,#doc h2,#doc h3,#doc h4{line-height:1.3; margin:1.6em 0 .55em; font-weight:700;}
+  #doc h1,#doc h2,#doc h3,#doc h4{line-height:1.3; margin:1.6em 0 .55em; font-weight:var(--fwh);}
   #doc h1{font-size:1.55em;} #doc h2{font-size:1.3em;} #doc h3{font-size:1.12em;} #doc h4{font-size:1em;}
-  #doc p{margin:0 0 .95em;}
+  #doc p{margin:0 0 var(--pgap);}
+  #doc li{margin-bottom:var(--pgap);}
   #doc a{color:var(--accent);}
   #doc img{max-width:100%; height:auto; border-radius:6px;}
-  #doc blockquote{margin:1.2em 0; padding:.2em 0 .2em 1.1em; border-left:2.5px solid var(--accent); color:var(--muted);}
+  #doc blockquote{margin:1.2em 0 var(--pgap); padding:.2em 0 .2em 1.1em; border-left:2.5px solid var(--accent); color:var(--muted);}
   #doc hr{border:none; border-top:1px solid var(--line); margin:2.2em auto; width:40%;}
   #doc pre{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; overflow-x:auto; font-size:.85em;}
   #doc code{font-family:ui-monospace, Menlo, Consolas, monospace;}
@@ -410,26 +813,43 @@
   body.paged #pdf.spread canvas{margin:0;}
   body.soften #pdf canvas{filter:invert(.93) hue-rotate(180deg);}
 
-  /* page-turn bar */
+  /* the dock: the read-aloud bar over the page-turn bar, at the foot of the screen. app.js
+     measures it into --dockH; --aboveDock is where the floating things sit (the auto-scroll
+     pill, the toasts): just above the dock, or above a phone's home bar when the dock is empty */
+  body{--aboveDock:max(calc(var(--dockH, 0px) + 12px), calc(env(safe-area-inset-bottom, 0px) + 12px));}
+  #dock{position:fixed; left:0; right:0; bottom:0; z-index:16; display:flex; flex-direction:column; font-family:var(--ui-font);}
+  #dock .ctl{padding:0 9px;}
+  #dock .ctl svg{width:20px; height:20px; flex:none;}
+  @media (pointer: coarse){ #dock .ctl{height:44px;} }
+  /* page-turn bar: chevrons and the readout — "12 / 40 · Chapter 3 · 18 min left" */
   #pager{
-    position:fixed; left:0; right:0; bottom:0; z-index:15;
-    display:none; align-items:center; justify-content:center; gap:18px;
+    display:none; align-items:center; justify-content:center; gap:12px;
     background:var(--panel); border-top:1px solid var(--line);
     padding:8px 14px calc(8px + env(safe-area-inset-bottom));
     transition:background .35s ease, border-color .35s ease;
   }
-  #pgInfo{font-size:0.8125rem; color:var(--muted); font-variant-numeric:tabular-nums; min-width:74px; text-align:center;}
+  #pgInfo{
+    display:inline-flex; align-items:baseline; justify-content:center; flex:0 1 auto; min-width:0; max-width:100%;
+    font-size:0.8125rem; color:var(--muted); font-variant-numeric:tabular-nums; white-space:pre;
+  }
+  #pgInfo .pg-n{flex:none; color:var(--ink); font-weight:600;}
+  #pgInfo .pg-sec{flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;}
+  #pgInfo .pg-left{flex:none;}
 
   @media (max-width:560px){
-    .bar{padding:9px 10px; gap:6px;}
-    .wordmark{font-size:1.062rem;}
+    .bar{padding:8px 12px; gap:4px; min-height:52px;}
+    .bar .sep{display:none;}
+    .wordmark{font-size:1.062rem; margin-right:auto;}
     #fname{display:none;}
-    body > main{padding:20px 14px 90px;}
+    #tabs{padding:0 12px 8px;}
+    body > main{padding:20px 16px 90px;}
     body.paged main{padding:12px 12px 0;}
   }
   @media (max-width:400px){
-    .bar{gap:4px; padding:9px 8px;}
+    .bar{gap:4px; padding:8px 8px;}
     .ctl{min-width:36px; height:38px; padding:0 8px; font-size:0.8125rem;}
+    .bar .ctl:not(.primary){width:36px;}
+    #speakBtn{display:none;}
     .wordmark{font-size:1rem;}
   }
 
@@ -444,25 +864,74 @@
   body.zen.paged #tts{bottom:0; padding-bottom:calc(8px + env(safe-area-inset-bottom));}
 
   /* ---------- "more" menu ---------- */
+  /* on a desktop it drops from the ⋯ button: groups with small headings, rows of icon,
+     label and key hint; on a phone (below) it rises as a sheet of tiles */
   #moreWrap{position:relative;}
   #moreMenu{
-    position:absolute; right:0; top:calc(100% + 6px); z-index:30; min-width:210px;
-    background:var(--panel); border:1px solid var(--line); border-radius:12px;
-    box-shadow:0 10px 30px rgba(0,0,0,.22); padding:6px; display:none;
+    position:absolute; right:0; top:calc(100% + 6px); z-index:30; min-width:270px; max-width:340px;
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.18); padding:6px; display:none; font-family:var(--ui-font);
+    transition:background .35s ease, border-color .35s ease;
   }
   #moreMenu.open{display:block; animation:drop .18s ease;}
+  #moreMenu .menu-grab{display:none;}
+  #moreMenu .menu-group{padding:2px 0 4px;}
+  #moreMenu .menu-group + .menu-group{border-top:1px solid var(--line); margin-top:4px; padding-top:6px;}
+  /* a long menu (while reading) is two columns, split by group */
+  #moreMenu.wide{min-width:0; max-width:calc(100vw - 24px); width:max-content;}
+  #moreMenu .menu-cols{display:flex; align-items:stretch;}
+  #moreMenu .menu-col{flex:1 1 0; min-width:0;}
+  #moreMenu.wide .menu-col{width:262px;}
+  #moreMenu .menu-col + .menu-col{border-left:1px solid var(--line); margin-left:6px; padding-left:6px;}
+  @media (min-width:561px){ #moreMenu{max-height:calc(100vh - var(--headH, 61px) - 20px); overflow-y:auto; overscroll-behavior:contain;} }
+  #moreMenu .label{padding:6px 10px 4px;}
   #moreMenu button{
-    display:flex; width:100%; align-items:center; gap:10px; text-align:left;
-    padding:9px 10px; border:0; border-radius:8px; background:transparent; color:var(--ink);
-    font-size:0.875rem; cursor:pointer;
+    position:relative; display:flex; width:100%; align-items:center; gap:12px; min-height:44px; padding:0 10px;
+    border:0; border-radius:10px; background:transparent; color:var(--ink); text-align:left;
+    font-family:var(--ui-font); font-size:0.875rem; cursor:pointer; transition:background .15s;
   }
-  #moreMenu button:hover, #moreMenu button:focus-visible{background:color-mix(in srgb, var(--accent) 12%, transparent); outline:none;}
+  #moreMenu button:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  #moreMenu button:focus-visible{outline-offset:-2px;}
   #moreMenu button[disabled]{opacity:.4; cursor:default;}
-  #moreMenu .sep{height:1px; background:var(--line); margin:5px 4px;}
-  #moreMenu kbd{margin-left:auto; font-family:var(--ui-font); font-size:0.6875rem; color:var(--muted);}
+  #moreMenu button[disabled]:hover{background:transparent;}
+  #moreMenu .mi{flex:none; width:20px; height:20px; display:flex; color:var(--muted);}
+  #moreMenu .mi svg{width:20px; height:20px;}
+  #moreMenu button:hover .mi, #moreMenu button.on .mi{color:var(--ink);}
+  #moreMenu button > span{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  /* a toggle that is on (Stop reading aloud, Leave zen mode…): a dot before the icon */
+  #moreMenu button.on::before{content:""; position:absolute; left:2px; top:50%; width:6px; height:6px; margin-top:-3px; border-radius:50%; background:var(--accent);}
+  /* phones: a sheet of tiles rising from the bottom, three to a row, behind it a scrim */
+  #moreScrim{position:fixed; inset:0; z-index:29; background:rgba(0,0,0,.18); display:none; touch-action:none;}
+  @keyframes rise{from{transform:translateY(100%);} to{transform:none;}}
+  @media (max-width:560px){
+    #moreScrim.on{display:block;}
+    #moreMenu{
+      position:fixed; left:0; right:0; top:auto; bottom:0; min-width:0; max-width:none; max-height:70vh; overflow-y:auto; overscroll-behavior:contain;
+      border-radius:16px 16px 0 0; border-width:1px 0 0; box-shadow:0 -10px 40px rgba(0,0,0,.28);
+      padding:0 16px max(16px, env(safe-area-inset-bottom));
+    }
+    #moreMenu.open{animation:rise .22s ease;}
+    #moreMenu .menu-grab{display:flex; justify-content:center; padding:10px 0 4px; cursor:pointer;}
+    #moreMenu .menu-grab::before{content:""; width:40px; height:4px; border-radius:2px; background:var(--line);}
+    #moreMenu .menu-group{padding:6px 0 10px;}
+    #moreMenu .menu-group + .menu-group{margin-top:2px; padding-top:12px;}
+    #moreMenu .label{padding:0 2px 8px;}
+    #moreMenu .menu-cols{display:block;}
+    #moreMenu.wide .menu-col{width:auto;}
+    #moreMenu .menu-col + .menu-col{border-left:0; margin-left:0; padding-left:0;}
+    #moreMenu .menu-items{display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px;}
+    #moreMenu button{
+      flex-direction:column; justify-content:center; gap:6px; min-height:72px; padding:8px 6px;
+      border:1px solid var(--line); border-radius:12px; text-align:center; font-size:0.75rem; line-height:1.2;
+    }
+    #moreMenu button > span{flex:none; white-space:normal; overflow:visible; text-overflow:clip;}
+    #moreMenu .mi{color:var(--ink);}
+    #moreMenu kbd{display:none;}
+    #moreMenu button.on::before{left:8px; top:8px; margin:0;}
+  }
 
   /* ---------- side panel (contents, marks, search…) ---------- */
-  #sideScrim{position:fixed; inset:0; z-index:44; background:rgba(0,0,0,.18); display:none;}
+  #sideScrim{position:fixed; inset:0; z-index:44; background:rgba(0,0,0,.18); display:none; touch-action:none;}
   #sideScrim.on{display:block;}
   #side{
     position:fixed; top:0; right:0; bottom:0; z-index:45; width:min(380px, 100%);
@@ -472,28 +941,68 @@
     font-family:var(--ui-font);
   }
   #side.open{transform:none; visibility:visible; transition:transform .26s ease, visibility 0s;}
-  #side .side-head{display:flex; align-items:center; gap:10px; padding:14px 14px 10px 18px; border-bottom:1px solid var(--line);}
-  #side .side-title{flex:1; font-family:var(--reader-font); font-size:1.188rem;}
-  #side .side-x{border:0; background:transparent; color:var(--muted); font-size:1.5rem; line-height:1; cursor:pointer; padding:4px 6px;}
+  #side .side-top{flex:none; border-bottom:1px solid var(--line);}
+  #side .side-head{display:flex; align-items:center; gap:10px; padding:12px 10px 10px 18px;}
+  #side .side-title{flex:1; min-width:0; font-family:var(--reader-font); font-size:1.125rem; line-height:1.3;}
+  #side .side-x{
+    flex:none; width:40px; height:40px; display:flex; align-items:center; justify-content:center; padding:0;
+    border:0; border-radius:10px; background:transparent; color:var(--muted); cursor:pointer; transition:background .2s, color .2s;
+  }
+  #side .side-x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}
+  #side .side-x svg{width:20px; height:20px;}
+  /* the switcher between the document panels (contents, search, notes, about): a segmented
+     control under the title; the tool panels (fonts, voices, stats, keys) have none */
+  #side .side-switch{
+    display:flex; gap:2px; margin:0 14px 12px; padding:3px; border:1px solid var(--line); border-radius:999px;
+    background:color-mix(in srgb, var(--panel) 60%, var(--bg));
+  }
+  #side .side-switch[hidden]{display:none;}
+  #side .side-switch button{
+    flex:1 1 auto; min-width:0; display:flex; align-items:center; justify-content:center; gap:6px; min-height:34px; padding:0 6px;
+    border:1px solid transparent; border-radius:999px; background:transparent; color:var(--muted);
+    font-family:var(--ui-font); font-size:0.75rem; font-weight:600; white-space:nowrap; cursor:pointer; transition:background .2s, color .2s;
+  }
+  #side .side-switch button svg{width:16px; height:16px; flex:none;}
+  #side .side-switch button:hover{color:var(--ink);}
+  #side .side-switch button[aria-pressed="true"]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent); color:var(--ink);}
+  #side .side-grab{display:none;}
+  /* the shared section label inside panels (About, Stats and Fonts carry it beside their own) */
+  .sec, #side .sec{font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);}
   #side .side-body{flex:1; overflow-y:auto; overscroll-behavior:contain; padding:10px 14px max(18px, env(safe-area-inset-bottom));}
+  /* a body with no controls (Keyboard shortcuts) is the focusable scroll region itself */
+  #side .side-body:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
+  @media (pointer: coarse){
+    #side .side-switch button{min-height:40px;}
+    .find-row .ctl{min-width:44px; height:44px;}
+    .toc-item{min-height:44px; align-items:center;}
+    #tts label, #tts select{min-height:44px;}
+  }
   #side .side-foot{display:flex; gap:8px; flex-wrap:wrap; padding:10px 14px max(12px, env(safe-area-inset-bottom)); border-top:1px solid var(--line);}
   #side .side-foot .chip{font-size:0.7812rem; padding:7px 12px;}
   #side .empty-note{color:var(--muted); font-size:0.8438rem; padding:22px 6px; text-align:center; line-height:1.5;}
   @media (max-width:560px){
     #side{top:auto; left:0; width:100%; max-height:78vh; border-left:0; border-top:1px solid var(--line); border-radius:16px 16px 0 0;
-      transform:translateY(105%);}
+      box-shadow:0 -10px 40px rgba(0,0,0,.28); transform:translateY(105%);}
+    #side .side-grab{display:flex; justify-content:center; padding:10px 0 0; cursor:pointer;}
+    #side .side-grab::before{content:""; width:40px; height:4px; border-radius:2px; background:var(--line);}
+    #side .side-head{padding-top:4px;}
+  }
+  @media (max-width:400px){
+    #side .side-switch button{gap:4px; padding:0 4px; font-size:0.7rem;}
   }
 
-  /* progress readout (percent + time left) */
+  /* progress readout (percent + time left) in Scroll flow; in Pages flow the page-turn bar
+     carries it. Styled like the toasts */
   #progressInfo{
-    position:fixed; right:12px; z-index:39; top:calc(var(--headH, 61px) + 8px);
-    background:var(--panel); color:var(--muted); border:1px solid var(--line); border-radius:999px;
-    padding:4px 10px; font-family:var(--ui-font); font-size:0.7188rem; font-variant-numeric:tabular-nums;
-    opacity:0; pointer-events:none; transition:opacity .3s ease, background .35s ease;
+    position:fixed; right:12px; z-index:25; top:calc(var(--headH, 61px) + 8px);
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.18);
+    padding:6px 12px; font-family:var(--ui-font); font-size:0.75rem; font-variant-numeric:tabular-nums;
+    opacity:0; pointer-events:none; transition:opacity .3s ease, background .35s ease, border-color .35s ease;
   }
   #progressInfo.on{opacity:1;}
   body.hidebar:not(.paged) #progressInfo{top:8px;}
-  body.paged #progressInfo{top:auto; bottom:calc(var(--pagerH, 56px) + 8px); right:12px;}
+  body.paged #progressInfo{top:auto; bottom:var(--aboveDock); right:12px;}
 
   /* reading ruler: the line under the pointer stays clear, the rest is dimmed */
   #ruler{position:fixed; inset:0; z-index:19; pointer-events:none; display:none;}
@@ -507,45 +1016,47 @@
   }
   @media (pointer: coarse){ #ruler .grip{display:block;} }
 
-  /* auto-scroll control */
+  /* auto-scroll control: a pill floating above the dock */
   #autoBar{
-    position:fixed; right:12px; bottom:max(14px, env(safe-area-inset-bottom)); z-index:17; display:none; align-items:center; gap:4px;
-    background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:4px; box-shadow:0 6px 20px rgba(0,0,0,.2); font-family:var(--ui-font);
+    position:fixed; right:12px; bottom:var(--aboveDock); z-index:17; display:none; align-items:center; gap:2px;
+    background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,.18);
+    font-family:var(--ui-font); transition:background .35s ease, border-color .35s ease;
   }
   #autoBar.on{display:flex;}
-  #autoBar button{min-width:34px; height:34px; border:0; border-radius:999px; background:transparent; color:var(--ink); font-size:0.9375rem; cursor:pointer;}
-  #autoBar button:hover{background:color-mix(in srgb, var(--accent) 12%, transparent);}
-  #autoBar .speed{font-size:0.75rem; color:var(--muted); min-width:52px; text-align:center; font-variant-numeric:tabular-nums;}
-  body.paged #autoBar{bottom:calc(var(--pagerH, 56px) + 10px);}
-  body.tts-on #autoBar{bottom:calc(var(--ttsH, 56px) + 10px);}
+  #autoBar button{
+    width:36px; height:36px; display:flex; align-items:center; justify-content:center; padding:0;
+    border:0; border-radius:999px; background:transparent; color:var(--ink); cursor:pointer; transition:background .2s;
+  }
+  #autoBar button svg{width:18px; height:18px;}
+  #autoBar button:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  #autoBar .speed{font-size:0.75rem; color:var(--muted); min-width:44px; text-align:center; font-variant-numeric:tabular-nums;}
+  @media (pointer: coarse){ #autoBar button{width:44px; height:44px;} }
 
-  /* read aloud bar */
+  /* read aloud bar (in the dock, over the page-turn bar) */
   #tts{
-    position:fixed; left:0; right:0; bottom:0; z-index:16; display:none; align-items:center; gap:8px;
+    display:none; align-items:center; gap:8px;
     background:var(--panel); border-top:1px solid var(--line); padding:8px 12px calc(8px + env(safe-area-inset-bottom));
     transition:background .35s ease, border-color .35s ease; font-family:var(--ui-font);
   }
   #tts.on{display:flex;}
-  body.paged #tts{bottom:var(--pagerH, 56px); padding-bottom:8px;}
-  #tts .ctl{min-width:38px; height:38px; padding:0 9px; font-size:0.9375rem;}
+  body.paged #tts{padding-bottom:8px;}
+  #tts .ctl{font-size:0.9375rem;}
   #tts [hidden]{display:none;}
   #tts .tts-break{display:none;}
   #tts label{display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--muted); flex:1; min-width:90px; min-height:36px;}
-  #tts input[type=range]{flex:1; min-width:50px;}
+  #tts input[type=range]{flex:1; min-width:50px; max-width:340px;}
   #tts .val{min-width:34px;}
-  #tts select{
-    max-width:150px; min-width:0; min-height:36px; padding:7px 8px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
-    font-family:var(--ui-font); font-size:0.7812rem; text-overflow:ellipsis;
-  }
-  /* ♀ ♂ pick a voice of that gender; the one matching the narrator is shown pressed */
-  #tts .tts-sex{min-width:36px; padding:0 7px; font-size:1.0625rem; font-weight:400; line-height:1;}
-  #tts .tts-sex.on{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}
-  #tts .tts-voices{font-size:0.8125rem; padding:0 11px; white-space:nowrap;}
+  /* the picker is the voice button and its panel; the select behind it only mirrors the choice */
+  #tts .tts-mirror{position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap;}
+  /* who is reading, in one word, with the way into the panel */
+  #tts .tts-voice{font-size:0.8125rem; font-weight:600; padding:0 8px 0 11px; gap:4px; max-width:11em;}
+  #tts .tts-voice svg{width:16px; height:16px; color:var(--muted);}
+  #tts .tts-voice-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   /* the sleep timer, while one is set ("Stops in 12 min"); it opens the voices panel */
   #tts .tts-sleep{font-size:0.75rem; font-weight:500; padding:0 10px; gap:0.3em; white-space:nowrap; background:color-mix(in srgb, var(--accent) 12%, transparent); font-variant-numeric:tabular-nums;}
   #tts .tts-x{font-size:1.125rem;}
   /* in scroll flow the last lines must clear the bar (two rows on a phone) */
-  body.tts-on:not(.paged) > main{padding-bottom:calc(var(--ttsH, 56px) + 40px);}
+  body.tts-on:not(.paged) > main{padding-bottom:calc(var(--dockH, 56px) + 40px);}
   /* one row when everything fits, else two: the buttons, then speed, voice and ×. measure()
      sets the class below 720px (the ♀ ♂ Voices… buttons take the slack under that) and whenever
      the speed control would overflow its row, as it does up to ~830px with the sleep timer
@@ -555,20 +1066,108 @@
   #tts.tts-wrap .tts-break{display:block; flex-basis:100%; height:0;}
   #tts.tts-wrap .tts-x{margin-left:auto;}
   #tts.tts-wrap label{min-width:0; flex:1 1 140px;}
-  #tts.tts-wrap select{max-width:none; flex:1 1 110px; font-size:0.75rem;}
   @media (max-width:400px){
     #tts .ctl{min-width:36px; padding:0 7px;}
-    #tts .tts-sex{min-width:34px; padding:0 5px;}
+    #tts .tts-voice{padding:0 6px 0 9px; max-width:8em;}
     #tts .tts-sleep{padding:0 7px; font-size:0.7188rem;}
     #tts #ttsSleepW{display:none;}   /* just "12 min": the first row is full */
   }
-  /* the voices panel (narrator, dialogue voice, expression, pitch, sleep timer). The single
-     column is minmax(0,1fr), not auto, so a long Windows voice name shrinks the select instead
-     of widening the rows past the drawer */
-  .tts-panel{display:grid; grid-template-columns:minmax(0,1fr); gap:12px; padding-top:4px;}
-  .tts-panel .sel{flex:1; min-width:0; max-width:100%; text-overflow:ellipsis;}
-  .tts-panel .hint{margin-top:-4px; line-height:1.45;}
+
+  /* ---------- the voices panel ----------
+     A handful of good choices first — the pair that is reading, then up to six cards for this
+     document's language — with the whole list folded away under "All voices". Every name can be
+     heard before it is chosen, and the ♀ ♂ — chip corrects a device that guessed wrong. */
+  .tts-panel{display:grid; grid-template-columns:minmax(0,1fr); gap:18px; padding-top:4px;}
+  /* minmax(0,1fr), not the implicit auto: an auto track takes its contents' max-content width, so
+     one long voice name would carry the whole panel past the drawer instead of being shortened */
+  .tts-panel .group, .v-pair, .v-card, .v-list, .v-group, .v-sub{grid-template-columns:minmax(0, 1fr);}
+  .tts-panel .group{gap:12px;}
+  .tts-panel .hint{line-height:1.45;}
   .tts-panel .tts-sleep-chips .chip{padding:7px 11px; font-size:0.7812rem;}
+  .tts-panel .rowline label{min-width:72px;}
+  /* a voice's name, and the little words under it. min-width:0 so a device that calls a voice
+     "English United States" shortens it rather than pushing the panel past the drawer */
+  .v-name{font-size:0.9375rem; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; max-width:100%;}
+  .v-tags{display:flex; flex-wrap:wrap; gap:4px;}
+  .v-tag{
+    font-size:0.625rem; font-weight:600; letter-spacing:.03em; text-transform:uppercase; color:var(--muted);
+    border:1px solid var(--line); border-radius:999px; padding:1px 6px; white-space:nowrap;
+  }
+  .v-who{flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 9px;}
+  /* ▶ preview: a quiet round button that speaks one line in that voice */
+  .v-play{
+    flex:none; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; padding:0;
+    border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--ink); cursor:pointer;
+    transition:border-color .2s, background .2s, transform .12s;
+  }
+  .v-play svg{width:14px; height:14px;}
+  .v-play:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .v-play:active{transform:scale(.94);}
+  /* the pair: who reads the narration, who reads the quoted speech */
+  .v-pair{display:grid; gap:8px; padding:12px 14px;}
+  .v-row{display:flex; align-items:center; gap:12px; min-height:44px;}
+  .v-row + .v-row{border-top:1px solid var(--line); padding-top:8px;}
+  .v-role{
+    flex:none; width:80px; font-size:0.625rem; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--muted);
+  }
+  .v-pair-acts{display:flex; flex-wrap:wrap; gap:8px; padding-top:2px;}
+  .v-pair-acts .chip{padding:7px 12px; font-size:0.7812rem;}
+  /* the cards: two columns of good voices, one under 400px */
+  .v-cards{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px;}
+  .v-card{
+    background:color-mix(in srgb, var(--panel) 60%, var(--bg)); border:1px solid var(--line); border-radius:12px;
+    padding:10px; display:grid; gap:8px; align-content:start;
+  }
+  .v-card-top{display:flex; align-items:center; gap:5px;}
+  .v-card-top .v-name{flex:1; font-size:0.875rem;}
+  .v-card-top .v-sex{flex:none; min-width:30px; padding:5px 6px; font-size:0.875rem;}
+  .v-card .v-play{width:28px; height:28px;}
+  .v-acts{display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
+  .v-acts .chip{padding:6px 10px; font-size:0.75rem;}
+  /* the two roles sit side by side in a card, however narrow the column */
+  .v-card .v-acts{flex-wrap:nowrap;}
+  .v-card .v-acts .chip{flex:1 1 0; min-width:0; padding:6px 4px; text-align:center;}
+  .v-acts .v-sex{min-width:34px; padding:6px 8px; font-size:0.9375rem; line-height:1; text-align:center;}
+  /* all of them, one tap away */
+  .v-all > summary{
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; min-height:44px;
+    font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+  }
+  .v-all > summary::-webkit-details-marker{display:none;}
+  .v-all > summary::after{
+    content:""; width:8px; height:8px; margin-left:2px; border-right:1.8px solid currentColor; border-bottom:1.8px solid currentColor;
+    transform:rotate(45deg) translate(-2px,-2px); transition:transform .18s ease;
+  }
+  .v-all[open] > summary::after{transform:rotate(-135deg) translate(-2px,-2px);}
+  .v-all > summary:hover{color:var(--ink);}
+  .v-filter{
+    width:100%; margin:4px 0 10px; padding:9px 12px; border:1px solid var(--line); border-radius:10px;
+    background:var(--bg); color:var(--ink); font-family:var(--ui-font); font-size:0.875rem;
+  }
+  .v-list{display:grid; gap:14px;}
+  .v-group{display:grid; gap:8px;}
+  .v-group[hidden], .v-sub[hidden], .v-item[hidden]{display:none;}
+  .v-sub{display:grid; gap:4px;}
+  .v-sub-l{font-size:0.75rem; color:var(--muted);}
+  /* a row in the full list: the voice on the first line, what you can do with it on the second —
+     the drawer is only so wide, and a name must never be clipped to fit a button beside it */
+  .v-item{display:grid; grid-template-columns:auto minmax(0, 1fr); align-items:center; gap:6px 10px; padding:8px 0;}
+  .v-item + .v-item{border-top:1px solid var(--line);}
+  .v-item .v-play{grid-row:1; grid-column:1;}
+  .v-item .v-who{grid-row:1; grid-column:2;}
+  .v-item .v-acts{grid-row:2; grid-column:1 / -1;}
+  .v-hidden .chips{gap:6px;}
+  @media (max-width:400px){
+    .v-cards{grid-template-columns:minmax(0, 1fr);}
+    .v-role{width:72px;}
+  }
+  @media (pointer: coarse){
+    .v-play, .v-card .v-play{width:40px; height:40px;}
+    .v-acts .chip, .v-card-top .v-sex{min-height:40px;}
+  }
+  @media (forced-colors: active){
+    .v-tag, .v-card, .v-play{border-color:ButtonText;}
+  }
   ::highlight(ll-speak){background:color-mix(in srgb, var(--accent) 24%, transparent); color:inherit;}
   ::highlight(ll-speak-dialogue){background:color-mix(in srgb, var(--accent) 12%, transparent); color:inherit; text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 65%, transparent);}
 
@@ -583,9 +1182,13 @@
   .find-status{font-size:0.7812rem; color:var(--muted); padding:0 2px 8px; min-height:18px;}
   .find-item{padding:8px 10px; border-radius:8px; cursor:pointer; font-size:0.8438rem; line-height:1.45; color:var(--ink);}
   .find-item:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}
-  .find-item.cur{background:color-mix(in srgb, var(--accent) 16%, transparent);}
+  /* the current match: the selected tint with an accent border; its texts are ink (muted and the
+     accent both slip under 4.5:1 on the tint), the match itself underlined in the accent */
+  .find-item.cur{background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px var(--accent);}
   .find-item b{color:var(--accent);}
   .find-item .find-where{display:block; font-size:0.7188rem; color:var(--muted); margin-bottom:1px;}
+  .find-item:hover .find-where, .find-item.cur .find-where{color:var(--ink);}
+  .find-item.cur b{color:var(--ink); text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:2px;}
   ::highlight(ll-find){background:color-mix(in srgb, var(--accent) 28%, transparent); color:inherit;}
   ::highlight(ll-find-cur){background:var(--accent); color:var(--bg);}
 
@@ -655,49 +1258,53 @@
     .about-scale i{background:Highlight; border-color:Canvas; forced-color-adjust:none;}
   }
   /* ---------- translation ---------- */
-  /* the progress pill while a document is being translated (translate.js); the inline
-     translations themselves are styled inside their shadow roots */
-  #trStatus{
-    position:fixed; left:50%; bottom:max(66px, calc(env(safe-area-inset-bottom) + 66px)); transform:translateX(-50%); z-index:57;
-    display:none; align-items:center; gap:10px; max-width:calc(100% - 24px);
-    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:999px; padding:6px 7px 6px 14px;
-    font-family:var(--ui-font); font-size:0.8125rem; font-variant-numeric:tabular-nums; box-shadow:0 6px 20px rgba(0,0,0,.2);
-    transition:background .35s ease, border-color .35s ease;
-  }
-  #trStatus.on{display:flex;}
-  #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  #trStatus .tr-x{
-    flex:none; border:1px solid var(--line); background:transparent; color:var(--accent); border-radius:999px;
-    padding:5px 11px; font-family:var(--ui-font); font-size:0.75rem; font-weight:600; cursor:pointer;
-  }
-  #trStatus .tr-x:hover{border-color:var(--accent);}
-  body.paged #trStatus{bottom:calc(var(--pagerH, 56px) + 14px);}
-  body.tts-on #trStatus{bottom:calc(var(--ttsH, 56px) + 14px);}
+  /* the progress pill while a document is being translated (translate.js) is styled with the
+     toasts below; the inline translations themselves are styled inside their shadow roots */
   #trGroup .rowline .sel{max-width:100%;}
   #trGroup .hint{line-height:1.45;}
   #trGroup .hint .tr-status{display:block; color:var(--ink); margin-bottom:2px;}
   /* bilingual printing: the translations keep a readable grey on paper */
   @media print{ .ll-tr{color:#333;} }
-  @media (forced-colors: active){
-    #trStatus{border-color:ButtonText;}
-    #trStatus .tr-x{border-color:ButtonText;}
+
+  /* ---------- toasts and status pills ---------- */
+  /* one style — the panel colour, a hairline, the text colour — floating above the dock:
+     the small toast (#toast), the update offer (#updateToast) and the translation progress
+     pill (#trStatus, made by translate.js), which sits one step higher so the two can coexist */
+  /* the bottom row: above the dock, and above the auto-scroll pill while it runs. The update offer
+     keeps that row and reports its height (--updateH, set by app.js); the toast and the
+     translation pill step up over it, so it never hides them */
+  body{--toastRow:calc(var(--aboveDock) + 6px);}
+  body.auto-on{--toastRow:calc(var(--aboveDock) + 58px);}
+  #toast, #updateToast, #trStatus{
+    position:fixed; left:50%; bottom:var(--toastRow); z-index:70; transform:translateX(-50%);
+    display:flex; align-items:center; justify-content:center; gap:10px; width:max-content; max-width:calc(100% - 32px);
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.18); padding:10px 14px;
+    font-family:var(--ui-font); font-size:0.8438rem; line-height:1.35;
+    transition:opacity .2s, transform .2s, background .35s ease, border-color .35s ease;
   }
-  #updateToast{
-    position:fixed; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:71;
-    display:flex; align-items:center; gap:10px; background:var(--ink); color:var(--bg); padding:9px 10px 9px 16px;
-    border-radius:999px; font-family:var(--ui-font); font-size:0.8438rem; box-shadow:0 8px 24px rgba(0,0,0,.25); max-width:calc(100% - 24px);
-  }
-  #updateToast button{
-    border:0; border-radius:999px; padding:6px 12px; background:var(--accent); color:var(--panel); font-family:var(--ui-font);
-    font-size:0.8125rem; font-weight:600; cursor:pointer;
-  }
-  #updateToast button#updateLater{background:transparent; color:var(--bg); font-size:1.125rem; padding:2px 6px; opacity:.8;}
-  #toast{
-    position:fixed; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px);
-    z-index:70; background:var(--ink); color:var(--bg); padding:9px 16px; border-radius:999px; font-size:0.8438rem;
-    font-family:var(--ui-font); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
-  }
+  #toast{opacity:0; pointer-events:none; transform:translateX(-50%) translateY(12px); text-align:center; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
   #toast.on{opacity:1; transform:translateX(-50%);}
+  #updateToast{z-index:71; padding:8px 8px 8px 14px;}
+  #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 52px + var(--updateH, 0px)); padding:8px 8px 8px 14px; font-variant-numeric:tabular-nums;}
+  #trStatus.on{display:flex;}
+  #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  /* their buttons are chips */
+  #updateToast button, #trStatus .tr-x{
+    flex:none; border:1px solid var(--line); border-radius:999px; padding:7px 12px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:0.78rem; font-weight:600; cursor:pointer; transition:border-color .2s, background .2s;
+  }
+  #updateToast button:hover, #trStatus .tr-x:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  #updateToast #updateReload{background:var(--accent); border-color:var(--accent); color:var(--panel);}
+  #updateToast #updateReload:hover{background:var(--accent);}
+  #updateToast #updateLater{width:34px; height:34px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:1.125rem; font-weight:400; line-height:1; color:var(--muted);}
+  #updateToast #updateLater svg{width:18px; height:18px;}
+  @media (forced-colors: active){
+    #toast, #updateToast, #trStatus, #progressInfo, #autoBar, #moreMenu, #moreMenu button, #side .side-switch button, #side .side-x{border:1px solid ButtonText;}
+    #updateToast button, #trStatus .tr-x, #autoBar button{border:1px solid ButtonText;}
+    #moreMenu button.on::before{background:Highlight;}
+    #side .side-switch button[aria-pressed="true"]{border-width:2px; border-color:Highlight;}
+  }
   /* marks: highlights in the text, and the list in the panel */
   #doc mark.ll-mark{
     background:color-mix(in srgb, var(--accent) 32%, transparent); color:inherit; border-radius:2px;
@@ -738,6 +1345,52 @@
   #markPop.on{display:flex;}
   #markPop .dot{width:22px; height:22px; border-radius:50%; border:1px solid var(--line); padding:0; cursor:pointer;}
   #markPop .dot.accent{background:var(--accent);} #markPop .dot.sun{background:#E8C547;} #markPop .dot.leaf{background:#7FB069;} #markPop .dot.rose{background:#E07A9A;}
+  /* the notes panel above the list: search, the filters in use, and what the colours mean */
+  .mk-find{margin:2px 0 8px;}
+  .mk-filters{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:7px;}
+  .mk-filters[hidden]{display:none;}
+  .mk-filters .chip{display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; padding:5px 10px;}
+  .mk-filters .chip b{font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .mk-filters .chip.on b{color:var(--ink);}
+  .mk-clear{color:var(--muted);}
+  .mk-dot{width:.6875rem; height:.6875rem; border-radius:50%; flex:none; border:1px solid var(--line);}
+  .mk-dot.accent{background:var(--accent);} .mk-dot.sun{background:#E8C547;} .mk-dot.leaf{background:#7FB069;} .mk-dot.rose{background:#E07A9A;}
+  .mk-legend{display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; margin-bottom:7px; font-size:0.75rem;}
+  .mk-leg-l{font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);}
+  .mk-leg{
+    display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid transparent; border-radius:999px;
+    background:transparent; color:var(--ink); font-family:var(--ui-font); font-size:0.75rem; cursor:pointer;
+  }
+  .mk-leg:hover{border-color:var(--line); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .mk-leg-none{color:var(--muted); font-style:italic;}
+  .mk-leg-in{
+    width:8.5rem; padding:4px 8px; border:1px solid var(--accent); border-radius:999px;
+    background:var(--bg); color:var(--ink); font-family:var(--ui-font); font-size:0.75rem;
+  }
+  .mk-count{font-size:0.7188rem; color:var(--muted); padding:0 2px 6px;}
+  /* #tags inside a note */
+  .mark-item .mark-note .tag{color:var(--accent); font-weight:600;}
+  @media (pointer: coarse){ .mk-filters .chip, .mk-leg, .mk-leg-in{min-height:34px;} }
+  @media (forced-colors: active){
+    .mk-dot{forced-color-adjust:none; border-color:CanvasText;}
+    .mk-filters .chip.on{border-width:2px; border-color:Highlight;}
+  }
+
+  /* ---------- warmth (the evening tint) ---------- */
+  /* a fixed film of warm amber over the whole page — bars, panels and cards included, the way a
+     night-light sits in front of the screen. app.js sets its opacity from the Warmth setting and
+     flips the blend: light themes are multiplied (the page darkens towards amber), dark ones are
+     screened at a much lower strength (the page glows amber instead of turning muddy). The
+     strength is capped per theme so no theme's text falls under 4.5:1 — see Warmth in app.js. */
+  #warmth{
+    position:fixed; inset:0; z-index:1000; pointer-events:none;
+    background:rgb(255, 150, 50); mix-blend-mode:multiply; opacity:0;
+    transition:opacity .35s ease;
+  }
+  body.warm-dark #warmth{mix-blend-mode:screen;}
+  /* paper has no night, and under forced colours the system palette is the whole point */
+  @media print{ #warmth{display:none !important;} }
+  @media (forced-colors: active){ #warmth{display:none !important;} }
 
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}

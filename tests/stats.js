@@ -1,5 +1,5 @@
 /* Reading stats: active time, words, the daily goal and streak, the panel, and the start-screen
-   widget. Playwright's clock drives the app's timers, so eleven minutes of reading take a second.
+   widget (which now also carries the yearly books goal, on by default at 12). Playwright's clock drives the app's timers, so eleven minutes of reading take a second.
      NODE_PATH=$(npm root -g) node tests/stats.js        (SHOTS=<dir> to choose where screenshots go) */
 const path = require("path"), fs = require("fs"), os = require("os");
 const { serve, browser, openFixture, makeReport } = require("./lib");
@@ -125,13 +125,13 @@ const goalToasts = (page) => page.evaluate(() => window.__toasts.filter((t) => /
   await page.keyboard.press("h");
   let w = await widget(page);
   const mins2 = Math.floor(m3 / 60000);
-  R.check("widget on the start screen after reading", w.show && w.dots === 7 && w.text === mins2 + " min today · goal 15 min", JSON.stringify(w));
+  R.check("widget on the start screen after reading", w.show && w.dots === 7 && w.text === mins2 + " min today · goal 15 min · 1 of 12 books this year", JSON.stringify(w));
   await page.click("#streak button");
   R.check("the widget opens the panel", (await panelTitle(page)) === "Reading stats");
   await page.click('#sideBody [data-goal="10"]');
   await page.keyboard.press("Escape");
   w = await widget(page);
-  R.check("the widget follows the goal and the streak", w.text === "1-day streak · " + mins2 + " min today · goal 10 min", JSON.stringify(w));
+  R.check("the widget follows the goal and the streak", w.text === "1-day streak · " + mins2 + " min today · goal 10 min · 1 of 12 books this year", JSON.stringify(w));
   toasts = await goalToasts(page);
   R.check("the goal toast is not repeated within the day", toasts.length === 1, JSON.stringify(toasts));
 
@@ -142,7 +142,7 @@ const goalToasts = (page) => page.evaluate(() => window.__toasts.filter((t) => /
   await page.reload({ waitUntil: "load" });
   s = await snap(page); w = await widget(page);
   R.check("goal and days persist across a reload", s.goal === 20 && s.days[today] && s.days[today].ms === m3 && s.books[id] && s.books[id].finished, JSON.stringify(s));
-  R.check("widget is back on load", w.show && / · goal 20 min$/.test(w.text), JSON.stringify(w));
+  R.check("widget is back on load", w.show && / · goal 20 min · 1 of 12 books this year$/.test(w.text), JSON.stringify(w));
   await page.keyboard.press("g");
   page.once("dialog", (d) => d.dismiss());
   await page.click('#sideFoot [data-st="reset"]');
@@ -190,7 +190,7 @@ const goalToasts = (page) => page.evaluate(() => window.__toasts.filter((t) => /
   await page.keyboard.press("g");
   text = await bodyText(page);
   R.check("yesterday met: the streak is still alive today", s.streak === 1 && /1-day streak · best 1 day/.test(text) && /Read 10 more minutes today to keep it\./.test(text), text.replace(/\n/g, " | ").slice(0, 200));
-  R.check("widget with nothing read yet today", w.show && w.text === "1-day streak · 0 min today · goal 10 min", JSON.stringify(w));
+  R.check("widget with nothing read yet today", w.show && w.text === "1-day streak · 0 min today · goal 10 min · 0 of 12 books this year", JSON.stringify(w));
   const yday = await page.$$eval("#sideBody .st-day", (ds) => ds.slice(12).map((d) => d.className));
   R.check("dots: yesterday lit, today outlined and unlit", yday.join() === "st-day lit,st-day today", yday.join());
   noteErrors(page, "alive");
@@ -239,7 +239,7 @@ const goalToasts = (page) => page.evaluate(() => window.__toasts.filter((t) => /
     await page.waitForTimeout(400);
     await page.screenshot({ path: path.join(SHOTS, "home-" + name + ".png") });
     w = await widget(page);
-    R.check("screenshots " + name, /3-day streak · best \d+ days/.test(text) && /Read \d+ more minutes today to keep it/.test(text) && /This week 46 min · last week 1 h 31 min/.test(text) && w.text === "3-day streak · 6 min today · goal 15 min", text.replace(/\n/g, " | ").slice(0, 200) + " // " + w.text);
+    R.check("screenshots " + name, /3-day streak · best \d+ days/.test(text) && /Read \d+ more minutes today to keep it/.test(text) && /This week 46 min · last week 1 h 31 min/.test(text) && w.text === "3-day streak · 6 min today · goal 15 min · 0 of 12 books this year", text.replace(/\n/g, " | ").slice(0, 200) + " // " + w.text);
     noteErrors(page, name);
     await C.close();
   }

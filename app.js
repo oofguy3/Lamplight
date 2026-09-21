@@ -117,51 +117,54 @@
   function fontFile(file, weight, style){ return { url: "./fonts/" + file + ".woff2", weight: weight, style: style || "normal" }; }
   /* the type catalogue, in menu order. Families with files are bundled and fetched the first
      time they are chosen or previewed (see Fonts), so this table costs nothing at load; system
-     entries have no files. The old ids (serif, sans, mono, hyper) keep their stacks. */
+     entries have no files. The old ids (serif, sans, mono, hyper) keep their stacks.
+     `range` is the family's weight range: the span of a variable file, or the two weights a pair
+     of static files (or a system stack, which the browser synthesises) can offer. A family with
+     no variable file has only its two weights, and the Weight slider says so. */
   var FONTS = {
     /* easy reading */
-    dyslexic:    { name: "OpenDyslexic", group: "easy", stack: "'OpenDyslexic', " + STACKS.sans, note: "weighted letter bottoms and wide spacing help letters stay put",
+    dyslexic:    { name: "OpenDyslexic", range: [400, 700], group: "easy", stack: "'OpenDyslexic', " + STACKS.sans, note: "weighted letter bottoms and wide spacing help letters stay put",
                    files: [fontFile("opendyslexic-latin-400-normal", "400"), fontFile("opendyslexic-latin-700-normal", "700"), fontFile("opendyslexic-latin-400-italic", "400", "italic"), fontFile("opendyslexic-latin-700-italic", "700", "italic")] },
-    lexend:      { name: "Lexend", group: "easy", stack: "'Lexend', " + STACKS.sans, note: "wide, even shapes shown to raise reading speed",
+    lexend:      { name: "Lexend", range: [100, 900], group: "easy", stack: "'Lexend', " + STACKS.sans, note: "wide, even shapes shown to raise reading speed",
                    files: [fontFile("lexend-latin-wght-normal", "100 900")] },
-    hyper:       { name: "Atkinson Hyperlegible", group: "easy", stack: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", note: "designed for low vision readers" },   /* its @font-face rules are in app.css */
-    andika:      { name: "Andika", group: "easy", stack: "'Andika', " + STACKS.sans, note: "clear letterforms for beginning readers",
+    hyper:       { name: "Atkinson Hyperlegible", range: [400, 700], group: "easy", stack: "'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", note: "designed for low vision readers" },   /* its @font-face rules are in app.css */
+    andika:      { name: "Andika", range: [400, 700], group: "easy", stack: "'Andika', " + STACKS.sans, note: "clear letterforms for beginning readers",
                    files: [fontFile("andika-latin-400-normal", "400"), fontFile("andika-latin-700-normal", "700"), fontFile("andika-latin-400-italic", "400", "italic")] },
     /* serif */
-    serif:       { name: "Georgia", group: "serif", stack: STACKS.serif, note: "the classic screen serif, on nearly every device" },
-    palatino:    { name: "Palatino", group: "serif", stack: "'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', serif", note: "a calligraphic book face, where the device has it" },
-    times:       { name: "Times", group: "serif", stack: "'Times New Roman', Times, 'Nimbus Roman', serif", note: "the newspaper serif everyone knows" },
-    literata:    { name: "Literata", group: "serif", stack: "'Literata', " + STACKS.serif, note: "made for e-reading",
+    serif:       { name: "Georgia", range: [400, 700], group: "serif", stack: STACKS.serif, note: "the classic screen serif, on nearly every device" },
+    palatino:    { name: "Palatino", range: [400, 700], group: "serif", stack: "'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', serif", note: "a calligraphic book face, where the device has it" },
+    times:       { name: "Times", range: [400, 700], group: "serif", stack: "'Times New Roman', Times, 'Nimbus Roman', serif", note: "the newspaper serif everyone knows" },
+    literata:    { name: "Literata", range: [200, 900], group: "serif", stack: "'Literata', " + STACKS.serif, note: "made for e-reading",
                    files: [fontFile("literata-latin-wght-normal", "200 900"), fontFile("literata-latin-wght-italic", "200 900", "italic")] },
-    sourceserif: { name: "Source Serif", family: "Source Serif 4", group: "serif", stack: "'Source Serif 4', " + STACKS.serif, note: "a sturdy, open text serif",
+    sourceserif: { name: "Source Serif", family: "Source Serif 4", range: [200, 900], group: "serif", stack: "'Source Serif 4', " + STACKS.serif, note: "a sturdy, open text serif",
                    files: [fontFile("source-serif-4-latin-wght-normal", "200 900"), fontFile("source-serif-4-latin-wght-italic", "200 900", "italic")] },
-    lora:        { name: "Lora", group: "serif", stack: "'Lora', " + STACKS.serif, note: "brushed curves with a modern feel",
+    lora:        { name: "Lora", range: [400, 700], group: "serif", stack: "'Lora', " + STACKS.serif, note: "brushed curves with a modern feel",
                    files: [fontFile("lora-latin-wght-normal", "400 700"), fontFile("lora-latin-wght-italic", "400 700", "italic")] },
-    merriweather:{ name: "Merriweather", group: "serif", stack: "'Merriweather', " + STACKS.serif, note: "large x-height, pleasant on screens",
+    merriweather:{ name: "Merriweather", range: [300, 900], group: "serif", stack: "'Merriweather', " + STACKS.serif, note: "large x-height, pleasant on screens",
                    files: [fontFile("merriweather-latin-wght-normal", "300 900"), fontFile("merriweather-latin-wght-italic", "300 900", "italic")] },
-    garamond:    { name: "EB Garamond", group: "serif", stack: "'EB Garamond', " + STACKS.serif, note: "a faithful old-style Garamond",
+    garamond:    { name: "EB Garamond", range: [400, 800], group: "serif", stack: "'EB Garamond', " + STACKS.serif, note: "a faithful old-style Garamond",
                    files: [fontFile("eb-garamond-latin-wght-normal", "400 800"), fontFile("eb-garamond-latin-wght-italic", "400 800", "italic")] },
-    crimson:     { name: "Crimson Pro", group: "serif", stack: "'Crimson Pro', " + STACKS.serif, note: "an old-style face in the spirit of printed books",
+    crimson:     { name: "Crimson Pro", range: [200, 900], group: "serif", stack: "'Crimson Pro', " + STACKS.serif, note: "an old-style face in the spirit of printed books",
                    files: [fontFile("crimson-pro-latin-wght-normal", "200 900"), fontFile("crimson-pro-latin-wght-italic", "200 900", "italic")] },
-    baskerville: { name: "Libre Baskerville", group: "serif", stack: "'Libre Baskerville', " + STACKS.serif, note: "a Baskerville tuned for reading on screens",
+    baskerville: { name: "Libre Baskerville", range: [400, 700], group: "serif", stack: "'Libre Baskerville', " + STACKS.serif, note: "a Baskerville tuned for reading on screens",
                    files: [fontFile("libre-baskerville-latin-400-normal", "400"), fontFile("libre-baskerville-latin-700-normal", "700"), fontFile("libre-baskerville-latin-400-italic", "400", "italic")] },
-    bitter:      { name: "Bitter", group: "serif", stack: "'Bitter', " + STACKS.serif, note: "a slab serif, solid at any size",
+    bitter:      { name: "Bitter", range: [100, 900], group: "serif", stack: "'Bitter', " + STACKS.serif, note: "a slab serif, solid at any size",
                    files: [fontFile("bitter-latin-wght-normal", "100 900")] },
     /* sans */
-    sans:        { name: "System sans", group: "sans", stack: STACKS.sans, note: "whatever your device uses for its own text" },
-    helvetica:   { name: "Helvetica / Arial", group: "sans", stack: "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif", note: "neutral and familiar" },
-    verdana:     { name: "Verdana", group: "sans", stack: "Verdana, 'DejaVu Sans', Geneva, sans-serif", note: "wide and generous, made for small screens" },
-    inter:       { name: "Inter", group: "sans", stack: "'Inter', " + STACKS.sans, note: "a clean interface sans with tall letters",
+    sans:        { name: "System sans", range: [400, 700], group: "sans", stack: STACKS.sans, note: "whatever your device uses for its own text" },
+    helvetica:   { name: "Helvetica / Arial", range: [400, 700], group: "sans", stack: "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif", note: "neutral and familiar" },
+    verdana:     { name: "Verdana", range: [400, 700], group: "sans", stack: "Verdana, 'DejaVu Sans', Geneva, sans-serif", note: "wide and generous, made for small screens" },
+    inter:       { name: "Inter", range: [100, 900], group: "sans", stack: "'Inter', " + STACKS.sans, note: "a clean interface sans with tall letters",
                    files: [fontFile("inter-latin-wght-normal", "100 900")] },
-    plex:        { name: "IBM Plex Sans", group: "sans", stack: "'IBM Plex Sans', " + STACKS.sans, note: "a warm, even sans with a slight edge",
+    plex:        { name: "IBM Plex Sans", range: [100, 700], group: "sans", stack: "'IBM Plex Sans', " + STACKS.sans, note: "a warm, even sans with a slight edge",
                    files: [fontFile("ibm-plex-sans-latin-wght-normal", "100 700"), fontFile("ibm-plex-sans-latin-wght-italic", "100 700", "italic")] },
-    nunito:      { name: "Nunito", group: "sans", stack: "'Nunito', " + STACKS.sans, note: "rounded and soft on the eye",
+    nunito:      { name: "Nunito", range: [200, 1000], group: "sans", stack: "'Nunito', " + STACKS.sans, note: "rounded and soft on the eye",
                    files: [fontFile("nunito-latin-wght-normal", "200 1000")] },
     /* mono */
-    mono:        { name: "System mono", group: "mono", stack: STACKS.mono, note: "fixed width, for code and plain text" },
-    jetbrains:   { name: "JetBrains Mono", group: "mono", stack: "'JetBrains Mono', " + STACKS.mono, note: "a tall, open monospace made for long reads",
+    mono:        { name: "System mono", range: [400, 700], group: "mono", stack: STACKS.mono, note: "fixed width, for code and plain text" },
+    jetbrains:   { name: "JetBrains Mono", range: [100, 800], group: "mono", stack: "'JetBrains Mono', " + STACKS.mono, note: "a tall, open monospace made for long reads",
                    files: [fontFile("jetbrains-mono-latin-wght-normal", "100 800")] },
-    plexmono:    { name: "IBM Plex Mono", group: "mono", stack: "'IBM Plex Mono', " + STACKS.mono, note: "a typewriter-flavoured monospace",
+    plexmono:    { name: "IBM Plex Mono", range: [400, 700], group: "mono", stack: "'IBM Plex Mono', " + STACKS.mono, note: "a typewriter-flavoured monospace",
                    files: [fontFile("ibm-plex-mono-latin-400-normal", "400"), fontFile("ibm-plex-mono-latin-700-normal", "700")] }
   };
   var FONT_GROUPS = [{ id: "easy", name: "Easy reading" }, { id: "serif", name: "Serif" }, { id: "sans", name: "Sans" }, { id: "mono", name: "Mono" }];
@@ -177,6 +180,9 @@
     /* saved custom themes {id, name, bg, ink, autoInk, accent, panel?, muted?}; "c:" + id selects one */
     customs:[],
     font:"serif", size:19, lh:1.75, width:720, margin:0, justify:false, hyphens:false,
+    /* weight 300–800 (clamped to the family's range), letter and word spacing in em, and the
+       gap under a paragraph in em; warmth 0–100 with its own night schedule */
+    weight:400, ls:0, ws:0, pgap:0.95, warmth:0, warmAuto:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
@@ -186,8 +192,14 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
     var loading = false;
+    /* a number inside its range, or the default when the stored value is nonsense */
+    function num(v, lo, hi, dflt){
+      v = typeof v === "number" ? v : NaN;
+      if (!isFinite(v)) return dflt;
+      return Math.max(lo, Math.min(hi, v));
+    }
     function save(){
       if (loading) return;
       var o = {};
@@ -243,6 +255,13 @@
       if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
+      /* a stored number that is missing, not finite or out of range goes back to its default */
+      state.weight = num(state.weight, 300, 800, 400);
+      state.ls = num(state.ls, 0, 0.12, 0);
+      state.ws = num(state.ws, 0, 0.4, 0);
+      state.pgap = num(state.pgap, 0.4, 2, 0.95);
+      state.warmth = Math.round(num(state.warmth, 0, 100, 0));
+      state.warmAuto = state.warmAuto === true;
       if (state.flow !== "pages") state.flow = "scroll";
       loading = false;
     }
@@ -324,16 +343,18 @@
      the text unless the user picked them; the hairline always is */
   function customColors(c){
     var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
+    var panel = c.panel || mix(c.bg, ink, 0.05);
     return {
       name: c.name, bg: c.bg, ink: ink, accent: c.accent,
-      panel: c.panel || mix(c.bg, ink, 0.05),
+      panel: panel,
       line:  mix(c.bg, ink, 0.15),
-      muted: c.muted || deriveMuted(ink, c.bg)
+      muted: c.muted || deriveMuted(ink, c.bg, panel)
     };
   }
-  /* secondary text: the text mixed towards the background, but no further than still reads on it */
-  function deriveMuted(ink, bg){
-    for (var t = 0.42; t > 0; t -= 0.03){ var m = mix(ink, bg, t); if (contrast(m, bg) >= 4.5) return m; }
+  /* secondary text: the text mixed towards the background, but no further than still reads on it
+     and on the panel (the sheet, the bars; the subtle surface lies between the two) */
+  function deriveMuted(ink, bg, panel){
+    for (var t = 0.42; t > 0; t -= 0.03){ var m = mix(ink, bg, t); if (contrast(m, bg) >= 4.5 && contrast(m, panel) >= 4.5) return m; }
     return ink;
   }
   function resolveTheme(theme){
@@ -418,6 +439,7 @@
   var METER = [
     { id: "ink",         what: "text",           fg: "ink",    on: "bg" },
     { id: "muted",       what: "secondary text", fg: "muted",  on: "bg" },
+    { id: "mutedPanel",  what: "secondary text", fg: "muted",  on: "panel" },
     { id: "accent",      what: "accent",         fg: "accent", on: "bg" },
     { id: "accentPanel", what: "accent",         fg: "accent", on: "panel" }
   ];
@@ -472,7 +494,7 @@
     if (!c) return;
     var t = customColors(c);
     if (contrast(t.ink, t.bg) < 4.5){ c.ink = fixColor(t.ink, [t.bg]); c.autoInk = false; t = customColors(c); }
-    if (contrast(t.muted, t.bg) < 4.5){ c.muted = fixColor(t.muted, [t.bg]); t = customColors(c); }
+    if (contrast(t.muted, t.bg) < 4.5 || contrast(t.muted, t.panel) < 4.5){ c.muted = fixColor(t.muted, [t.bg, t.panel]); t = customColors(c); }
     if (contrast(t.accent, t.bg) < 4.5 || contrast(t.accent, t.panel) < 4.5) c.accent = fixColor(t.accent, [t.bg, t.panel]);
     syncCustomUI(); applyTheme();
   }
@@ -494,6 +516,10 @@
     });
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
+    /* the evening tint blends differently on a light and a dark page, and its ceiling depends
+       on how much contrast this theme has to spare */
+    if (Warmth) Warmth.apply();
+    if (Pop) Pop.sync();
     Prefs.save();
   }
   /* the preview and the meter show every colour of the theme being edited */
@@ -525,7 +551,9 @@
       syncUI();
     }
     function syncUI(){
-      document.querySelectorAll("#autoChips .chip").forEach(function(ch){ ch.classList.toggle("on", ch.dataset.auto === state.auto); });
+      document.querySelectorAll("#autoChips .chip").forEach(function(ch){
+        var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      });
       $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
       var opts = themeGroups().map(function(g){
@@ -560,6 +588,78 @@
     return { apply: apply, userPicked: userPicked, isNight: isNight, syncUI: syncUI };
   })();
 
+  /* ---------- warmth: a warm film over the screen for the evening ----------
+     `#warmth` is a fixed sheet of amber above everything. On a light page it multiplies (the
+     page darkens towards amber, the way a lamp shade would); on a dark page it screens at a
+     much lower strength (a dark page multiplied by amber only turns muddy). Warmth is a
+     percentage of the theme's ceiling, and that ceiling is whatever the theme can give up
+     without any of its text — ink and secondary text, on the page and on the panel — falling
+     under 4.5:1 once the film is over it. Roomy themes reach the full 35 % (12 % dark); tight
+     ones (Sepia, Rose, Ink) stop earlier. */
+  var Warmth = (function(){
+    var el = $("#warmth"), MAX_LIGHT = 0.35, MAX_DARK = 0.12, WARM = [255, 150, 50];
+    var PAIRS = [["ink", "bg"], ["ink", "panel"], ["muted", "bg"], ["muted", "panel"]];
+    var caps = {}, timer = null;
+    function hex2(v){ return Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0"); }
+    /* one colour as it looks through the film */
+    function through(color, screen, a){
+      var c = hexToRgb(color);
+      return "#" + c.map(function(v, i){
+        var s = WARM[i], b = screen ? 255 - (255 - s) * (255 - v) / 255 : s * v / 255;
+        return hex2(v + (b - v) * a);
+      }).join("");
+    }
+    function lowest(t, screen, a){
+      var lo = 99;
+      PAIRS.forEach(function(p){
+        var r = contrast(through(t[p[0]], screen, a), through(t[p[1]], screen, a));
+        if (r < lo) lo = r;
+      });
+      return lo;
+    }
+    /* the strongest film this theme can wear, in 0.5 % steps down from the ceiling */
+    function cap(t){
+      var key = t.bg + t.ink + t.muted + t.panel;
+      if (caps[key] !== undefined) return caps[key];
+      var screen = isDarkColor(t.bg), top = screen ? MAX_DARK : MAX_LIGHT, a = top;
+      while (a > 0.0001 && lowest(t, screen, a) < 4.5) a -= 0.005;
+      caps[key] = a = Math.max(0, Math.round(a * 1000) / 1000);
+      return a;
+    }
+    /* the night window: the one Auto is using, or 21:00–07:00 when Auto is off */
+    function isNight(){
+      var n = AutoTheme.isNight();
+      if (n !== null) return n;
+      var d = new Date(), now = d.getHours() * 60 + d.getMinutes();
+      return now >= 21 * 60 || now < 7 * 60;
+    }
+    /* what the film is showing right now: nothing by day when it is set to warm at night only */
+    function level(){ return state.warmAuto && !isNight() ? 0 : Math.max(0, Math.min(100, state.warmth || 0)); }
+    function opacity(){ return level() / 100 * cap(currentTheme()); }
+    function apply(){
+      var t = currentTheme();
+      document.body.classList.toggle("warm-dark", isDarkColor(t.bg));
+      el.style.opacity = String(opacity());
+      syncUI();
+    }
+    function syncUI(){
+      $("#rWarm").value = state.warmth; $("#qWarm").value = state.warmth;
+      $("#vWarm").textContent = state.warmth + " %"; $("#qWarmV").textContent = state.warmth + " %";
+      $("#cWarmAuto").checked = !!state.warmAuto; $("#qWarmAuto").checked = !!state.warmAuto;
+      $("#warmHint").textContent = !state.warmAuto ? "A warm film over the screen for evening reading. At 0 % nothing is added."
+        : isNight() ? "It\u2019s night now \u2014 the warm film is on." : "Off until the night window; it comes back on then.";
+    }
+    function set(v){ state.warmth = Math.max(0, Math.min(100, Math.round(v))); Prefs.save(); apply(); }
+    function setAuto(v){ state.warmAuto = !!v; Prefs.save(); apply(); }
+    $("#rWarm").addEventListener("input", function(e){ set(+e.target.value); });
+    $("#qWarm").addEventListener("input", function(e){ set(+e.target.value); });
+    $("#cWarmAuto").addEventListener("change", function(e){ setAuto(e.target.checked); });
+    $("#qWarmAuto").addEventListener("change", function(e){ setAuto(e.target.checked); });
+    /* the night window is checked every minute, and again whenever the page comes back */
+    timer = setInterval(function(){ if (state.warmAuto) apply(); }, 60000);
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && state.warmAuto) apply(); });
+    return { apply: apply, cap: cap, level: level, opacity: opacity, isNight: isNight, set: set, setAuto: setAuto, through: through };
+  })();
   /* ---------- keep the screen on while a document is open ---------- */
   var Wake = (function(){
     var lock = null, wanted = false;
@@ -574,11 +674,63 @@
     return { set: set, active: function(){ return !!lock; } };
   })();
 
+  /* ---------- text weight: what the chosen family can actually do ----------
+     The slider never leaves 300–800, and never leaves the family's own range either. A family
+     with only two static weights (400 and 700) gets a two-step slider and says so; a variable
+     file gives every weight in its span, even a narrow one like Lora's 400–700. */
+  var WEIGHT_MIN = 300, WEIGHT_MAX = 800;
+  /* a bundled variable file carries a weight span ("400 700"); a pair of static files and a
+     system stack carry single weights, so those families really do have only two */
+  function isVariable(font){
+    if (!font || !font.files) return false;
+    for (var i = 0; i < font.files.length; i++) if (/\s/.test(String(font.files[i].weight))) return true;
+    return false;
+  }
+  function weightRange(font){
+    var rg = (font && font.range) || [400, 700];
+    var two = !isVariable(font);
+    return { min: Math.max(WEIGHT_MIN, rg[0]), max: Math.min(WEIGHT_MAX, rg[1]), two: two, step: two ? 300 : 50 };
+  }
+  /* the chosen weight as this family can render it: inside its range, and on a two-weight
+     family one of the two (600 and up reads as bold) */
+  function weightFor(font){
+    var rg = weightRange(font), w = state.weight;
+    if (typeof w !== "number" || !isFinite(w)) w = 400;
+    if (rg.two) return w >= 550 ? 700 : 400;
+    return Math.max(rg.min, Math.min(rg.max, Math.round(w / 50) * 50));
+  }
+  /* spacings are set in em, so they follow the text size; the row shows them that way */
+  function emVal(v){ return v.toFixed(2) + " em"; }
+  /* one Weight row (the sheet's and the popover's are the same control twice) */
+  function setWeightRow(row, input, val, rg){
+    input.min = rg.min; input.max = rg.max; input.step = rg.step;
+    input.value = state.weight;
+    val.textContent = String(state.weight);
+    row.classList.toggle("two-weights", rg.two);
+  }
+  /* for tests (not a public API): the typography controls and the evening tint */
+  window.llType = {
+    apply: function(){ applyType(); },
+    reset: function(){ resetType(); },
+    range: function(id){ return weightRange(FONTS[id] || FONTS.serif); },
+    weight: function(){ return state.weight; },
+    warmth: Warmth
+  };
+
   function applyType(){
     var r = document.documentElement.style, font = FONTS[state.font] || FONTS.serif;
+    var rg = weightRange(font);
+    state.weight = weightFor(font);
     r.setProperty("--fsN", String(state.size));
     r.setProperty("--lh", String(state.lh));
     r.setProperty("--w", state.width + "px");
+    r.setProperty("--fw", String(state.weight));
+    /* headings stay at 700 until the text itself is half-bold, then keep a step ahead of it */
+    r.setProperty("--fwh", String(state.weight >= 600 ? Math.min(900, state.weight + 100) : 700));
+    r.setProperty("--fwb", String(Math.min(900, Math.max(700, state.weight + 200))));
+    r.setProperty("--ls", (state.ls || 0) + "em");
+    r.setProperty("--ws", (state.ws || 0) + "em");
+    r.setProperty("--pgap", (state.pgap || 0.95) + "em");
     /* the stack goes in at once (its system fallback shows first); a bundled family is fetched
        on first use and swaps in when it lands, and the loadingdone listener re-lays-out Pages flow */
     r.setProperty("--reader-font", font.stack);
@@ -594,6 +746,12 @@
     $("#vLh").textContent   = state.lh.toFixed(2);
     $("#vW").textContent    = state.width + " px";
     $("#vM").textContent    = (state.margin || 0) + " px";
+    $("#rLs").value = state.ls || 0; $("#vLs").textContent = emVal(state.ls || 0);
+    $("#rWs").value = state.ws || 0; $("#vWs").textContent = emVal(state.ws || 0);
+    $("#rPgap").value = state.pgap || 0.95; $("#vPgap").textContent = emVal(state.pgap || 0.95);
+    setWeightRow($("#weightRow"), $("#rWeight"), $("#vWeight"), rg);
+    $("#weightNote").hidden = !rg.two;
+    if (Pop) Pop.sync();
     if (state.mode === "doc" && state.flow === "pages") relayoutDocPages();
     Prefs.save();
   }
@@ -689,7 +847,7 @@
     function render(body){
       var h = '<div class="font-list">';
       FONT_GROUPS.forEach(function(g){
-        h += '<div class="font-set" role="group" aria-labelledby="fontGroup-' + g.id + '"><div class="font-group" id="fontGroup-' + g.id + '">' + g.name + '</div>';
+        h += '<div class="font-set" role="group" aria-labelledby="fontGroup-' + g.id + '"><div class="font-group sec" id="fontGroup-' + g.id + '">' + g.name + '</div>';
         ids(g.id).forEach(function(id){ h += item(id); });
         h += '</div>';
       });
@@ -727,9 +885,239 @@
     return { use: use, load: load, loaded: loaded, syncUI: syncUI, openPanel: openPanel };
   })();
 
+  /* ---------- icons for the shell (the shared set; the same strings the other surfaces draw) ---------- */
+  var ICONS = (function(){
+    var open = 'stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    function svg(paths, extra){ return '<svg viewBox="0 0 24 24" ' + open + (extra || '') + '>' + paths + '</svg>'; }
+    return {
+      close:     svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+      open:      svg('<path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/>'),
+      chevronR:  svg('<path d="M9 6l6 6-6 6"/>'),
+      chevronL:  svg('<path d="M15 6l-6 6 6 6"/>'),
+      chevronU:  svg('<path d="M6 15l6-6 6 6"/>'),
+      chevronD:  svg('<path d="M6 9l6 6 6-6"/>'),
+      pin:       svg('<path d="M6 3h12v18l-6-4-6 4V3z"/>'),
+      more:      svg('<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/>'),
+      check:     svg('<path d="M5 12l4 4L19 7"/>'),
+      goOn:      svg('<path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M10 8l4 4-4 4"/>'),
+      books:     svg('<path d="M4 4h5v16H4z"/><path d="M9 4h5v16H9z"/><path d="M14 6l5-1.5L23 19l-5 1.5z"/>'),
+      sun:       svg('<path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+      print:     svg('<path d="M6 9V3h12v6"/><path d="M6 17H4V9h16v8h-2"/><path d="M6 14h12v7H6z"/>'),
+      meaning:   svg('<path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/>'),
+      translate: svg('<path d="M4 5h9M8 5v2c0 4-2 7-5 9M6 10c1 3 3 5 6 6"/><path d="M13 20l4-9 4 9M14.5 17h5"/>'),
+      aa:        '<span class="label-aa" aria-hidden="true">Aa</span>'
+    };
+  })();
+
+  /* ---------- popovers: type (Aa) and theme (the lamp) share one surface ---------- */
+  /* Pop.open(id, button, render(pane), opts) shows the pane for `id` under its bar button — a
+     bottom sheet on phones — after `render` has filled or refreshed it. One popover at a time;
+     Escape, the scrim, a click outside or the button again closes it, and focus goes back to the
+     button. The two panes are static markup in index.html so their controls exist from the start
+     (A− / A+ keep their ids and their listeners). */
+  var Pop = (function(){
+    var el = $("#pop"), scrim = $("#popScrim"), panes = { type: $("#typePop"), theme: $("#themePop") };
+    var current = null, anchor = null, scrollY0 = 0, docH = 0;
+    var reduce = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    function phone(){ return window.matchMedia && window.matchMedia("(max-width:560px)").matches; }
+    /* where the page stands now, and how tall it is: the scroll-to-close rule below measures the
+       reader's own scrolling from here, and a reflow (a new spacing or font moves the text under
+       the window; scroll anchoring then shifts scrollY) moves the baseline instead of counting */
+    function rebase(){ void document.documentElement.offsetHeight; scrollY0 = window.scrollY; docH = document.documentElement.scrollHeight; }
+    /* under the button, right edges aligned, kept inside the window */
+    function place(){
+      if (!current) return;
+      /* a resize across the phone breakpoint with the popover open: the scrim belongs to the sheet form only */
+      scrim.classList.toggle("on", phone());
+      if (phone()){ el.style.top = ""; el.style.left = ""; el.style.right = ""; return; }
+      var r = anchor.getBoundingClientRect();
+      el.style.top = Math.round(r.bottom + 6) + "px";
+      el.style.left = "";
+      var right = Math.max(8, Math.round(window.innerWidth - r.right));
+      el.style.right = right + "px";
+      if (window.innerWidth - right - el.offsetWidth < 8){ el.style.right = ""; el.style.left = "8px"; }
+    }
+    function open(id, btn, render, opts){
+      if (current === id){ close(); return; }
+      if (current) close(true);
+      Menu.close(); Side.close();
+      document.body.classList.remove("hidebar");
+      current = id; anchor = btn;
+      Object.keys(panes).forEach(function(k){ panes[k].hidden = k !== id; });
+      el.setAttribute("aria-label", (opts && opts.label) || (id === "type" ? "Text settings" : "Theme"));
+      if (render) render(panes[id]);
+      sync();
+      el.classList.add("open"); el.setAttribute("aria-hidden", "false");
+      scrim.classList.toggle("on", phone());
+      /* a phone holds the page still under its sheet (the class is scoped to phones in the stylesheet) */
+      document.documentElement.classList.add("lock-pop");
+      btn.setAttribute("aria-expanded", "true");
+      place();
+      /* the chosen theme scrolls into view only now that the popover has a layout (while it was
+         display:none scrollIntoView had nothing to measure); after place(), so "nearest" never
+         nudges the window */
+      if (id === "theme") showCurrent();
+      rebase();
+      /* focus lands on the first control: the size (zoom) slider, or the chosen theme */
+      var first = id === "type" ? (panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
+                                : (panes.theme.querySelector(".strip .chip.on") || panes.theme.querySelector(".strip .chip"));
+      (first || el).focus({ preventScroll: true });
+    }
+    function close(quiet){
+      if (!current) return;
+      var btn = anchor;
+      current = null; anchor = null;
+      el.classList.remove("open"); el.setAttribute("aria-hidden", "true");
+      scrim.classList.remove("on");
+      document.documentElement.classList.remove("lock-pop");
+      btn.setAttribute("aria-expanded", "false");
+      if (!quiet && btn.focus) btn.focus({ preventScroll: true });
+    }
+    function is(id){ return current === id; }
+
+    /* ---- the type pane: size (zoom for a PDF), spacing, width, font, flow ---- */
+    var fontQuick = $("#fontQuick");
+    FONT_GROUPS.forEach(function(g){
+      var og = document.createElement("optgroup"); og.label = g.name;
+      Object.keys(FONTS).forEach(function(id){ if (FONTS[id].group !== g.id) return; var o = document.createElement("option"); o.value = id; o.textContent = FONTS[id].name; og.appendChild(o); });
+      fontQuick.appendChild(og);
+    });
+    function syncType(){
+      var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100);
+      panes.type.classList.toggle("pdf", pdf);
+      $("#qSizeL").textContent = pdf ? "Zoom" : "Size";
+      $("#qZoom").value = z; $("#qSize").value = state.size;
+      $("#qSizeV").textContent = pdf ? z + " %" : state.size + " px";
+      $("#qLh").value = state.lh; $("#qLhV").textContent = state.lh.toFixed(2);
+      $("#qW").value = state.width; $("#qWV").textContent = state.width + " px";
+      var rg = weightRange(FONTS[state.font] || FONTS.serif);
+      setWeightRow($("#qWeightRow"), $("#qWeight"), $("#qWeightV"), rg);
+      $("#qWeightNote").hidden = !rg.two;
+      $("#qLs").value = state.ls || 0; $("#qLsV").textContent = emVal(state.ls || 0);
+      $("#qWs").value = state.ws || 0; $("#qWsV").textContent = emVal(state.ws || 0);
+      fontQuick.value = state.font;
+      $("#qSoften").checked = !!state.soften;
+      Array.prototype.forEach.call(panes.type.querySelectorAll("#qFlow .chip"), function(ch){
+        var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    $("#qSize").addEventListener("input", function(e){ state.size = +e.target.value; applyType(); });
+    $("#qZoom").addEventListener("input", function(e){
+      state.zoom = (+e.target.value) / 100;
+      $("#rZoom").value = e.target.value; $("#vZoom").textContent = e.target.value + " %";
+      queueRerender(); syncType();
+    });
+    $("#qLh").addEventListener("input", function(e){ state.lh = +e.target.value; applyType(); });
+    $("#qW").addEventListener("input", function(e){ state.width = +e.target.value; applyType(); });
+    $("#qWeight").addEventListener("input", function(e){ state.weight = +e.target.value; applyType(); });
+    $("#qLs").addEventListener("input", function(e){ state.ls = +e.target.value; applyType(); });
+    $("#qWs").addEventListener("input", function(e){ state.ws = +e.target.value; applyType(); });
+    fontQuick.addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
+    $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
+    $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
+    /* the footer link: the sheet opens at the group, and Escape there hands focus back to the bar button */
+    $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#textGroup", a); });
+
+    /* ---- the theme pane: a strip of light themes, one of dark, and the auto choice ---- */
+    function chip(k){
+      var t = resolveTheme(k);
+      return t ? '<button type="button" class="chip" data-theme="' + k + '" aria-pressed="false">' + swatchHtml(t) + escapeHtml(t.name) + '</button>' : "";
+    }
+    function renderTheme(){
+      var groups = themeGroups(), light = groups[0].ids.slice(), dark = groups[1].ids.slice();
+      /* the two high-contrast themes and the saved ones join the row of their lightness */
+      HICON.forEach(function(k){ (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
+      state.customs.forEach(function(c){ (isDarkColor(c.bg) ? dark : light).push("c:" + c.id); });
+      $("#qLight").innerHTML = light.map(chip).join("");
+      $("#qDark").innerHTML = dark.map(chip).join("");
+    }
+    function syncTheme(){
+      var t = currentTheme(), custom = customById(state.theme);
+      Array.prototype.forEach.call(panes.theme.querySelectorAll(".strip .chip"), function(ch){
+        var on = ch.dataset.theme === state.theme;
+        ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+        if (on && custom){ var sw = ch.querySelector("i"); sw.style.setProperty("--sw-bg", t.bg); sw.style.setProperty("--sw-acc", t.accent); }
+      });
+      Array.prototype.forEach.call(panes.theme.querySelectorAll("#qAuto .chip"), function(ch){
+        var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    function showCurrent(){
+      var on = panes.theme.querySelector(".strip .chip.on");
+      if (on && on.scrollIntoView) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "instant" });
+    }
+    panes.theme.addEventListener("click", function(e){
+      var ch = e.target.closest(".strip .chip");
+      if (ch){ selectTheme(ch.dataset.theme); showCurrent(); return; }
+      var a = e.target.closest("#qAuto .chip");
+      if (a){ state.auto = a.dataset.auto; Prefs.save(); AutoTheme.apply(); syncTheme(); }
+    });
+    /* the strips have no scrollbar: a mouse wheel over one moves it sideways instead of scrolling
+       the page away (which would also close the popover) */
+    Array.prototype.forEach.call(panes.theme.querySelectorAll(".strip"), function(s){
+      s.addEventListener("wheel", function(e){
+        if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || s.scrollWidth <= s.clientWidth) return;
+        e.preventDefault(); s.scrollLeft += e.deltaY;
+      }, { passive: false });
+    });
+    $("#themeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#themeGroup", a); });
+
+    /* the open pane follows the state (applyType / applyTheme call this), and the page's height
+       is noted again: the change that called this may have reflowed the text */
+    function sync(){
+      if (!current) return;
+      if (current === "type") syncType(); else syncTheme();
+      rebase();
+    }
+    /* the settings sheet, scrolled so a group sits under its strip; `from` is the control that
+       asked for it (focus returns there when the sheet closes) */
+    function openSheetAt(sel, from){
+      setSheet(true, from);
+      var sheet = $("#sheet"), g = $(sel), strip = $("#sheetTabs");
+      if (!g) return;
+      var top = g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop - (strip ? strip.offsetHeight : 0) - 2;
+      if (SheetTabs) SheetTabs.mark(g.id, 700);
+      sheet.scrollTo({ top: Math.max(0, top), behavior: reduce && reduce.matches ? "auto" : "smooth" });
+      var first = g.querySelector("input, select, button");
+      if (first) first.focus({ preventScroll: true });
+    }
+
+    /* Escape closes the popover only: it stops here (capture) so the sheet, the panel and the
+       menu keep their state; a click anywhere else, the scrim, or scrolling away closes it too */
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape" && current){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    }, true);
+    /* capture phase: the ⋯ button stops its click from bubbling, and that click must close this too */
+    document.addEventListener("click", function(e){
+      if (!current || e.target.closest("#pop") || (anchor && anchor.contains(e.target))) return;
+      close(true);
+    }, true);
+    scrim.addEventListener("click", function(){ close(); });
+    el.querySelector(".pop-handle").addEventListener("click", function(){ close(); });
+    /* scrolling away from the popover closes it — on a desktop, where it hangs from the bar. A
+       phone's sheet stays: Escape, the scrim or the handle close it, and the page is held still
+       under it anyway. A scroll that comes with a change of the page's height is the text
+       reflowing (a font or an image landed, a slider moved), not the reader: the baseline moves */
+    window.addEventListener("scroll", function(){
+      if (!current) return;
+      var h = document.documentElement.scrollHeight;
+      if (h !== docH){ docH = h; scrollY0 = window.scrollY; return; }
+      if (!phone() && Math.abs(window.scrollY - scrollY0) > 80) close(true);
+    }, { passive: true });
+    window.addEventListener("resize", place);
+
+    /* the bar buttons */
+    $("#gear").addEventListener("click", function(e){ e.stopPropagation(); open("type", this, syncType); });
+    $("#lamp").addEventListener("click", function(e){ e.stopPropagation(); open("theme", this, function(){ renderTheme(); syncTheme(); }); });
+
+    window.llPop = { open: open, close: close, is: is, sync: sync, sheet: setSheet, sheetAt: openSheetAt };
+    return { open: open, close: close, is: is, sync: sync, sheetAt: openSheetAt };
+  })();
+
   /* ---------- view switching ---------- */
   function show(mode){
     state.mode = mode;
+    document.body.dataset.mode = mode;
     if (mode === "doc" || mode === "pdf") state.opening = false;
     Wake.set(mode === "doc" || mode === "pdf");
     $("#empty").style.display  = mode === "empty"  ? "block" : "none";
@@ -756,14 +1144,38 @@
   }
   function headVar(){ var head = document.querySelector("header"); if (head) document.documentElement.style.setProperty("--headH", head.offsetHeight + "px"); }
   window.addEventListener("resize", headVar);
+  /* the dock at the foot of the screen holds the read-aloud bar over the page-turn bar. Its
+     height goes into --dockH: the pages clear it, and the toasts and the auto-scroll pill float
+     above it. --pagerH and --ttsH stay set for anything still reading them. */
+  function dockVar(){
+    var zen = document.body.classList.contains("zen"), dock = $("#dock"), ttsEl = $("#tts");
+    var pagerH = zen ? 0 : $("#pager").offsetHeight, ttsH = ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
+    var h = dock ? dock.offsetHeight : pagerH + ttsH, st = document.documentElement.style;
+    st.setProperty("--dockH", h + "px"); st.setProperty("--pagerH", pagerH + "px"); st.setProperty("--ttsH", ttsH + "px");
+    return h;
+  }
+  /* the dock changed height without a window resize (the read-aloud bar came, went, or wrapped to
+     two rows for the sleep timer): the pages are laid out to clear it, so lay them out again
+     unless the last layout already saw this height. relayoutPaged never changes the dock, so
+     there is no loop. The header is watched the same way: the tabs strip appearing or going
+     changes --headH, which the progress pill and the sheet hang from. */
+  var dockLaidOut = -1;
+  function printing(){ return document.body.classList.contains("printing") || (window.matchMedia && window.matchMedia("print").matches); }
+  if (window.ResizeObserver){
+    /* not while printing: the print layout hides the dock, and Print lays the pages out again itself once the screen is back */
+    new ResizeObserver(function(){ var h = dockVar(); if (h !== dockLaidOut && pagedActive() && !printing()) relayoutPaged(); }).observe($("#dock"));
+    new ResizeObserver(headVar).observe(document.querySelector("header"));
+  }
+  else window.addEventListener("resize", dockVar);
   function availHeight(){
     headVar();
-    var head = document.querySelector("header");
-    var headH = document.body.classList.contains("immersive") || document.body.classList.contains("zen") ? 0 : head.offsetHeight;
-    var pagerH = document.body.classList.contains("zen") ? 0 : ($("#pager").offsetHeight || 56);
-    document.documentElement.style.setProperty("--pagerH", pagerH + "px");
-    var ttsEl = $("#tts"), ttsH = ttsEl && ttsEl.classList.contains("on") ? ttsEl.offsetHeight : 0;
-    return Math.max(160, window.innerHeight - headH - pagerH - ttsH - 26);
+    var head = document.querySelector("header"), zen = document.body.classList.contains("zen");
+    var headH = document.body.classList.contains("immersive") || zen ? 0 : head.offsetHeight;
+    var dockH = dockVar();
+    dockLaidOut = dockH;
+    /* measured before the page-turn bar is shown (the first layout): assume its usual height */
+    if (!zen && pagedActive() && !$("#pager").offsetHeight) dockH += 56;
+    return Math.max(160, window.innerHeight - headH - dockH - 26);
   }
   function spreadOn(){ return state.spread !== false && window.innerWidth >= 1000; }
   /* Pages flow lays the text out in fixed-height columns and shows one column (or two,
@@ -905,7 +1317,7 @@
     var off = state.mode === "doc" ? (state.flow === "pages" ? pageTopOffset() : Library.topCharOffset()) : null;
     state.flow = f;
     document.querySelectorAll("#flowChips .chip").forEach(function(ch){
-      ch.classList.toggle("on", ch.dataset.flow === f);
+      var on = ch.dataset.flow === f; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
     });
     Prefs.save();
     if (state.mode === "pdf" && state.pdfDoc && f === "pages")
@@ -930,15 +1342,44 @@
       var n = state.pdfPageNum + dir * step;
       if (n < 1) n = 1;
       if (n > state.pdfDoc.numPages) return;
-      if (n !== state.pdfPageNum){ state.pdfPageNum = n; renderPdfSingle(); }
+      if (n !== state.pdfPageNum){ state.pdfPageNum = n; Progress.tick(); renderPdfSingle(); }
     }
   }
+  /* the section the current page is in: the heading at the page's first character, the same
+     rule as the title readout (Section), so the two never name different sections for one page
+     (a PDF's outline arrives later; the readout is drawn again when it does) */
+  var pdfSections = { doc: null, list: null };
+  function currentSection(){
+    if (state.mode === "doc"){
+      var e = Section ? Section.at(pageTopOffset()) : null;
+      return e ? e.title : "";
+    }
+    if (state.mode === "pdf" && state.pdfDoc){
+      var doc = state.pdfDoc;
+      if (pdfSections.doc !== doc){
+        pdfSections.doc = doc; pdfSections.list = null;
+        Toc.pdfEntries().then(function(list){ if (state.pdfDoc === doc){ pdfSections.list = list; updatePager(); } });
+      }
+      var hit = null, pg = state.pdfPageNum;
+      (pdfSections.list || []).forEach(function(e){ if (e.page && e.page <= pg) hit = e; });
+      return hit ? hit.title : "";
+    }
+    return "";
+  }
+  /* the page-turn bar's readout: "12 / 40 · Chapter 3 · 18 min left" — the page fraction first,
+     then the section when the document has one, then the time left at the measured speed */
   function updatePager(){
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
     else if (state.pdfDoc){ cur = state.pdfPageNum; total = state.pdfDoc.numPages; if (state.perPage === 2 && state.flow === "pages" && cur < total) cur = cur + "\u2013" + (cur + 1); }
     else { cur = 1; total = 1; }
-    $("#pgInfo").textContent = cur + " / " + total;
+    var info = $("#pgInfo"), part = function(cls, text){ var el = document.createElement("span"); el.className = cls; el.textContent = text; info.appendChild(el); };
+    info.textContent = "";
+    part("pg-n", cur + " / " + total);
+    if (!pagedActive()) return;
+    var sec = currentSection(), left = Progress.left();
+    if (sec) part("pg-sec", " \u00B7 " + sec);
+    if (left) part("pg-left", " \u00B7 " + left);
   }
   function updateProgress(){
     if (!pagedActive()) return;
@@ -946,7 +1387,13 @@
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
     else { cur = state.pdfPageNum; total = state.pdfDoc ? state.pdfDoc.numPages : 1; }
-    $("#progress").style.width = (total > 0 ? (cur / total) * 100 : 0) + "%";
+    setProgressBar(total > 0 ? (cur / total) * 100 : 0);
+  }
+  /* the 3px line at the top, and its value for assistive technology */
+  function setProgressBar(pct){
+    var bar = $("#progress");
+    bar.style.width = pct + "%";
+    bar.setAttribute("aria-valuenow", String(Math.round(pct)));
   }
 
   /* ---------- file opening ---------- */
@@ -1025,6 +1472,7 @@
             Library.setTitle(book.title + (book.author ? " — " + book.author : ""));
             Tabs.setName(Library.currentId(), book.title + (book.author ? " — " + book.author : ""));
           }
+          if (book.lang) Speak.setDocLang(book.lang);     /* the book says what language it is in */
           setDocHtml(book.html, {toc: book.toc, keepIds: true});
         }).catch(fail);
 
@@ -1227,7 +1675,7 @@
     var opf = new DOMParser().parseFromString(opfXml, "application/xml");
     var q = function(sel, root){ return Array.prototype.slice.call((root || opf).getElementsByTagName(sel)); };
     var meta = function(name){ var el = q(name)[0] || q("dc:" + name)[0]; return el ? el.textContent.trim() : ""; };
-    var title = meta("title"), author = meta("creator");
+    var title = meta("title"), author = meta("creator"), lang = meta("language");
     var items = {}, navHref = null, ncxHref = null;
     q("item").forEach(function(it){
       var id = it.getAttribute("id"), href = pathJoin(opfPath, it.getAttribute("href") || "");
@@ -1311,7 +1759,7 @@
                  : ncxHref && zip.file(ncxHref) ? zip.file(ncxHref).async("string").then(function(src){ return tocFromNcx(src, ncxHref); })
                  : Promise.resolve([]);
       return tocJob.catch(function(){ return []; }).then(function(toc){
-        return { html: html, title: title, author: author, toc: toc };
+        return { html: html, title: title, author: author, lang: lang, toc: toc };
       });
     });
     function tocFromNav(src, href){
@@ -1374,6 +1822,7 @@
     holder.style.height = "";
     holder.innerHTML = "";
     holder.classList.remove("spread");
+    holder.style.display = "block";
     state.perPage = 1;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     doc.getPage(1).then(function(page1){
@@ -1480,6 +1929,9 @@
         if (gen !== renderGen) return;
         holder.innerHTML = "";
         holder.classList.toggle("spread", two);
+        /* show() sets the holder to display:block inline, which would beat the stylesheet's flex
+           row for a spread and stack the second page under the first, out of sight */
+        holder.style.display = two ? "flex" : "block";
         canvases.forEach(function(c){ holder.appendChild(c.canvas); });
         updatePager(); updateProgress();
         Library.pdfReady();
@@ -1567,71 +2019,237 @@
              textLength: textLength, startOf: startOf, invalidate: invalidate };
   })();
 
-  /* ---------- side panel: contents, marks, search share one drawer ---------- */
+  /* ---------- icons: the shared set, drawn inline in the text colour (24×24 boxes) ---------- */
+  /* the menu's, panels' and bars' icons join the shared table declared above the popovers */
+  ICONS = Object.assign(ICONS, (function(){
+    var head = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+    var dots = 'stroke-width="2.6"', solid = 'fill="currentColor" stroke="none"';
+    function path(d, attrs){ return '<path d="' + d + '"' + (attrs ? " " + attrs : "") + '/>'; }
+    function icon(){ return head + Array.prototype.join.call(arguments, "") + "</svg>"; }
+    return {
+      search:   icon(path("M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"), path("M20 20l-3.5-3.5")),
+      contents: icon(path("M9 6h11 M9 12h11 M9 18h11"), path("M4 6h.01 M4 12h.01 M4 18h.01", dots)),
+      info:     icon(path("M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"), path("M12 11v5"), path("M12 8h.01", dots)),
+      bookmark: icon(path("M6 3h12v18l-6-4-6 4V3z")),
+      notes:    icon(path("M4 20h4L18 10l-4-4L4 16v4z"), path("M13 7l4 4")),
+      speaker:  icon(path("M4 9v6h4l5 4V5L8 9H4z"), path("M16 9a4 4 0 0 1 0 6")),
+      auto:     icon(path("M6 7l6 6 6-6"), path("M6 13l6 6 6-6")),
+      ruler:    icon(path("M3 9h18v6H3z"), path("M7 9v3 M11 9v3 M15 9v3")),
+      zen:      icon(path("M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5")),
+      print:    icon(path("M6 9V3h12v6"), path("M6 17H4V9h16v8h-2"), path("M6 14h12v7H6z")),
+      chart:    icon(path("M5 20V12 M12 20V6 M19 20V10", dots)),
+      books:    icon(path("M4 4h5v16H4z"), path("M9 4h5v16H9z"), path("M14 6l5-1.5L23 19l-5 1.5z")),
+      keyboard: icon(path("M3 7h18v10H3z"), path("M7 11h.01 M11 11h.01 M15 11h.01 M7 14h10", dots)),
+      open:     icon(path("M3 7V5h6l2 2h10v12H3z"), path("M3 11h18")),
+      sliders:  icon(path("M4 7h10 M18 7h2 M4 17h4 M12 17h8"), path("M14 7m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0"), path("M8 17m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0")),
+      close:    icon(path("M6 6l12 12 M18 6L6 18")),
+      play:     icon(path("M8 5v14l11-7z", solid)),
+      pause:    icon(path("M7 5h3.5v14H7z M13.5 5H17v14h-3.5z", solid))
+    };
+  })());
+  /* a bar's play / pause button: the icon follows the state, the callers set the label */
+  function playIcon(btn, playing){ btn.innerHTML = playing ? ICONS.pause : ICONS.play; }
+
+  /* ---------- side panel: contents, marks, search share one drawer ----------
+     The four document panels (contents, search, notes, about) are one family: a segmented
+     switcher under the title moves between them in place, without closing the drawer. */
   var Side = (function(){
-    var el = $("#side"), scrim = $("#sideScrim"), body = $("#sideBody"), foot = $("#sideFoot"), title = $("#sideTitle");
-    var current = null, onClose = null, opener = null;
-    function open(name, ttl, render, closeFn){
-      current = name; onClose = closeFn || null;
-      opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#more");
+    var el = $("#side"), scrim = $("#sideScrim"), body = $("#sideBody"), foot = $("#sideFoot"), title = $("#sideTitle"), sw = $("#sideSwitch");
+    var current = null, onClose = null, opener = null, family = null;
+    var FAMILIES = {
+      doc: [
+        { name: "toc",   label: "Contents", icon: "contents", open: function(){ Toc.openPanel(); } },
+        { name: "find",  label: "Search",   icon: "search",   open: function(){ Search.openPanel(); } },
+        { name: "marks", label: "Notes",    icon: "notes",    open: function(){ Marks.openPanel(); } },
+        { name: "about", label: "About",    icon: "info",     open: function(){ About.openPanel(); } }
+      ]
+    };
+    function drawSwitch(){
+      var list = FAMILIES[family];
+      if (!list){ sw.hidden = true; sw.innerHTML = ""; return; }
+      sw.innerHTML = list.map(function(p){
+        return '<button type="button" data-panel="' + p.name + '" aria-pressed="' + (p.name === current) + '">' + ICONS[p.icon] + '<span>' + p.label + '</span></button>';
+      }).join("");
+      sw.hidden = false;
+    }
+    sw.addEventListener("click", function(e){
+      var b = e.target.closest("button[data-panel]"), list = FAMILIES[family];
+      if (!b || !list || b.dataset.panel === current) return;
+      list.forEach(function(p){ if (p.name === b.dataset.panel) p.open(); });
+    });
+    /* the drawer is modal: while it is open the rest of the page is inert, so Tab cannot reach the
+       bar under the scrim and open a menu or a popover behind it. The card, the toasts and the
+       highlight popover sit over the drawer and stay live. */
+    var BEHIND = "header, #sheet, #main, #dock, #pop, .skip";
+    function holdRest(on){
+      Array.prototype.forEach.call(document.querySelectorAll(BEHIND), function(n){ n.inert = on; });
+    }
+    /* a body with more than fits gets a focusable, named scroll region (Keyboard shortcuts has no
+       controls); a short one gains no extra Tab stop */
+    function scrollable(){ body.tabIndex = body.scrollHeight > body.clientHeight ? 0 : -1; }
+    function open(name, ttl, render, closeFn, opts){
+      var wasOpen = !!current;
+      /* a panel replaced in place tidies up as if it had closed; the drawer itself stays */
+      if (wasOpen && current !== name && onClose) onClose();
+      current = name; onClose = closeFn || null; family = (opts && opts.family) || null;
+      if (!wasOpen) opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#main");
       title.textContent = ttl;
+      drawSwitch();
       body.innerHTML = ""; foot.innerHTML = ""; foot.style.display = "none";
       render(body, foot);
       if (foot.children.length) foot.style.display = "flex";
+      body.scrollTop = 0;
       el.classList.add("open"); scrim.classList.add("on"); el.setAttribute("aria-hidden", "false");
-      $("#moreMenu").classList.remove("open");
-      /* move focus into the panel; the first control if there is one, else the heading */
+      document.documentElement.classList.add("lock-side");
+      Menu.close(); Pop.close(true);
+      holdRest(true);
+      /* move focus into the panel; the first control if there is one, else the scrolling body,
+         else the close button */
       setTimeout(function(){
+        if (current !== name) return;
+        scrollable();
         var first = body.querySelector("input, [tabindex='0'], button");
-        (first || $("#sideClose")).focus({ preventScroll: true });
+        (first || (body.tabIndex === 0 ? body : $("#sideClose"))).focus({ preventScroll: true });
       }, 60);
     }
     function close(){
       if (!current) return;
-      var fn = onClose; current = null; onClose = null;
+      var fn = onClose; current = null; onClose = null; family = null;
       el.classList.remove("open"); scrim.classList.remove("on"); el.setAttribute("aria-hidden", "true");
+      document.documentElement.classList.remove("lock-side");
+      /* the page comes back to life before focus returns to it: focus() on an inert element is a no-op */
+      holdRest(false);
       if (fn) fn();
       if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
       opener = null;
     }
     scrim.addEventListener("click", close);
     $("#sideClose").addEventListener("click", close);
+    el.querySelector(".side-grab").addEventListener("click", close);
     /* Escape closes only the topmost layer: the key stops here once it has closed a panel, so the
        settings sheet and the menu, whose listeners come after this one, keep their state; the
        dictionary card, which sits over the panel, takes the key first in the capture phase */
     document.addEventListener("keydown", function(e){
       if (e.key === "Escape" && current){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
     });
+    /* Tab wraps inside the drawer (the one hop to the document's edge that inert leaves, and the
+       whole of the containment where inert is not known) */
+    el.addEventListener("keydown", function(e){
+      if (e.key !== "Tab" || !current) return;
+      var all = Array.prototype.filter.call(el.querySelectorAll("button, input, select, textarea, a[href], [tabindex='0']"), function(n){ return !n.disabled && n.getClientRects().length; });
+      if (!all.length) return;
+      var first = all[0], last = all[all.length - 1];
+      if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    });
     return { open: open, close: close, is: function(name){ return current === name; }, body: body, foot: foot,
-             refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; } } };
+             current: function(){ return current; },
+             refresh: function(name, render){ if (current === name){ body.innerHTML = ""; foot.innerHTML = ""; render(body, foot); foot.style.display = foot.children.length ? "flex" : "none"; scrollable(); } } };
   })();
 
-  /* ---------- "more" menu: features register their entries here ---------- */
+  /* ---------- "more" menu: features register their entries here ----------
+     An entry has a group (navigate · marks · reading · tools · app) and an icon. On a desktop
+     the menu drops from the ⋯ button; on a phone it rises as a sheet of tiles. Arrow keys move
+     through the items, Escape closes and hands focus back to the button. */
   var Menu = (function(){
-    var items = [], btn = $("#more"), menu = $("#moreMenu");
-    function add(item){ if (item.order === undefined) item.order = 100 + items.length; items.push(item); }
+    var items = [], btn = $("#more"), menu = $("#moreMenu"), wrap = $("#moreWrap"), scrim = null;
+    var GROUPS = [["navigate", "Navigate"], ["marks", "Bookmarks"], ["reading", "Reading"], ["tools", "Tools"], ["app", "Lamplight"]];
+    menu.setAttribute("aria-labelledby", "more");
+    function add(item){
+      if (item.order === undefined) item.order = 100 + items.length;
+      if (!item.group) item.group = "tools";
+      items.push(item);
+    }
+    function text(it){ return typeof it.label === "function" ? it.label() : it.label; }
+    /* a toggle that is on reads "Stop…", "Hide…", "Leave…" or "Show original": it gets a dot */
+    function isOn(label){ return /^(Stop|Hide|Leave|Show original)\b/.test(label); }
     function render(){
       menu.innerHTML = "";
-      items.slice().sort(function(a, b){ return a.order - b.order; }).forEach(function(it){
-        if (it.sep){ var d = document.createElement("div"); d.className = "sep"; menu.appendChild(d); return; }
-        if (it.show && !it.show()) return;
-        var b = document.createElement("button");
-        b.type = "button"; b.setAttribute("role", "menuitem");
-        b.innerHTML = '<span>' + (typeof it.label === "function" ? it.label() : it.label) + '</span>' + (it.key ? '<kbd>' + it.key + '</kbd>' : '');
-        if (it.enabled && !it.enabled()) b.disabled = true;
-        b.addEventListener("click", function(){ close(); it.run(); });
-        menu.appendChild(b);
+      var grab = document.createElement("div");
+      grab.className = "menu-grab"; grab.setAttribute("aria-hidden", "true");
+      grab.addEventListener("click", function(){ close(true); });
+      menu.appendChild(grab);
+      var sorted = items.slice().sort(function(a, b){ return a.order - b.order; }), groups = [], rows = 0;
+      GROUPS.forEach(function(g){
+        var list = sorted.filter(function(it){ return !it.sep && it.group === g[0] && !(it.show && !it.show()); });
+        if (!list.length) return;
+        var sec = document.createElement("div"), head = document.createElement("div"), grid = document.createElement("div");
+        sec.className = "menu-group"; sec.setAttribute("role", "group"); sec.setAttribute("aria-labelledby", "menuG-" + g[0]);
+        head.className = "label"; head.id = "menuG-" + g[0]; head.textContent = g[1];
+        grid.className = "menu-items";
+        list.forEach(function(it){
+          var label = text(it), b = document.createElement("button");
+          b.type = "button"; b.setAttribute("role", "menuitem");
+          /* the key hint is decoration to a screen reader; the shortcut itself is declared */
+          b.innerHTML = '<i class="mi">' + (it.icon || "") + '</i><span>' + label + '</span>' + (it.key ? '<kbd aria-hidden="true">' + it.key + '</kbd>' : '');
+          if (it.key) b.setAttribute("aria-keyshortcuts", it.key);
+          if (isOn(label)) b.classList.add("on");
+          if (it.enabled && !it.enabled()) b.disabled = true;
+          b.addEventListener("click", function(){ close(true); it.run(); });
+          grid.appendChild(b);
+        });
+        sec.appendChild(head); sec.appendChild(grid);
+        groups.push({ el: sec, rows: list.length }); rows += list.length;
       });
-      /* drop a trailing / doubled separator */
-      var kids = Array.prototype.slice.call(menu.children);
-      kids.forEach(function(k, i){ if (k.className === "sep" && (i === kids.length - 1 || i === 0 || (kids[i+1] && kids[i+1].className === "sep"))) k.remove(); });
+      /* a long menu on a desktop reads better as two columns than as one tall list: the groups
+         stay whole and the split falls where the columns come out most even */
+      var wide = rows > 9 && window.innerWidth > 560, cols = [document.createElement("div"), document.createElement("div")], cut = groups.length;
+      if (wide){
+        var best = Infinity, sum = 0;
+        groups.forEach(function(g, i){ sum += g.rows; var d = Math.abs(sum - (rows - sum)); if (d < best){ best = d; cut = i + 1; } });
+      }
+      menu.classList.toggle("wide", wide);
+      cols.forEach(function(c){ c.className = "menu-col"; });
+      groups.forEach(function(g, i){ (wide && i >= cut ? cols[1] : cols[0]).appendChild(g.el); });
+      if (wide){ var box = document.createElement("div"); box.className = "menu-cols"; box.appendChild(cols[0]); box.appendChild(cols[1]); menu.appendChild(box); }
+      else menu.appendChild(cols[0]);
     }
-    function open(){ render(); menu.classList.add("open"); btn.setAttribute("aria-expanded", "true"); document.body.classList.remove("hidebar"); }
-    function close(){ menu.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); }
-    btn.addEventListener("click", function(e){ e.stopPropagation(); if (menu.classList.contains("open")) close(); else open(); });
-    document.addEventListener("click", function(e){ if (!e.target.closest("#moreWrap")) close(); });
-    document.addEventListener("keydown", function(e){ if (e.key === "Escape") close(); });
-    return { add: add, close: close };
+    function focusables(){ return Array.prototype.filter.call(menu.querySelectorAll("button[role=menuitem]"), function(b){ return !b.disabled; }); }
+    function isOpen(){ return menu.classList.contains("open"); }
+    function open(){
+      render();
+      if (!scrim){
+        scrim = document.createElement("div"); scrim.id = "moreScrim"; scrim.setAttribute("aria-hidden", "true");
+        scrim.addEventListener("click", function(){ close(true); });
+        wrap.appendChild(scrim);
+      }
+      menu.classList.add("open"); scrim.classList.add("on"); menu.scrollTop = 0;
+      btn.setAttribute("aria-expanded", "true");
+      document.body.classList.remove("hidebar");
+      var first = focusables()[0];
+      if (first) first.focus({ preventScroll: true });
+    }
+    /* back: hand focus to the ⋯ button (a key, the scrim, the handle or an item did it) */
+    function close(back){
+      if (!isOpen()) return;
+      menu.classList.remove("open"); if (scrim) scrim.classList.remove("on");
+      btn.setAttribute("aria-expanded", "false");
+      if (back) btn.focus({ preventScroll: true });
+    }
+    btn.addEventListener("click", function(e){ e.stopPropagation(); if (isOpen()) close(); else open(); });
+    document.addEventListener("click", function(e){ if (isOpen() && !e.target.closest("#moreWrap")) close(); });
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !isOpen()) return;
+      e.preventDefault(); e.stopImmediatePropagation(); close(true);
+    });
+    /* arrows move through the items (wrapping), Home and End jump, Tab leaves and closes */
+    menu.addEventListener("keydown", function(e){
+      var list = focusables(), n = list.length, i = list.indexOf(document.activeElement), to = null;
+      if (!n) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") to = list[(i + 1) % n];
+      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") to = list[i < 0 ? n - 1 : (i - 1 + n) % n];
+      else if (e.key === "Home") to = list[0];
+      else if (e.key === "End") to = list[n - 1];
+      else if (e.key === "Tab"){ close(); return; }
+      else return;
+      e.preventDefault(); e.stopPropagation(); to.focus();
+    });
+    /* the menu hangs from the bar, which slides away on a scroll: close rather than drift off */
+    window.addEventListener("scroll", function(){ if (isOpen()) close(); }, { passive: true });
+    var narrow = window.matchMedia ? window.matchMedia("(max-width: 560px)") : null;
+    if (narrow && narrow.addEventListener) narrow.addEventListener("change", function(){ close(); });
+    window.llMenu = { open: open, close: close, isOpen: isOpen, items: function(){ return items.slice(); } };
+    return { add: add, close: close, open: open, isOpen: isOpen };
   })();
 
   var Library = (function(){
@@ -1849,46 +2467,166 @@
       return new Date(t).toLocaleDateString();
     }
     function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function cssEsc(s){ return window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&"); }
+    /* the start screen: a Continue card for the book that is up next, then every book as a card */
+    function pctOf(b){ var pos = positions[b.id]; return pos ? pos.pct : 0; }
+    function put(rec){ tx("books", "readwrite", function(st){ st.put(rec); }).catch(function(){}); }
+    function byId(id){ return books.filter(function(x){ return x.id === id; })[0]; }
+
+    /* ---- pinned books: a short list kept at the top, in the order they are waiting in ---- */
+    function pinnedList(){
+      return books.filter(function(b){ return !!b.pinned; })
+        .sort(function(a, b){ return (a.order || 0) - (b.order || 0) || (a.pinned || 0) - (b.pinned || 0); });
+    }
+    function setPinned(id, on){
+      var b = byId(id);
+      if (!b || !!b.pinned === !!on) return;
+      if (on){
+        var top = pinnedList();
+        b.pinned = Date.now();
+        b.order = top.length ? (top[top.length - 1].order || 0) + 1 : 1;
+      } else { delete b.pinned; delete b.order; }
+      put(b); render();
+    }
+    function togglePin(id){ var b = byId(id); if (b) setPinned(id, !b.pinned); }
+    /* one place up or down the waiting list; the orders are renumbered so they stay 1, 2, 3… */
+    function movePinned(id, dir){
+      var top = pinnedList(), i = -1;
+      top.forEach(function(b, k){ if (b.id === id) i = k; });
+      var j = i + dir;
+      if (i < 0 || j < 0 || j >= top.length) return;
+      top.splice(j, 0, top.splice(i, 1)[0]);
+      top.forEach(function(b, k){ if (b.order !== k + 1){ b.order = k + 1; put(b); } });
+      render();
+      refocus(id, '[data-move="' + (dir < 0 ? "up" : "down") + '"]');
+    }
+    /* the list is rebuilt whole on every change: put the focus back where it was */
+    function refocus(id, sel){
+      var row = $("#libList").querySelector('.lib-item[data-id="' + cssEsc(id) + '"]');
+      if (!row) return;
+      var b = row.querySelector(sel);
+      if (!b || b.disabled) b = row.querySelector(".lib-open");
+      if (b) b.focus({ preventScroll: true });
+    }
+    /* the book to carry on with: the first pinned one, else the one opened last */
+    function upNext(){ var top = pinnedList(); return top.length ? top[0] : books[0]; }
+    /* pinned and not opened since it was pinned: it is waiting, not half-read */
+    function waiting(b){ return !!(b && b.pinned) && !(b.opened > b.pinned); }
+    /* "about 2 h 10 min left · ≈ 4 more evenings", from the shared estimate in Stats */
+    function forecastOf(b){
+      try { return (window.llStats && window.llStats.forecast) ? window.llStats.forecast(b, positions[b.id]) : ""; }
+      catch(_){ return ""; }
+    }
+    /* a card is a plain wrapper holding sibling buttons: the book (opens it), move up and down
+       for a pinned one, the pin and the remove; nesting one inside another would give the card
+       every one of their names */
+    function item(b, idx, of){
+      var pct = pctOf(b), name = escapeHtml(b.title || b.name), done = pct >= 98, pinned = !!b.pinned;
+      var id = escapeHtml(b.id), left = forecastOf(b);
+      function move(dir, label, icon, off){
+        return '<button type="button" class="lib-move" data-move="' + dir + '" data-id="' + id + '" title="' + label +
+          '" aria-label="' + label + " " + name + '"' + (off ? " disabled" : "") + '>' + icon + '</button>';
+      }
+      return '<div class="lib-item' + (pinned ? " pinned" : "") + '" data-id="' + id + '">' +
+        '<button type="button" class="lib-open" data-id="' + id + '" title="' + escapeHtml(b.name) + '">' +
+        '<span class="lib-type">' + escapeHtml(b.type) + '</span>' +
+        '<span class="lib-main"><span class="lib-name">' + name + '</span>' +
+        '<span class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
+        (done ? '<span class="lib-done">Finished</span>' : '') + '</span>' +
+        (left ? '<span class="lib-left">' + escapeHtml(left) + '</span>' : '') + '</span>' +
+        '</button>' +
+        (pinned ? move("up", "Move up", ICONS.chevronU, idx === 0) + move("down", "Move down", ICONS.chevronD, idx === of - 1) : '') +
+        '<button type="button" class="lib-pin' + (pinned ? " on" : "") + '" data-pin="' + id + '" aria-pressed="' + pinned +
+        '" title="' + (pinned ? "Unpin from the top" : "Pin to the top") + '" aria-label="' + (pinned ? "Unpin " : "Pin ") + name + ' to the top">' + ICONS.pin + '</button>' +
+        '<button type="button" class="lib-x" data-x="' + id + '" title="Remove from library" aria-label="Remove ' + name + ' from the library">' + ICONS.close + '</button>' +
+        '</div>';
+    }
+    /* a finished book starts again from the beginning; the words on the card say so */
+    function continueHtml(b){
+      var pct = pctOf(b), name = escapeHtml(b.title || b.name), again = pct >= 98, left = forecastOf(b);
+      var lead = again ? "Read again" : waiting(b) ? "Up next" : "Continue reading";
+      return '<button type="button" id="continueCard" title="' + (again ? "Read " + name + " again" : "Continue reading " + name) + '">' +
+        '<span class="cc-ring" style="--p:' + pct + '%" aria-hidden="true"><span>' + (pct ? pct + "%" : "new") + '</span></span>' +
+        '<span class="cc-main"><span class="label">' + lead + '</span><span class="cc-title">' + name + '</span>' +
+        '<span class="cc-meta"><span class="lib-type">' + escapeHtml(b.type) + '</span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
+        (left ? '<span class="cc-left">' + escapeHtml(left) + '</span>' : '') + '</span></span>' +
+        '<span class="cc-go">' + (again ? "Start again" : "Continue") + ICONS.goOn + '</span>' +
+        '</button>';
+    }
     function render(){
       var list = $("#libList");
       if (!list) return;
-      var lib = $("#library");
-      lib.classList.toggle("show", state.mode === "empty" && books.length > 0);
-      list.innerHTML = books.slice(0, 60).map(function(b){
-        var pos = positions[b.id], pct = pos ? pos.pct : 0;
-        return '<div class="lib-item" role="button" tabindex="0" data-id="' + escapeHtml(b.id) + '" title="' + escapeHtml(b.name) + '">' +
-          '<span class="lib-type">' + escapeHtml(b.type) + '</span>' +
-          '<span><div class="lib-name">' + escapeHtml(b.title || b.name) + '</div>' +
-          '<div class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span></div></span>' +
-          '<button class="lib-x" data-x="' + escapeHtml(b.id) + '" title="Remove from library" aria-label="Remove">×</button>' +
-          '</div>';
-      }).join("");
+      var lib = $("#library"), cont = $("#continue"), on = state.mode === "empty" && books.length > 0;
+      document.body.classList.toggle("has-books", books.length > 0);
+      lib.classList.toggle("show", on);
+      cont.classList.toggle("show", on);
+      $("#libCount").textContent = books.length > 1 ? String(books.length) : "";
+      var top = pinnedList(), rest = books.filter(function(b){ return !b.pinned; }).slice(0, 60), h = "";
+      if (top.length){
+        h += '<div class="lib-group label">Pinned</div>' + top.map(function(b, i){ return item(b, i, top.length); }).join("");
+        if (rest.length) h += '<div class="lib-group label">Recent</div>';
+      }
+      h += rest.map(function(b){ return item(b, -1, 0); }).join("");
+      list.innerHTML = h;
+      /* the heading over the whole list: "Recent" until something is pinned above it */
+      var head = lib.querySelector(".lib-head .label");
+      if (head && head.firstChild) head.firstChild.nodeValue = (top.length ? "Library" : "Recent") + " ";
+      var next = upNext();
+      cont.innerHTML = next ? continueHtml(next) : "";
     }
+    $("#continue").addEventListener("click", function(e){
+      if (!e.target.closest("#continueCard")) return;
+      var b = upNext();
+      if (b) openId(b.id, pctOf(b) >= 98);
+    });
+    /* native buttons deliver Enter and Space as clicks, so one listener covers keys and pointers */
     $("#libList").addEventListener("click", function(e){
+      var pin = e.target.closest(".lib-pin");
+      if (pin){ togglePin(pin.dataset.pin); refocus(pin.dataset.pin, ".lib-pin"); return; }
+      var mv = e.target.closest(".lib-move");
+      if (mv){ movePinned(mv.dataset.id, mv.dataset.move === "up" ? -1 : 1); return; }
       var x = e.target.closest(".lib-x");
-      if (x){ e.stopPropagation(); remove(x.dataset.x); return; }
-      var it = e.target.closest(".lib-item");
+      if (x){ remove(x.dataset.x); return; }
+      var it = e.target.closest(".lib-open");
       if (it) openId(it.dataset.id);
     });
+    /* p pins or unpins the card the focus is on */
     $("#libList").addEventListener("keydown", function(e){
-      var it = e.target.closest(".lib-item");
-      if (it && (e.key === "Enter" || e.key === " ")){ e.preventDefault(); openId(it.dataset.id); }
+      if ((e.key !== "p" && e.key !== "P") || e.ctrlKey || e.metaKey || e.altKey) return;
+      var it = e.target.closest && e.target.closest(".lib-item");
+      if (!it) return;
+      e.preventDefault(); e.stopPropagation();
+      var id = it.dataset.id, onPin = !!e.target.closest(".lib-pin");
+      togglePin(id);
+      refocus(id, onPin ? ".lib-pin" : ".lib-open");
     });
-    $("#libClear").addEventListener("click", function(){
-      if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device?")) return;
+    /* everything this device holds for the library; translations are a separate store */
+    function wipe(alsoTranslations){
       books = []; positions = {};
       Tabs.clear();
-      tx("books", "readwrite", function(st){ st.clear(); }).catch(function(){});
-      tx("positions", "readwrite", function(st){ st.clear(); }).catch(function(){});
-      tx("marks", "readwrite", function(st){ st.clear(); }).catch(function(){});
-      render(); show("empty");
+      var stores = ["books", "positions", "marks"].concat(alsoTranslations ? ["translations"] : []);
+      var jobs = stores.map(function(s){ return tx(s, "readwrite", function(st){ st.clear(); }).catch(function(){}); });
+      render();
+      return Promise.all(jobs);
+    }
+    $("#libClear").addEventListener("click", function(){
+      if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device?")) return;
+      wipe(false);
+      show("empty");
     });
-    function openId(id){
+    /* books read to the end: taken out with their positions and notes, like a single remove */
+    function removeFinished(){
+      var done = books.filter(function(b){ return pctOf(b) >= 98; });
+      done.forEach(function(b){ remove(b.id); });
+      return done.length;
+    }
+    /* fresh: open at the beginning instead of the saved place (a finished book read again) */
+    function openId(id, fresh){
       var b = books.filter(function(x){ return x.id === id; })[0];
       if (!b || !b.blob) return;
       var f = b.blob;
       if (!(f instanceof File)){ try { f = new File([b.blob], b.name, { type: b.blob.type }); } catch(_){ f = b.blob; f.name = b.name; } }
-      openFile(f, { fromLibrary: true });
+      openFile(f, { fromLibrary: true, fresh: !!fresh });
     }
     function remove(id){
       books = books.filter(function(x){ return x.id !== id; });
@@ -1904,13 +2642,15 @@
     function home(){
       flush();
       abandonOpen();
-      Speak.stop(); Auto.stop(); Ruler.set(false); Zen.exit(); Side.close();
+      Speak.stop(); Auto.stop(); Ruler.set(false); Zen.exit(); Side.close(); Pop.close(true);
       if (state.mode === "doc" || state.mode === "pdf"){
         document.body.classList.remove("hidebar", "immersive");
         window.scrollTo(0, 0);
       }
       setSheet(false);
       $("#fname").textContent = "";
+      Section.reset();
+      $("#progressInfo").classList.remove("on");   /* the readout belongs to the document just left */
       document.title = "lamplight — reader";
       show("empty");
       render();
@@ -1918,6 +2658,8 @@
 
     return { tx: tx, headerHeight: headerHeight, topCharOffset: topCharOffset, currentPdfPage: currentPdfPage, idFor: idFor, openId: openId,
              books: function(){ return books; }, remember: remember,
+             pin: setPinned, togglePin: togglePin, move: movePinned, pinned: pinnedList, upNext: upNext,
+             removeFinished: removeFinished, wipe: wipe,
              onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
              flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render,
              ready: loaded, currentId: function(){ return current; }, positionFor: function(id){ return positions[id]; },
@@ -1930,7 +2672,40 @@
   var Marks = (function(){
     var docId = null, docName = "", list = [], loaded = false, rendered = false, loadGen = 0;
     var COLORS = ["accent", "sun", "leaf", "rose"];
+    var COLOR_WORDS = { accent: "Default", sun: "Yellow", leaf: "Green", rose: "Pink" };
     var pop = $("#markPop"), popKey = null;
+
+    /* ---- what the four colours mean to this reader; three are suggested, all are editable ---- */
+    var LEGEND_KEY = "ll_mark_legend", LEGEND_DEFAULT = { accent: "", sun: "Important", leaf: "Vocabulary", rose: "Question" };
+    var legend = (function(){
+      var out = Object.assign({}, LEGEND_DEFAULT), o = null;
+      try { o = JSON.parse(Store.get(LEGEND_KEY) || "null"); } catch(_){}
+      if (o && typeof o === "object") COLORS.forEach(function(c){ if (typeof o[c] === "string") out[c] = o[c].trim().slice(0, 40); });
+      return out;
+    })();
+    function colorLabel(c){ return legend[c] || COLOR_WORDS[c] || c; }
+    function setLegend(c, name){
+      if (COLORS.indexOf(c) < 0) return;
+      legend[c] = String(name || "").trim().slice(0, 40);
+      Store.set(LEGEND_KEY, JSON.stringify(legend));
+    }
+
+    /* ---- #tags typed into a note: letters, digits, hyphens and underscores ---- */
+    var TAG = /#([A-Za-z0-9][A-Za-z0-9_-]*)/g;
+    function tagsOf(m){
+      var out = [], s = String((m && m.note) || ""), t;
+      TAG.lastIndex = 0;
+      while ((t = TAG.exec(s))){ var k = t[1].toLowerCase(); if (out.indexOf(k) < 0) out.push(k); }
+      return out;
+    }
+    /* every tag in use with how many marks carry it, in the order they first appear */
+    function tagCounts(){
+      var order = [], counts = {};
+      list.forEach(function(m){
+        tagsOf(m).forEach(function(t){ if (counts[t] === undefined){ counts[t] = 0; order.push(t); } counts[t]++; });
+      });
+      return order.map(function(t){ return { tag: t, n: counts[t] }; });
+    }
 
     function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
@@ -1956,6 +2731,14 @@
     }
     function save(m){ Library.tx("marks", "readwrite", function(st){ st.put(m); }).catch(function(){}); }
     function del(m){ Library.tx("marks", "readwrite", function(st){ st.delete(m.key); }).catch(function(){}); }
+    /* every mark on this device (the Storage panel); the open document loses its highlights too */
+    function clearAll(){
+      list = [];
+      return Library.tx("marks", "readwrite", function(st){ st.clear(); }).then(function(){
+        if (state.mode === "doc") apply();
+        refreshPanel();
+      }).catch(function(){});
+    }
     function forget(id){ Library.tx("marks", "readwrite", function(st){
       var idx = st.index("doc").openKeyCursor(IDBKeyRange.only(id));
       idx.onsuccess = function(){ var c = idx.result; if (c){ st.delete(c.primaryKey); c.continue(); } };
@@ -2090,6 +2873,13 @@
       } else {
         var off = Library.topCharOffset();
         if (off === null){ toast("Couldn't find the spot"); return null; }
+        /* the probe lands inside the first word when its first glyph is wide: back up to its start */
+        var at = Anchor.rangeAt(off);
+        if (at && at.startContainer.nodeType === 3){
+          var tx = at.startContainer.textContent, ci = at.startOffset;
+          while (ci > 0 && !/\s/.test(tx[ci - 1])) ci--;
+          var o2 = Anchor.offsetOf(at.startContainer, ci); if (o2 !== null) off = o2;
+        }
         m.start = off; m.end = off;
         var r = Anchor.rangeBetween(off, Math.min(Anchor.textLength(), off + 160));
         var words = (r ? r.toString() : "").replace(/\s+/g, " ").trim().split(" ").slice(0, 9).join(" ");
@@ -2131,7 +2921,7 @@
       if (!m) return;
       popKey = m.key;
       pop.innerHTML = '<button data-act="note">' + (m.note ? "Edit note" : "Note") + '</button>' +
-        COLORS.map(function(c){ return '<button class="dot ' + c + '" data-color="' + c + '" title="' + c + '" aria-label="Colour ' + c + '"></button>'; }).join("") +
+        COLORS.map(function(c){ var n = esc(colorLabel(c)); return '<button class="dot ' + c + '" data-color="' + c + '" title="' + n + '" aria-label="' + n + '"></button>'; }).join("") +
         '<button data-act="remove">Remove</button>';
       pop.classList.add("on");
       var r = mk.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
@@ -2149,6 +2939,10 @@
     $("#doc").addEventListener("click", function(e){
       var mk = e.target.closest && e.target.closest("mark.ll-mark");
       if (!mk){ hidePop(); return; }
+      /* the mouse-up of a drag-selection inside a highlight also fires this click: the selection
+         belongs to the pill, so leave the popover closed */
+      var sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()){ hidePop(); return; }
       e.stopImmediatePropagation(); e.preventDefault();
       if (popKey === mk.dataset.key) hidePop(); else showPop(mk);
     }, true);
@@ -2156,40 +2950,149 @@
     window.addEventListener("scroll", hidePop, { passive: true });
     document.addEventListener("keydown", function(e){ if (e.key === "Escape") hidePop(); });
 
-    /* ---- panel ---- */
-    function refreshPanel(){ if (Side.is("marks")) Side.refresh("marks", renderPanel); }
-    var editKey = null;
+    /* ---- panel ----
+       Above the list: a search box, the filters in use (colours and tags, which narrow together),
+       and what the colours mean. Only the list and the chips are redrawn while typing, so the
+       search box keeps the caret. */
+    var editKey = null, legendEdit = null, query = "", tagPick = [], colorPick = null;
+    function refreshPanel(){
+      if (!Side.is("marks")) return;
+      var body = Side.body, top = body.scrollTop, a = document.activeElement;
+      var find = a && a.id === "markFind", at = find ? a.selectionStart : 0;
+      Side.refresh("marks", renderPanel);
+      body.scrollTop = top;
+      if (find){ var f = body.querySelector("#markFind"); if (f){ f.focus(); try { f.setSelectionRange(at, at); } catch(_){} } }
+    }
+    /* the marks the filters leave, in list order */
+    function shown(){
+      var q = query.trim().toLowerCase();
+      return list.filter(function(m){
+        if (colorPick && (m.kind !== "highlight" || (m.color || "accent") !== colorPick)) return false;
+        if (tagPick.length){
+          var t = tagsOf(m);
+          for (var i = 0; i < tagPick.length; i++) if (t.indexOf(tagPick[i]) < 0) return false;
+        }
+        if (q && ((m.text || "") + " " + (m.note || "") + " " + (m.label || "")).toLowerCase().indexOf(q) < 0) return false;
+        return true;
+      });
+    }
+    function filtering(){ return !!(query.trim() || tagPick.length || colorPick); }
+    /* a note with its #tags drawn as chips */
+    function noteHtml(note){
+      return esc(note || "").replace(TAG, function(whole){ return '<span class="tag">' + whole + '</span>'; });
+    }
+    function itemHtml(m){
+      var pct = pctOf(m), h = '<div class="mark-item" data-key="' + esc(m.key) + '">' +
+        '<div class="mark-kind">' + (m.kind === "bookmark" ? "Bookmark" : "Highlight") + '<span>' + (m.pdfPage ? "page " + m.pdfPage : pct + "%") + '</span></div>';
+      if (m.kind === "bookmark") h += '<div class="mark-text">' + esc(m.label || "") + '</div>';
+      else h += '<div class="mark-text q" data-color="' + esc(m.color || "accent") + '">' + esc(m.text || "") + '</div>';
+      if (editKey === m.key) h += '<textarea data-note="' + esc(m.key) + '" placeholder="Your note\u2026 use #tags to group it">' + esc(m.note || "") + '</textarea>';
+      else h += '<div class="mark-note">' + noteHtml(m.note) + '</div>';
+      return h + '<div class="mark-acts">' +
+        (editKey === m.key ? '<button data-act="savenote">Save note</button><button data-act="cancel">Cancel</button>'
+                           : '<button data-act="note">' + (m.note ? "Edit note" : "Add note") + '</button>') +
+        '<button data-act="del">Delete</button></div></div>';
+    }
+    function renderList(){
+      var host = Side.body.querySelector("#markList"), count = Side.body.querySelector("#markCount");
+      if (!host) return;
+      var rows = shown();
+      host.innerHTML = rows.length ? rows.map(itemHtml).join("")
+        : '<div class="empty-note">Nothing here matches those filters.</div>';
+      if (count) count.textContent = filtering() ? rows.length + " of " + list.length + (list.length === 1 ? " mark" : " marks")
+                                                 : list.length + (list.length === 1 ? " mark" : " marks");
+    }
+    function renderFilters(){
+      var host = Side.body.querySelector("#markFilters");
+      if (!host) return;
+      var used = COLORS.filter(function(c){ return list.some(function(m){ return m.kind === "highlight" && (m.color || "accent") === c; }); });
+      var h = used.map(function(c){
+        var n = esc(colorLabel(c));
+        return '<button type="button" class="chip mk-color' + (colorPick === c ? " on" : "") + '" data-pick-color="' + c + '" aria-pressed="' + (colorPick === c) +
+          '" title="' + n + '" aria-label="Only ' + n + ' highlights"><i class="mk-dot ' + c + '" aria-hidden="true"></i><span>' + n + '</span></button>';
+      }).join("");
+      h += tagCounts().map(function(t){
+        var on = tagPick.indexOf(t.tag) >= 0;
+        return '<button type="button" class="chip mk-tag' + (on ? " on" : "") + '" data-pick-tag="' + esc(t.tag) + '" aria-pressed="' + on +
+          '" aria-label="Only notes tagged ' + esc(t.tag) + '">#' + esc(t.tag) + '<b>' + t.n + '</b></button>';
+      }).join("");
+      if (h && filtering()) h += '<button type="button" class="chip mk-clear" data-pick-clear="1">Clear filters</button>';
+      host.innerHTML = h;
+      host.hidden = !h;
+    }
+    function renderLegend(){
+      var host = Side.body.querySelector("#markLegend");
+      if (!host) return;
+      host.innerHTML = '<span class="mk-leg-l">Colours</span>' + COLORS.map(function(c){
+        if (legendEdit === c) return '<input class="mk-leg-in" data-leg-in="' + c + '" value="' + esc(legend[c]) + '" maxlength="40" ' +
+          'aria-label="What a ' + esc(COLOR_WORDS[c].toLowerCase()) + ' highlight means" placeholder="' + esc(COLOR_WORDS[c]) + '">';
+        return '<button type="button" class="mk-leg" data-leg="' + c + '" aria-label="' + esc(colorLabel(c)) + ' \u2014 rename"><i class="mk-dot ' + c +
+          '" aria-hidden="true"></i><span' + (legend[c] ? '' : ' class="mk-leg-none"') + '>' + esc(legend[c] || "Name it") + '</span></button>';
+      }).join("");
+    }
     function renderPanel(body, foot){
       if (!list.length){
         body.innerHTML = '<div class="empty-note">No bookmarks or highlights yet.<br>' +
           (state.mode === "pdf" ? 'Use \u201CBookmark here\u201D in the \u22EF menu to mark a page.' :
            'Select text and choose Highlight, or hold a sentence and tap Highlight. \u201CBookmark here\u201D in the \u22EF menu marks your spot.') + '</div>';
+        foot.innerHTML = "";
         return;
       }
-      var h = "";
-      list.forEach(function(m){
-        var pct = pctOf(m);
-        h += '<div class="mark-item" data-key="' + esc(m.key) + '">' +
-          '<div class="mark-kind">' + (m.kind === "bookmark" ? "Bookmark" : "Highlight") + '<span>' + (m.pdfPage ? "page " + m.pdfPage : pct + "%") + '</span></div>';
-        if (m.kind === "bookmark") h += '<div class="mark-text">' + esc(m.label || "") + '</div>';
-        else h += '<div class="mark-text q" data-color="' + esc(m.color || "accent") + '">' + esc(m.text || "") + '</div>';
-        if (editKey === m.key) h += '<textarea data-note="' + esc(m.key) + '" placeholder="Your note\u2026">' + esc(m.note || "") + '</textarea>';
-        else h += '<div class="mark-note">' + esc(m.note || "") + '</div>';
-        h += '<div class="mark-acts">' +
-          (editKey === m.key ? '<button data-act="savenote">Save note</button><button data-act="cancel">Cancel</button>'
-                             : '<button data-act="note">' + (m.note ? "Edit note" : "Add note") + '</button>') +
-          '<button data-act="del">Delete</button></div></div>';
-      });
-      body.innerHTML = h;
-      var ta = body.querySelector("textarea"); if (ta){ ta.focus(); ta.selectionStart = ta.value.length; }
-      foot.innerHTML = '<button class="chip" data-exp="md">Export Markdown</button><button class="chip" data-exp="json">Export JSON</button><button class="chip" data-exp="copy">Copy as text</button>';
+      body.innerHTML =
+        '<div class="find-row mk-find"><input type="search" id="markFind" placeholder="Search highlights and notes\u2026" ' +
+          'aria-label="Search highlights, notes and bookmarks" value="' + esc(query) + '"></div>' +
+        '<div class="mk-filters" id="markFilters"></div>' +
+        '<div class="mk-legend" id="markLegend" role="group" aria-label="What the highlight colours mean"></div>' +
+        '<div class="mk-count" id="markCount" aria-live="polite"></div>' +
+        '<div class="mk-list" id="markList"></div>';
+      renderFilters(); renderLegend(); renderList();
+      foot.innerHTML = '<button class="chip" data-exp="md">Export Markdown</button><button class="chip" data-exp="obsidian">Export Obsidian</button>' +
+        '<button class="chip" data-exp="json">Export JSON</button><button class="chip" data-exp="copy">Copy as text</button>' +
+        '<button class="chip" data-exp="copy-obsidian">Copy for Obsidian</button>';
+      /* the note being written wins the focus the drawer hands out a moment after opening */
+      var ta = body.querySelector("textarea");
+      if (ta) setTimeout(function(){ if (document.contains(ta)){ ta.focus(); ta.selectionStart = ta.value.length; } }, 80);
+      else if (legendEdit) setTimeout(function(){ var el = body.querySelector(".mk-leg-in"); if (el){ el.focus(); el.select(); } }, 80);
     }
     function openPanel(focusKey){
-      editKey = focusKey || null;
-      Side.open("marks", "Bookmarks & notes", renderPanel, function(){ editKey = null; });
+      editKey = focusKey || null; legendEdit = null;
+      Side.open("marks", "Bookmarks & notes", renderPanel, function(){ editKey = null; legendEdit = null; }, { family: "doc" });
     }
+    Side.body.addEventListener("input", function(e){
+      if (!Side.is("marks") || e.target.id !== "markFind") return;
+      query = e.target.value;
+      renderFilters(); renderList();
+    });
+    /* Enter saves a colour's meaning, Escape leaves it as it was */
+    Side.body.addEventListener("keydown", function(e){
+      if (!Side.is("marks") || !e.target.dataset || e.target.dataset.legIn === undefined) return;
+      if (e.key === "Enter"){ e.preventDefault(); setLegend(e.target.dataset.legIn, e.target.value); legendEdit = null; refreshPanel(); }
+      else if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); legendEdit = null; refreshPanel(); }
+    });
+    /* leaving the little input keeps what was typed; clicking straight on to another colour
+       opens that one, since the row is redrawn before the click could land */
+    Side.body.addEventListener("focusout", function(e){
+      if (!Side.is("marks") || !e.target.dataset || e.target.dataset.legIn === undefined || legendEdit === null) return;
+      setLegend(e.target.dataset.legIn, e.target.value);
+      var to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-leg]") : null;
+      legendEdit = to ? to.dataset.leg : null;
+      refreshPanel();
+    });
     Side.body.addEventListener("click", function(e){
       if (!Side.is("marks")) return;
+      var pick = e.target.closest("[data-pick-color], [data-pick-tag], [data-pick-clear]");
+      if (pick){
+        if (pick.dataset.pickClear){ query = ""; tagPick = []; colorPick = null; refreshPanel(); return; }
+        if (pick.dataset.pickColor) colorPick = colorPick === pick.dataset.pickColor ? null : pick.dataset.pickColor;
+        else {
+          var t = pick.dataset.pickTag, i = tagPick.indexOf(t);
+          if (i < 0) tagPick.push(t); else tagPick.splice(i, 1);
+        }
+        renderFilters(); renderList();
+        return;
+      }
+      var leg = e.target.closest("[data-leg]");
+      if (leg){ legendEdit = leg.dataset.leg; refreshPanel(); return; }
       var item = e.target.closest(".mark-item"); if (!item) return;
       var m = list.filter(function(x){ return x.key === item.dataset.key; })[0]; if (!m) return;
       var b = e.target.closest("button");
@@ -2230,23 +3133,97 @@
       return JSON.stringify({ document: { name: docName, title: $("#fname").textContent, id: docId }, exported: new Date().toISOString(),
         marks: list.map(function(m){ var o = {}; Object.keys(m).forEach(function(k){ if (k !== "doc") o[k] = m[k]; }); o.percent = pctOf(m); return o; }) }, null, 2);
     }
+    /* ---- Obsidian: one note per book, with front matter and a heading per chapter ----
+       The title shown in the bar is "Title \u2014 Author" for an EPUB; nothing else carries an author. */
+    function shownTitle(){ return $("#fname").textContent || docName || "Untitled"; }
+    function titleAndAuthor(){
+      var t = shownTitle(), i = /\.epub$/i.test(docName || "") ? t.indexOf(" \u2014 ") : -1;
+      return i > 0 ? { title: t.slice(0, i), author: t.slice(i + 3) } : { title: t, author: "" };
+    }
+    function yaml(s){ return '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'; }
+    function isoDay(){ var d = new Date(); return d.getFullYear() + "-" + (d.getMonth() < 9 ? "0" : "") + (d.getMonth() + 1) + "-" + (d.getDate() < 10 ? "0" : "") + d.getDate(); }
+    /* the headings of a text document as character offsets, so each mark falls under one */
+    function chapterHeads(){
+      var out = [];
+      if (state.mode !== "doc") return out;
+      var entries = [];
+      try { entries = Toc.entries() || []; } catch(_){ return out; }
+      entries.forEach(function(e){
+        if (!e.el) return;
+        var w = document.createTreeWalker(e.el, NodeFilter.SHOW_TEXT), n = w.nextNode();
+        var off = n ? Anchor.offsetOf(n, 0) : null;
+        if (off !== null) out.push({ title: e.title, off: off });
+      });
+      out.sort(function(a, b){ return a.off - b.off; });
+      return out;
+    }
+    function toObsidian(){
+      var ta = titleAndAuthor(), heads = chapterHeads(), tags = tagCounts().map(function(t){ return t.tag; });
+      var out = ["---", "title: " + yaml(ta.title)];
+      if (ta.author) out.push("author: " + yaml(ta.author));
+      out.push("source: Lamplight", "date: " + isoDay(), "tags: [" + ["reading"].concat(tags).join(", ") + "]", "---", "", "# " + ta.title, "");
+      var named = COLORS.filter(function(c){ return legend[c]; });
+      if (named.length){
+        out.push("> [!note] Legend");
+        named.forEach(function(c){ out.push("> - " + COLOR_WORDS[c] + " \u2014 " + legend[c]); });
+        out.push("");
+      }
+      var his = list.filter(function(m){ return m.kind === "highlight"; });
+      /* group the highlights under the last heading at or above each one */
+      var groups = [], byTitle = {};
+      function bucket(name){
+        if (!byTitle[name]){ byTitle[name] = { title: name, marks: [] }; groups.push(byTitle[name]); }
+        return byTitle[name];
+      }
+      his.forEach(function(m){
+        var name = "Notes";
+        if (heads.length && typeof m.start === "number"){
+          for (var i = 0; i < heads.length; i++) if (heads[i].off <= m.start) name = heads[i].title;
+        }
+        bucket(name).marks.push(m);
+      });
+      groups.forEach(function(g){
+        out.push("## " + g.title, "");
+        g.marks.forEach(function(m){
+          out.push("> " + (m.text || "").replace(/\n/g, " "));
+          if (m.note) out.push(m.note.replace(/\n/g, " "));
+          out.push("");
+        });
+      });
+      var bms = list.filter(function(m){ return m.kind === "bookmark"; });
+      if (bms.length){
+        out.push("## Bookmarks", "");
+        bms.forEach(function(m){
+          out.push("- " + (m.pdfPage ? "Page " + m.pdfPage : pctOf(m) + "%") + " \u2014 " + (m.label || "") + (m.note ? " " + m.note.replace(/\n/g, " ") : ""));
+        });
+        out.push("");
+      }
+      return out.join("\n");
+    }
     function download(name, text, type){
       var blob = new Blob([text], { type: type }), url = URL.createObjectURL(blob);
       var a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
       setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
     }
+    function copy(text){
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(text).then(function(){ toast("Copied"); }, function(){ toast("Couldn\u2019t copy"); });
+    }
     function exportMarks(fmt){
       if (fmt === "md") download(baseName() + "-notes.md", toMarkdown(), "text/markdown");
+      else if (fmt === "obsidian") download(baseName() + ".md", toObsidian(), "text/markdown");
       else if (fmt === "json") download(baseName() + "-notes.json", toJSON(), "application/json");
-      else if (navigator.clipboard) navigator.clipboard.writeText(toMarkdown()).then(function(){ toast("Copied"); }, function(){ toast("Couldn\u2019t copy"); });
+      else if (fmt === "copy-obsidian") copy(toObsidian());
+      else copy(toMarkdown());
     }
 
-    Menu.add({ order: 30, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
-    Menu.add({ order: 31, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 30, group: "marks", icon: ICONS.bookmark, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 31, group: "marks", icon: ICONS.notes, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
 
-    return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, addHighlight: addHighlight, highlightSelection: highlightSelection,
-             selectionOffsets: selectionOffsets, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
-             toMarkdown: toMarkdown, toJSON: toJSON };
+    return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, clearAll: clearAll, addHighlight: addHighlight, highlightSelection: highlightSelection,
+             selectionOffsets: selectionOffsets, hidePop: hidePop, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
+             toMarkdown: toMarkdown, toJSON: toJSON, toObsidian: toObsidian, tagsOf: tagsOf,
+             legend: function(){ return Object.assign({}, legend); }, setLegend: setLegend };
   })();
 
   /* ============================================================
@@ -2318,15 +3295,12 @@
         entries.forEach(function(e, i){ if (e.page && e.page <= pg) cur = i; });
         return cur;
       }
+      /* Pages flow: the section at the page's first character, as the title and the pager say */
+      if (state.flow === "pages"){ var hit = Section.at(pageTopOffset()); return hit ? hit.i : -1; }
       var head = Library.headerHeight();
-      var line = state.flow === "pages" ? null : head + (window.innerHeight - head) * 0.35;
+      var line = head + (window.innerHeight - head) * 0.35;
       entries.forEach(function(e, i){
-        var r = e.el.getBoundingClientRect();
-        if (state.flow === "pages"){
-          var docRect = $("#doc").getBoundingClientRect();
-          var col = pageOfOffset(r.left - docRect.left + 1);
-          if (col <= state.page) cur = i;
-        } else if (r.top <= line) cur = i;
+        if (e.el.getBoundingClientRect().top <= line) cur = i;
       });
       return cur;
     }
@@ -2368,8 +3342,8 @@
         renderList(body, docEntries());
       }
     }
-    function openPanel(){ Side.open("toc", "Contents", render, function(){ shown = null; }); }
-    Menu.add({ order: 10, label: "Contents", key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    function openPanel(){ Side.open("toc", "Contents", render, function(){ shown = null; }, { family: "doc" }); }
+    Menu.add({ order: 10, group: "navigate", icon: ICONS.contents, label: "Contents", key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, entries: docEntries, pdfEntries: pdfEntries, goPdfPage: goPdfPage };
   })();
 
@@ -2513,7 +3487,7 @@
     }
     function render(body, foot){
       body.innerHTML = '<div class="find-row"><input type="search" id="findInput" aria-label="Find in this document" placeholder="Find in this ' + (state.mode === "pdf" ? "PDF" : "document") + '\u2026" autocomplete="off" spellcheck="false">' +
-        '<button class="ctl" id="findPrev" title="Previous match" aria-label="Previous match">\u2039</button><button class="ctl" id="findNext" title="Next match" aria-label="Next match">\u203A</button></div>' +
+        '<button class="ctl" id="findPrev" title="Previous match" aria-label="Previous match">' + ICONS.chevronL + '</button><button class="ctl" id="findNext" title="Next match" aria-label="Next match">' + ICONS.chevronR + '</button></div>' +
         '<div class="find-status" id="findStatus" aria-live="polite"></div><div id="findList"></div>';
       input = body.querySelector("#findInput"); listEl = body.querySelector("#findList"); statusEl = body.querySelector("#findStatus");
       input.value = query;
@@ -2530,7 +3504,7 @@
       setTimeout(function(){ input.focus(); if (query) input.select(); }, 60);
     }
     function openPanel(){
-      Side.open("find", "Search", render, function(){ /* keep matches painted until the next document */ });
+      Side.open("find", "Search", render, function(){ /* keep matches painted until the next document */ }, { family: "doc" });
     }
     function reset(){ query = ""; results = []; cur = -1; clearPaint(); }
     function refresh(){ if (results.length && state.mode === "doc") paint(); }
@@ -2539,7 +3513,7 @@
         e.preventDefault(); openPanel();
       }
     });
-    Menu.add({ order: 20, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 20, group: "navigate", icon: ICONS.search, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, reset: reset, refresh: refresh, clearPaint: clearPaint, go: go, results: function(){ return results; } };
   })();
 
@@ -2805,20 +3779,20 @@
         return;
       }
       var bd = band(st.flesch), share = Math.round(st.dialogue / st.words * 100);
-      h += '<h2 class="about-h">At a glance</h2><div class="about-grid">' +
+      h += '<h2 class="about-h sec">At a glance</h2><div class="about-grid">' +
         tile(fmtN(st.words), "Words") + tile(fmtN(st.unique), "Unique words") + tile(fmtN(st.sentences), "Sentences") +
         tile(esc(readingTime(st.words)), "Reading time at your speed", "full") +
         tile(one(st.avgSentence), "Words per sentence") + tile(one(st.avgWord), "Letters per word") +
         (share > 0 ? tile(share + "%", "Dialogue") : "") + '</div>';
-      h += '<h2 class="about-h">Reading level</h2><div class="about-level">' +
+      h += '<h2 class="about-h sec">Reading level</h2><div class="about-level">' +
         '<div class="about-score"><b>' + st.flesch + '</b><span>' + bd[1] + '</span><small>Flesch reading ease</small></div>' +
         '<div class="about-scale" aria-hidden="true"><i style="left:' + st.flesch + '%"></i></div>' +
         '<div class="about-ends" aria-hidden="true"><span>harder</span><span>easier</span></div>' +
         '<p class="about-note">' + esc(bd[2]) + '</p>' +
         '<p class="about-note muted">Flesch–Kincaid: ' + gradeText(st.grade) + '<br>Coleman–Liau, as a second opinion: ' + gradeText(st.cli) + '</p></div>';
-      h += '<h2 class="about-h">Vocabulary</h2><div class="about-grid">' +
+      h += '<h2 class="about-h sec">Vocabulary</h2><div class="about-grid">' +
         tile(ttrLabel(st.ttr), "Vocabulary richness (" + st.ttr.toFixed(2) + ")", "wide") + tile(fmtN(st.hapax), "Words used only once") + '</div>';
-      h += '<h2 class="about-h">Hardest words</h2><div class="about-words" id="aboutWords"><div class="empty-note">Preparing…</div></div>';
+      h += '<h2 class="about-h sec">Hardest words</h2><div class="about-words" id="aboutWords"><div class="empty-note">Preparing…</div></div>';
       body.innerHTML = h;
       foot.innerHTML = '<button class="chip" data-about="copy">Copy</button>' +
         '<div class="about-foot-note">Counts are from the text as shown; numbers, headings and captions are included.</div>';
@@ -2841,9 +3815,21 @@
       var myGen = ++gen, key = keyNow(), mode = state.mode, pdf = state.pdfDoc, note = null;
       function live(){ return myGen === gen && Side.is("about") && state.mode === mode && (mode !== "pdf" || state.pdfDoc === pdf); }
       function status(msg){ if (live() && statusEl) statusEl.textContent = msg; }
-      var src = mode === "pdf" && pdf
-        ? pdfText(pdf, status, live).then(function(r){ if (r && r.capped) note = "first " + MAX_PDF_PAGES + " pages"; return r ? r.text : null; })
-        : Promise.resolve(docText());
+      /* a document switched to a moment ago may still be rendering: count it once it is in */
+      function whenReady(){
+        return new Promise(function(resolve){
+          (function poll(n){
+            var ready = !state.opening && (state.mode !== "doc" || Library._debug().ready.doc);
+            if (ready || n > 150) resolve(); else { status("Waiting for the document\u2026"); setTimeout(function(){ poll(n + 1); }, 100); }
+          })(0);
+        });
+      }
+      var src = whenReady().then(function(){
+        if (!live()) return null;
+        return mode === "pdf" && pdf
+          ? pdfText(pdf, status, live).then(function(r){ if (r && r.capped) note = "first " + MAX_PDF_PAGES + " pages"; return r ? r.text : null; })
+          : docText();
+      });
       src.then(function(text){
         if (text === null || !live()) return null;
         status("Counting words…");
@@ -2864,7 +3850,7 @@
     }
     function openPanel(){
       if (!docOpen()) return;
-      Side.open("about", "About this text", render, function(){ gen++; statusEl = null; });
+      Side.open("about", "About this text", render, function(){ gen++; statusEl = null; }, { family: "doc" });
     }
     /* a plain-text summary for the clipboard */
     function summary(st, name){
@@ -2910,7 +3896,7 @@
     /* a new document (a file, or another tab) replaces the text under the panel: its numbers
        would be the old document's, so the panel closes, which also stops a count under way */
     document.addEventListener("ll:fileopened", function(){ if (Side.is("about")) Side.close(); });
-    Menu.add({ order: 60, label: "About this text", key: "I", run: openPanel, show: docOpen });
+    Menu.add({ order: 60, group: "navigate", icon: ICONS.info, label: "About this text", key: "I", run: openPanel, show: docOpen });
     window.llAbout = { openPanel: openPanel, stats: analyse, syllables: syllables, sentences: sentencesIn, hardest: hardest, summary: summary };
     return { openPanel: openPanel, stats: analyse, syllables: syllables, hardest: hardest };
   })();
@@ -2922,13 +3908,13 @@
   var Speak = (function(){
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
-    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices"), sleepBtn = $("#ttsSleep");
+    var voicesBtn = $("#ttsVoiceBtn"), voiceNameEl = $("#ttsVoiceName"), sleepBtn = $("#ttsSleep");
     var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
     var startGen = 0;     /* bumped by every start and stop: a PDF page load from an earlier reading bails out */
     var wait = null, between = false, sampleGen = 0, voiceKey = "";
     var rate = parseFloat(Store.get("ll_tts_rate") || "1") || 1;
-    var voiceName = Store.get("ll_tts_voice") || "";
-    var dialogueName = Store.get("ll_tts_dialogue") || "";     /* "" = auto (the other voice), "same", or a voice name */
+    var voiceName = "";        /* the narrator's voice id, remembered per language */
+    var dialogueName = "";     /* "" = auto (the other voice), "same", or a voice id */
     var expr = Store.get("ll_tts_expr") || "natural";           /* off | natural | dramatic */
     var pitchPref = clamp(parseFloat(Store.get("ll_tts_pitch") || "1") || 1, 0.7, 1.3);
     var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
@@ -2937,43 +3923,217 @@
     function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
     function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
 
-    /* ---- voices ---- */
-    /* the API says nothing about gender, so guess it from the name: the words woman / man,
-       then the first names Apple, Microsoft, Google, Amazon and espeak give their voices */
+    /* ---- what language this document is in ----
+       Which voices to offer, and what to tell the engine, both hang on this. The browser's
+       detector reads the first couple of thousand characters where there is one; failing that,
+       what the book declares (an EPUB's dc:language); failing that, the page's own language.
+       The answer is kept per document, and #doc carries it so hyphenation follows the text. */
+    var declaredLang = "", detectedLang = "", langGen = 0, langSeen = {}, lastPrefix = null;
+    function docLang(){ return (detectedLang || declaredLang || document.documentElement.lang || "en").slice(0, 2).toLowerCase(); }
+    function applyDocLang(){
+      var d = $("#doc"), l = detectedLang || declaredLang;
+      if (d && l) d.setAttribute("lang", l);
+      loadForLang();
+      if (Side.is("voices")) Side.refresh("voices", renderPanel);
+    }
+    function setDocLang(l){
+      l = String(l || "").trim();
+      if (!l) return;
+      declaredLang = l; applyDocLang();
+    }
+    /* the browser's on-device detector, where it exists; anything it can't place is left alone */
+    function detectFrom(text, key){
+      text = String(text || "").slice(0, 2000);
+      if (!/\S{20}|\S+\s+\S+\s+\S+/.test(text)) return;
+      if (key && langSeen[key]){ detectedLang = langSeen[key]; applyDocLang(); return; }
+      var LD = window.LanguageDetector || (window.ai && window.ai.languageDetector) || null;
+      if (!LD || typeof LD.create !== "function"){ applyDocLang(); return; }
+      var my = ++langGen;
+      Promise.resolve(LD.create()).then(function(det){ return det.detect(text); }).then(function(rs){
+        if (my !== langGen) return;
+        var top = rs && rs[0], l = top && (top.detectedLanguage || top.language) || "";
+        if (!l || l === "und") return;
+        detectedLang = l;
+        if (key) langSeen[key] = l;
+        applyDocLang();
+      }).catch(function(){});
+    }
+    /* a new file wipes the last answer; the text itself arrives later, when #doc is rebuilt */
+    document.addEventListener("ll:fileopened", function(){
+      declaredLang = ""; detectedLang = ""; langGen++; lastPrefix = null;
+    });
+    if (typeof MutationObserver !== "undefined") new MutationObserver(function(){
+      var t = ($("#doc").textContent || "").slice(0, 2000);
+      if (t === lastPrefix) return;
+      lastPrefix = t;
+      detectFrom(t, Library.currentId && Library.currentId());
+    }).observe($("#doc"), { childList: true });
+
+    /* ---- voices ----
+       The API says nothing about gender or quality, so both are read off the voice's name and
+       its voiceURI. Android names four voices "English United States" and puts the only clue in
+       the URI (en-us-x-sfg#female_1-local); Microsoft writes "Microsoft Aria Online (Natural) -
+       English (United States)"; Apple hides the name in a bundle id. Whatever the guess, a
+       reader can correct it from the picker, and that correction wins for good. */
     function set(s){ var o = {}; s.split(" ").forEach(function(w){ if (w) o[w] = 1; }); return o; }
-    var WOMEN = set("samantha karen moira tessa fiona victoria kate serena allison ava susan zira hazel heera aria jenny sara sonia libby emma olivia amy joanna kendra kimberly salli ivy nicole raveena aditi zoe flo martha shelley nicky sandy grandma kathy princess vicki catherine natasha matilda isha veena sangeeta anna alice ellen laura paulina monica luciana joana yuna kyoko ting-ting mei-jia sin-ji lekha milena amelie audrey aurelie chantal marie carmit damayanti ioana melina alva nora satu zosia zuzana mariska kanya yelda helena petra federica paola angelica marisol laila o-ren yu-shu linda hedda katja hortense julie elsa haruka ayumi sayaka heami huihui yaoyao hanhan yating tracy irina maria gadis kalpana hoda vlasta heidi helle sabina daria ewa");
-    var MEN = set("daniel alex fred david george mark ryan guy christopher eric steffan thomas brian matthew joey justin kevin russell aaron arthur gordon lee oliver reed rishi rocko tom bruce junior ralph albert eddy grandpa evan nathan jamie jorge diego juan carlos luca xander yannick maged majed tarik otoya hattori nicolas markus viktor jordi li-mu yuri james richard sean stefan conrad paul pablo raul cosimo ichiro kangkang zhiwei danny pavel adam frank andika hemant naayf ivan filip lado szabolcs jakub karsten jon bengt pattara tolga rizwan ravi");
-    function voiceGender(v){
-      var name = typeof v === "string" ? v : (v && v.name) || "", low = name.toLowerCase();
-      if (/\b(female|woman)\b/.test(low)) return "f";
-      if (/\b(male|man)\b/.test(low)) return "m";
-      var ts = low.split(/[\s,.()+_\/\\:\[\]"']+/), i;
-      for (i = 0; i < ts.length; i++){
-        if (WOMEN[ts[i]] || /^(f|female)\d$/.test(ts[i])) return "f";     /* espeak variants: en+f3 */
-        if (MEN[ts[i]] || /^(m|male)\d$/.test(ts[i])) return "m";
-      }
-      if (/^google\s/.test(low)) return "f";     /* Chrome's Google voices are women except "UK English Male" */
+    var WOMEN = set("samantha karen moira tessa fiona victoria kate serena allison ava susan zira hazel heera aria jenny sara sonia libby emma olivia amy joanna kendra kimberly salli ivy nicole raveena aditi zoe flo martha shelley nicky sandy grandma kathy princess vicki catherine natasha matilda isha veena sangeeta anna alice ellen laura paulina monica luciana joana yuna kyoko ting-ting mei-jia sin-ji lekha milena amelie audrey aurelie chantal marie carmit damayanti ioana melina alva nora satu zosia zuzana mariska kanya yelda helena petra federica paola angelica marisol laila o-ren yu-shu linda hedda katja hortense julie elsa haruka ayumi sayaka heami huihui yaoyao hanhan yating tracy irina maria gadis kalpana hoda vlasta heidi helle sabina daria ewa " +
+      /* Microsoft's natural (neural) set, and the Samsung / CereProc / Acapela names */
+      "michelle ana maisie clara emily molly luna leah mia nancy neerja denise vivienne amala louisa isabella elvira dalia paloma francisca nanami sunhi xiaoxiao xiaoyi yunjhe hiujia hsiaochen aarohi kalina nabanita vesna adri lena bianca giselle carla pernille sofie noora hulda dhwani gul dilara hila rehema imani zuri ella marta agnieszka wanda inga tanishaa yasmin heather rachel lucy sharon katherine sarah nadia astrid xenia klara ines lia salome eleni zofia bella " +
+      "jessa shruti swara sneha kavya nilam eda seyma leyla oksana polina svetlana anu");
+    var MEN = set("daniel alex fred david george mark ryan guy christopher eric steffan thomas brian matthew joey justin kevin russell aaron arthur gordon lee oliver reed rishi rocko tom bruce junior ralph albert eddy grandpa evan nathan jamie jorge diego juan carlos luca xander yannick maged majed tarik otoya hattori nicolas markus viktor jordi li-mu yuri james richard sean stefan conrad paul pablo raul cosimo ichiro kangkang zhiwei danny pavel adam frank andika hemant naayf ivan filip lado szabolcs jakub karsten jon bengt pattara tolga rizwan ravi " +
+      /* Microsoft's natural (neural) set, and the Samsung / CereProc / Acapela names */
+      "davis tony jason roger brandon andrew alfie william duncan liam connor mitchell sam wayne prabhat henri killian alvaro keita injoon yunxi yunyang yunjian wangwen hamed shakir bassel moaz taim saleh hoang namminh dmitry maxim borys ostap jonas mattias finn magnus harri klaus bernd christoph lorenzo antonio miguel rodrigo joaquin nestor rafael arnau macia " +
+      "graham rod will peter giles madhur mohan valluvar arjun anbu kumar orhan ahmet burak taha");
+    /* old, thin voices and outright novelties: kept, but never recommended */
+    var PLAIN = set("fred albert junior ralph bruce kathy princess agnes bahh bells boing bubbles cellos deranged hysterical jester organ superstar trinoids whisper zarvox wobble");
+    var NOVELTY = /\b(bad|good) news\b|\bpipe organ\b|\bzarvox\b|\btrinoids\b|\bbubbles\b|\bderanged\b|\bboing\b|\bjester\b|\bsuperstar\b/i;
+    var GOOD = /natural|neural|premium|enhanced|siri|wavenet|studio/i;
+    var THIN = /compact|e-?speak|pico|flite|festival/i;
+
+    function nameOf(v){ return typeof v === "string" ? v : (v && v.name) || ""; }
+    function uriOf(v){ return typeof v === "string" ? "" : (v && v.voiceURI) || ""; }
+    /* a voice's stable id: Android gives four voices one name, so the URI comes first */
+    function voiceId(v){ return typeof v === "string" ? v : (v && (v.voiceURI || v.name)) || ""; }
+    function readMap(key){
+      try { var o = JSON.parse(Store.get(key) || "{}"); return o && typeof o === "object" ? o : {}; } catch(_){ return {}; }
+    }
+    var genderFix = readMap("ll_voice_gender");     /* the reader's own corrections, by voice id */
+    var hiddenFix = readMap("ll_voice_hidden");     /* voices struck off the short lists */
+    function isHidden(v){ return !!hiddenFix[voiceId(v)]; }
+    function setHidden(v, on){
+      var id = voiceId(v);
+      if (on) hiddenFix[id] = 1; else delete hiddenFix[id];
+      Store.set("ll_voice_hidden", JSON.stringify(hiddenFix));
+    }
+    /* "woman" or "man" written out, wherever it hides: "…#female_1-local", "…_m_…", "en+f3".
+       Underscores are word characters, so \b is no use here */
+    function genderWord(s){
+      var low = String(s).toLowerCase();
+      if (/(^|[^a-z])(fe-?male|woman|women|girl)([^a-z]|$)/.test(low)) return "f";
+      if (/(^|[^a-z])(male|man|men|boy)([^a-z]|$)/.test(low)) return "m";
+      if (/[_#][f][_#0-9]/.test(low)) return "f";
+      if (/[_#][m][_#0-9]/.test(low)) return "m";
       return "";
     }
+    /* a first name we know, from the name or from an Apple bundle id. Hyphens are kept inside a
+       token, so Ting-Ting and Li-Mu still match; a trailing Neural / Natural is trimmed off */
+    function tokenGender(s){
+      var ts = String(s).toLowerCase().split(/[\s,.()+_\/\\:\[\]#"'’]+/), i, t;
+      for (i = 0; i < ts.length; i++){
+        t = ts[i].replace(/(neural|natural)$/, "");
+        if (!t) continue;
+        if (WOMEN[t] || /^(f|female)\d$/.test(t)) return "f";     /* espeak variants: en+f3 */
+        if (MEN[t] || /^(m|male)\d$/.test(t)) return "m";
+      }
+      return "";
+    }
+    function voiceGender(v){
+      var fix = genderFix[voiceId(v)];
+      if (fix === "f" || fix === "m") return fix;
+      if (fix === "x") return "";                    /* corrected to "neither" */
+      var name = nameOf(v), uri = uriOf(v);
+      return genderWord(name) || tokenGender(name) || genderWord(uri) || tokenGender(uri) ||
+             (/^google\s/i.test(name) ? "f" : "");   /* Chrome's Google voices are women except "UK English Male" */
+    }
+    function setGender(v, g){
+      var id = voiceId(v);
+      if (g) genderFix[id] = g; else delete genderFix[id];
+      Store.set("ll_voice_gender", JSON.stringify(genderFix));
+    }
+    /* does this device tell us anything at all about who is speaking? */
+    function anyGenderKnown(){
+      return voices().some(function(v){ return !!voiceGender(v); });
+    }
+    /* the name a reader recognises: "Microsoft Aria Online (Natural) - English (United States)"
+       is Aria; an Android voice with no name of its own is the woman or the man its URI numbers */
+    function baseName(v){
+      var n = nameOf(v).trim(), m = n.match(/^Microsoft\s+([A-Za-zÀ-ɏ'’-]+)/);
+      if (m) return m[1].replace(/(Neural|Natural)$/, "");
+      n = n.replace(/^(Google|Android|Chrome OS|Samsung|CereProc|Acapela)\s+/i, "");
+      n = n.split(/\s+[-–—]\s+/)[0];
+      n = n.replace(/\s*\([^)]*\)/g, "").replace(/\s+(Online|Desktop|Mobile|Compact|Premium|Enhanced|Natural|Neural)$/i, "").trim();
+      if (!tokenGender(n)){
+        var u = uriOf(v).toLowerCase().match(/#(fe)?male[_\-]?(\d+)?/);
+        if (u) return (u[1] ? "Woman" : "Man") + (u[2] ? " " + u[2] : "");
+      }
+      return n || nameOf(v) || "Voice";
+    }
+    /* where a device names two voices the same ("English United States" twice over), the second
+       and third are numbered, so the bar, the cards and the list all call one voice one thing */
+    var nameCache = null;
+    function buildNames(){
+      var seen = {}, map = {};
+      voices().forEach(function(v){
+        var base = baseName(v);
+        seen[base] = (seen[base] || 0) + 1;
+        map[voiceId(v)] = seen[base] > 1 ? base + " " + seen[base] : base;
+      });
+      nameCache = map;
+    }
+    function shortName(v){
+      if (!v || typeof v === "string") return baseName(v);
+      if (!nameCache) buildNames();
+      return nameCache[voiceId(v)] || baseName(v);
+    }
+    /* the little words under a name: what it is good at, and where it speaks from */
+    function voiceTags(v){
+      var t = [], both = nameOf(v) + " " + uriOf(v);
+      if (GOOD.test(both)) t.push("natural");
+      t.push(v.localService ? "offline" : "online");
+      if (v.lang) t.push(v.lang);
+      return t;
+    }
     function voices(){ return supported ? speechSynthesis.getVoices() : []; }
-    function docLang(){ return (document.documentElement.lang || "en").slice(0, 2).toLowerCase(); }
     function langOf(v){ return (v.lang || "").slice(0, 2).toLowerCase(); }
-    /* the document's language first, local voices before online ones, then by name */
-    function sortedVoices(){
-      var lang = docLang();
+    /* the reader's own locale, tidied: some systems report "en-US@posix" */
+    function uiLocale(){ return String(navigator.language || "en").toLowerCase().replace(/_/g, "-").split("@")[0] || "en"; }
+    /* how good a voice is likely to sound, for this document: a natural voice, one that works
+       offline, one that speaks the right language — less the compact and novelty voices */
+    function voiceScore(v, lang){
+      var both = (nameOf(v) + " " + uriOf(v)), s = 0;
+      if (GOOD.test(both)) s += 4;
+      if (v.localService) s += 3;
+      if (langOf(v) === (lang || docLang())) s += 2;
+      if ((v.lang || "").toLowerCase().replace(/_/g, "-") === uiLocale()) s += 1;
+      if (THIN.test(both) || tokenIn(PLAIN, nameOf(v))) s -= 2;
+      if (NOVELTY.test(nameOf(v))) s -= 3;
+      return s;
+    }
+    function tokenIn(table, s){
+      return String(s).toLowerCase().split(/[\s,.()+_\/\\:\[\]#"'’-]+/).some(function(t){ return !!table[t]; });
+    }
+    /* best first: the score, then the document's language, then the name */
+    function sortedVoices(lang){
+      var l = lang || docLang();
       return voices().slice().sort(function(a, b){
-        var al = langOf(a) === lang ? 0 : 1, bl = langOf(b) === lang ? 0 : 1;
+        var d = voiceScore(b, l) - voiceScore(a, l);
+        if (d) return d;
+        var al = langOf(a) === l ? 0 : 1, bl = langOf(b) === l ? 0 : 1;
         if (al !== bl) return al - bl;
-        if (!a.localService !== !b.localService) return a.localService ? -1 : 1;
-        return a.name.localeCompare(b.name);
+        return nameOf(a).localeCompare(nameOf(b));
       });
     }
-    function gendered(g){ return sortedVoices().filter(function(v){ return voiceGender(v) === g; }); }
-    /* the best voice of a gender: language match, local first; strict = only that language */
-    function bestVoice(g, lang, notName, strict){
-      var vs = gendered(g).filter(function(v){ return v.name !== notName; });
+    function gendered(g, lang){ return sortedVoices(lang).filter(function(v){ return voiceGender(v) === g; }); }
+    /* a voice struck off is not offered again, unless nothing else is left */
+    function unhidden(vs){ var open = vs.filter(function(v){ return !isHidden(v); }); return open.length ? open : vs; }
+    /* the best voice of a gender: language match first; strict = only that language */
+    function bestVoice(g, lang, notId, strict){
+      var vs = unhidden(gendered(g, lang).filter(function(v){ return voiceId(v) !== notId && nameOf(v) !== notId; }));
       if (lang){ var same = vs.filter(function(v){ return langOf(v) === lang; }); if (same.length || strict) vs = same; }
       return vs[0] || null;
+    }
+    /* with nothing chosen, the best woman for this document reads it (and the best man the
+       quoted speech): the pair a reader is offered before they touch anything */
+    function autoNarrator(){
+      var lang = docLang();
+      return bestVoice("f", lang) || unhidden(sortedVoices(lang))[0] || null;
+    }
+    function findVoice(id){
+      if (!id) return null;
+      var vs = voices(), i;
+      for (i = 0; i < vs.length; i++) if (voiceId(vs[i]) === id) return vs[i];
+      for (i = 0; i < vs.length; i++) if (nameOf(vs[i]) === id) return vs[i];     /* a name stored by an older version */
+      return null;
     }
     function voiceOptions(vs, selected){
       var groups = { f: [], m: [], "": [] };
@@ -2981,56 +4141,76 @@
       return [["f", "Women"], ["m", "Men"], ["", "Other"]].map(function(g){
         if (!groups[g[0]].length) return "";
         return '<optgroup label="' + g[1] + '">' + groups[g[0]].map(function(v){
-          return '<option value="' + esc(v.name) + '"' + (v.name === selected ? ' selected' : '') + '>' + esc(v.name) + (v.localService ? "" : " (online)") + '</option>';
+          var id = voiceId(v);
+          return '<option value="' + esc(id) + '"' + (id === selected || nameOf(v) === selected ? ' selected' : '') + '>' + esc(nameOf(v)) + (v.localService ? "" : " (online)") + '</option>';
         }).join("") + '</optgroup>';
       }).join("");
     }
-    function currentVoice(){
-      var vs = voices(), name = voiceSel.value || voiceName;
-      return vs.filter(function(v){ return v.name === name; })[0] || null;
-    }
+    function currentVoice(){ return findVoice(voiceName) || autoNarrator(); }
     /* the voice for quoted speech: the one chosen, the narrator, or (auto) the other gender in
        the narrator's language; failing that the narrator's own voice pitched a little away */
     function dialogueVoice(narr){
       narr = narr || currentVoice();
       if (dialogueName === "same") return { voice: narr, pitchOffset: 0 };
-      var chosen = dialogueName ? voices().filter(function(v){ return v.name === dialogueName; })[0] : null;
+      var chosen = dialogueName ? findVoice(dialogueName) : null;
       if (chosen) return { voice: chosen, pitchOffset: 0 };
-      var g = narr ? voiceGender(narr) : "", lang = narr ? langOf(narr) : docLang(), not = narr ? narr.name : "";
+      var g = narr ? voiceGender(narr) : "", lang = narr ? langOf(narr) : docLang(), not = narr ? voiceId(narr) : "";
       var other = g === "f" ? bestVoice("m", lang, not, true) : g === "m" ? bestVoice("f", lang, not, true)
                 : (bestVoice("m", lang, not, true) || bestVoice("f", lang, not, true));
+      /* no second voice of the other gender: the next best voice of any gender still reads it */
+      if (!other && !g) other = sortedVoices(lang).filter(function(v){ return langOf(v) === lang && voiceId(v) !== not; })[0] || null;
       if (other) return { voice: other, pitchOffset: 0 };
       return { voice: narr, pitchOffset: g === "m" ? 0.15 : -0.15 };
     }
-    function syncSexButtons(){
-      var g = voiceGender(currentVoice());
-      [[womanBtn, "f"], [manBtn, "m"]].forEach(function(p){
-        p[0].classList.toggle("on", g === p[1]); p[0].setAttribute("aria-pressed", g === p[1] ? "true" : "false");
-      });
+    /* the bar says who is reading, in one word */
+    function syncBar(){
+      var v = currentVoice(), n = v ? shortName(v) : "";
+      voiceNameEl.textContent = n || "Voices";
+      voicesBtn.setAttribute("aria-label", n ? "Voice: " + n + " — choose another" : "Voices");
+      voicesBtn.title = n ? n + " — choose another voice" : "Voices";
     }
     function fillVoices(){
-      var vs = sortedVoices(), key = vs.map(function(v){ return v.name; }).join("\n");
-      voiceSel.innerHTML = voiceOptions(vs, voiceName) || '<option value="">Default voice</option>';
-      womanBtn.hidden = !bestVoice("f"); manBtn.hidden = !bestVoice("m");
-      syncSexButtons();
-      /* voices can arrive late; redraw the panel when the list really changed */
-      if (key !== voiceKey){ voiceKey = key; if (Side.is("voices")) Side.refresh("voices", renderPanel); }
+      var vs = sortedVoices(), key = vs.map(function(v){ return voiceId(v); }).join("\n");
+      var fresh = key !== voiceKey;     /* voices arrive late, and a phone can gain or lose them */
+      if (fresh){ voiceKey = key; nameCache = null; loadForLang(); }
+      voiceSel.innerHTML = voiceOptions(vs, voiceName || voiceId(currentVoice())) || '<option value="">Default voice</option>';
+      syncBar();
+      if (fresh && Side.is("voices")) Side.refresh("voices", renderPanel);
     }
-    if (supported){ fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
-    function setVoice(name){
-      voiceName = name; Store.set("ll_tts_voice", name);
-      voiceSel.value = name;
-      var narr = $("#ttsNarr"); if (narr) narr.value = name;
-      syncSexButtons(); syncHint();
+    if (supported){ loadForLang(); fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
+    /* the narrator and the dialogue voice are remembered per language, so an English book and a
+       Spanish one keep their own pair; the last choice of all is the fallback for a new language */
+    function langKey(k, lang){ return "ll_tts_" + k + "_" + (lang || docLang()); }
+    function loadForLang(){
+      var lang = docLang();
+      var v = Store.get(langKey("voice", lang)), d = Store.get(langKey("dialogue", lang));
+      if (v === null){
+        var last = Store.get("ll_tts_voice") || "", lv = findVoice(last);
+        v = lv && langOf(lv) === lang ? last : "";
+        d = lv && langOf(lv) === lang ? (Store.get("ll_tts_dialogue") || "") : "";
+      }
+      voiceName = v || ""; dialogueName = d || "";
+      voiceSel.value = voiceName || voiceId(currentVoice());
+      syncBar();
+    }
+    function setVoice(id){
+      voiceName = id;
+      Store.set(langKey("voice"), id); Store.set("ll_tts_voice", id);
+      voiceSel.value = id || voiceId(currentVoice());
+      syncBar(); syncPanel();
       restart();
     }
-    /* ♀ / ♂: the best voice of that gender; pressed again, the next one */
-    function pickGender(g){
-      var list = gendered(g); if (!list.length) return;
-      var cur = currentVoice(), i = cur ? list.indexOf(cur) : -1;
-      var lang = docLang(), same = list.filter(function(v){ return langOf(v) === lang; });
-      if (i < 0 && same.length) list = same;
-      setVoice(list[(i + 1) % list.length].name);
+    function setDialogue(id){
+      dialogueName = id;
+      Store.set(langKey("dialogue"), id); Store.set("ll_tts_dialogue", id);
+      syncPanel();
+      restart();
+    }
+    /* Swap: the narrator reads the dialogue and the dialogue voice reads the narration */
+    function swapPair(){
+      var narr = currentVoice(), d = dialogueVoice(narr).voice;
+      if (!narr || !d || d === narr) return;
+      setDialogue(voiceId(narr)); setVoice(voiceId(d));
     }
 
     /* ---- sentence units ---- */
@@ -3192,12 +4372,18 @@
         pauseAfter: pause
       };
     }
-    function utterFor(u, prev, next){
+    /* the first sentences after Play come in a little under speed and settle: an engine that
+       opens at full tilt sounds like it is already late */
+    var RAMP = [0.85, 0.92, 1], rampN = RAMP.length, rampAt = -1;
+    function rampFactor(){ return RAMP[rampN] || 1; }
+    /* a sentence said again after a settings change keeps its own step on the ramp */
+    function rampStep(i){ if (i !== rampAt){ rampAt = i; if (rampN < RAMP.length) rampN++; } }
+    function utterFor(u, prev, next, ramp){
       var x = express(u, { prev: prev, next: next, expr: expr });
       var narr = currentVoice(), v = narr, off = 0;
       if (u.dialogue){ var d = dialogueVoice(narr); v = d.voice; off = d.pitchOffset; }
       var ut = new SpeechSynthesisUtterance(u.text);
-      ut.rate = clamp(rate * x.rate, 0.5, 2.5);
+      ut.rate = clamp(rate * x.rate * (ramp || 1), 0.5, 2.5);
       ut.pitch = clamp(pitchPref + (x.pitch - 1) + off, 0.5, 1.6);
       ut.volume = clamp(x.volume, 0.4, 1);
       if (v){ ut.voice = v; ut.lang = v.lang; }
@@ -3374,7 +4560,8 @@
       paint(u); ensureVisible(u);
       if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
       var sec = sectionFor(u); if (sec !== album) setMeta(sec);
-      var s = utterFor(u, units[idx - 1], units[idx + 1]);
+      var s = utterFor(u, units[idx - 1], units[idx + 1], rampFactor());
+      rampStep(idx);
       utter = s.utter;
       utter.onend = function(){
         if (myGen !== gen || !playing) return;
@@ -3404,7 +4591,8 @@
     }
     function play(){
       if (!units.length) return;
-      playing = true; playBtn.textContent = "❚❚"; playBtn.setAttribute("aria-label", "Pause");
+      playing = true; playIcon(playBtn, true); playBtn.setAttribute("aria-label", "Pause");
+      rampN = 0; rampAt = -1;
       armSleep(); mediaPlay();
       speakCurrent();
     }
@@ -3412,7 +4600,7 @@
       playing = false; between = false; gen++; sampleGen++; clearTimeout(wait);
       try { speechSynthesis.cancel(); } catch(_){}
       mediaPause();
-      playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play");
+      playIcon(playBtn, false); playBtn.setAttribute("aria-label", "Play");
     }
     function finish(){ pause(); paint(null); idx = Math.max(0, units.length - 1); clearSleep(); }
     function stop(){
@@ -3433,6 +4621,7 @@
       var lab = rateEl.parentNode;
       if ((narrow && narrow.matches) || lab.scrollWidth > lab.clientWidth + 1) bar.classList.add("tts-wrap");
       document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
+      dockVar();
     }
     function startFrom(offset){
       if (!supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
@@ -3467,6 +4656,7 @@
       /* load the first page now, the rest while reading */
       return PdfText.get(page).then(function(t){
         if (!live()) return false;
+        detectFrom(t, Library.currentId && Library.currentId());     /* a PDF has no #doc to read the language off */
         unitsFromText(t, 0, units); units.forEach(function(u){ u.page = page; });
         pdfUnitsDoc = doc;
         var next = page + 1;
@@ -3498,15 +4688,39 @@
         setTimeout(function(){ if (myGen === sampleGen) speechSynthesis.speak(s.utter); }, 0);
       })();
     }
+    /* one voice, one line, in the voice's own language: what every ▶ in the picker plays. A new
+       preview (or closing the panel) stops the one before it */
+    var PREVIEW = "The lamp hums quietly. \"Are you still reading?\" she asked.";
+    function preview(v){
+      if (!supported) return;
+      if (playing) pause();
+      var list = [], myGen = ++sampleGen, i = 0;
+      unitsFromText(PREVIEW, 0, list);
+      try { speechSynthesis.cancel(); } catch(_){}
+      (function next(){
+        if (myGen !== sampleGen || i >= list.length) return;
+        var u = list[i], x = express(u, { prev: list[i - 1], next: list[i + 1], expr: expr });
+        var ut = new SpeechSynthesisUtterance(u.text);
+        ut.rate = clamp(rate * x.rate, 0.5, 2.5);
+        ut.pitch = clamp(pitchPref + (x.pitch - 1), 0.5, 1.6);
+        ut.volume = clamp(x.volume, 0.4, 1);
+        if (v){ ut.voice = v; ut.lang = v.lang; }
+        ut.onend = function(){ if (myGen !== sampleGen) return; i++; setTimeout(next, x.pauseAfter); };
+        setTimeout(function(){ if (myGen === sampleGen) speechSynthesis.speak(ut); }, 0);
+      })();
+    }
+    function stopPreview(){ sampleGen++; if (supported) try { speechSynthesis.cancel(); } catch(_){} }
 
     /* ---- the voices panel ---- */
     function pitchLabel(){ return pitchPref.toFixed(2); }
     function hintText(){
       var narr = currentVoice();
-      if (!narr || dialogueName) return dialogueName === "same" ? "Quoted speech is read in the narrator’s voice." : "";
+      if (!narr) return "";
+      if (dialogueName === "same") return "Quoted speech is read in the narrator’s voice.";
       var d = dialogueVoice(narr), g = voiceGender(narr);
-      if (d.voice && d.voice !== narr) return "Auto: " + d.voice.name + " reads the quoted speech.";
-      return "Auto: no " + (g === "f" ? "man’s" : g === "m" ? "woman’s" : "second") + " voice for this language, so quoted speech is the narrator pitched " + (d.pitchOffset > 0 ? "higher" : "lower") + ".";
+      if (dialogueName) return d.voice && d.voice !== narr ? shortName(d.voice) + " reads the quoted speech." : "";
+      if (d.voice && d.voice !== narr) return "Chosen for you: " + shortName(d.voice) + " reads the quoted speech.";
+      return "No " + (g === "f" ? "man’s" : g === "m" ? "woman’s" : "second") + " voice for this language, so quoted speech is the narrator pitched " + (d.pitchOffset > 0 ? "higher" : "lower") + ".";
     }
     function syncHint(){ var h = $("#ttsDlgHint"); if (h) h.textContent = hintText(); }
     function exprChips(){
@@ -3523,25 +4737,153 @@
       });
       restart();
     }
+    /* the icons this panel draws, kept here so the read-aloud region owns them */
+    var V_ICONS = {
+      play:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg>',
+      pair:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
+      cards: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h6v8H3z"/><path d="M9 8h6v8H9z"/><path d="M15 8h6v8h-6z"/></svg>',
+      expr:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7"/><path d="M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7"/></svg>',
+      clock: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M12 7v5l3 2"/></svg>'
+    };
+    var SEX = { f: "♀", m: "♂", "": "—" };
+    var SEXNAME = { f: "a woman’s voice", m: "a man’s voice", "": "not marked" };
+    var allOpen = false, filterText = "";
+    var langNames = null;
+    /* "English", "Spanish" — the language written out, where the browser can; else its code */
+    function langLabel(code){
+      var l = String(code || "").slice(0, 2);
+      if (!l) return "Other";
+      if (langNames === null){
+        langNames = false;
+        try {
+          if (typeof Intl !== "undefined" && Intl.DisplayNames){
+            try { langNames = new Intl.DisplayNames([uiLocale()], { type: "language" }); }
+            catch(_){ langNames = new Intl.DisplayNames(["en"], { type: "language" }); }
+          }
+        } catch(_){ langNames = false; }
+      }
+      try { if (langNames) return langNames.of(l) || l; } catch(_){}
+      return l;
+    }
+    function tagsHtml(v){
+      return '<span class="v-tags">' + voiceTags(v).map(function(t){ return '<span class="v-tag">' + esc(t) + '</span>'; }).join("") + '</span>';
+    }
+    /* the title carries the whole name, for the long Windows labels a narrow card shortens */
+    function nameHtml(v){
+      var n = shortName(v);
+      return '<span class="v-name" title="' + esc(nameOf(v) || n) + '">' + esc(n) + '</span>';
+    }
+    function previewBtn(v){
+      var lab = "Hear " + shortName(v);
+      return '<button type="button" class="v-play" data-play="' + esc(voiceId(v)) + '" title="' + esc(lab) + '" aria-label="' + esc(lab) + '">' + V_ICONS.play + '</button>';
+    }
+    function sexChip(v){
+      var g = voiceGender(v), lab = shortName(v) + " is " + SEXNAME[g] + " — change";
+      return '<button type="button" class="chip v-sex" data-sex="' + esc(voiceId(v)) + '" title="' + esc(lab) + '" aria-label="' + esc(lab) + '">' + SEX[g] + '</button>';
+    }
+    /* the label repeats the name: a dozen buttons all called "Narrator" tell a screen reader nothing */
+    function assignBtns(v, nId, dId){
+      var id = voiceId(v), n = shortName(v);
+      return '<button type="button" class="chip v-assign" data-role="narr" data-id="' + esc(id) + '" aria-pressed="' + (id === nId) + '" aria-label="' + esc(n + " reads the narration") + '">Narrator</button>' +
+             '<button type="button" class="chip v-assign" data-role="dlg" data-id="' + esc(id) + '" aria-pressed="' + (id === dId) + '" aria-label="' + esc(n + " reads the quoted speech") + '">Dialogue</button>';
+    }
+    function pairRow(label, v){
+      if (!v) return '<div class="v-row"><span class="v-role">' + label + '</span><span class="v-who"><span class="v-name">No voice yet</span></span></div>';
+      return '<div class="v-row"><span class="v-role">' + label + '</span>' +
+             '<span class="v-who">' + nameHtml(v) + tagsHtml(v) + '</span>' + previewBtn(v) + '</div>';
+    }
+    function pairRows(narr, d){ return pairRow("Narrator", narr) + pairRow("Dialogue", d); }
+    /* up to six cards: the three best women and the three best men for this language, side by
+       side, topped up with whatever else scores well where a device names fewer */
+    function cardVoices(lang){
+      var all = sortedVoices(lang).filter(function(v){ return !isHidden(v); });
+      var here = all.filter(function(v){ return langOf(v) === lang; });
+      if (here.length < 2) here = all;
+      var w = here.filter(function(v){ return voiceGender(v) === "f"; }).slice(0, 3);
+      var m = here.filter(function(v){ return voiceGender(v) === "m"; }).slice(0, 3);
+      var out = [], i;
+      for (i = 0; i < 3; i++){ if (w[i]) out.push(w[i]); if (m[i]) out.push(m[i]); }
+      here.forEach(function(v){ if (out.length < 6 && out.indexOf(v) < 0) out.push(v); });
+      return out.slice(0, 6);
+    }
+    function cardsHtml(lang, nId, dId){
+      var list = cardVoices(lang);
+      if (!list.length) return '<p class="hint">This browser offers no voices yet.</p>';
+      return '<div class="v-cards">' + list.map(function(v){
+        return '<div class="v-card">' +
+          '<div class="v-card-top">' + nameHtml(v) + sexChip(v) + previewBtn(v) + '</div>' +
+          tagsHtml(v) +
+          '<div class="v-acts">' + assignBtns(v, nId, dId) + '</div></div>';
+      }).join("") + '</div>';
+    }
+    /* the whole list, one tap away: by language, then women, men and the rest */
+    function listHtml(lang, nId, dId){
+      var order = [], byLang = {}, hidden = [];
+      sortedVoices(lang).forEach(function(v){
+        if (isHidden(v)){ hidden.push(v); return; }
+        var l = langOf(v) || "??";
+        if (!byLang[l]){ byLang[l] = { f: [], m: [], "": [] }; order.push(l); }
+        byLang[l][voiceGender(v)].push(v);
+      });
+      var shown = 0;
+      var html = order.map(function(l){
+        var g = byLang[l];
+        return '<div class="v-group"><div class="label">' + esc(langLabel(l)) + '</div>' +
+          [["f", "Women"], ["m", "Men"], ["", "Other"]].map(function(sec){
+            if (!g[sec[0]].length) return "";
+            return '<div class="v-sub"><div class="v-sub-l">' + sec[1] + '</div>' + g[sec[0]].map(function(v){
+              shown++;
+              var find = (nameOf(v) + " " + shortName(v) + " " + (v.lang || "") + " " + langLabel(l)).toLowerCase();
+              return '<div class="v-item" data-find="' + esc(find) + '">' + previewBtn(v) +
+                '<span class="v-who">' + nameHtml(v) + tagsHtml(v) + '</span>' +
+                '<span class="v-acts">' + assignBtns(v, nId, dId) + sexChip(v) +
+                '<button type="button" class="chip v-hide" data-hide="' + esc(voiceId(v)) + '" aria-label="' + esc("Hide " + shortName(v)) + '">Hide</button></span></div>';
+            }).join("") + '</div>';
+          }).join("") + '</div>';
+      }).join("");
+      if (hidden.length) html += '<div class="v-group v-hidden"><div class="label">Hidden (' + hidden.length + ')</div><div class="chips">' + hidden.map(function(v){
+        return '<button type="button" class="chip" data-show="' + esc(voiceId(v)) + '" aria-label="' + esc("Show " + shortName(v) + " again") + '">' + esc(shortName(v)) + '</button>';
+      }).join("") + '</div></div>';
+      return { html: html || '<p class="hint">No voices to list.</p>', count: shown };
+    }
     function renderPanel(body, foot){
-      var vs = sortedVoices();
+      var lang = docLang(), narr = currentVoice(), d = dialogueVoice(narr).voice;
+      var nId = narr ? voiceId(narr) : "", dId = d ? voiceId(d) : "";
+      var list = listHtml(lang, nId, dId);
       body.innerHTML = '<div class="tts-panel">' +
-        '<div class="rowline"><label for="ttsNarr">Narrator</label><select id="ttsNarr" class="sel" tabindex="0">' + (voiceOptions(vs, voiceName) || '<option value="">Default voice</option>') + '</select></div>' +
-        '<div class="rowline"><label for="ttsDlg">Dialogue</label><select id="ttsDlg" class="sel">' +
-          '<option value=""' + (!dialogueName ? ' selected' : '') + '>Auto — the other voice</option>' +
-          '<option value="same"' + (dialogueName === "same" ? ' selected' : '') + '>Same as narrator</option>' + voiceOptions(vs, dialogueName) + '</select></div>' +
-        '<div class="hint" id="ttsDlgHint">' + esc(hintText()) + '</div>' +
-        '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
-        '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
-        '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
-        '<div class="rowline"><label id="ttsSleepL">Stop after</label><div class="chips tts-sleep-chips" role="group" aria-labelledby="ttsSleepL" id="ttsSleepChips">' + sleepChips() + '</div></div>' +
-        '<div class="hint">Minutes from now; reading stops at the end of the sentence. End of chapter stops before the next heading, or at the end of a PDF page.</div>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.pair + '<span>Reading to you</span></div>' +
+          '<div class="card v-pair"><div id="ttsPair">' + pairRows(narr, d) + '</div>' +
+            '<div class="v-pair-acts"><button type="button" class="chip" id="ttsSwap">Swap the two</button>' +
+            '<button type="button" class="chip" id="ttsAuto">Choose for me</button></div></div>' +
+          '<p class="hint" id="ttsDlgHint">' + esc(hintText()) + '</p>' +
+          '<p class="hint" id="ttsNoGender"' + (anyGenderKnown() ? ' hidden' : '') + '>Your device doesn’t say which voices are women’s and which are men’s — mark them below and Lamplight will remember.</p>' +
+        '</section>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.cards + '<span>Good for this text</span></div>' +
+          cardsHtml(lang, nId, dId) +
+        '</section>' +
+        '<section class="group">' +
+          '<details class="v-all" id="ttsAll"' + (allOpen ? ' open' : '') + '><summary>All voices (' + list.count + ')</summary>' +
+            '<input type="search" id="ttsFilter" class="v-filter" placeholder="Filter by name or language" aria-label="Filter voices" value="' + esc(filterText) + '">' +
+            '<p class="hint" id="ttsFilterNone" hidden>No voice matches that.</p>' +
+            '<div class="v-list" id="ttsList">' + list.html + '</div></details>' +
+        '</section>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.expr + '<span>Expression</span></div>' +
+          '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
+          '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
+          '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
+        '</section>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.clock + '<span>Sleep timer</span></div>' +
+          '<div class="rowline"><label id="ttsSleepL">Stop after</label><div class="chips tts-sleep-chips" role="group" aria-labelledby="ttsSleepL" id="ttsSleepChips">' + sleepChips() + '</div></div>' +
+          '<div class="hint">Minutes from now; reading stops at the end of the sentence. End of chapter stops before the next heading, or at the end of a PDF page.</div>' +
+        '</section>' +
         '</div>';
-      foot.innerHTML = '<button class="chip" id="ttsSample">Hear a sample</button>';
-      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr"), sleep = body.querySelector("#ttsSleepChips");
+      foot.innerHTML = '<button class="chip" id="ttsSample">Hear the pair</button>';
+      var chips = body.querySelector("#ttsExpr"), sleep = body.querySelector("#ttsSleepChips");
       var pitchEl = body.querySelector("#ttsPitch"), pitchV = body.querySelector("#ttsPitchV");
-      narr.addEventListener("change", function(){ setVoice(narr.value); });
-      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); restart(); });
       sleep.addEventListener("click", function(e){
         var ch = e.target.closest(".chip"); if (!ch) return;
         setSleep(ch.dataset.sleep === "chapter" ? "chapter" : +ch.dataset.sleep);
@@ -3560,8 +4902,79 @@
         restart();
       });
       foot.querySelector("#ttsSample").addEventListener("click", sample);
+      if (filterText) applyFilter();
     }
-    function openPanel(){ Side.open("voices", "Read-aloud voices", renderPanel); }
+    /* the panel is redrawn whole only when the voice list itself changes; a choice made inside it
+       repaints the parts that moved, so the button pressed keeps the focus */
+    function syncPanel(){
+      if (!Side.is("voices")) return;
+      var narr = currentVoice(), d = dialogueVoice(narr).voice, box = Side.body;
+      var nId = narr ? voiceId(narr) : "", dId = d ? voiceId(d) : "";
+      Array.prototype.forEach.call(box.querySelectorAll(".v-assign"), function(b){
+        var on = b.dataset.id === (b.dataset.role === "narr" ? nId : dId);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".v-sex"), function(b){
+        var v = findVoice(b.dataset.sex); if (!v) return;
+        var g = voiceGender(v), lab = shortName(v) + " is " + SEXNAME[g] + " — change";
+        b.textContent = SEX[g]; b.title = lab; b.setAttribute("aria-label", lab);
+      });
+      var pair = box.querySelector("#ttsPair"); if (pair) pair.innerHTML = pairRows(narr, d);
+      var note = box.querySelector("#ttsNoGender"); if (note) note.hidden = anyGenderKnown();
+      syncHint();
+    }
+    function applyFilter(){
+      var box = Side.body.querySelector("#ttsList"); if (!box) return;
+      var q = filterText.trim().toLowerCase(), any = 0;
+      Array.prototype.forEach.call(box.querySelectorAll(".v-item"), function(it){
+        var on = !q || it.dataset.find.indexOf(q) >= 0;
+        it.hidden = !on; if (on) any++;
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".v-sub"), function(s){
+        s.hidden = !s.querySelector(".v-item:not([hidden])");
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".v-group"), function(g){
+        if (!g.classList.contains("v-hidden")) g.hidden = !g.querySelector(".v-item:not([hidden])");
+      });
+      var none = Side.body.querySelector("#ttsFilterNone"); if (none) none.hidden = !!any;
+    }
+    /* one listener for the whole panel: it is redrawn often, the drawer's body is not */
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("voices")) return;
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.play !== undefined){ preview(findVoice(b.dataset.play)); return; }
+      if (b.classList.contains("v-assign")){
+        if (b.dataset.role === "narr") setVoice(b.dataset.id); else setDialogue(b.dataset.id === voiceId(currentVoice()) ? "same" : b.dataset.id);
+        return;
+      }
+      if (b.dataset.sex !== undefined){
+        var v = findVoice(b.dataset.sex); if (!v) return;
+        var g = voiceGender(v);
+        setGender(v, g === "f" ? "m" : g === "m" ? "x" : "f");
+        syncPanel(); syncBar(); restart();
+        return;
+      }
+      if (b.dataset.hide !== undefined || b.dataset.show !== undefined){
+        var id = b.dataset.hide !== undefined ? b.dataset.hide : b.dataset.show;
+        var vv = findVoice(id); if (!vv) return;
+        setHidden(vv, b.dataset.hide !== undefined);
+        allOpen = true;
+        syncBar();
+        Side.refresh("voices", renderPanel);
+        var s = Side.body.querySelector("#ttsAll summary"); if (s) s.focus({ preventScroll: true });
+        return;
+      }
+      if (b.id === "ttsSwap"){ swapPair(); return; }
+      if (b.id === "ttsAuto"){ setVoice(""); setDialogue(""); return; }
+    });
+    Side.body.addEventListener("input", function(e){
+      if (!Side.is("voices") || e.target.id !== "ttsFilter") return;
+      filterText = e.target.value; applyFilter();
+    });
+    Side.body.addEventListener("toggle", function(e){
+      if (Side.is("voices") && e.target.id === "ttsAll") allOpen = e.target.open;
+    }, true);
+    function openPanel(){ Side.open("voices", "Read-aloud voices", renderPanel, stopPreview); }
 
     playBtn.addEventListener("click", function(){ if (playing) pause(); else play(); });
     $("#ttsStop").addEventListener("click", stop);
@@ -3572,57 +4985,1201 @@
       restart();
     });
     voiceSel.addEventListener("change", function(){ setVoice(voiceSel.value); });
-    womanBtn.addEventListener("click", function(){ pickGender("f"); });
-    manBtn.addEventListener("click", function(){ pickGender("m"); });
     voicesBtn.addEventListener("click", openPanel);
     sleepBtn.addEventListener("click", openPanel);
     window.addEventListener("resize", measure);
     window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} if (silence) try { silence.pause(); } catch(_){} });
 
-    Menu.add({ order: 40, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
+    Menu.add({ order: 40, group: "reading", icon: ICONS.speaker, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
     /* test hook: the pure pieces, and what the panel would choose */
     window.llSpeak = {
       voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
+      voiceScore: voiceScore, shortName: shortName, voiceTags: voiceTags, voiceId: voiceId, cardVoices: function(){ return cardVoices(docLang()); },
+      setGender: function(id, g){ var v = findVoice(id); if (v){ setGender(v, g); syncPanel(); syncBar(); } },
+      setHidden: function(id, on){ var v = findVoice(id); if (v) setHidden(v, on); },
+      currentVoice: currentVoice, setVoice: setVoice, setDialogue: setDialogue, preview: preview,
       plan: function(text){ var out = []; unitsFromText(String(text || ""), 0, out); return out; },
       settings: function(){ return { voice: voiceName, dialogue: dialogueName, expr: expr, pitch: pitchPref, rate: rate }; },
-      openPanel: openPanel, sample: sample,
+      lang: docLang, setDocLang: setDocLang, detect: detectFrom, ramp: RAMP.slice(),
+      openPanel: openPanel, sample: sample, sampleText: SAMPLE, previewText: PREVIEW,
       sleep: function(){ return { mode: sleepMode, at: sleepAt }; }, setSleep: setSleep,
       sections: function(){ return sections.slice(); }, silentWav: silentWav
     };
     return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
-             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel, supported: supported };
+             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel,
+             setDocLang: setDocLang, supported: supported };
+  })();
+
+  /* ============================================================
+     Reading pace — tells reading from everything else, times only the
+     reading, and keeps a words-per-minute (pages-per-minute for PDFs)
+     with a confidence, globally and per book
+     ============================================================ */
+  /* The detector samples where the reader is (the top and bottom word of the visible window, or
+     the PDF page), coalesces the position changes of one gesture, and classifies each settled
+     movement against the last rested window: a step is credited with the words that passed the top
+     and the time since the last step; a fast step beyond half a window is a skim; a dwell longer
+     than the words on screen could take is a pause; a landing beyond the window is a jump. Credited
+     steps form runs; runs that last long enough become the samples of a weighted median, blended
+     with a fading prior, globally and per book. Overlays, read-aloud, auto-scroll and a hidden tab
+     stop the clock or end the run. Everything here runs on Date.now() and plain timers. */
+  var Pace = (function(){
+    var KEY = "ll_pace", DAY = 86400000;
+    /* every constant in one place; tests may change them through llPace._debug.setParams */
+    var Params = {
+      TICK_MS: 250, HEARTBEAT_MS: 1000, SETTLE_MS: 800, STILL_WORDS: 6, JUMP_TOL_MIN: 12, JUMP_TOL_FRAC: 0.12,
+      SKIM_WPM: 1200, SKIM_MIN_FRACTION: 0.6, SKIM_STREAK_CUT: 2, MOVES_SKIM: 3, MIN_PAGE_MS: 4000,
+      MERGE_MS: 6000, MERGE_BAND: 1.5, MERGE_FLOOR_WPM: 400, MERGE_PART: 0.75,
+      MIN_WPM: 60, MIN_DWELL_MS: 30000, HARD_PAUSE_MS: 270000, HARD_PAUSE_INPUT_MS: 420000, INPUT_GUARD_MS: 1500,
+      SLOW_CAP_MS: 600000, HELD_N: 3, HELD_BAND: 2, HELD_MAX_MS: 600000, FLOOR_WPM: 25, DWELL_BAND: 2.5, SLOW_BAND: 1.5,
+      NAV_WINDOW_MS: 1500, BLUR_GRACE_MS: 30000, BLOCK_MAX_MS: 1200000, UNMEASURABLE_MS: 5000,
+      RESUME_MS: 120000, RESUME_TOL: 1,
+      MIN_RUN_MS: 40000, MIN_RUN_WORDS: 120, MIN_RUN_STEPS: 2, MIN_RUN_MS_PDF: 30000, MIN_RUN_PAGES: 1,
+      PRIOR_WPM: 230, PRIOR_PPM: 0.5, PRIOR_W: 400, PRIOR_W_BOOK: 400, PRIOR_P: 2, PRIOR_P_BOOK: 2,
+      RUN_WEIGHT_CAP: 3000, RUN_WEIGHT_CAP_P: 20, HALF_LIFE_DAYS: 45,
+      KEEP_RUNS: 60, KEEP_PER_BOOK: 8, MAX_AGE_DAYS: 180, MAX_ENTRIES: 200,
+      CONF_M0: 20, CONF_SPREAD0: 0.6,
+      INDEX_SLICE_CHARS: 200000, SPARSE_WORDS: 40, SAVE_DEBOUNCE_MS: 2000, LIVE_RECOMPUTE_WORDS: 0
+    };
+
+    /* ---- small helpers ---- */
+    function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
+    function docKeyNow(){ return (Library.currentId() || "") + ":" + state.mode; }
+    function num(x){ return typeof x === "number" && isFinite(x) && x > 0 ? x : 0; }
+    function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
+    var els = {};
+    function el(sel){ var e = els[sel]; if (!e || !document.contains(e)){ e = $(sel); if (e) els[sel] = e; } return e || null; }
+    function has(sel, cls){ var e = el(sel); return !!e && e.classList.contains(cls); }
+    function mins(ms){ return Math.floor(ms / 60000); }
+    function dur(ms){ var m = mins(ms), h = Math.floor(m / 60); return h ? h + " h" + (m % 60 ? " " + (m % 60) + " min" : "") : m + " min"; }
+    function plural(c, one, many){ return c + " " + (c === 1 ? one : many); }
+    function jumpTol(V){ return Math.max(Params.JUMP_TOL_MIN, Math.round(Params.JUMP_TOL_FRAC * V)); }
+    function round3(x){ return x === Infinity ? 1e9 : Math.round(x * 1000) / 1000; }
+
+    /* ---- the word index: the start offset of every word of #doc, built once per document, in
+       slices of characters so a whole novel never blocks a frame. idx(off) is the number of word
+       starts at or before an offset, so positions become word numbers by binary search ---- */
+    var index = { key: null, ready: false, words: 0, slices: 0, ms: 0, starts: [] }, indexGen = 0, indexBuilding = null;
+    function indexKey(){ return docKeyNow() + ":" + Anchor.textLength(); }
+    function indexReady(){ return state.mode === "doc" && index.ready && index.key === indexKey(); }
+    function ensureIndex(){
+      if (state.mode !== "doc") return false;
+      var key = indexKey();
+      if (index.ready && index.key === key) return true;
+      if (indexBuilding !== key) buildIndex(key);
+      return false;
+    }
+    function buildIndex(key){
+      var text = $("#doc").textContent, re = /\S+/g, starts = [], pos = 0, t0 = Date.now(), slices = 0, gen = ++indexGen;
+      indexBuilding = key;
+      function step(){
+        if (gen !== indexGen) return;            /* another document replaced this one meanwhile */
+        var end = Math.min(text.length, pos + Params.INDEX_SLICE_CHARS), m;
+        re.lastIndex = pos;
+        while ((m = re.exec(text)) && m.index < end){ starts.push(m.index); pos = re.lastIndex; }
+        slices++;
+        if (!m){ done(); return; }               /* the regex ran out: done */
+        pos = Math.max(pos, end);                /* a word straddling the boundary was pushed and is skipped by the next slice */
+        setTimeout(step, 0);
+      }
+      function done(){
+        index.key = key; index.ready = true; index.words = starts.length; index.slices = slices; index.ms = Date.now() - t0; index.starts = starts;
+        indexBuilding = null;
+      }
+      step();
+    }
+    function idx(off){
+      var s = index.starts, lo = 0, hi = s.length;
+      while (lo < hi){ var mid = (lo + hi) >> 1; if (s[mid] <= off) lo = mid + 1; else hi = mid; }
+      return lo;
+    }
+    function docWords(){ return indexReady() ? index.words : 0; }
+
+    /* ---- PDF words per page, asked for once a page has been in the rested window ---- */
+    var pageWords = {}, pageAsked = {}, pdfWordsDoc = null;
+    function syncPdfWords(){
+      if (pdfWordsDoc !== state.pdfDoc){ pdfWordsDoc = state.pdfDoc; pageWords = {}; pageAsked = {}; }
+    }
+    function askPdfWords(a, b){
+      if (!state.pdfDoc) return;
+      syncPdfWords();
+      var doc = state.pdfDoc, total = doc.numPages;
+      for (var i = Math.max(1, a); i <= Math.min(total, b); i++){
+        if (pageAsked[i]) continue;
+        pageAsked[i] = true;
+        (function(n){
+          PdfText.get(n).then(function(text){ if (pdfWordsDoc === doc) pageWords[n] = (String(text || "").match(/\S+/g) || []).length; });
+        })(i);
+      }
+    }
+    function requestPdfWords(){ if (R) askPdfWords(R.top, R.bottom); }
+    function isSparse(i){ return pageWords[i] !== undefined && pageWords[i] < Params.SPARSE_WORDS; }
+    /* the known words of pages a..b, or null when any of them has not answered yet */
+    function knownWordsIn(a, b){
+      var sum = 0;
+      for (var i = a; i <= b; i++){ if (pageWords[i] === undefined) return null; sum += pageWords[i]; }
+      return sum;
+    }
+
+    /* ---- the visible window: word numbers for text, page numbers for PDFs ---- */
+    var measurements = 0, probeFallbacks = 0, lastMeasureMs = 0, lastV = 0, lastVKey = null;
+    function caretAt(x, y){
+      var r = null;
+      if (document.caretRangeFromPoint) r = document.caretRangeFromPoint(x, y);
+      else if (document.caretPositionFromPoint){ var pp = document.caretPositionFromPoint(x, y); if (pp){ r = document.createRange(); r.setStart(pp.offsetNode, pp.offset); } }
+      if (!r) return null;
+      var n = r.startContainer;
+      if (n.nodeType !== 3 || !n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
+      return Anchor.offsetOf(n, r.startOffset);
+    }
+    function dockHeight(){ return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dockH")) || 0; }
+    /* the last character on screen: topCharOffset's probing, upward from the foot of the view */
+    function bottomCharOffset(){
+      if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
+      var view = $("#doc").getBoundingClientRect(), autoBar = el("#autoBar");
+      var autoH = autoBar && autoBar.classList.contains("on") ? autoBar.offsetHeight : 0;
+      var y1 = Math.min(window.innerHeight, view.bottom) - dockHeight() - autoH - 6;
+      var xs = [view.left + 10, view.left + view.width / 2, view.left + view.width - 10];
+      for (var dy = 0; dy <= 60; dy += 12){
+        for (var k = 0; k < xs.length; k++){
+          var off = caretAt(xs[k], y1 - dy);
+          if (off !== null) return off;
+        }
+      }
+      return null;
+    }
+    /* Pages flow: the first character of page n, read off the column layout like pageTopOffset;
+       -1 past the last page */
+    function pageStartOffset(n){
+      if (state.mode !== "doc" || state.flow !== "pages" || !state.stride) return null;
+      var nodes = Anchor.textNodes();
+      if (!nodes.length) return null;
+      var left = $("#doc").getBoundingClientRect().left, want = n * (state.perPage || 1), r = document.createRange();
+      function col(x){ return Math.floor((x - left + 0.5) / state.stride); }
+      function endCol(i){ r.selectNodeContents(nodes[i]); var b = r.getBoundingClientRect(); return (b.width || b.height) ? col(b.right - 1) : -1; }
+      var ni = firstAtLeast(0, nodes.length - 1, endCol, want);
+      if (ni < 0) return -1;
+      var node = nodes[ni];
+      var ci = firstAtLeast(0, node.length - 1, function(i){
+        r.setStart(node, i); r.setEnd(node, i + 1);
+        var b = r.getBoundingClientRect();
+        return (b.width || b.height) ? col((b.left + b.right) / 2) : -1;
+      }, want);
+      return Anchor.offsetOf(node, ci < 0 ? 0 : ci);
+    }
+    /* Pages flow: the page starts of the current layout, kept until the layout changes. Probing a
+       column boundary in a long book costs a binary search over every text node, and a turn asks
+       for two of them (this page's first word and the next page's): the one the turn moves onto
+       was measured as the last window's end, so each turn costs one search instead of two */
+    var pageOffs = { key: null, map: null };
+    function pageStart(n){
+      var key = layoutKeyNow() + "|" + (state.stride || 0);
+      if (pageOffs.key !== key){ pageOffs.key = key; pageOffs.map = {}; }
+      if (pageOffs.map[n] === undefined){
+        var v = pageStartOffset(n);
+        if (v === null) return null;
+        pageOffs.map[n] = v;
+      }
+      return pageOffs.map[n];
+    }
+    /* when the foot of the view holds no text (an image, a heading gap): the last window, else a
+       guess from the line height and the column width (Auto's formula) */
+    function guessVisibleWords(){
+      var head = Library.headerHeight(), px = Math.max(100, window.innerHeight - head - dockHeight());
+      var colW = Math.min(state.width, $("#docView").clientWidth || state.width);
+      var wordsPerLine = Math.max(4, colW / (state.size * 0.5) / 6);
+      return Math.max(1, Math.round(px / (state.size * state.lh)) * Math.round(wordsPerLine));
+    }
+    function measure(){
+      var t0 = Date.now(), N = null;
+      measurements++;
+      if (state.mode === "doc"){
+        if (!indexReady()) return null;
+        var topOff, bottomOff = null, top, bottom;
+        if (state.flow === "pages"){
+          topOff = pageStart(state.page);
+          if (topOff === null) return null;
+          bottomOff = pageStart(state.page + 1);
+          if (bottomOff === null) return null;
+          if (bottomOff < 0) bottomOff = Anchor.textLength();
+          top = idx(topOff); bottom = idx(bottomOff - 1);
+          N = { top: top, bottom: Math.max(top, bottom), page: state.page };
+        } else {
+          topOff = Library.topCharOffset();
+          if (topOff === null) return null;
+          top = idx(topOff);
+          bottomOff = bottomCharOffset();
+          if (bottomOff !== null) bottom = idx(bottomOff);
+          else {
+            probeFallbacks++;
+            bottom = top + (lastV && lastVKey === layoutKeyNow() ? lastV : guessVisibleWords()) - 1;
+          }
+          N = { top: top, bottom: Math.max(top, bottom), page: null };
+          if (bottomOff !== null){ lastV = N.bottom - N.top + 1; lastVKey = layoutKeyNow(); }
+        }
+      } else if (state.mode === "pdf" && state.pdfDoc){
+        var total = state.pdfDoc.numPages;
+        if (state.flow === "pages"){
+          var p = Math.max(1, Math.min(total, state.pdfPageNum || 1));
+          N = { top: p, bottom: Math.min(total, p + (state.perPage || 1) - 1), page: p };
+        } else {
+          var cur = Library.currentPdfPage(), limit = window.innerHeight - dockHeight() - 6, last = cur;
+          var pages = $("#pdf").querySelectorAll(".pdf-page");
+          for (var i = cur; i < pages.length; i++){          /* pages[i] is page i + 1 */
+            if (pages[i].getBoundingClientRect().top < limit) last = +pages[i].dataset.page || (i + 1); else break;
+          }
+          N = { top: cur, bottom: Math.max(cur, last), page: cur };
+        }
+      }
+      if (N) N.V = Math.max(1, N.bottom - N.top + 1);
+      lastMeasureMs = Date.now() - t0;
+      return N;
+    }
+
+    /* ---- sampling: the cheap position key on every poke, a settle after the last change ---- */
+    var posKey = null, layoutKey = null, flowKey = null, moves = 0, firstMove = 0, lastChange = 0, pending = false, burstNav = false, relaid = false;
+    var settleTimer = null, failSince = 0, unmeasurable = false, burstReveal = false, movedAt = 0;
+    function posKeyNow(){
+      if (state.mode === "doc") return state.flow === "pages" ? "p" + state.page : "y" + Math.round(window.scrollY);
+      return state.flow === "pages" ? "n" + state.pdfPageNum : "y" + Math.round(window.scrollY);
+    }
+    /* what decides where the words fall: a change here renumbers the text under the reader (a new
+       size, zen, a flow switch, a narrower window). The height of the window is part of it only in
+       Pages flow — in Scroll flow a phone's toolbar sliding away moves no word at all */
+    function flowKeyNow(){
+      var b = document.body.classList;
+      return window.innerWidth + "|" + (state.flow === "pages" ? window.innerHeight : 0) + "|" + (state.perPage || 1) + "|" + (state.totalPages || 1) + "|" +
+        (state.mode === "doc" ? Anchor.textLength() : 0) + "|" + state.flow + "|" + state.size + "|" + state.lh + "|" + state.width + "|" + (state.margin || 0) + "|" + state.font + "|" +
+        (b.contains("zen") ? 1 : 0) + (b.contains("immersive") ? 1 : 0) + (has("#tts", "on") ? 1 : 0) + (has("#autoBar", "on") ? 1 : 0) + (has("#sheet", "open") ? 1 : 0);
+    }
+    function layoutKeyNow(){ return window.innerHeight + "|" + flowKeyNow(); }
+    function overlayOpen(){ return has("#side", "open") || has("#dictCard", "open") || has("#moreMenu", "open"); }
+    function armSettle(){ clearTimeout(settleTimer); settleTimer = setTimeout(settle, Params.SETTLE_MS); }
+    function poke(){
+      if (!docOpen()) return;
+      var now = Date.now(), pk = posKeyNow(), fk = flowKeyNow(), lk = window.innerHeight + "|" + fk;
+      if (posKey === null){ posKey = pk; layoutKey = lk; flowKey = fk; return; }
+      if (lk !== layoutKey){ if (fk !== flowKey) relaid = true; lastChange = now; pending = true; armSettle(); }
+      if (pk !== posKey){
+        posKey = pk;
+        if (!moves){ firstMove = now; burstNav = now < navUntil || overlayOpen(); burstReveal = now < navUntil || has("#side", "open"); }
+        /* one gesture, not one scroll event: the browser animates a key scroll over a dozen frames
+           from a single press, so a change counts as a move only when an input arrived since the
+           last one — or when nothing the reader just did can explain it (a script, a restore) */
+        if (!moves || lastInput > movedAt || now - lastInput >= Params.INPUT_GUARD_MS) moves++;
+        movedAt = now; lastChange = now; pending = true;
+        armSettle();
+      }
+      layoutKey = lk; flowKey = fk;
+    }
+
+    /* ---- input: proof that the reader is there, and what cancels a tentative focus loss ---- */
+    var lastInput = 0, inputs = [], lastInputKept = 0, lastPointerMove = 0;
+    function noteInput(e){
+      var now = Date.now();
+      if (e.type === "pointermove"){ if (now - lastPointerMove < 250) return; lastPointerMove = now; }
+      lastInput = now;
+      if (now - lastInputKept >= 1000){ inputs.push(now); if (inputs.length > 64) inputs.shift(); lastInputKept = now; }
+      if (tentOpen) cancelTentative(now);
+    }
+    /* an input inside (P.t, until − guard): the burst's own wheel or key is not evidence of presence during the dwell */
+    function inputDuring(until){
+      if (!P) return false;
+      var lim = until - Params.INPUT_GUARD_MS, t0 = P.t;
+      if (lastInput > t0 && lastInput < lim) return true;
+      for (var i = inputs.length - 1; i >= 0; i--){ if (inputs[i] <= t0) break; if (inputs[i] < lim) return true; }
+      return false;
+    }
+
+    /* ---- blockers: intervals of time that are not reading ---- */
+    var blocks = [], softOpen = null, tentOpen = null, hard = false, blockerList = [], sideWasOpen = false, navUntil = 0;
+    var blurAt = 0, hbFrac = null, hbPage = null, hbVoice = null, spokenTo = null;
+    function softActive(){ return !!softOpen || !!tentOpen; }
+    function softBlockers(){
+      var list = [];
+      if (has("#dictCard", "open")) list.push("dictCard");
+      if (has("#side", "open")) list.push("side");
+      var sheet = el("#sheet");
+      if (sheet && sheet.classList.contains("open") && sheet.offsetHeight > 0) list.push("sheet");
+      if (has("#moreMenu", "open")) list.push("menu");
+      if (has("#pop", "open")) list.push("pop");
+      if (document.visibilityState !== "visible") list.push("hidden");
+      if (window.llTranslate && window.llTranslate.isOn && window.llTranslate.isOn()) list.push("translated");
+      return list;
+    }
+    function hardBlockers(){
+      var list = [];
+      if (Speak.isActive()) list.push("speak");
+      if (Auto.isOn() && !Auto.isPaused()) list.push("auto");
+      return list;
+    }
+    /* blocked time inside (t0, t1]: the union of the intervals, clipped */
+    function blockedIn(t0, t1){
+      if (t1 <= t0) return 0;
+      var list = [];
+      blocks.forEach(function(x){ var a = Math.max(x.a, t0), b = Math.min(x.b === null ? t1 : x.b, t1); if (b > a) list.push([a, b]); });
+      list.sort(function(p, q){ return p[0] - q[0]; });
+      var total = 0, cur = null;
+      list.forEach(function(iv){
+        if (!cur || iv[0] > cur[1]){ if (cur) total += cur[1] - cur[0]; cur = iv; }
+        else if (iv[1] > cur[1]) cur[1] = iv[1];
+      });
+      if (cur) total += cur[1] - cur[0];
+      return total;
+    }
+    /* blocked intervals are dropped once they are behind the credit origin, but not at once:
+       a run that reopens after an excursion looks back as far as the resume rule allows */
+    function pruneBlocks(t){ blocks = blocks.filter(function(x){ return x.b === null || x.b > t - Params.RESUME_MS; }); }
+    function cancelTentative(now){
+      var i = blocks.indexOf(tentOpen);
+      if (i >= 0) blocks.splice(i, 1);
+      tentOpen = null;
+      record("unblock", { t: now, reason: "input" });
+      if (run && pending) armSettle();
+    }
+    function onFocus(now){
+      blurAt = 0;
+      if (!tentOpen) return;
+      tentOpen.b = now; tentOpen = null;
+      record("unblock", { t: now, reason: "focus" });
+      if (run && pending) armSettle();
+    }
+    function updateBlockers(now, reason){
+      /* a window that lost focus and saw no input for the grace: a tentative block, from when the grace ran out */
+      if (blurAt && !tentOpen){
+        var quiet = Math.max(blurAt, lastInput);
+        if (now - quiet >= Params.BLUR_GRACE_MS){ tentOpen = { a: quiet + Params.BLUR_GRACE_MS, b: null }; blocks.push(tentOpen); record("block", { t: tentOpen.a, reason: "unfocused" }); }
+      }
+      var soft = softBlockers(), hardList = hardBlockers(), sideOpen = has("#side", "open");
+      if (sideWasOpen && !sideOpen) navUntil = now + Params.NAV_WINDOW_MS;
+      sideWasOpen = sideOpen;
+      if (hardList.length && !hard){
+        hard = true;
+        if (run){ justClosed = closeRun("block", now); }
+        hbFrac = clamp(readFrac(), 0, 1); hbPage = state.mode === "pdf" ? Library.currentPdfPage() : null;
+        hbVoice = null; spokenTo = null;
+        record("block", { t: now, reason: hardList.join("+") });
+      } else if (!hardList.length && hard){
+        hard = false; hbFrac = null; hbPage = null; hbVoice = null;
+        moves = 0; firstMove = 0; pending = false;
+        record("unblock", { t: now, reason: reason || "released" });
+      }
+      if (soft.length && !softOpen){
+        softOpen = { a: now, b: null }; blocks.push(softOpen);
+        /* a panel opened while a gesture was still settling: whatever it reveals belongs to the
+           panel, not to the scroll that came before it */
+        if (moves > 0){ burstNav = true; if (sideOpen) burstReveal = true; }
+        record("block", { t: now, reason: soft.join("+") });
+      } else if (!soft.length && softOpen){
+        softOpen.b = now; softOpen = null;
+        record("unblock", { t: now, reason: reason || "closed" });
+        if (run && pending) armSettle();       /* the position changed under the overlay: settle now */
+      }
+      blockerList = (hard ? hardList : []).concat(soft, tentOpen ? ["unfocused"] : [], unmeasurable ? ["unmeasurable"] : [], state.opening ? ["opening"] : []);
+    }
+    /* where the voice has got to, as a word number: read-aloud units are character offsets into
+       #doc, so the listener's progress is the unit's end, not the view's (the view may not move
+       at all while a screenful is read out) */
+    function voiceWord(){
+      if (state.mode !== "doc" || !indexReady()) return null;
+      var us = Speak.units(), i = Speak.index();
+      if (!us || !us.length) return null;
+      var u = us[Math.max(0, Math.min(us.length - 1, i))];
+      return u && typeof u.start === "number" ? idx(u.start) : null;
+    }
+    /* while read-aloud or auto-scroll moves the page the pace learns nothing, but Stats still
+       gets the words that went by: the voice's own advance while it speaks, a fraction of the
+       document per heartbeat while auto-scroll runs */
+    function hardCredit(now){
+      if (state.mode === "doc"){
+        if (Speak.isActive()){
+          var vw = voiceWord();
+          if (vw !== null){
+            if (hbVoice === null) hbVoice = vw;
+            var dvw = vw - hbVoice;
+            hbVoice = Math.max(hbVoice, vw);
+            spokenTo = spokenTo === null ? vw : Math.max(spokenTo, vw);
+            hbFrac = clamp(readFrac(), 0, 1);
+            if (Speak.isPlaying() && dvw > 0 && dvw < 400){ Stats.noteListened(dvw); sess.listened += dvw; }
+            return;
+          }
+        }
+        var frac = clamp(readFrac(), 0, 1), total = docWords() || Progress.docWords();
+        var dw = hbFrac === null ? 0 : (frac - hbFrac) * total;
+        hbFrac = frac;
+        if (dw > 0 && dw < 400){
+          if (Speak.isActive()){ if (Speak.isPlaying()){ Stats.noteListened(dw); sess.listened += dw; } }
+          else Stats.noteWords(dw);
+        }
+      } else if (state.pdfDoc){
+        var pg = Library.currentPdfPage(), dp = hbPage === null ? 0 : pg - hbPage;
+        hbPage = pg;
+        if (dp > 0 && dp < 3){
+          if (Speak.isActive()){ if (Speak.isPlaying()){ var kw = knownWordsIn(pg - dp, pg - 1); if (kw){ Stats.noteListened(kw); sess.listened += kw; } } }
+          else Stats.notePages(dp);
+        }
+      }
+    }
+
+    /* ---- the references, the live run and the transitions ---- */
+    var P = null, R = null, run = null, lastClosed = null, justClosed = null, kind = "w", docKey = null, seenKey = null, bookId = null;
+    var skimStreak = 0, lastKind = null, pausedFlag = false, fragments = 0, phase = "off", since = Date.now();
+    var undo = null, lastBack = null, pendSkim = null, pendPages = null, docFrontier = 0;
+    var sess = { words: 0, ms: 0, pages: 0, pms: 0, skimmed: 0, listened: 0 };
+    var transitions = [];
+    function record(k, o){
+      o = o || {};
+      var e = { t: o.t !== undefined ? o.t : Date.now(), kind: k };
+      ["adv", "credit", "dt", "blocked", "V", "implied", "moves", "reason", "skimmed", "top"].forEach(function(f){ if (o[f] !== undefined) e[f] = f === "implied" ? round3(o[f]) : o[f]; });
+      transitions.push(e);
+      if (transitions.length > 50) transitions.shift();
+    }
+    function newRun(t0){
+      var top = P ? P.top : 0;
+      return { b: bookId, k: kind, t0: t0, w: 0, ms: 0, n: 0, p: 0, wordsKnown: true, held: [], slow: false, slowWpm: 0, buffered: 0,
+               lastTop: null, V: R ? R.V : 1, frontier: top, low: top, qualified: false, mark: 0, fragCounted: false };
+    }
+    function qualifies(r){
+      if (!r) return false;
+      return r.k === "w" ? (r.ms >= Params.MIN_RUN_MS && r.w >= Params.MIN_RUN_WORDS && r.n >= Params.MIN_RUN_STEPS)
+                         : (r.p >= Params.MIN_RUN_PAGES && r.ms >= Params.MIN_RUN_MS_PDF);
+    }
+    function setP(N){ P = { top: N.top, t: N.t }; R = N; pruneBlocks(N.t); }
+    function dtOf(N){ return Math.max(0, N.t - P.t - blockedIn(P.t, N.t)); }
+    function wAvail(){ return Math.max(1, R.bottom - P.top + 1); }
+    function runRate(r){ return r && r.w > 0 && r.ms > 0 ? r.w / r.ms * 60000 : 0; }
+    /* how long the words on screen could reasonably take: the floor for a caption, the cap for a
+       break; input during the dwell and a run admitted as slow reading raise the cap. A run with a
+       pace of its own is judged against that too — an odd page at half the run's speed is still
+       reading (a small window with large type takes minutes), a dwell at a fifth of it is a break */
+    function maxDwell(until){
+      var cap = inputDuring(until) ? Params.HARD_PAUSE_INPUT_MS : Params.HARD_PAUSE_MS, W, rate;
+      if (kind === "p"){
+        for (var i = R.top; i <= R.bottom; i++) if (isSparse(i)) return cap;
+        W = knownWordsIn(R.top, R.bottom);
+        if (W === null) return cap;
+      } else W = wAvail();
+      var slowest = Params.MIN_WPM;
+      if (run){
+        rate = runRate(run);
+        if (rate > 0) slowest = Math.min(slowest, rate / Params.DWELL_BAND);
+        if (run.slowWpm > 0){ slowest = Math.min(slowest, run.slowWpm / Params.SLOW_BAND); cap = Math.max(cap, Params.SLOW_CAP_MS); }
+      }
+      return clamp(W / Math.max(1, slowest) * 60000, Params.MIN_DWELL_MS, cap);
+    }
+    /* the words a run has credited are one stretch, (low, frontier]: what is fresh in (from, to]
+       is what falls outside it. A run that begins where the reader landed — a jump, an anchor, a
+       slip corrected page by page — has an empty stretch, so everything it then reads is credited,
+       and re-reading inside the stretch is still never credited twice */
+    function fresh(r, from, to){
+      if (to <= from) return 0;
+      var a = Math.max(from, r.low), b = Math.min(to, r.frontier);
+      return (to - from) - Math.max(0, b - a);
+    }
+    function advance(r, from, to){
+      if (to <= from) return;
+      /* a run that has credited nothing carries an empty stretch wherever it was anchored, and a
+         credit that begins past the stretch (after a skim) starts a stretch of its own */
+      if (r.low === r.frontier || from > r.frontier){ r.low = from; r.frontier = to; return; }
+      r.low = Math.min(r.low, from); r.frontier = Math.max(r.frontier, to);
+    }
+    function statsNote(c){ if (c > 0){ if (kind === "w") Stats.noteWords(c); else Stats.notePages(c); } }
+    function statsUnnote(c){ if (c > 0) Stats.unnote(kind === "w" ? "words" : "pages", c); }
+    function creditStats(c){ if (run.qualified) statsNote(c); else run.buffered += c; }
+    /* words scrolled past are held for a moment before they count as skimmed: a reader who peeks
+       ahead and comes back skimmed nothing, and will be credited for reading them next */
+    function noteSkimmed(n, origin, top, t){
+      var prev = pendSkim, joins;
+      pendSkim = null;
+      if (!(n > 0)) return;
+      Stats.noteSkimmed(n); sess.skimmed += n;
+      /* a scroll-through in several flicks is one skim: taken back whole when it turns out to
+         have been a peek, counted whole once the reader has read past it */
+      joins = !!prev && prev.docKey === docKey && t - prev.t <= Params.RESUME_MS &&
+              Math.abs(origin - prev.top) <= (kind === "w" ? Params.STILL_WORDS : 0);
+      pendSkim = { n: joins ? prev.n + n : n, origin: joins ? prev.origin : origin, top: top, t: t, docKey: docKey };
+    }
+    function dropSkim(){
+      if (!pendSkim) return;
+      Stats.unnote("skimmed", pendSkim.n); sess.skimmed = Math.max(0, sess.skimmed - pendSkim.n);
+      pendSkim = null;
+    }
+    /* a PDF flip-through's pages, once their text has arrived: counted as skimmed if the reader
+       is still past them */
+    function resolvePages(now){
+      var p = pendPages, kw;
+      if (p.doc !== state.pdfDoc || now - p.t > Params.RESUME_MS){ pendPages = null; return; }
+      kw = knownWordsIn(p.a, p.b);
+      if (kw === null) return;
+      pendPages = null;
+      if (kw > 0 && R && R.top >= p.top) noteSkimmed(kw, p.origin, p.top, p.t);
+    }
+    /* the reader moved on past the skipped words (they are skimmed), came back to where they were
+       (nothing was skimmed), or the moment passed */
+    function ageSkim(N){
+      if (!pendSkim) return;
+      var t = N ? N.t : Date.now();
+      if (pendSkim.docKey !== docKey || t - pendSkim.t > Params.RESUME_MS){ pendSkim = null; return; }
+      if (N && N.top <= pendSkim.origin + (kind === "w" ? Params.STILL_WORDS : 0)) dropSkim();
+    }
+    /* a qualifying run enters the estimates; they are refreshed on each credited step once it has
+       (a recompute is a sort of a few dozen runs, at most once per gesture; LIVE_RECOMPUTE_WORDS
+       above 0 would make it every so many words instead) */
+    function afterCredit(){
+      if (!run.qualified && qualifies(run)){
+        run.qualified = true;
+        if (run.buffered > 0) statsNote(run.buffered);
+        run.buffered = 0; run.mark = run.w;
+        if (lastClosed && lastClosed.run !== run) lastClosed.qualifiedAfter = true;
+        dirty = true;
+      } else if (run.qualified && (kind === "p" || run.w - run.mark >= Params.LIVE_RECOMPUTE_WORDS)){ run.mark = run.w; dirty = true; }
+      scheduleSave();
+    }
+    /* pending holds dropped as pauses: the reader did end up past those words, so Stats has them */
+    function dropHolds(r){
+      if (!r.held.length) return;
+      var front = r.frontier;
+      r.held.forEach(function(x){ var c = Math.max(0, x.top - Math.max(x.prevTop, front)); front = Math.max(front, x.top); statsNote(c); });
+      r.held = [];
+    }
+    function storeRun(r, t){
+      var e = { b: r.b, t: t, w: Math.round(r.w), ms: Math.round(r.ms), p: r.p, n: r.n, k: r.k };
+      store.runs.push(e);
+      addAgg(store.books, e);
+      if (lastClosed && lastClosed.run !== r) lastClosed.qualifiedAfter = true;
+      retain(store, t);
+      dirty = true;
+      return e;
+    }
+    function unstoreRun(e){
+      var i = store.runs.lastIndexOf(e);
+      if (i < 0) return;
+      store.runs.splice(i, 1);
+      var b = store.books[e.b];
+      if (b){ b.w = Math.max(0, b.w - e.w); b.ms = Math.max(0, b.ms - e.ms); b.p = Math.max(0, b.p - e.p); b.n = Math.max(0, b.n - 1); }
+      dirty = true;
+    }
+    /* a run ends: kept as a sample when it lasted, otherwise a fragment; remembered for the resume rule */
+    function closeRun(by, t){
+      if (!run) return null;
+      var r = run;
+      dropHolds(r);
+      var q = qualifies(r), entry = null;
+      if (q) entry = storeRun(r, t);
+      else if (r.n > 0 && !r.fragCounted){ fragments++; r.fragCounted = true; }
+      var cand = { run: r, entry: entry, tClose: t, endTop: R ? R.top : r.lastTop, V: R ? R.V : (r.V || 1), by: by, docKey: docKey,
+                   pt: P ? P.t : t, softBlock: !hard, qualifiedAfter: false };
+      /* what is remembered is the run the reader might come back to: a fragment made during an
+         excursion (a nudge at the far end) must not push it out */
+      var live = lastClosed && lastClosed.docKey === docKey && !lastClosed.qualifiedAfter &&
+                 (lastClosed.by === "jump" || lastClosed.by === "block") && t - lastClosed.tClose <= Params.RESUME_MS;
+      if (q || !live) lastClosed = cand;
+      run = null; pausedFlag = false; undo = null;
+      dirty = true; scheduleSave();
+      return r;
+    }
+    /* check and return: a jump (or a hard block) closed the run less than two minutes ago and the
+       reader is back within a window of where it ended, with nothing read meanwhile */
+    function tryResume(N, closed){
+      var lc = lastClosed;
+      if (!lc || lc.docKey !== docKey || (lc.by !== "jump" && lc.by !== "block") || lc.qualifiedAfter) return false;
+      if (N.t - lc.tClose > Params.RESUME_MS) return false;
+      if (Math.abs(N.top - lc.endTop) > (kind === "p" ? 1 : Params.RESUME_TOL * lc.V)) return false;
+      if (lc.entry) unstoreRun(lc.entry);
+      run = lc.run; run.held = []; run.V = N.V;
+      /* the excursion is a hole, but the reading done before it is reading: the run keeps the
+         credit origin it had when it closed, and the time away joins the blocked intervals */
+      if (lc.pt && lc.pt <= lc.tClose && N.t > lc.tClose){ P = { top: N.top, t: lc.pt }; blocks.push({ a: lc.tClose, b: N.t }); }
+      dropSkim(); undo = null;
+      if (closed && closed !== run && !closed.fragCounted){ fragments++; closed.fragCounted = true; }
+      lastClosed = null; dirty = true; scheduleSave();
+      return true;
+    }
+    /* the last credited or skimmed transition, kept so that the one after it can be judged with
+       it (a gesture in two parts) or take it back (a peek that came straight home) */
+    function remember(o){ undo = o; }
+    function undoLast(wide){
+      var u = undo, last = transitions[transitions.length - 1];
+      undo = null;
+      if (!u || u.run !== run) return false;
+      if (last && last.kind === u.kind && last.t === u.t) transitions.pop();   /* it never stood */
+      run.w = u.w; run.ms = u.ms; run.n = u.n; run.p = u.p; run.low = u.low; run.frontier = u.frontier;
+      run.lastTop = u.lastTop; run.V = u.V; run.wordsKnown = u.wordsKnown;
+      if (kind === "w"){ sess.words -= u.c; sess.ms -= u.dt; } else { sess.pages -= u.c; sess.pms -= u.dt; }
+      if (u.stats > 0){ if (run.buffered >= u.stats) run.buffered -= u.stats; else statsUnnote(u.stats); }
+      dropSkim();
+      docFrontier = u.docFrontier;
+      P = { top: u.P0.top, t: u.P0.t };
+      /* the rested window again — widened to the largest the reader has seen around it when the
+         move being merged had already uncovered part of the screen */
+      R = wide > u.R0.V ? { top: u.R0.top, bottom: u.R0.top + wide - 1, V: wide, page: u.R0.page } : u.R0;
+      skimStreak = u.skimStreak; lastKind = u.lastKind;
+      return true;
+    }
+    function snapFor(N, adv, dt, k, implied){
+      return { kind: k, t: N.t, adv: adv, dt: dt, implied: implied, c: 0, stats: 0, run: run, P0: { top: P.top, t: P.t }, R0: R,
+               w: run.w, ms: run.ms, n: run.n, p: run.p, low: run.low, frontier: run.frontier, lastTop: run.lastTop,
+               V: run.V, wordsKnown: run.wordsKnown, docFrontier: docFrontier, skimStreak: skimStreak, lastKind: lastKind };
+    }
+    function credit(N, adv, dt, implied){
+      var from = P.top, c = fresh(run, from, N.top), u = snapFor(N, adv, dt, "credit", implied);
+      if (kind === "w"){ run.w += c; sess.words += c; sess.ms += dt; }
+      else {
+        run.p += c;
+        var kw = knownWordsIn(N.top - c, N.top - 1);
+        if (kw === null) run.wordsKnown = false; else run.w += kw;
+        sess.pages += c; sess.pms += dt;
+      }
+      run.ms += dt; run.n += 1; advance(run, from, N.top); run.lastTop = N.top; run.V = N.V;
+      docFrontier = Math.max(docFrontier, N.top);
+      if (pendSkim && N.top > pendSkim.top) pendSkim = null;      /* read past it: skimmed it is */
+      record("credit", { t: N.t, adv: adv, credit: c, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "credit"; lastBack = null;
+      u.c = c; u.stats = c; remember(u);
+      creditStats(c); afterCredit();
+    }
+    function skim(N, adv, dt, implied){
+      var from = P.top, c = fresh(run, from, N.top), u = snapFor(N, adv, dt, "skim", implied);
+      var skipped = kind === "w" ? c : (knownWordsIn(N.top - c, N.top - 1) || 0);
+      record("skim", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves, skimmed: skipped });
+      var origin = P.top;
+      setP(N); skimStreak++; pausedFlag = false; lastKind = "skim"; lastBack = null;
+      remember(u);
+      noteSkimmed(skipped, origin, N.top, N.t);
+      if (skimStreak >= Params.SKIM_STREAK_CUT){
+        closeRun("skim", N.t);
+        run = newRun(N.t); skimStreak = 0;
+      }
+    }
+    /* a move the reader did not make by reading — a search hit, a contents line, a note revealed
+       while the panel was up: neither the words it passed nor the dwell before it are reading */
+    function navStep(N, adv, dt){
+      record("nav", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, moves: moves, reason: "reveal" });
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "nav"; undo = null;
+    }
+    function pause(N, adv, dt, forward){
+      var implied = dt > 0 ? adv / dt * 60000 : 0;
+      if (forward && dt <= Params.HELD_MAX_MS && implied >= Params.FLOOR_WPM){
+        run.held.push({ top: N.top, prevTop: P.top, adv: adv, dt: dt, implied: implied });
+        record("held", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+        setP(N); skimStreak = 0; pausedFlag = true; lastKind = "held"; undo = null;
+        maybeAdmit(N);
+        return;
+      }
+      if (forward) statsNote(fresh(run, P.top, N.top));
+      record("pause", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+      closeRun("pause", N.t);
+      setP(N); run = newRun(N.t); skimStreak = 0; pausedFlag = false; lastKind = "pause";
+    }
+    /* three held dwells within a 2× band are slow reading, not three breaks: all of them are
+       credited — unless the run has a pace of its own that they are nowhere near, in which case
+       three interruptions in a row are still three interruptions */
+    function maybeAdmit(N){
+      var h = run.held;
+      if (h.length < Params.HELD_N) return;
+      var mx = -Infinity, mn = Infinity, rate = runRate(run);
+      h.slice(-Params.HELD_N).forEach(function(x){ mx = Math.max(mx, x.implied); mn = Math.min(mn, x.implied); });
+      if (mx / mn > Params.HELD_BAND || (rate > 0 && mn < rate / Params.HELD_BAND)){
+        var old = h.shift();
+        statsNote(fresh(run, old.prevTop, old.top));
+        return;
+      }
+      var total = 0;
+      h.forEach(function(x){
+        var c = fresh(run, x.prevTop, x.top);
+        if (kind === "w") run.w += c;
+        else { run.p += c; var kw = knownWordsIn(x.top - c, x.top - 1); if (kw === null) run.wordsKnown = false; else run.w += kw; }
+        run.ms += x.dt; run.n += 1; advance(run, x.prevTop, x.top); run.lastTop = x.top;
+        docFrontier = Math.max(docFrontier, x.top);
+        if (kind === "w"){ sess.words += c; sess.ms += x.dt; } else { sess.pages += c; sess.pms += x.dt; }
+        total += c;
+      });
+      run.held = []; run.slow = true; run.slowWpm = mn; pausedFlag = false; lastKind = "credit";
+      record("admit", { t: N.t, credit: total, V: R.V, moves: moves });
+      creditStats(total); afterCredit();
+    }
+    /* holds pending when a plausible step arrives: they were breaks after all. The run closes at
+       its credited state and a new one starts at the last held position */
+    function reopenAtHeld(){
+      var t = P.t;
+      closeRun("pause", t);
+      run = newRun(t);
+    }
+    /* a fast move a moment after a credited one is the rest of the same gesture: take that credit
+       back and judge the two together from where the reader was before it (two half-screen flicks
+       are one screen and reading; a flick out of a half-read window is a skim, not a 1 000-wpm read) */
+    function mergeBack(N){
+      var u = undo, tol, rate, lim, wide, partial;
+      if (!u || u.kind !== "credit" || u.run !== run || N.t - u.t > Params.MERGE_MS) return false;
+      wide = Math.max(u.R0.V, R.V, N.V);                /* the screen, as wide as it was seen around here */
+      tol = kind === "w" ? jumpTol(wide) : 1;
+      rate = u.ms > 0 && u.w > 0 ? u.w / u.ms * 60000 : 0;
+      lim = kind === "w" ? (rate > 0 ? Math.max(Params.MERGE_BAND * rate, Params.MERGE_FLOOR_WPM) : Params.SKIM_WPM / 2) : Infinity;
+      /* two motions that together uncover one screen are one gesture: the first uncovered only
+         part of it and the pair still lands within a screen of where the reader was reading */
+      partial = u.adv < Params.MERGE_PART * u.R0.V && N.top - u.P0.top - u.adv < Params.MERGE_PART * wide &&
+                N.top - u.P0.top <= wide + tol;
+      /* otherwise only a credit that was itself too fast for this run is taken back, once the
+         move after it shows what it was part of (a flick out of a half-read window) */
+      if (!partial && !(u.implied > lim)) return false;
+      if (!undoLast(partial ? wide : 0)) return false;
+      record("merge", { t: N.t, top: N.top, adv: N.top - u.P0.top, V: partial ? wide : u.R0.V });
+      classify(N);
+      return true;
+    }
+    /* the transition before this one stepped forward and this one comes straight back to where it
+       started: a peek. Its seconds are a hole and whatever it skimmed was not skimmed */
+    function peekReturn(N){
+      var u = undo;
+      if (!u || u.run !== run || (u.kind !== "credit" && u.kind !== "skim")) return false;
+      if (u.adv <= 0 || N.t - u.t > Params.RESUME_MS) return false;
+      return Math.abs(N.top - u.P0.top) <= (kind === "w" ? Params.STILL_WORDS : 0);
+    }
+    function step(N){
+      var adv = N.top - P.top, dt = dtOf(N), cap = maxDwell(firstMove || N.t);
+      if (burstReveal){ navStep(N, adv, dt); return; }
+      if (dt > cap){ pause(N, adv, dt, true); return; }
+      if (run.held.length) reopenAtHeld();
+      /* a nudge back does not restart the window: the seconds before it count towards how fast
+         the step after it was, or a screen finished right after a correction looks flicked past */
+      var span = dt, implied, fast;
+      if (lastBack && lastBack.run === run && N.t - lastBack.t <= Params.MERGE_MS) span += lastBack.dt;
+      implied = span > 0 ? adv / span * 60000 : Infinity;
+      if (kind === "w") fast = implied > Params.SKIM_WPM;
+      else {
+        var nonSparse = 0, known = 0;
+        for (var i = P.top; i < N.top; i++){ if (isSparse(i)) continue; nonSparse++; if (pageWords[i] !== undefined) known += pageWords[i]; }
+        fast = nonSparse > 0 && dt < Math.max(Params.MIN_PAGE_MS * nonSparse, known / Params.SKIM_WPM * 60000);
+      }
+      if (fast){
+        if (kind === "w" && adv < Params.SKIM_MIN_FRACTION * R.V){
+          record("defer", { t: N.t, adv: adv, dt: dt, blocked: blockedIn(P.t, N.t), V: R.V, implied: implied, moves: moves });
+          R = N;                                   /* the nudge merges into the next transition */
+          return;
+        }
+        if (mergeBack(N)) return;
+        skim(N, adv, dt, implied); return;
+      }
+      credit(N, adv, dt, implied);
+    }
+    function backSmall(N){
+      var adv = N.top - P.top, dt = dtOf(N), cap = maxDwell(firstMove || N.t), peek = peekReturn(N);
+      if (burstReveal){ navStep(N, adv, dt); return; }
+      if (!peek && dt > cap){ pause(N, adv, dt, false); return; }
+      if (run.held.length) reopenAtHeld();
+      var was = undo;
+      if (peek) dropSkim();
+      else { run.ms += dt; if (kind === "w") sess.ms += dt; else sess.pms += dt; }
+      run.n += 1;
+      lastBack = peek ? null : { t: N.t, dt: dt, run: run };
+      record("back", { t: N.t, adv: adv, dt: peek ? 0 : dt, blocked: blockedIn(P.t, N.t), V: R.V, moves: moves, reason: peek ? "peek" : undefined });
+      setP(N); skimStreak = 0; pausedFlag = false; lastKind = "back"; undo = null;
+      /* a peek judged a skim dropped the dwell before it along with its words: the reader is back
+         in that window, so those seconds are its own again and only the peek is a hole */
+      if (peek && was.kind === "skim" && was.P0.t < N.t){ P.t = was.P0.t; blocks.push({ a: was.t, b: N.t }); }
+      scheduleSave();
+    }
+    /* beyond the rested window: the run ends; a scroll-through skimmed the text in between, one
+       move is navigation. Then the resume rule, or a fresh run where the reader landed */
+    function jump(N, forward){
+      var nav = !forward || burstNav || moves < Params.MOVES_SKIM, skipped = 0, from = 0;
+      if (!nav && N.top <= docFrontier) nav = true;      /* back inside what was already read */
+      if (!nav){
+        from = Math.max(R.bottom + 1, docFrontier);
+        if (kind === "w") skipped = Math.max(0, N.top - from);
+        else {
+          skipped = knownWordsIn(from, N.top - 1);
+          /* the pages of a flip-through were never on screen at rest, so nobody asked for their
+             text: ask now, and count them when the answer arrives (§resolvePages) */
+          if (skipped === null){ skipped = 0; askPdfWords(from, N.top - 1); pendPages = { a: from, b: N.top - 1, origin: R.top, top: N.top, t: N.t, doc: state.pdfDoc }; }
+        }
+      }
+      record("jump", { t: N.t, adv: N.top - P.top, dt: dtOf(N), blocked: blockedIn(P.t, N.t), V: R.V, moves: moves, reason: nav ? "navigation" : "skimmed", skimmed: skipped });
+      var origin = R.top, closed = closeRun("jump", N.t);
+      setP(N); skimStreak = 0; pausedFlag = false;
+      if (skipped > 0) noteSkimmed(skipped, origin, N.top, N.t);
+      if (tryResume(N, closed)){ record("resume", { t: N.t, V: N.V, top: N.top }); lastKind = nav ? "resume" : "skimjump"; }
+      else { run = newRun(N.t); lastKind = nav ? "jump" : "skimjump"; }
+    }
+    function classify(N){
+      ageSkim(N);
+      var tol = kind === "w" ? jumpTol(R.V) : 1, reach = Math.max(R.V, N.V);
+      /* stillness, direction and distance are judged from the credit origin, not from the last
+         window: a reader whose every swipe moves four words would otherwise never leave "still",
+         and a nudge back after a deferred nudge forward is still forward of where reading began */
+      var still = kind === "w" ? Math.abs(N.top - P.top) <= Params.STILL_WORDS : N.top === P.top;
+      /* a relayout (zen, a resize, a flow switch, a text size) can put the page's first word later
+         than the old top, even changing the page number: the reader did not move, so nothing is
+         skimmed; the origin stays and the next real step credits the words from there. A move of
+         more than a fraction of the window is the reader scrolling, relayout or not */
+      if (still || (relaid && N.top > P.top && N.top <= R.bottom + tol)){
+        record("still", { t: N.t, adv: N.top - P.top, blocked: blockedIn(P.t, N.t), V: N.V, moves: moves, reason: still ? undefined : "relayout" });
+        R = N; return;
+      }
+      /* forward: the new top was on screen at rest, or the text between was never seen; backward:
+         the old top is on screen now (a page back, re-reading), or it is a jump */
+      if (N.top > P.top){
+        if (N.top > R.top + reach + tol) jump(N, true); else step(N);
+      } else {
+        if (P.top - N.top > (kind === "w" ? reach + tol : reach)) jump(N, false); else backSmall(N);
+      }
+    }
+    function settle(){
+      clearTimeout(settleTimer); settleTimer = null;
+      var now = Date.now();
+      if (!docOpen()) return;
+      if (!run){ if (!hard && !softActive()) tryAnchor(now, false); refreshPhase(now); return; }
+      if (hard){ moves = 0; firstMove = 0; pending = false; relaid = false; return; }
+      if (softActive()) return;                    /* evaluated when the overlay goes */
+      if (!pending && !unmeasurable) return;
+      var N = measure();
+      if (!N){
+        if (!failSince) failSince = now;
+        if (!unmeasurable && now - failSince >= Params.UNMEASURABLE_MS){ unmeasurable = true; moves = 0; firstMove = 0; pending = false; record("block", { t: now, reason: "unmeasurable" }); }
+        refreshPhase(now); return;
+      }
+      if (unmeasurable) record("unblock", { t: now, reason: "measurable" });
+      failSince = 0; unmeasurable = false;
+      N.t = lastChange || now;
+      pending = false;
+      classify(N);
+      moves = 0; firstMove = 0; burstNav = false; burstReveal = false; relaid = false;
+      refreshPhase(now);
+    }
+
+    /* ---- anchoring: the first rested window of a document, or after a hard blocker ---- */
+    function tryAnchor(now, force){
+      if (!docOpen() || state.opening) return false;
+      var id = Library.currentId();
+      if (!id || Library._debug().pending) return false;
+      if (state.mode === "doc"){ if (!ensureIndex()) return false; }
+      else if (!state.pdfDoc) return false;
+      if (hard || softActive()) return false;
+      if (!force && lastChange && now - lastChange < Params.SETTLE_MS) return false;
+      var N = measure();
+      if (!N) return false;
+      N.t = now;
+      kind = state.mode === "pdf" ? "p" : "w"; docKey = docKeyNow(); bookId = id;
+      var closed = justClosed, lc = lastClosed;
+      justClosed = null;
+      /* landing again on the window a long soft block interrupted (a hidden tab, a panel left
+         open): the minutes spent on this page before it are still this page's reading, and the
+         block itself is already excluded, so the run keeps the old credit origin's time */
+      var onOldPage = !!lc && lc.docKey === docKey && lc.by === "block" && lc.softBlock && lc.endTop !== null &&
+                      Math.abs(N.top - lc.endTop) <= (kind === "w" ? Params.STILL_WORDS : 0);
+      setP(N); skimStreak = 0; pausedFlag = false; moves = 0; firstMove = 0; pending = false; relaid = false; burstNav = false; burstReveal = false; unmeasurable = false; failSince = 0;
+      ageSkim(null); undo = null;
+      if (tryResume(N, closed)){ record("resume", { t: now, V: N.V, top: N.top }); lastKind = "resume"; }
+      else {
+        run = newRun(now);
+        if (onOldPage && lc.pt < now) P = { top: N.top, t: lc.pt };
+        record("anchor", { t: now, V: N.V, top: N.top }); lastKind = null;
+      }
+      /* read-aloud carried the reader past the window's top: those words were listened to, not
+         read, so the run starts owing nothing for them */
+      if (spokenTo !== null){
+        if (run && spokenTo > run.frontier && spokenTo <= N.bottom + (kind === "w" ? jumpTol(N.V) : 0)){
+          run.frontier = spokenTo; run.low = 0; P.t = now;
+        }
+        spokenTo = null;
+      }
+      refreshPhase(now);
+      return true;
+    }
+    /* the document under the detector is gone or replaced: close what was open, start over */
+    function leaveDocument(now){
+      if (run) closeRun("doc", now);
+      lastClosed = null; justClosed = null;
+      P = null; R = null; posKey = null; layoutKey = null; moves = 0; firstMove = 0; pending = false; lastChange = 0; burstNav = false; burstReveal = false; relaid = false;
+      skimStreak = 0; lastKind = null; pausedFlag = false; unmeasurable = false; failSince = 0;
+      undo = null; lastBack = null; pendSkim = null; pendPages = null; docFrontier = 0; spokenTo = null; hbVoice = null;
+      clearTimeout(settleTimer); settleTimer = null;
+      blocks = blocks.filter(function(x){ return x.b === null; });
+      docKey = null; bookId = null; hbFrac = null; hbPage = null;
+      save();
+    }
+    function goOff(now){ leaveDocument(now); seenKey = null; refreshPhase(now); }
+    function onFileOpened(now){ leaveDocument(now); seenKey = null; refreshPhase(now); }
+
+    function computePhase(){
+      if (!docOpen()) return "off";
+      if (blockerList.length || unmeasurable) return "blocked";
+      if (!run) return "anchoring";
+      if (pending && moves) return "moving";
+      if (pausedFlag || run.held.length) return "paused";
+      if (lastKind === "skim" || lastKind === "skimjump") return "skimming";
+      return "reading";
+    }
+    function refreshPhase(now){ var p = computePhase(); if (p !== phase){ phase = p; since = now; } }
+
+    /* ---- the heartbeat: one cheap check a second, no layout work at rest ---- */
+    var observed = {};
+    function attachObservers(){
+      if (!window.MutationObserver) return;
+      ["#dictCard", "#side", "#sheet", "#moreMenu", "#pop", "#tts", "#autoBar"].forEach(function(sel){
+        if (observed[sel]) return;
+        var e = $(sel);
+        if (!e) return;
+        observed[sel] = new MutationObserver(function(){ edge("class " + sel); });
+        observed[sel].observe(e, { attributes: true, attributeFilter: ["class"] });
+      });
+    }
+    function edge(reason){
+      var now = Date.now();
+      if (!docOpen()){ if (phase !== "off") goOff(now); return; }
+      poke();
+      updateBlockers(now, reason);
+      refreshPhase(now);
+    }
+    function heartbeat(){
+      var now = Date.now();
+      if (!docOpen()){ if (phase !== "off") goOff(now); return; }
+      attachObservers();
+      var dk = docKeyNow();
+      if (seenKey !== dk){ if (seenKey !== null) leaveDocument(now); seenKey = dk; }
+      poke();
+      updateBlockers(now, "heartbeat");
+      if (softOpen && run && now - softOpen.a >= Params.BLOCK_MAX_MS){ justClosed = closeRun("block", now); record("block", { t: now, reason: "long" }); }
+      ageSkim(null);
+      if (pendPages) resolvePages(now);
+      if (hard) hardCredit(now);
+      if (run && !hard && !softActive()){
+        if ((pending || unmeasurable) && now - lastChange >= Params.SETTLE_MS) settle();
+        if (run && P && now - P.t - blockedIn(P.t, now) > maxDwell(now)) pausedFlag = true;
+      }
+      if (!run && !hard && !softActive()) tryAnchor(now, false);
+      if (state.mode === "pdf") requestPdfWords();
+      refreshPhase(now);
+    }
+
+    /* ---- the estimator: a weighted median over recent runs, a fading prior, per book ---- */
+    var store = { runs: [], books: {} }, est = null, dirty = true, bookCache = {}, saveTimer = null;
+    function decay(t, now){ return Math.pow(0.5, Math.max(0, now - t) / DAY / Params.HALF_LIFE_DAYS); }
+    function rateOf(r){ return (r.k === "w" ? r.w : r.p) / r.ms * 60000; }
+    function weightOf(r, now){ return (r.k === "w" ? Math.min(r.w, Params.RUN_WEIGHT_CAP) : Math.min(r.p, Params.RUN_WEIGHT_CAP_P)) * (r.live ? 1 : decay(r.t, now)); }
+    /* piecewise-linear interpolation of the rates over their cumulative weights, at q */
+    function quantile(items, q){
+      var W = 0, acc = 0, pts;
+      items.forEach(function(x){ W += x.u; });
+      if (!W) return null;
+      pts = items.map(function(x){ var c = (acc + x.u / 2) / W; acc += x.u; return { c: c, r: x.r }; });
+      if (q <= pts[0].c) return pts[0].r;
+      if (q >= pts[pts.length - 1].c) return pts[pts.length - 1].r;
+      for (var i = 1; i < pts.length; i++){
+        if (q <= pts[i].c){ var a = pts[i - 1], b = pts[i]; return b.c === a.c ? b.r : a.r + (b.r - a.r) * (q - a.c) / (b.c - a.c); }
+      }
+      return pts[pts.length - 1].r;
+    }
+    function aggregate(runs, now){
+      var items = [];
+      runs.forEach(function(r){ var rate = rateOf(r), u = weightOf(r, now); if (r.ms > 0 && isFinite(rate) && u > 0) items.push({ r: rate, u: u }); });
+      items.sort(function(a, b){ return a.r - b.r; });
+      var W = 0; items.forEach(function(x){ W += x.u; });
+      var m = quantile(items, 0.5), s = null;
+      if (items.length >= 3 && m) s = (quantile(items, 0.75) - quantile(items, 0.25)) / m;
+      return { m: m, W: W, n: items.length, s: s };
+    }
+    function liveEntry(){
+      return run && run.qualified && qualifies(run) ? { b: run.b, t: Date.now(), w: run.w, ms: run.ms, p: run.p, n: run.n, k: run.k, live: true } : null;
+    }
+    function allRuns(){ var list = store.runs.slice(), l = liveEntry(); if (l) list.push(l); return list; }
+    function confidenceOf(runs, w, p, now, own){
+      var n = runs.length, M = 0, ms = 0, books = 0;
+      runs.forEach(function(r){ M += r.ms * (r.live ? 1 : decay(r.t, now)) / 60000; });
+      var A = 1 - Math.exp(-M / Params.CONF_M0), agg = w.n >= p.n ? w : p;
+      var C = agg.n >= 3 && agg.s !== null ? clamp(1 - agg.s / Params.CONF_SPREAD0, 0.3, 1) : 0.7;
+      var cap = n === 0 ? 0 : n === 1 ? 0.35 : n === 2 ? 0.6 : 1;
+      var value = Math.min(cap, A * (0.5 + 0.5 * C));
+      var label = n === 0 ? "not measured yet" : value < 0.2 ? "a first guess" : value < 0.5 ? "an early estimate" : value < 0.8 ? "measured" : "well measured";
+      if (own){ ms = own.ms; books = own.books; }
+      else {
+        var l = liveEntry();
+        Object.keys(store.books).forEach(function(id){ var b = store.books[id]; ms += b.ms; if (b.n >= 1) books++; });
+        if (l){ ms += l.ms; if (!store.books[l.b] || store.books[l.b].n < 1) books++; }
+      }
+      var text = n ? "measured over " + dur(ms) + " of reading in " + plural(books, "book", "books") + (label !== "measured" ? " · " + label : "")
+                   : "not measured yet, using a typical " + Params.PRIOR_WPM + " words per minute";
+      return { value: value, label: label, minutes: mins(ms), books: books, runs: n, text: text };
+    }
+    function compute(){
+      var now = Date.now(), runs = allRuns();
+      var w = aggregate(runs.filter(function(r){ return r.k === "w"; }), now), p = aggregate(runs.filter(function(r){ return r.k === "p"; }), now);
+      var G = (Params.PRIOR_W * Params.PRIOR_WPM + w.W * (w.m || 0)) / (Params.PRIOR_W + w.W);
+      var Gp = (Params.PRIOR_P * Params.PRIOR_PPM + p.W * (p.m || 0)) / (Params.PRIOR_P + p.W);
+      est = { G: G, Gp: Gp, runs: runs, conf: confidenceOf(runs, w, p, now, null), at: now };
+      bookCache = {}; dirty = false;
+      /* the old keys are still written for compatibility; nothing reads them back */
+      if (runs.length){ Store.set("ll_wpm", String(Math.round(G))); Store.set("ll_ppm", Gp.toFixed(2)); }
+      else { Store.remove("ll_wpm"); Store.remove("ll_ppm"); }
+    }
+    function ensure(){ if (dirty || !est || Date.now() - est.at > 3600000) compute(); }
+    function bookEst(id){
+      ensure();
+      if (bookCache[id]) return bookCache[id];
+      var now = est.at, runs = est.runs.filter(function(r){ return r.b === id; });
+      var w = aggregate(runs.filter(function(r){ return r.k === "w"; }), now), p = aggregate(runs.filter(function(r){ return r.k === "p"; }), now);
+      var B = w.W ? (Params.PRIOR_W_BOOK * est.G + w.W * w.m) / (Params.PRIOR_W_BOOK + w.W) : est.G;
+      var Bp = p.W ? (Params.PRIOR_P_BOOK * est.Gp + p.W * p.m) / (Params.PRIOR_P_BOOK + p.W) : est.Gp;
+      var agg = store.books[id], l = liveEntry(), ms = (agg ? agg.ms : 0) + (l && l.b === id ? l.ms : 0);
+      bookCache[id] = { B: B, Bp: Bp, runs: runs.length, ms: ms, conf: confidenceOf(runs, w, p, now, { ms: ms, books: runs.length ? 1 : 0 }) };
+      return bookCache[id];
+    }
+    function wpm(){ ensure(); return est.G; }
+    function ppm(){ ensure(); return est.Gp; }
+    function docWpm(){ var id = Library.currentId(); return id && docOpen() ? bookEst(id).B : wpm(); }
+    function docPpm(){ var id = Library.currentId(); return id && docOpen() ? bookEst(id).Bp : ppm(); }
+    function confidence(){ ensure(); return est.conf; }
+    function docConfidence(){ var id = Library.currentId(); return id && docOpen() ? bookEst(id).conf : confidence(); }
+
+    /* ---- persistence: the retained runs, the all-time totals per book, the live run ---- */
+    function validRun(r){
+      if (!r || typeof r !== "object" || typeof r.b !== "string" || !r.b || (r.k !== "w" && r.k !== "p")) return null;
+      var v = { b: r.b, t: num(r.t), w: num(r.w), ms: num(r.ms), p: num(r.p), n: Math.round(num(r.n)), k: r.k };
+      if (!v.ms || (v.k === "w" ? !v.w : !v.p)) return null;
+      return v;
+    }
+    function addAgg(books, e){
+      var b = books[e.b] || (books[e.b] = { w: 0, ms: 0, p: 0, n: 0, t: 0 });
+      b.w += e.w; b.ms += e.ms; b.p += e.p; b.n += 1; b.t = Math.max(b.t, e.t);
+    }
+    function retain(s, now){
+      var runs = s.runs.filter(function(r){ return now - r.t <= Params.MAX_AGE_DAYS * DAY; }), perBook = {}, n;
+      runs.sort(function(a, b){ return a.t - b.t; });
+      n = runs.length;
+      for (var i = n - 1; i >= 0; i--){
+        var r = runs[i], pb = perBook[r.b] = (perBook[r.b] || 0) + 1;
+        r.keep = (n - 1 - i) < Params.KEEP_RUNS || pb <= Params.KEEP_PER_BOOK;
+      }
+      runs = runs.filter(function(r){ var k = r.keep; delete r.keep; return k; });
+      while (runs.length > Params.MAX_ENTRIES) runs.shift();
+      s.runs = runs;
+      Object.keys(s.books).forEach(function(id){
+        var b = s.books[id];
+        if (!runs.some(function(r){ return r.b === id; }) && now - (b.t || 0) > Params.MAX_AGE_DAYS * DAY) delete s.books[id];
+      });
+    }
+    function load(){
+      var o = null, out = { runs: [], books: {} }, now = Date.now();
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
+      if (o && typeof o === "object"){
+        (Array.isArray(o.runs) ? o.runs : []).forEach(function(r){ var v = validRun(r); if (v) out.runs.push(v); });
+        Object.keys(o.books && typeof o.books === "object" ? o.books : {}).forEach(function(id){
+          var b = o.books[id];
+          if (b && typeof b === "object") out.books[id] = { w: num(b.w), ms: num(b.ms), p: num(b.p), n: Math.round(num(b.n)), t: num(b.t) };
+        });
+        /* a run that was live when the page went away: closed now, kept if it lasted */
+        if (o.live && typeof o.live === "object"){
+          var l = validRun({ b: o.live.b, k: o.live.k, t: num(o.live.t0) + num(o.live.ms), w: o.live.w, ms: o.live.ms, p: o.live.p, n: o.live.n });
+          if (l && qualifies(l)){ out.runs.push(l); addAgg(out.books, l); }
+        }
+      }
+      out.runs.sort(function(a, b){ return a.t - b.t; });
+      /* a seeded or older store without totals: rebuilt from what is retained */
+      out.runs.forEach(function(r){ if (!out.books[r.b]) out.runs.filter(function(x){ return x.b === r.b; }).forEach(function(x){ addAgg(out.books, x); }); });
+      retain(out, now);
+      return out;
+    }
+    function liveSnapshot(){
+      return run && run.n > 0 ? { b: run.b, k: run.k, t0: run.t0, w: Math.round(run.w), ms: Math.round(run.ms), p: run.p, n: run.n, wordsKnown: run.wordsKnown } : null;
+    }
+    function scheduleSave(){ if (!saveTimer) saveTimer = setTimeout(save, Params.SAVE_DEBOUNCE_MS); }
+    function save(){
+      clearTimeout(saveTimer); saveTimer = null;
+      var live = liveSnapshot();
+      if (!store.runs.length && !Object.keys(store.books).length && !live){ Store.remove(KEY); return; }
+      Store.set(KEY, JSON.stringify({ v: 1, runs: store.runs, books: store.books, live: live }));
+    }
+    function reset(){
+      var now = Date.now();
+      run = null; store = { runs: [], books: {} }; lastClosed = null; justClosed = null;
+      P = null; R = null; moves = 0; firstMove = 0; pending = false; relaid = false; lastChange = 0; posKey = null; skimStreak = 0; lastKind = null; pausedFlag = false;
+      undo = null; lastBack = null; pendSkim = null; pendPages = null; docFrontier = 0; spokenTo = null; hbVoice = null; burstReveal = false;
+      sess = { words: 0, ms: 0, pages: 0, pms: 0, skimmed: 0, listened: 0 };
+      blocks = blocks.filter(function(x){ return x.b === null; });
+      clearTimeout(saveTimer); saveTimer = null;
+      Store.remove(KEY); Store.remove("ll_wpm"); Store.remove("ll_ppm");
+      dirty = true; bookCache = {};
+      refreshPhase(now);
+    }
+
+    /* ---- what the rest of the app and the tests read ---- */
+    function runsOut(){ var out = store.runs.map(function(r){ return Object.assign({}, r); }), l = liveEntry(); if (l) out.push(l); return out; }
+    function stateOut(){
+      return {
+        phase: phase, since: since, blockers: blockerList.slice(),
+        window: R ? { top: R.top, bottom: R.bottom, V: R.V, page: R.page } : null,
+        run: run ? { words: run.w, ms: run.ms, n: run.n, pages: run.p, qualifies: qualifies(run), held: run.held.length, slow: run.slow, buffered: run.buffered } : null,
+        skimStreak: skimStreak, docKey: docKey, moves: moves, blockedMs: P ? blockedIn(P.t, Date.now()) : 0
+      };
+    }
+    function summary(){
+      ensure();
+      var id = Library.currentId(), doc = null;
+      if (id && docOpen()){ var be = bookEst(id); if (be.runs > 0) doc = { id: id, wpm: be.B, ppm: be.Bp, ms: be.ms, runs: be.runs }; }
+      return { wpm: est.G, ppm: est.Gp, docWpm: docWpm(), docPpm: docPpm(), confidence: est.conf, doc: doc, runs: store.runs.length,
+               live: run ? { words: run.w, ms: run.ms, n: run.n, pages: run.p, qualifies: qualifies(run) } : null,
+               words: sess.words, ms: sess.ms, pages: sess.pages, pms: sess.pms, skimmed: sess.skimmed, listened: sess.listened };
+    }
+    /* an edge from elsewhere in the app (a mode change, a bar): re-read the blockers now */
+    function noteBlock(reason){ edge(reason || "edge"); }
+
+    /* ---- wiring ---- */
+    store = load();
+    ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"].forEach(function(ev){ window.addEventListener(ev, noteInput, { passive: true, capture: true }); });
+    document.addEventListener("selectionchange", noteInput, { passive: true });
+    document.addEventListener("visibilitychange", function(){ edge("visibility"); if (document.visibilityState === "hidden") save(); });
+    window.addEventListener("pagehide", save);
+    window.addEventListener("blur", function(e){ if (e.target !== window) return; blurAt = Date.now(); });
+    window.addEventListener("focus", function(e){ if (e.target !== window) return; onFocus(Date.now()); edge("focus"); });
+    document.addEventListener("ll:fileopened", function(){ onFileOpened(Date.now()); });
+    setTimeout(attachObservers, 0);
+    setInterval(heartbeat, Params.HEARTBEAT_MS);
+
+    var debug = {
+      params: Params,
+      setParams: function(o){ Object.keys(o || {}).forEach(function(k){ if (k in Params) Params[k] = o[k]; }); dirty = true; },
+      transitions: function(){ return transitions.slice(); },
+      poke: poke, settle: settle, heartbeat: heartbeat, measure: measure,
+      anchorNow: function(){ var now = Date.now(); if (run){ run = null; } P = null; R = null; lastChange = 0; return tryAnchor(now, true); },
+      live: function(){ return run; }, lastClosed: function(){ return lastClosed; }, store: function(){ return store; },
+      blockers: function(){ return blockerList.slice(); }, pageWords: function(){ return Object.assign({}, pageWords); },
+      pendingSkim: function(){ return pendSkim && Object.assign({}, pendSkim); }, readFrontier: function(){ return docFrontier; },
+      origin: function(){ return P && { top: P.top, t: P.t }; },
+      index: index
+    };
+    Object.defineProperty(debug, "fragments", { get: function(){ return fragments; } });
+    Object.defineProperty(debug, "lastMeasureMs", { get: function(){ return lastMeasureMs; } });
+    Object.defineProperty(debug, "measurements", { get: function(){ return measurements; } });
+    Object.defineProperty(debug, "probeFallbacks", { get: function(){ return probeFallbacks; } });
+    window.llPace = { state: stateOut, runs: runsOut, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence,
+                      summary: summary, reset: reset, _debug: debug };
+    return { poke: poke, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence, summary: summary,
+             state: stateOut, runs: runsOut, docWords: docWords, reset: reset, flush: save, noteBlock: noteBlock };
   })();
 
   /* ============================================================
      Reading progress + time left, from your measured reading speed
      ============================================================ */
   var Progress = (function(){
-    var el = $("#progressInfo"), hideTimer = null;
-    var wpm = parseFloat(Store.get("ll_wpm") || "0") || 0;    /* words per minute (text) */
-    var ppm = parseFloat(Store.get("ll_ppm") || "0") || 0;    /* pages per minute (pdf) */
-    var PRIOR_WPM = 230, PRIOR_PPM = 0.5, sample = { words: 0, ms: 0, pages: 0, pms: 0 };
-    var docWords = 0, docLen = 0, lastFrac = null, lastT = 0, lastTick = 0, docKey = null;
+    var el = $("#progressInfo"), hideTimer = null, trailTimer = null;
+    var docWords = 0, docLen = 0, lastTick = 0, docKey = null;
     function countWords(){
       var t = $("#doc").textContent;
       docLen = t.length;
       docWords = (t.match(/\S+/g) || []).length;
     }
-    function currentWpm(){
-      /* blend a prior with what has been measured; measurements dominate after a few hundred words */
-      var measured = sample.ms > 20000 ? sample.words / (sample.ms / 60000) : null;
-      var base = wpm || PRIOR_WPM;
-      if (measured === null) return base;
-      var w = Math.min(1, sample.words / 1500);
-      return base * (1 - w) + measured * w;
+    /* the words of the open text: the pace detector's index once it is built, a plain count until then */
+    function words(){
+      var n = Pace.docWords();
+      if (n) return n;
+      if (!docWords || docLen !== Anchor.textLength()) countWords();
+      return docWords;
     }
-    function currentPpm(){
-      var measured = sample.pms > 20000 ? sample.pages / (sample.pms / 60000) : null;
-      var base = ppm || PRIOR_PPM;
-      if (measured === null) return base;
-      var w = Math.min(1, sample.pages / 15);
-      return base * (1 - w) + measured * w;
-    }
+    /* the speed comes from the pace detector: this book's measured pace, blended toward the
+       global estimate (and the prior) while the book has little of its own */
+    function currentWpm(){ return Pace.docWpm(); }
+    function currentPpm(){ return Pace.docPpm(); }
     function fmt(min){
       if (!isFinite(min) || min < 0) return "";
       if (min < 1) return "under a minute left";
@@ -3631,50 +6188,58 @@
       return h + " h" + (m ? " " + m + " min" : "") + " left";
     }
     function show(text){
+      /* in Pages flow the page-turn bar carries the readout; the pill is for Scroll flow, and
+         for a document (the start screen's scroll has nothing to report) */
+      if (state.mode !== "doc" && state.mode !== "pdf") return;
+      if (pagedActive()){ el.classList.remove("on"); return; }
       el.textContent = text; el.classList.add("on");
       clearTimeout(hideTimer);
       hideTimer = setTimeout(function(){ el.classList.remove("on"); }, 2600);
     }
+    /* every scroll and page turn: the pace detector sees the movement first (before the throttle,
+       so no gesture's time is lost), then the readout is drawn */
     function tick(){
+      Pace.poke("tick");
       if (state.mode !== "doc" && state.mode !== "pdf") return;
       var now = Date.now();
-      if (now - lastTick < 250) return;
+      if (now - lastTick < 250){
+        /* a fling is a burst of scroll events: draw once more when the throttle is up, so the
+           readout is never left at the position the burst started from */
+        clearTimeout(trailTimer);
+        trailTimer = setTimeout(tick, 250 - (now - lastTick));
+        return;
+      }
+      clearTimeout(trailTimer); trailTimer = null;
       lastTick = now;
       var key = (Library.currentId() || "") + ":" + state.mode;
-      if (key !== docKey){ docKey = key; lastFrac = null; if (state.mode === "doc") countWords(); }
+      if (key !== docKey){ docKey = key; docWords = 0; docLen = 0; }
       var frac = Math.max(0, Math.min(1, readFrac()));
       var text;
       if (state.mode === "doc"){
-        if (docLen !== $("#doc").textContent.length) countWords();
-        if (lastFrac !== null){
-          var dt = now - lastT, dw = (frac - lastFrac) * docWords;
-          /* count only steady forward reading: small steps, no long pauses */
-          if (dt > 0 && dt < 45000 && dw > 0 && dw < 400 && document.visibilityState === "visible"){ sample.words += dw; sample.ms += dt; Stats.noteWords(dw); }
-        }
-        var left = (1 - frac) * docWords / currentWpm();
-        text = Math.round(frac * 100) + "%" + (docWords > 80 ? " \u00B7 " + fmt(left) : "");
+        var n = words();
+        var left = (1 - frac) * n / currentWpm();
+        text = Math.round(frac * 100) + "%" + (n > 80 ? " \u00B7 " + fmt(left) : "");
       } else {
         var pages = state.pdfDoc ? state.pdfDoc.numPages : 1, page = Library.currentPdfPage();
-        if (lastFrac !== null){
-          var dt2 = now - lastT, dp = (frac - lastFrac) * (pages - 1);
-          if (dt2 > 0 && dt2 < 120000 && dp > 0 && dp < 3 && document.visibilityState === "visible"){ sample.pages += dp; sample.pms += dt2; Stats.notePages(dp); }
-        }
         var leftP = (pages - page) / currentPpm();
         text = "p. " + page + " / " + pages + (pages > 3 ? " \u00B7 " + fmt(leftP) : "");
       }
-      lastFrac = frac; lastT = now;
       show(text);
-      maybeStore();
     }
-    var storeTimer = null;
-    function maybeStore(){
-      clearTimeout(storeTimer);
-      storeTimer = setTimeout(function(){
-        if (sample.ms > 60000 && sample.words > 300){ wpm = currentWpm(); Store.set("ll_wpm", wpm.toFixed(0)); }
-        if (sample.pms > 60000 && sample.pages > 3){ ppm = currentPpm(); Store.set("ll_ppm", ppm.toFixed(2)); }
-      }, 1500);
+    /* the time left from here, worded for the page-turn bar ("18 min left"), or "" when the
+       document is too short to say */
+    function left(){
+      if (state.mode === "doc"){
+        var n = words();
+        return n > 80 ? fmt((1 - Math.max(0, Math.min(1, readFrac()))) * n / currentWpm()) : "";
+      }
+      if (state.mode === "pdf" && state.pdfDoc){
+        var pages = state.pdfDoc.numPages;
+        return pages > 3 ? fmt((pages - Library.currentPdfPage()) / currentPpm()) : "";
+      }
+      return "";
     }
-    return { tick: tick, wpm: currentWpm, ppm: currentPpm, sample: function(){ return sample; }, docWords: function(){ return docWords; } };
+    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, sample: function(){ return Pace.summary(); }, docWords: words };
   })();
 
   /* ============================================================
@@ -3695,28 +6260,34 @@
     function todayKey(){ return keyOf(new Date()); }
 
     /* ---- storage: one JSON record, saved at most every 5 s and when the page goes away ---- */
-    function fresh(){ return { v: 1, goal: 10, days: {}, books: {}, best: { streak: 0, day: "" }, notified: "" }; }
+    function fresh(){ return { v: 1, goal: 10, goals: { booksPerYear: 12, pagesPerYear: 0 }, days: {}, books: {}, best: { streak: 0, day: "" }, notified: "" }; }
     function num(x){ return typeof x === "number" && isFinite(x) && x > 0 ? x : 0; }
+    function clamp(x, hi){ return Math.max(0, Math.min(hi, Math.round(num(x)))); }
     function load(){
       var o = null, out = fresh();
       try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
       if (!o || typeof o !== "object") return out;
       if (GOALS.indexOf(o.goal) >= 0) out.goal = o.goal;
+      /* yearly goals: 0 turns one off, so an explicit record replaces the suggestion whole */
+      if (o.goals && typeof o.goals === "object") out.goals = { booksPerYear: clamp(o.goals.booksPerYear, 999), pagesPerYear: clamp(o.goals.pagesPerYear, 99999) };
       Object.keys(o.days && typeof o.days === "object" ? o.days : {}).forEach(function(k){
         var d = o.days[k];
         if (!/^\d{4}-\d\d-\d\d$/.test(k) || !d || typeof d !== "object") return;
-        out.days[k] = { ms: num(d.ms), words: num(d.words), pages: num(d.pages), docs: Array.isArray(d.docs) ? d.docs.filter(function(x){ return typeof x === "string"; }) : [] };
+        out.days[k] = { ms: num(d.ms), words: num(d.words), pages: num(d.pages), skimmed: num(d.skimmed), listened: num(d.listened),
+                        docs: Array.isArray(d.docs) ? d.docs.filter(function(x){ return typeof x === "string"; }) : [] };
+        if (num(d.wpm)) out.days[k].wpm = Math.round(num(d.wpm));
       });
       Object.keys(o.books && typeof o.books === "object" ? o.books : {}).forEach(function(k){
         var b = o.books[k];
-        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), opened: Math.round(num(b.opened)), finished: !!b.finished };
+        if (b && typeof b === "object") out.books[k] = { ms: num(b.ms), words: num(b.words), pages: num(b.pages), skimmed: num(b.skimmed), listened: num(b.listened),
+                                                        opened: Math.round(num(b.opened)), finished: !!b.finished, finishedAt: Math.round(num(b.finishedAt)) };
       });
       if (o.best && typeof o.best === "object") out.best = { streak: Math.round(num(o.best.streak)), day: typeof o.best.day === "string" ? o.best.day : "" };
       if (typeof o.notified === "string") out.notified = o.notified;
       return out;
     }
     /* words and pages arrive in fractions; they are rounded on the way out, never in memory */
-    function tidy(k, v){ return k === "words" ? Math.round(v) : k === "pages" ? Math.round(v * 10) / 10 : v; }
+    function tidy(k, v){ return k === "words" || k === "skimmed" || k === "listened" ? Math.round(v) : k === "pages" ? Math.round(v * 10) / 10 : v; }
     function save(){
       clearTimeout(saveTimer); saveTimer = null;
       if (!dirty) return;
@@ -3730,8 +6301,8 @@
     window.addEventListener("pagehide", save);
 
     /* ---- records ---- */
-    function day(key){ return data.days[key] || (data.days[key] = { ms: 0, words: 0, pages: 0, docs: [] }); }
-    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, opened: 0, finished: false }); }
+    function day(key){ return data.days[key] || (data.days[key] = { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0, docs: [] }); }
+    function book(id){ return data.books[id] || (data.books[id] = { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0, opened: 0, finished: false, finishedAt: 0 }); }
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
     /* the open document belongs to today; an opening is counted once per open (the id arrives a moment after the file) */
     function noteDoc(){
@@ -3743,10 +6314,23 @@
       if (id !== docKey){ docKey = id; b.opened++; touch(); }
       return b;
     }
-    function noteFinished(b){ if (b && !b.finished && readFrac() >= 0.98){ b.finished = true; touch(); } }
-    /* forward reading, as Progress measures it */
-    function noteWords(dw){ var b = noteDoc(); if (!b) return; day(todayKey()).words += dw; b.words += dw; lastActive = Date.now(); noteFinished(b); touch(); }
-    function notePages(dp){ var b = noteDoc(); if (!b) return; day(todayKey()).pages += dp; b.pages += dp; lastActive = Date.now(); noteFinished(b); touch(); }
+    function noteFinished(b){ if (b && !b.finished && readFrac() >= 0.98){ b.finished = true; b.finishedAt = Date.now(); touch(); } }
+    /* forward reading, as the pace detector credits it (and auto-scroll's advances) */
+    function noteWords(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).words += dw; b.words += dw; lastActive = Date.now(); noteFinished(b); touch(); }
+    function notePages(dp){ var b = noteDoc(); if (!b || !(dp > 0)) return; day(todayKey()).pages += dp; b.pages += dp; lastActive = Date.now(); noteFinished(b); touch(); }
+    /* words the detector saw pass by too fast to be read, and words read aloud: counted apart,
+       and no sign of the reader's own activity */
+    function noteSkimmed(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).skimmed += dw; b.skimmed += dw; touch(); }
+    function noteListened(dw){ var b = noteDoc(); if (!b || !(dw > 0)) return; day(todayKey()).listened += dw; b.listened += dw; touch(); }
+    /* the pace detector takes a note back when the seconds that followed showed what the movement
+       really was (a peek that came home, half a gesture judged on its own): the same counters, the
+       same day and book, never below zero */
+    function unnote(what, n){
+      var b = noteDoc(), t = day(todayKey());
+      if (!b || !(n > 0) || !t.hasOwnProperty(what)) return;
+      t[what] = Math.max(0, t[what] - n); b[what] = Math.max(0, b[what] - n);
+      touch();
+    }
 
     /* ---- goal and streak ---- */
     function met(key){ var d = data.days[key]; return !!d && d.ms >= data.goal * 60000; }
@@ -3780,6 +6364,19 @@
     if (window.MutationObserver) new MutationObserver(active).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
     document.addEventListener("ll:fileopened", function(){ docKey = null; active(); renderWidget(); });
     function busy(){ return Speak.isPlaying() || (Auto.isOn() && !Auto.isPaused()); }
+    /* ---- a day's reading speed, kept as it is earned: only while both the words and the time
+       are still growing, and only once the day holds enough reading to mean anything ---- */
+    var paceDay = "", paceWords = 0, paceMs = 0;
+    function notePace(){
+      var k = todayKey(), d = data.days[k];
+      if (!d) return;
+      if (paceDay !== k){ paceDay = k; paceWords = 0; paceMs = 0; }
+      if (d.ms >= 5 * 60000 && d.words > paceWords && d.ms > paceMs){
+        d.wpm = Math.round(d.words / (d.ms / 60000));
+        touch();
+      }
+      paceWords = d.words; paceMs = d.ms;
+    }
     function tick(){
       var now = Date.now();
       if (docOpen() && document.visibilityState === "visible" && (busy() || now - lastActive <= IDLE)){
@@ -3787,6 +6384,7 @@
         day(todayKey()).ms += TICK;
         if (b){ b.ms += TICK; noteFinished(b); }
         touch();
+        notePace();
         checkGoal();
       }
       renderWidget();
@@ -3797,6 +6395,7 @@
     function onMode(mode){
       if (mode === "doc" || mode === "pdf"){ active(); if (!noteDoc()) setTimeout(noteDoc, 600); }
       else docKey = null;
+      Pace.noteBlock("mode");
       renderWidget();
     }
 
@@ -3810,6 +6409,103 @@
     function weekStart(key){ return addDays(key, -((dateOf(key).getDay() + 6) % 7)); }
     function sum(from, n){ var ms = 0; for (var i = 0; i < n; i++){ var d = data.days[addDays(from, i)]; if (d) ms += d.ms; } return ms; }
     function hasReading(){ return Object.keys(data.days).some(function(k){ var d = data.days[k]; return d.ms > 0 || d.words > 0 || d.pages > 0; }); }
+    /* ---- how long a book still has to run ----
+       The minutes come from the reader's measured pace (Progress), the "evenings" from how long
+       an evening's reading usually is: the average of the days actually read in the last fortnight. */
+    function sittingMinutes(n){
+      var k = todayKey(), total = 0, days = 0;
+      for (var i = 0; i < n; i++){
+        var d = data.days[addDays(k, -i)];
+        if (d && d.ms > 0){ total += d.ms; days++; }
+      }
+      return days ? total / days / 60000 : 0;
+    }
+    /* ---- the speed trend: one average per week over the days that recorded a speed ---- */
+    function weekPace(start){
+      var sum = 0, n = 0;
+      for (var i = 0; i < 7; i++){
+        var d = data.days[addDays(start, i)];
+        if (d && d.wpm > 0){ sum += d.wpm; n++; }
+      }
+      return n ? sum / n : null;
+    }
+    function paceWeeks(n){
+      var ws = weekStart(todayKey()), out = [];
+      for (var i = n - 1; i >= 0; i--) out.push(weekPace(addDays(ws, -7 * i)));
+      return out;
+    }
+    function mean(a){ return a.length ? a.reduce(function(x, y){ return x + y; }, 0) / a.length : null; }
+    function live(a){ return a.filter(function(v){ return v !== null; }); }
+    /* a polyline of the weeks that have a speed; the label carries the range for a screen reader */
+    function spark(weeks){
+      var have = live(weeks);
+      if (have.length < 3) return "";        /* the same threshold the trend line uses */
+      var lo = Math.min.apply(null, have), hi = Math.max.apply(null, have), span = Math.max(1, hi - lo), pts = [];
+      weeks.forEach(function(v, i){
+        if (v === null) return;
+        var x = (i / (weeks.length - 1)) * 100, y = 26 - ((v - lo) / span) * 22;
+        pts.push(x.toFixed(1) + "," + y.toFixed(1));
+      });
+      var label = "Reading speed over " + weeks.length + " weeks: " + Math.round(lo) + " to " + Math.round(hi) + " words per minute";
+      return '<svg class="st-spark" viewBox="0 0 100 28" preserveAspectRatio="none" role="img" aria-label="' + label + '">' +
+        '<polyline points="' + pts.join(" ") + '" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+        'stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
+    }
+    /* one sentence about where the speed is going */
+    function paceLine(weeks){
+      var have = live(weeks);
+      if (have.length < 3) return "Not enough reading yet to see a trend";
+      var latest = Math.round(have[have.length - 1]);
+      var last = mean(live(weeks.slice(-4))), before = mean(live(weeks.slice(-8, -4)));
+      if (last === null || before === null || before <= 0) return "Steady at about " + latest + " words per minute";
+      var pct = Math.round((last - before) / before * 100);
+      if (Math.abs(pct) < 5) return "Steady at about " + latest + " words per minute";
+      return "Speed is " + (pct > 0 ? "up " : "down ") + Math.abs(pct) + " % on last month";
+    }
+
+    /* ---- this year ---- */
+    /* older records carry no finishing date; the position's last update says when it was read */
+    function finishedThisYear(){
+      var y = new Date().getFullYear(), n = 0;
+      Object.keys(data.books).forEach(function(id){
+        var b = data.books[id];
+        if (!b.finished) return;
+        var t = b.finishedAt;
+        if (!t){ var p = Library.positionFor(id); t = (p && p.updated) || 0; }
+        if (t && new Date(t).getFullYear() === y) n++;
+      });
+      return n;
+    }
+    /* pages read: a PDF's are counted, a text document's are estimated at 275 words to the page */
+    function pagesThisYear(){
+      var y = String(new Date().getFullYear()), pages = 0;
+      Object.keys(data.days).forEach(function(k){
+        if (k.slice(0, 4) !== y) return;
+        var d = data.days[k];
+        pages += d.pages + d.words / 275;
+      });
+      return pages;
+    }
+    /* a library record and its saved position -> "about 2 h 10 min left · ≈ 4 more evenings" */
+    function forecast(rec, pos){
+      if (!pos) return "";
+      var min = null;
+      if (pos.mode === "pdf" || pos.pdfPages){
+        var pages = pos.pdfPages || 0, page = Math.min(pos.pdfPage || 1, pages), ppm = Progress.ppm();
+        if (pages > 3 && ppm > 0) min = (pages - page) / ppm;
+      } else {
+        var words = (pos.total || 0) / 6, wpm = Progress.wpm();
+        if (words > 80 && wpm > 0) min = words * (1 - Math.max(0, Math.min(1, pos.frac || 0))) / wpm;
+      }
+      if (min === null || !isFinite(min) || min < 1) return "";
+      var out = "about " + dur(Math.round(min) * 60000) + " left";
+      var avg = sittingMinutes(14);
+      if (avg > 0){
+        var e = Math.max(1, Math.round(min / avg));
+        out += " · ≈ " + e + (e === 1 ? " more evening" : " more evenings");
+      }
+      return out;
+    }
     /* a row of lamp dots, one per day: lit when the goal was met, half-lit when there was some reading, today outlined */
     function dots(n, decorative){
       var k = todayKey(), h = '<span class="st-days"' + (decorative ? ' aria-hidden="true"' : '') + '>';
@@ -3830,6 +6526,7 @@
         if (s) parts.push(s + "-day streak");
         parts.push(mins(t ? t.ms : 0) + " min today");
         parts.push("goal " + data.goal + " min");
+        if (data.goals.booksPerYear) parts.push(finishedThisYear() + " of " + data.goals.booksPerYear + " books this year");
         html = '<button type="button" class="st-widget" title="Reading stats"><span>' + parts.join(" · ") + '</span>' + dots(7, true) + '</button>';
       }
       widget.classList.toggle("show", on);
@@ -3838,43 +6535,99 @@
     if (widget) widget.addEventListener("click", function(e){ if (e.target.closest(".st-widget")) openPanel(); });
 
     /* ---- panel ---- */
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     function row(k, v){ return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
+    /* one yearly goal: what has been done, a bar when a goal is set, and the goal itself */
+    var YG = { books: { field: "booksPerYear", step: 1, max: 999, one: "book", many: "books" },
+               pages: { field: "pagesPerYear", step: 50, max: 99999, one: "page", many: "pages" } };
+    function yearRow(label, value, key){
+      var y = YG[key], goal = data.goals[y.field], pct = goal ? Math.min(100, Math.round(value / goal * 100)) : 0;
+      return '<div class="st-year"><div class="st-year-head"><span>' + label + '</span><span class="st-year-v">' +
+        (goal ? count(value) + " of " + count(goal) : plural(Math.round(value), y.one, y.many)) + '</span></div>' +
+        (goal ? '<div class="st-pbar" role="img" aria-label="' + label + ': ' + count(value) + ' of ' + count(goal) + '"><i style="width:' + pct + '%"></i></div>' : '') +
+        '<div class="st-year-goal"><button type="button" data-yg="' + key + '" data-d="-1" aria-label="Lower the yearly ' + y.one + ' goal">−</button>' +
+        '<input type="number" class="st-yg-in" id="yg-' + key + '" min="0" max="' + y.max + '" step="' + y.step + '" value="' + goal +
+        '" aria-label="' + y.many.charAt(0).toUpperCase() + y.many.slice(1) + ' a year — zero for no goal">' +
+        '<button type="button" data-yg="' + key + '" data-d="1" aria-label="Raise the yearly ' + y.one + ' goal">+</button>' +
+        '<span class="st-year-hint">' + (goal ? "a year" : "no goal") + '</span></div></div>';
+    }
+    function setYearGoal(key, v){
+      var y = YG[key];
+      if (!y) return;
+      v = Math.max(0, Math.min(y.max, Math.round(v) || 0));
+      if (data.goals[y.field] === v) return;
+      data.goals[y.field] = v; dirty = true;
+      save(); renderWidget();
+    }
     function renderPanel(body, foot){
-      var k = todayKey(), t = data.days[k] || { ms: 0, words: 0, pages: 0 }, goalMs = data.goal * 60000, done = t.ms >= goalMs;
+      var k = todayKey(), t = data.days[k] || { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0 }, goalMs = data.goal * 60000, done = t.ms >= goalMs;
       var s = streak(), left = Math.max(0, Math.ceil((goalMs - t.ms) / 60000)), h = "";
       /* today */
       var also = [plural(Math.round(t.words), "word", "words")];
       if (t.pages >= 1) also.push(plural(Math.round(t.pages), "page", "pages"));
-      h += '<section class="st-sec"><div class="label">Today</div><div class="st-today">' +
+      if ((t.skimmed || 0) >= 1) also.push(count(t.skimmed) + " skimmed");
+      h += '<section class="st-sec"><div class="label sec">Today</div><div class="st-today">' +
         '<div class="st-ring" style="--p:' + Math.min(100, Math.round(t.ms / goalMs * 100)) + '%" aria-hidden="true"></div>' +
         '<div><div class="st-big">' + mins(t.ms) + '<span> of ' + data.goal + ' min</span></div>' +
         '<div class="st-sub">' + (done ? "Goal reached" : plural(left, "minute", "minutes") + " to go") + ' · ' + also.join(" · ") + '</div></div></div></section>';
       /* streak */
-      h += '<section class="st-sec"><div class="label">Streak</div>' + dots(14) +
+      h += '<section class="st-sec"><div class="label sec">Streak</div>' + dots(14) +
         '<div class="st-line">' + (s ? s + "-day streak" : "No streak yet") + (data.best.streak ? ' · best ' + plural(data.best.streak, "day", "days") : '') + '</div>' +
         (done ? '' : '<div class="st-hint">Read ' + plural(left, "more minute", "more minutes") + ' today to ' + (s ? "keep it" : "start one") + '.</div>') + '</section>';
       /* the last four weeks, a bar per day */
       var max = data.goal, keys = [];
       for (var i = 27; i >= 0; i--){ var kk = addDays(k, -i); keys.push(kk); if (data.days[kk]) max = Math.max(max, data.days[kk].ms / 60000); }
       var ws = weekStart(k);
-      h += '<section class="st-sec"><div class="label">Last 4 weeks</div><div class="st-chart">' +
+      h += '<section class="st-sec"><div class="label sec">Last 4 weeks</div><div class="st-chart">' +
         '<div class="st-goal" style="bottom:' + (data.goal / max * 100).toFixed(1) + '%"></div>' +
         keys.map(function(key){
           var m = data.days[key] ? data.days[key].ms / 60000 : 0, pct = m > 0 ? Math.max(3, m / max * 100) : 0;
           return '<div class="st-bar' + (met(key) ? ' met' : '') + '" style="height:' + pct.toFixed(1) + '%" role="img" aria-label="' + dayTitle(key) + '"></div>';
         }).join("") + '</div>' +
         '<div class="st-line">This week ' + dur(sum(ws, 7)) + ' · last week ' + dur(sum(addDays(ws, -7), 7)) + '</div></section>';
-      /* all time */
-      var all = { ms: 0, words: 0, pages: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
-      dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; });
+      /* reading speed: twelve weeks of it, and a word about where it is going */
+      var weeks = paceWeeks(12), latest = live(weeks);
+      h += '<section class="st-sec"><div class="label sec">Reading speed</div>' +
+        (latest.length ? '<div class="st-speed">' + spark(weeks) +
+          '<div class="st-speed-n">' + Math.round(latest[latest.length - 1]) + '<span> wpm</span></div></div>' : '') +
+        '<div class="st-line">' + paceLine(weeks) + '</div></section>';
+      /* this year, against the goals the reader set */
+      var yb = finishedThisYear(), yp = Math.round(pagesThisYear());
+      h += '<section class="st-sec"><div class="label sec">This year</div>' +
+        yearRow("Books finished", yb, "books") + yearRow("Pages read", yp, "pages") + '</section>';
+      /* the books in the library, most recently opened first, with what is left of each */
+      var recent = [];
+      try { recent = Library.books().slice(0, 5); } catch(_){}
+      if (recent.length){
+        h += '<section class="st-sec"><div class="label sec">Books</div>';
+        recent.forEach(function(r){
+          var rb = data.books[r.id], pos = Library.positionFor(r.id), pct = pos ? pos.pct : 0, fc = forecast(r, pos);
+          h += '<div class="st-book"><div class="st-book-n">' + esc(r.title || r.name) + '</div>' +
+            '<div class="st-book-m"><span class="st-pbar" aria-hidden="true"><i style="width:' + pct + '%"></i></span>' +
+            '<span>' + pct + '% · ' + dur(rb ? rb.ms : 0) + ' read</span></div>' +
+            (fc ? '<div class="st-book-f">' + esc(fc) + '</div>' : '') + '</div>';
+        });
+        h += '</section>';
+      }
+      /* all time, with the measured pace: the estimate over every book, this book's own, and how
+         much reading the numbers rest on */
+      var all = { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
+      dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; all.skimmed += d.skimmed || 0; all.listened += d.listened || 0; });
       var finished = ids.filter(function(id){ return data.books[id].finished; }).length, first = dayKeys.length ? dateOf(dayKeys[0]) : null;
-      h += '<section class="st-sec"><div class="label">All time</div><dl class="st-grid">' +
+      var pace = Pace.summary(), thisDoc = "";
+      if (pace.doc && docOpen()){
+        thisDoc = state.mode === "pdf" ? row("This document", pace.doc.ppm.toFixed(1) + " pages per minute over " + dur(pace.doc.ms))
+                                       : row("This document", Math.round(pace.doc.wpm) + " words per minute over " + dur(pace.doc.ms));
+      }
+      h += '<section class="st-sec"><div class="label sec">All time</div><dl class="st-grid">' +
         row("Time read", dur(all.ms)) + row("Words", count(all.words)) + row("Pages", count(all.pages)) +
+        (all.skimmed >= 1 ? row("Skimmed", count(all.skimmed)) : "") + (all.listened >= 1 ? row("Listened", count(all.listened)) : "") +
         row("Documents opened", count(ids.length)) + row("Books finished", count(finished)) +
-        row("Average speed", Math.round(Progress.wpm()) + " words per minute") +
-        row("First day recorded", first ? first.getDate() + " " + MO[first.getMonth()] + " " + first.getFullYear() : "—") + '</dl></section>';
+        row("Average speed", Math.round(Pace.wpm()) + " words per minute") + thisDoc +
+        row("First day recorded", first ? first.getDate() + " " + MO[first.getMonth()] + " " + first.getFullYear() : "—") + '</dl>' +
+        '<div class="st-hint">' + pace.confidence.text + '</div></section>';
       /* goal */
-      h += '<section class="st-sec"><div class="label">Daily goal</div><div class="chips st-goals" role="group" aria-label="Daily goal in minutes">' +
+      h += '<section class="st-sec"><div class="label sec">Daily goal</div><div class="chips st-goals" role="group" aria-label="Daily goal in minutes">' +
         GOALS.map(function(g){ return '<button type="button" class="chip' + (g === data.goal ? ' on' : '') + '" data-goal="' + g + '" aria-pressed="' + (g === data.goal) + '" aria-label="' + plural(g, "minute", "minutes") + ' a day">' + g + '</button>'; }).join("") +
         '</div><div class="hint">Minutes of reading a day. A day counts toward the streak once the goal is met.</div></section>';
       body.innerHTML = h;
@@ -3884,7 +6637,13 @@
     function refreshPanel(){
       if (!Side.is("stats")) return;
       var body = Side.body, top = body.scrollTop, a = document.activeElement, sel = null;
-      if (a && (body.contains(a) || Side.foot.contains(a))) sel = a.dataset.goal ? '[data-goal="' + a.dataset.goal + '"]' : a.dataset.st ? '[data-st="' + a.dataset.st + '"]' : null;
+      /* a goal being typed is not pulled out from under the reader by the 15-second tick */
+      if (a && a.classList && a.classList.contains("st-yg-in") && body.contains(a)) return;
+      if (a && (body.contains(a) || Side.foot.contains(a))){
+        sel = a.dataset.goal ? '[data-goal="' + a.dataset.goal + '"]'
+            : a.dataset.st ? '[data-st="' + a.dataset.st + '"]'
+            : a.dataset.yg ? '[data-yg="' + a.dataset.yg + '"][data-d="' + a.dataset.d + '"]' : null;
+      }
       Side.refresh("stats", renderPanel);
       body.scrollTop = top;
       var again = sel && (body.querySelector(sel) || Side.foot.querySelector(sel));
@@ -3902,30 +6661,215 @@
       setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
     }
     function exportJson(){
-      var out = { app: "Lamplight", exported: new Date().toISOString(), goal: data.goal, streak: streak(), best: data.best, days: data.days, books: data.books };
+      var out = { app: "Lamplight", exported: new Date().toISOString(), goal: data.goal, streak: streak(), best: data.best, days: data.days, books: data.books, pace: { runs: Pace.runs() } };
       download("lamplight-stats.json", JSON.stringify(out, tidy, 2), "application/json");
     }
-    function reset(){
-      if (!confirm("Clear all reading stats from this device? This can’t be undone.")) return;
+    /* quiet: the caller has already asked (the Storage panel's "Clear everything") */
+    function reset(quiet){
+      if (!quiet && !confirm("Clear all reading stats from this device? This can’t be undone.")) return false;
       data = fresh(); docKey = null; dirty = true;
+      Pace.reset();
       save(); refreshPanel(); renderWidget();
-      Marks.toast("Reading stats cleared");
+      if (!quiet) Marks.toast("Reading stats cleared");
+      return true;
     }
     Side.body.addEventListener("click", function(e){
       if (!Side.is("stats")) return;
-      var b = e.target.closest("button[data-goal]"); if (b) setGoal(+b.dataset.goal);
+      var b = e.target.closest("button[data-goal]");
+      if (b){ setGoal(+b.dataset.goal); return; }
+      var y = e.target.closest("button[data-yg]");
+      if (y){ setYearGoal(y.dataset.yg, data.goals[YG[y.dataset.yg].field] + (+y.dataset.d) * YG[y.dataset.yg].step); refreshPanel(); }
+    });
+    Side.body.addEventListener("change", function(e){
+      if (!Side.is("stats") || !e.target.classList || !e.target.classList.contains("st-yg-in")) return;
+      setYearGoal(e.target.id === "yg-books" ? "books" : "pages", +e.target.value);
+      refreshPanel();
     });
     Side.foot.addEventListener("click", function(e){
       if (!Side.is("stats")) return;
       var b = e.target.closest("button[data-st]"); if (!b) return;
       if (b.dataset.st === "export") exportJson(); else reset();
     });
-    Menu.add({ order: 61, label: "Reading stats", key: "G", run: openPanel });
+    Menu.add({ order: 61, group: "app", icon: ICONS.chart, label: "Reading stats", key: "G", run: openPanel });
 
-    function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); return o; }
+    function snapshot(){ var o = JSON.parse(JSON.stringify(data, tidy)); o.streak = streak(); o.today = todayKey(); o.pace = Pace.summary(); return o; }
     /* for tests and other scripts */
-    window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save };
-    return { noteWords: noteWords, notePages: notePages, onMode: onMode, openPanel: openPanel, snapshot: snapshot };
+    window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save,
+                       forecast: forecast, reset: reset, setYearGoal: setYearGoal };
+    return { noteWords: noteWords, notePages: notePages, noteSkimmed: noteSkimmed, noteListened: noteListened, unnote: unnote,
+             onMode: onMode, openPanel: openPanel, snapshot: snapshot, forecast: forecast, reset: reset };
+  })();
+
+  /* ============================================================
+     Storage — what Lamplight is keeping on this device, and how to let it go.
+     Nothing here leaves the device; the panel only counts and clears.
+     ============================================================ */
+  var Storage = (function(){
+    var measured = null, cache = null, cacheState = "idle";
+
+    function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function size(n){
+      if (!(n > 0)) return "0 KB";
+      if (n < 1024) return n + " B";
+      if (n < 1048576) return Math.round(n / 1024) + " KB";
+      if (n < 1073741824) return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
+      return (n / 1073741824).toFixed(1) + " GB";
+    }
+    function plural(n, one, many){ return n + " " + (n === 1 ? one : many); }
+    function countOf(store){ return Library.tx(store, "readonly", function(st){ return st.count(); }).catch(function(){ return 0; }); }
+
+    /* ---- the count ---- */
+    function measure(){
+      var list = Library.books();
+      var o = { books: list.length, bookBytes: 0, finished: 0, positions: 0, marks: 0,
+                trDocs: 0, trWords: 0, trBytes: 0,
+                stats: (Store.get("ll_stats") || "").length, statDays: 0,
+                themes: (state.customs || []).length, usage: null, quota: null, persisted: null };
+      list.forEach(function(b){
+        o.bookBytes += (b.blob && b.blob.size) || b.size || 0;
+        var p = Library.positionFor(b.id);
+        if (p && p.pct >= 98) o.finished++;
+      });
+      try { o.statDays = Object.keys(Stats.snapshot().days).length; } catch(_){}
+      var jobs = [
+        countOf("positions").then(function(n){ o.positions = n; }),
+        countOf("marks").then(function(n){ o.marks = n; }),
+        Library.tx("translations", "readonly", function(st){ return st.getAll(); }).then(function(rows){
+          (rows || []).forEach(function(r){
+            /* a document's blocks are one record; single words and sentences are keyed "s|…" */
+            if (String(r.key || "").indexOf("s|") === 0) o.trWords++; else o.trDocs++;
+            try { o.trBytes += JSON.stringify(r).length; } catch(_){}
+          });
+        }).catch(function(){})
+      ];
+      if (navigator.storage && navigator.storage.estimate)
+        jobs.push(navigator.storage.estimate().then(function(e){ o.usage = e.usage; o.quota = e.quota; }).catch(function(){}));
+      if (navigator.storage && navigator.storage.persisted)
+        jobs.push(navigator.storage.persisted().then(function(p){ o.persisted = !!p; }).catch(function(){}));
+      return Promise.all(jobs).then(function(){ return o; });
+    }
+    /* the service worker's cache holds the app itself and the dictionary; reading every
+       response back is slow, so it is measured on its own and the row says so meanwhile */
+    function measureCache(){
+      if (cacheState !== "idle") return;
+      if (!window.caches){ cacheState = "unknown"; return; }
+      cacheState = "busy";
+      caches.keys().then(function(keys){
+        return Promise.all(keys.filter(function(k){ return k.indexOf("lamplight-") === 0; }).map(function(k){
+          return caches.open(k).then(function(c){ return c.matchAll(); }).then(function(list){
+            return Promise.all(list.map(function(res){
+              return res.blob().then(function(bl){ return bl.size; }, function(){ return 0; });
+            })).then(function(sizes){
+              return { n: sizes.length, bytes: sizes.reduce(function(a, x){ return a + x; }, 0) };
+            });
+          });
+        }));
+      }).then(function(parts){
+        cache = parts.reduce(function(a, p){ return { n: a.n + p.n, bytes: a.bytes + p.bytes }; }, { n: 0, bytes: 0 });
+        cacheState = "done";
+      }).catch(function(){ cacheState = "unknown"; }).then(refresh);
+    }
+
+    /* ---- the panel ---- */
+    function row(name, sub, val, act, label){
+      return '<div class="so-row"><div class="so-what"><div class="so-name">' + esc(name) + '</div>' +
+        '<div class="so-sub">' + esc(sub) + '</div></div>' +
+        '<div class="so-val">' + esc(val || "") + '</div>' +
+        (act ? '<button type="button" class="chip so-act" data-so="' + act + '">' + esc(label) + '</button>' : '') +
+        '</div>';
+    }
+    function cacheRow(){
+      if (cacheState === "done") return row("App files and dictionary", plural(cache.n, "file", "files"), size(cache.bytes), "", "");
+      if (cacheState === "busy") return row("App files and dictionary", "Measuring…", "", "", "");
+      return row("App files and dictionary", "Not cached yet", "", "", "");
+    }
+    function renderPanel(body, foot){
+      var o = measured;
+      if (!o){ body.innerHTML = '<div class="empty-note">Measuring…</div>'; foot.innerHTML = ""; return; }
+      var h = "";
+      if (o.usage !== null && o.usage !== undefined){
+        var pct = o.quota ? Math.min(100, Math.max(0.5, o.usage / o.quota * 100)) : 0;
+        var line = size(o.usage) + " used" + (o.quota ? " of about " + size(o.quota) + " this site may use" : "");
+        h += '<section class="so-sec"><div class="label sec">All together</div>' +
+          '<div class="so-meter" role="img" aria-label="' + esc(line) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+          '<div class="so-line">' + esc(line) + '</div></section>';
+      }
+      h += '<section class="so-sec"><div class="label sec">What is stored</div>' +
+        row("Books", plural(o.books, "file", "files") + (o.finished ? " · " + o.finished + " finished" : ""), size(o.bookBytes),
+            o.finished ? "finished" : "", "Remove finished books") +
+        row("Reading positions", plural(o.positions, "book", "books"), "", "", "") +
+        row("Highlights and notes", plural(o.marks, "mark", "marks"), "", o.marks ? "marks" : "", "Delete all highlights and notes") +
+        row("Cached translations", plural(o.trDocs, "document", "documents") + " · " + plural(o.trWords, "word or sentence", "words and sentences"),
+            o.trBytes ? size(o.trBytes) : "", (o.trDocs + o.trWords) ? "translations" : "", "Clear cached translations") +
+        row("Reading stats", plural(o.statDays, "day", "days"), size(o.stats), o.statDays ? "stats" : "", "Reset reading stats") +
+        row("Saved themes", plural(o.themes, "theme", "themes"), "", "", "") +
+        cacheRow() + '</section>';
+      h += '<section class="so-sec"><div class="label sec">Keeping it</div><div class="so-line">' +
+        (o.persisted === null ? "This browser doesn’t say whether it keeps storage."
+         : o.persisted ? "Storage is persistent — the browser won’t clear it on its own."
+         : "Storage may be cleared by the browser when space is low.") + '</div>' +
+        (o.persisted === false ? '<div class="so-acts"><button type="button" class="chip" data-so="persist">Request persistent storage</button></div>' : '') +
+        '</section>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button type="button" class="chip so-danger" data-so="wipe">Clear everything…</button>';
+    }
+    /* redraw in place: the scroll position and the focused button survive */
+    function refresh(){
+      if (!Side.is("storage")) return;
+      var body = Side.body, top = body.scrollTop, a = document.activeElement;
+      var sel = a && a.dataset && a.dataset.so ? '[data-so="' + a.dataset.so + '"]' : null;
+      Side.refresh("storage", renderPanel);
+      body.scrollTop = top;
+      var again = sel && (body.querySelector(sel) || Side.foot.querySelector(sel));
+      if (again) again.focus({ preventScroll: true });
+    }
+    function reload(){ measure().then(function(o){ measured = o; refresh(); }).catch(function(){}); }
+    function openPanel(){
+      measured = null;
+      Side.open("storage", "Storage", renderPanel);
+      reload(); measureCache();
+    }
+
+    /* ---- letting things go ---- */
+    function act(what){
+      if (what === "finished"){
+        var n = Library.removeFinished();
+        Marks.toast(n ? "Removed " + plural(n, "finished book", "finished books") : "Nothing is finished yet");
+        reload();
+      } else if (what === "marks"){
+        if (!confirm("Delete every highlight, bookmark and note on this device? This can’t be undone.")) return;
+        Marks.clearAll().then(function(){ Marks.toast("Highlights and notes deleted"); reload(); });
+      } else if (what === "translations"){
+        Library.tx("translations", "readwrite", function(st){ st.clear(); })
+          .then(function(){ Marks.toast("Cached translations cleared"); reload(); }, function(){});
+      } else if (what === "stats"){
+        if (Stats.reset()) reload();
+      } else if (what === "persist"){
+        if (!(navigator.storage && navigator.storage.persist)) return;
+        navigator.storage.persist().then(function(ok){
+          Store.set("ll_persist", ok ? "granted" : "denied");
+          Marks.toast(ok ? "Storage is now persistent" : "The browser kept storage as it was");
+          reload();
+        }, function(){});
+      } else if (what === "wipe"){
+        if (!confirm("Clear everything Lamplight keeps on this device — books, positions, notes, translations, stats, themes and settings?")) return;
+        if (!confirm("This can’t be undone. Clear everything?")) return;
+        Stats.reset(true);
+        ["ll_stats", "ll_prefs", "ll_tabs", "ll_wpm", "ll_ppm", "ll_mark_legend"].forEach(function(k){ Store.remove(k); });
+        Library.wipe(true).then(function(){ location.reload(); }, function(){ location.reload(); });
+      }
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("storage")) return;
+      var b = e.target.closest("button[data-so]"); if (b) act(b.dataset.so);
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("storage")) return;
+      var b = e.target.closest("button[data-so]"); if (b) act(b.dataset.so);
+    });
+    Menu.add({ order: 62, group: "app", icon: ICONS.books, label: "Storage", run: openPanel });
+    window.llStorage = { openPanel: openPanel, measure: measure, act: act };
+    return { openPanel: openPanel };
   })();
 
   /* ============================================================
@@ -3954,7 +6898,7 @@
     grip.addEventListener("mousedown", function(e){ dragging = true; e.preventDefault(); });
     document.addEventListener("mouseup", function(){ dragging = false; });
     window.addEventListener("resize", place);
-    Menu.add({ order: 50, label: function(){ return on ? "Hide reading ruler" : "Reading ruler"; }, key: "L", run: toggle, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 50, group: "reading", icon: ICONS.ruler, label: function(){ return on ? "Hide reading ruler" : "Reading ruler"; }, key: "L", run: toggle, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { toggle: toggle, set: set, isOn: function(){ return on; }, place: place };
   })();
 
@@ -4033,7 +6977,7 @@
     }
     $("#docView").addEventListener("click", middleTap);
     $("#pdf").addEventListener("click", middleTap);
-    Menu.add({ order: 52, label: function(){ return on ? "Leave zen mode" : "Zen mode"; }, key: "Z", run: toggle, show: docOpen });
+    Menu.add({ order: 52, group: "reading", icon: ICONS.zen, label: function(){ return on ? "Leave zen mode" : "Zen mode"; }, key: "Z", run: toggle, show: docOpen });
     /* for tests and other scripts */
     window.llZen = { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
     return { enter: enter, exit: exit, toggle: toggle, isOn: function(){ return on; } };
@@ -4106,7 +7050,7 @@
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "p" || e.key === "P") && state.mode === "pdf"){ e.preventDefault(); printPdf(); }
     });
-    Menu.add({ order: 70, label: "Print…", run: print, show: canPrint });
+    Menu.add({ order: 70, group: "tools", icon: ICONS.print, label: "Print…", run: print, show: canPrint });
     /* for tests and other scripts */
     window.llPrint = { print: print, canPrint: canPrint };
     return { print: print, canPrint: canPrint };
@@ -4156,12 +7100,12 @@
     }
     function start(){
       if (state.mode !== "doc" && state.mode !== "pdf") return;
-      on = true; paused = false; bar.classList.add("on"); label(); playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause");
+      on = true; paused = false; bar.classList.add("on"); document.body.classList.add("auto-on"); label(); playIcon(playBtn, true); playBtn.setAttribute("aria-label", "Pause");
       run();
     }
-    function stop(){ on = false; paused = false; cancelAnimationFrame(raf); clearTimeout(pageTimer); bar.classList.remove("on"); }
-    function pause(){ paused = true; cancelAnimationFrame(raf); clearTimeout(pageTimer); playBtn.textContent = "\u25B6"; playBtn.setAttribute("aria-label", "Resume"); }
-    function resume(){ paused = false; playBtn.textContent = "\u275A\u275A"; playBtn.setAttribute("aria-label", "Pause"); run(); }
+    function stop(){ on = false; paused = false; cancelAnimationFrame(raf); clearTimeout(pageTimer); bar.classList.remove("on"); document.body.classList.remove("auto-on"); }
+    function pause(){ paused = true; cancelAnimationFrame(raf); clearTimeout(pageTimer); playIcon(playBtn, false); playBtn.setAttribute("aria-label", "Resume"); }
+    function resume(){ paused = false; playIcon(playBtn, true); playBtn.setAttribute("aria-label", "Pause"); run(); }
     playBtn.addEventListener("click", function(){ if (paused) resume(); else pause(); });
     $("#autoStop").addEventListener("click", stop);
     $("#autoSlower").addEventListener("click", function(){ mult = Math.max(0.3, +(mult - 0.1).toFixed(1)); label(); Store.set("ll_autoscroll", String(mult)); if (on && !paused) run(); });
@@ -4170,12 +7114,15 @@
     window.addEventListener("wheel", function(){ if (on && !paused) pause(); }, { passive: true });
     document.addEventListener("touchstart", function(e){ if (on && !paused && !e.target.closest("#autoBar")) pause(); }, { passive: true });
     document.addEventListener("visibilitychange", function(){ if (on && document.visibilityState === "hidden") pause(); });
-    Menu.add({ order: 51, label: function(){ return on ? "Stop auto-scroll" : "Auto-scroll"; }, key: "A", run: function(){ if (on) stop(); else start(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 51, group: "reading", icon: ICONS.auto, label: function(){ return on ? "Stop auto-scroll" : "Auto-scroll"; }, key: "A", run: function(){ if (on) stop(); else start(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { start: start, stop: stop, pause: pause, resume: resume, isOn: function(){ return on; }, isPaused: function(){ return paused; }, pxPerSec: pxPerSec, mult: function(){ return mult; } };
   })();
 
-  Menu.add({ order: 90, sep: true });
-  Menu.add({ order: 91, label: "Library", run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+  /* the app's own entries: opening a file (the bar's Open button goes away while reading), the
+     library, and the settings sheet (the ⋯ menu and the s key open it) */
+  Menu.add({ order: 1, group: "app", icon: ICONS.open, label: "Open a file\u2026", key: "O", run: function(){ $("#fileInput").click(); } });
+  Menu.add({ order: 2, group: "app", icon: ICONS.books, label: "Library", run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+  Menu.add({ order: 85, group: "app", icon: ICONS.sliders, label: "Settings", key: "S", run: function(){ setSheet(true); } });
 
   /* ============================================================
      Tabs — several open documents; switching re-renders from the library copy
@@ -4187,15 +7134,25 @@
     tabs = tabs.filter(function(t){ return t && t.id && t.name; }).map(function(t){ return { id: t.id, name: t.name, file: null }; });
     function save(){ try { Store.set(KEY, JSON.stringify(tabs.map(function(t){ return { id: t.id, name: t.name }; }))); } catch(_){} }
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    /* one Tab stop for the strip (the active tab; arrows move along it), and the close is a plain
+       mark inside the tab rather than a second control nested in it: Delete, Backspace or the
+       menu's Close document close a tab from the keyboard */
     function render(){
       strip.classList.toggle("on", tabs.length >= 2);
+      var hadFocus = strip.contains(document.activeElement);
+      var stop = tabs.some(function(t){ return t.id === activeId; }) ? activeId : (tabs[0] && tabs[0].id);
       strip.innerHTML = tabs.map(function(t){
-        return '<div class="tab' + (t.id === activeId ? ' on' : '') + '" role="tab" tabindex="0" aria-selected="' + (t.id === activeId) + '" data-id="' + esc(t.id) + '" title="' + esc(t.name) + '">' +
-          '<span class="tab-name">' + esc(t.name) + '</span><button class="tab-x" data-x="' + esc(t.id) + '" aria-label="Close ' + esc(t.name) + '">\u00D7</button></div>';
+        var on = t.id === activeId;
+        return '<button type="button" class="tab' + (on ? ' on' : '') + '" role="tab" tabindex="' + (t.id === stop ? 0 : -1) + '" aria-selected="' + on + '" aria-keyshortcuts="Delete" data-id="' + esc(t.id) + '" title="' + esc(t.name) + '">' +
+          '<span class="tab-name">' + esc(t.name) + '</span><span class="tab-x" aria-hidden="true" data-x="' + esc(t.id) + '">' + ICONS.close + '</span></button>';
       }).join("");
       var on = strip.querySelector(".tab.on"); if (on) on.scrollIntoView({ inline: "nearest", block: "nearest" });
+      /* the strip is drawn again when a document opens: keyboard focus that was in it stays in it */
+      if (hadFocus && stop) focusTab(stop);
       if (state.flow === "pages" && (state.mode === "doc" || state.mode === "pdf")) relayoutPaged();
     }
+    function tabEl(id){ return strip.querySelector('.tab[data-id="' + CSS.escape(id) + '"]'); }
+    function focusTab(id){ var t = tabEl(id); if (t) t.focus({ preventScroll: true }); }
     function noteOpen(id, name, file){
       var t = tabs.filter(function(x){ return x.id === id; })[0];
       if (!t){ t = { id: id, name: name, file: file }; tabs.push(t); }
@@ -4214,7 +7171,7 @@
     function close(id){
       var i = tabs.findIndex(function(x){ return x.id === id; });
       if (i < 0) return;
-      var wasActive = tabs[i].id === activeId;
+      var wasActive = tabs[i].id === activeId, hadFocus = strip.contains(document.activeElement);
       tabs.splice(i, 1); save();
       if (wasActive) abandonOpen();
       if (wasActive){
@@ -4222,29 +7179,50 @@
         else { activeId = null; Library.home(); }
       }
       render();
+      /* a keyboard close keeps focus in the strip (render moves it to the tab that is left), or
+         on the document once the strip has gone (one document left, or none) */
+      if (hadFocus && !strip.classList.contains("on")) $("#main").focus({ preventScroll: true });
     }
     function drop(id){ var i = tabs.findIndex(function(x){ return x.id === id; }); if (i >= 0){ tabs.splice(i, 1); save(); render(); } }
     function clear(){ tabs = []; activeId = null; save(); render(); }
     /* add files without opening them (multi-select / multi-drop) */
+    /* the ids are hashed at their own pace, so they are collected before any tab is added:
+       pushing each one as it arrived put the strip in whatever order the hashing finished in */
     function addFiles(files){
-      Array.prototype.forEach.call(files, function(f){
-        Library.idFor(f).then(function(id){
-          if (!tabs.some(function(x){ return x.id === id; })){ tabs.push({ id: id, name: f.name, file: f }); save(); render(); }
+      var list = Array.prototype.slice.call(files || []).filter(Boolean);
+      if (!list.length) return Promise.resolve();
+      return Promise.all(list.map(function(f){ return Library.idFor(f); })).then(function(ids){
+        var added = false;
+        ids.forEach(function(id, i){
+          var f = list[i];
+          if (!tabs.some(function(x){ return x.id === id; })){ tabs.push({ id: id, name: f.name, file: f }); added = true; }
           /* make sure it is in the library too */
           Library.remember(f, id);
         });
+        if (added){ save(); render(); }
       });
     }
     strip.addEventListener("click", function(e){
       var x = e.target.closest(".tab-x"); if (x){ e.stopPropagation(); close(x.dataset.x); return; }
       var t = e.target.closest(".tab"); if (t) activate(t.dataset.id);
     });
+    /* arrows, Home and End move along the strip and open the tab they land on */
     strip.addEventListener("keydown", function(e){
       var t = e.target.closest(".tab"); if (!t) return;
-      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(t.dataset.id); }
+      var step = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
+      if (e.key in step){
+        e.preventDefault();
+        var i = tabs.findIndex(function(x){ return x.id === t.dataset.id; }), n = tabs.length;
+        var j = e.key === "Home" ? 0 : e.key === "End" ? n - 1 : (i + step[e.key] + n) % n;
+        if (tabs[j] && tabs[j].id !== t.dataset.id){ activate(tabs[j].id); focusTab(tabs[j].id); }
+        return;
+      }
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(t.dataset.id); focusTab(t.dataset.id); }
       if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); close(t.dataset.id); }
       if (e.key === "w" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); close(t.dataset.id); }
     });
+    /* the × is hidden from assistive technology, so the menu carries the same action */
+    Menu.add({ order: 3, group: "app", icon: ICONS.close, label: "Close document", show: function(){ return !!activeId && (state.mode === "doc" || state.mode === "pdf"); }, run: function(){ if (activeId) close(activeId); } });
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && e.key === "Tab" && tabs.length > 1){
         e.preventDefault();
@@ -4271,19 +7249,25 @@
   /* ---------- wiring ---------- */
   $("#openBtn").addEventListener("click", function(){ $("#fileInput").click(); });
   $("#openBtn2").addEventListener("click", function(){ $("#fileInput").click(); });
+  $("#libOpen").addEventListener("click", function(){ $("#fileInput").click(); });
   $("#fileInput").addEventListener("change", function(e){
     openFiles(e.target.files);
     e.target.value = "";
   });
 
+  /* a file dragged over the window: a dashed frame says it can be dropped anywhere. dragover
+     keeps firing while the drag lasts, so the frame goes when the events stop */
+  var dragTimer = null;
+  function dragOff(){ clearTimeout(dragTimer); dragTimer = null; document.body.classList.remove("dragging"); $("#empty").classList.remove("drag"); }
   document.addEventListener("dragover", function(e){
     e.preventDefault();
-    $("#empty").classList.add("drag");
+    document.body.classList.add("dragging"); $("#empty").classList.add("drag");
+    clearTimeout(dragTimer); dragTimer = setTimeout(dragOff, 220);
   });
-  document.addEventListener("dragleave", function(){ $("#empty").classList.remove("drag"); });
+  document.addEventListener("dragleave", function(e){ if (!e.relatedTarget) dragOff(); });
   document.addEventListener("drop", function(e){
     e.preventDefault();
-    $("#empty").classList.remove("drag");
+    dragOff();
     if (e.dataTransfer.files && e.dataTransfer.files.length) openFiles(e.dataTransfer.files);
   });
 
@@ -4333,34 +7317,230 @@
 
   $("#wordmark").addEventListener("click", function(){ Library.home(); });
   $("#wordmark").addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " "){ e.preventDefault(); Library.home(); } });
-  $("#lamp").addEventListener("click", function(){
-    var idx = CYCLE.indexOf(state.theme);
-    state.theme = CYCLE[(idx + 1) % CYCLE.length];
-    applyTheme(); AutoTheme.userPicked(state.theme);
-  });
+  /* the bar's document buttons; the Aa and lamp buttons open their popovers (see Pop) */
+  $("#searchBtn").addEventListener("click", function(){ Search.openPanel(); });
+  $("#tocBtn").addEventListener("click", function(){ Toc.openPanel(); });
+  $("#speakBtn").addEventListener("click", function(){ if (Speak.isActive()) Speak.stop(); else Speak.start(); });
+  /* the read-aloud button shows its state: the Speak module marks the body while it is on */
+  function syncSpeakBtn(){
+    var b = $("#speakBtn"), on = Speak.isActive();
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.setAttribute("aria-label", on ? "Stop reading aloud" : "Read aloud");
+    b.title = on ? "Stop reading aloud" : "Read aloud";
+  }
+  if (window.MutationObserver) new MutationObserver(function(){
+    syncSpeakBtn();
+    /* zen hides the bar: a popover left under it would float on its own */
+    if (document.body.classList.contains("zen")) Pop.close(true);
+  }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  /* t: between the day and the night theme (the auto pair; day / dusk unless changed). From a
+     theme that is neither, a light one goes to the night theme and a dark one to the day theme */
+  function toggleDayNight(){
+    var day = state.autoDay, night = state.autoNight, cur = state.theme, dark = isDarkColor(currentTheme().bg), to;
+    if (cur === day && day !== night) to = night;
+    else if (cur === night && day !== night) to = day;
+    else to = dark ? day : night;
+    if (to === cur) to = dark ? "day" : "dusk";
+    selectTheme(to);
+  }
   /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
      Scroll flow, opening it should push the text down so what was at the top reappears just
      under the sheet, and closing it should pull the text back up; browsers with scroll
      anchoring undo exactly that shift, so the document is put where it belongs afterwards. */
-  function setSheet(open){
+  var sheetOpener = null;
+  /* `from` is the control that asked for the sheet; without one, the element that had focus */
+  function setSheet(open, from){
     var sheet = $("#sheet");
     var was = sheet.classList.contains("open");
     if (open === undefined) open = !was;
     if (open === was) return;
     var paged = document.body.classList.contains("paged"), ref = $("#main");
     var before = ref.getBoundingClientRect().top, h = was ? sheet.offsetHeight : 0;
+    /* read before the class flips: the browser only drops focus from a hidden element lazily */
+    var active = document.activeElement, inside = sheet.contains(active);
+    if (open){ Pop.close(true); Side.close(); }
     sheet.classList.toggle("open", open);
-    $("#gear").setAttribute("aria-expanded", open ? "true" : "false");
     sheet.setAttribute("aria-hidden", open ? "false" : "true");
     if (!paged){
       if (open) h = sheet.offsetHeight;
       var wanted = before + (open ? h : -h), actual = ref.getBoundingClientRect().top;
       if (Math.abs(actual - wanted) > 1) window.scrollBy(0, actual - wanted);
     }
+    if (open && SheetTabs) SheetTabs.pick();
+    /* keyboard focus: opened from the document (or the s key), it lands on the section strip;
+       opened from a bar button it stays there and Tab flows into the sheet. Closing with focus
+       inside hands it back to the opener, else to the ⋯ button; focus elsewhere is left alone */
+    if (open){
+      sheetOpener = from || (active && active !== document.body && !inside ? active : null);
+      if (!sheetOpener || sheetOpener.tabIndex < 0){ var first = $("#sheetTabs button"); if (first) first.focus({ preventScroll: true }); }
+    } else {
+      if (inside){
+        var to = sheetOpener && document.contains(sheetOpener) && sheetOpener.getClientRects().length ? sheetOpener : $("#more");
+        if (to) to.focus({ preventScroll: true });
+      }
+      sheetOpener = null;
+    }
   }
-  $("#gear").addEventListener("click", function(){
-    document.body.classList.remove("hidebar");
-    setSheet();
+
+  /* ---- the sheet's section strip: built once every group exists (the dictionary and translation
+     groups are added by their module at load), sticky at the top of the sheet. A button jumps to
+     its group; the button for the group under the strip is marked while the sheet scrolls ---- */
+  var SheetTabs = (function(){
+    var sheet = $("#sheet"), strip = null, groups = [], lock = 0, raf = null;
+    /* icon and id per group, by the label's text */
+    var META = { Reading: [ICONS.books, "readingGroup"], Theme: [ICONS.sun, "themeGroup"], Text: [ICONS.aa, "textGroup"],
+                 PDF: [ICONS.print, "pdfGroup"], Dictionary: [ICONS.meaning, "dictGroup"], Translation: [ICONS.translate, "trGroup"] };
+    function nameOf(g){
+      var l = g.querySelector(".label"), t = "";
+      if (l) Array.prototype.forEach.call(l.childNodes, function(n){ if (n.nodeType === 3) t += n.textContent; });
+      return t.trim();
+    }
+    function build(){
+      if (strip) return;
+      groups = Array.prototype.slice.call(sheet.querySelectorAll(".sheet-inner > .group"));
+      strip = document.createElement("nav");
+      strip.className = "sheet-tabs"; strip.id = "sheetTabs"; strip.setAttribute("aria-label", "Settings sections");
+      var row = document.createElement("div"); row.className = "sheet-tabs-row";
+      groups.forEach(function(g, i){
+        var n = nameOf(g), m = META[n] || [];
+        if (!g.id) g.id = m[1] || ("group" + i);
+        var l = g.querySelector(".label");
+        if (l && m[0] && !l.querySelector("svg, .label-aa")) l.insertAdjacentHTML("afterbegin", m[0]);
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = n || g.id; b.dataset.group = g.id;
+        row.appendChild(b);
+      });
+      strip.appendChild(row);
+      var x = document.createElement("button");
+      x.type = "button"; x.className = "sheet-x"; x.id = "sheetClose"; x.title = "Close settings"; x.setAttribute("aria-label", "Close settings");
+      x.innerHTML = ICONS.close;
+      strip.appendChild(x);
+      var inner = sheet.querySelector(".sheet-inner");
+      inner.insertBefore(strip, inner.firstChild);
+      strip.addEventListener("click", function(e){
+        var b = e.target.closest("button[data-group]");
+        if (b){ go(b.dataset.group); return; }
+        if (e.target.closest("#sheetClose")) setSheet(false);
+      });
+      sheet.addEventListener("scroll", function(){ if (raf) return; raf = requestAnimationFrame(function(){ raf = null; pick(); }); }, { passive: true });
+      if (window.IntersectionObserver){
+        var io = new IntersectionObserver(function(){ pick(); }, { root: sheet, threshold: [0, 0.5, 1] });
+        groups.forEach(function(g){ io.observe(g); });
+      }
+      pick();
+    }
+    function topOf(g){ return g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop; }
+    /* room under the last group, so that it too can be scrolled up under the strip like the others */
+    function pad(){
+      var last = groups[groups.length - 1], inner = sheet.querySelector(".sheet-inner");
+      /* the slack is under the 12px pick line below, so the last group can be the one under the strip */
+      var extra = sheet.clientHeight - strip.offsetHeight - last.offsetHeight - 8;
+      inner.style.paddingBottom = Math.max(24, Math.round(extra)) + "px";
+    }
+    function mark(id, hold){
+      if (!strip) return;
+      if (hold) lock = Date.now() + hold;
+      Array.prototype.forEach.call(strip.querySelectorAll("button[data-group]"), function(b){
+        var on = b.dataset.group === id;
+        b.classList.toggle("on", on);
+        if (on) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+        if (on && b.scrollIntoView) b.scrollIntoView({ inline: "nearest", block: "nearest" });
+      });
+    }
+    /* the group under the strip */
+    function pick(){
+      if (!strip || !groups.length || !sheet.classList.contains("open")) return;
+      pad();
+      if (Date.now() < lock) return;
+      var line = sheet.scrollTop + strip.offsetHeight + 12, cur = groups[0];
+      groups.forEach(function(g){ if (topOf(g) <= line) cur = g; });
+      mark(cur.id);
+    }
+    function go(id){
+      var g = document.getElementById(id);
+      if (!g) return;
+      pad();
+      mark(id, 700);
+      sheet.scrollTo({ top: Math.max(0, topOf(g) - strip.offsetHeight - 2), behavior: reduceMotion && reduceMotion.matches ? "auto" : "smooth" });
+    }
+    return { build: build, pick: pick, mark: mark, go: go };
+  })();
+
+  /* ---- the current section after the title while reading: the last heading at or above the
+     top of the screen (the outline entry for the page, in a PDF), looked up at most twice a
+     second on scroll and page turns. It goes in a data attribute the stylesheet appends, so the
+     title's own text stays what exports, printing and About read ---- */
+  var Section = (function(){
+    var timer = null, last = 0, offs = null, offsLen = -1, fname = $("#fname");
+    function set(t){
+      if (t) fname.dataset.sec = t; else delete fname.dataset.sec;
+      fname.title = fname.textContent + (t ? " · " + t : "");
+    }
+    /* each heading's character offset, computed once per document */
+    function entries(){
+      var len = Anchor.textLength();
+      if (offs && offsLen === len) return offs;
+      offs = Toc.entries().map(function(e, i){
+        var w = document.createTreeWalker(e.el, NodeFilter.SHOW_TEXT), n = w.nextNode();
+        return { title: e.title, i: i, off: n ? Anchor.offsetOf(n, 0) : null };
+      }).filter(function(e){ return e.off !== null; });
+      offsLen = len;
+      return offs;
+    }
+    /* the section holding character offset `top`: the last heading at or before it (with its
+       index in the contents). The title, the page-turn bar and the contents panel all use this
+       one rule, so they name the same section for the same place */
+    function at(top){
+      if (top === null || top === undefined) return null;
+      var cur = null;
+      entries().forEach(function(e){ if (e.off <= top + 1) cur = e; });
+      return cur;
+    }
+    function pick(){
+      if (state.mode === "doc"){
+        var top = Library.topCharOffset();
+        if (top === null) return;
+        var cur = at(top);
+        set(cur ? cur.title : "");
+      } else if (state.mode === "pdf" && state.pdfDoc){
+        var doc = state.pdfDoc;
+        Toc.pdfEntries().then(function(es){
+          if (state.pdfDoc !== doc) return;
+          var pg = Library.currentPdfPage(), cur = "";
+          es.forEach(function(e){ if (e.page && e.page <= pg) cur = e.title; });
+          set(cur);
+        });
+      } else set("");
+    }
+    function update(){
+      clearTimeout(timer);
+      timer = setTimeout(function(){ last = Date.now(); pick(); }, Math.max(60, 500 - (Date.now() - last)));
+    }
+    function reset(){ offs = null; set(""); }
+    window.addEventListener("scroll", update, { passive: true });
+    if (window.MutationObserver) new MutationObserver(update).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
+    document.addEventListener("ll:fileopened", function(){ reset(); Pop.close(true); });
+    return { update: update, reset: reset, at: at };
+  })();
+
+  /* ---- first-run tips on the start screen, and one toast on the first document ever opened ---- */
+  $("#tips").hidden = Store.get("ll_tips") === "seen";
+  $("#tipsOk").addEventListener("click", function(){ Store.set("ll_tips", "seen"); $("#tips").hidden = true; });
+  /* the tip waits its turn: it never covers a message that is showing (a font that failed, say) */
+  function tipDoc(){
+    var t = $("#toast");
+    if (t && t.classList.contains("on")){ setTimeout(tipDoc, 600); return; }
+    Marks.toast("Tip: tap any word for its meaning");
+  }
+  document.addEventListener("ll:fileopened", function(){
+    if (Store.get("ll_tip_doc")) return;
+    var tries = 0, t = setInterval(function(){
+      if (state.mode === "doc" || state.mode === "pdf"){
+        clearInterval(t); Store.set("ll_tip_doc", "1");
+        setTimeout(tipDoc, 900);
+      } else if (++tries > 100 || (state.mode === "status" && !state.opening)) clearInterval(t);
+    }, 300);
   });
 
   $("#themeChips").addEventListener("click", function(e){
@@ -4488,8 +7668,21 @@
   $("#rLh").addEventListener("input",  function(e){ state.lh   = +e.target.value; applyType(); });
   $("#rW").addEventListener("input",   function(e){ state.width= +e.target.value; applyType(); });
   $("#rM").addEventListener("input",   function(e){ state.margin = +e.target.value; applyType(); });
+  $("#rWeight").addEventListener("input", function(e){ state.weight = +e.target.value; applyType(); });
+  $("#rLs").addEventListener("input",  function(e){ state.ls   = +e.target.value; applyType(); });
+  $("#rWs").addEventListener("input",  function(e){ state.ws   = +e.target.value; applyType(); });
+  $("#rPgap").addEventListener("input", function(e){ state.pgap = +e.target.value; applyType(); });
   $("#cJustify").addEventListener("change", function(e){ state.justify = e.target.checked; applyType(); });
   $("#cHyphens").addEventListener("change", function(e){ state.hyphens = e.target.checked; applyType(); });
+  /* back to the typography this reader ships with — the family and the theme are left alone */
+  function resetType(){
+    state.size = 19; state.lh = 1.75; state.width = 720; state.margin = 0;
+    state.weight = 400; state.ls = 0; state.ws = 0; state.pgap = 0.95;
+    state.justify = false; state.hyphens = false;
+    applyType();
+    Marks.toast("Text settings reset");
+  }
+  $("#typeReset").addEventListener("click", resetType);
   $("#cSpread").addEventListener("change", function(e){ state.spread = e.target.checked; Prefs.save(); relayoutPaged(); });
 
   $("#rZoom").addEventListener("input", function(e){
@@ -4509,6 +7702,7 @@
       $("#rZoom").value = Math.round(state.zoom * 100);
       $("#vZoom").textContent = Math.round(state.zoom * 100) + " %";
       queueRerender();
+      Pop.sync();
     } else {
       state.size = Math.max(14, Math.min(28, state.size + dir));
       $("#rSize").value = state.size;
@@ -4555,6 +7749,7 @@
   document.addEventListener("keydown", function(e){
     if (e.key === "Escape"){ setSheet(false); return; }
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
+    if (Side.current()) return;   /* the keys scroll the open drawer, not the pages behind it */
     if (!pagedActive()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " "){ e.preventDefault(); turn(1); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp"){ e.preventDefault(); turn(-1); }
@@ -4569,8 +7764,8 @@
     function typing(e){ return /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable; }
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
     add("o", "Open a file", function(){ $("#fileInput").click(); });
-    add("s", "Reading settings", function(){ $("#gear").click(); });
-    add("t", "Next theme", function(){ $("#lamp").click(); });
+    add("s", "Settings", function(){ document.body.classList.remove("hidebar"); setSheet(); });
+    add("t", "Switch day / night theme", toggleDayNight);
     add("+", "Larger text / zoom in", function(){ bump(1); }, docOpen);
     add("-", "Smaller text / zoom out", function(){ bump(-1); }, docOpen);
     add("p", "Switch scroll / pages", function(){ setFlow(state.flow === "pages" ? "scroll" : "pages"); }, docOpen);
@@ -4589,7 +7784,8 @@
     var extra = [
       ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],
       ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
-      ["Esc", "Close panels and cards"], ["Right-click a sentence", "Explain it (desktop)"], ["Hold a sentence", "Explain it (touch)"]
+      ["Esc", "Close panels and cards"], ["Right-click a sentence", "Explain it (desktop)"], ["Hold a sentence", "Explain it (touch)"],
+      ["Select text, then d or Shift+F10", "Define or explain it (F7 turns on caret browsing)"]
     ];
     function openHelp(){
       Side.open("keys", "Keyboard shortcuts", function(body){
@@ -4608,8 +7804,8 @@
       e.preventDefault();
       hit.run();
     });
-    Menu.add({ order: 80, label: "Keyboard shortcuts", key: "?", run: openHelp, show: function(){ return window.matchMedia ? !window.matchMedia("(pointer: coarse)").matches : true; } });
-    return { openHelp: openHelp, list: function(){ return list; } };
+    Menu.add({ order: 80, group: "app", icon: ICONS.keyboard, label: "Keyboard shortcuts", key: "?", run: openHelp, show: function(){ return window.matchMedia ? !window.matchMedia("(pointer: coarse)").matches : true; } });
+    return { openHelp: openHelp, add: add, list: function(){ return list; } };
   })();
 
   var rz = null;
@@ -4636,7 +7832,7 @@
     if (document.body.classList.contains("paged")) return;
     var h = document.documentElement;
     var max = h.scrollHeight - h.clientHeight;
-    $("#progress").style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+    setProgressBar(max > 0 ? (h.scrollTop / max) * 100 : 0);
     Progress.tick();
 
     if (state.mode !== "doc" && state.mode !== "pdf") return;
@@ -4644,7 +7840,8 @@
     var y = h.scrollTop;
     var dy = y - lastY;
     lastY = y;
-    if ($("#sheet").classList.contains("open") || y < 90){
+    /* the sheet and the popovers hang from the bar: it stays while one of them is open */
+    if ($("#sheet").classList.contains("open") || $("#pop").classList.contains("open") || y < 90){
       document.body.classList.remove("hidebar");
       upAcc = 0;
     } else if (dy > 4){
@@ -4664,14 +7861,30 @@
      Lamplight — offline dictionary + sentence explainer
      ============================================================ */
   (function(){
-    var ICON_BOOK = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg>';
-    var ICON_STAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z"/></svg>';
+    /* the icons this card draws — the redesign's shared table (24×24, stroked, round caps) */
+    var ICONS = {
+      meaning:   "M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z | M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z",
+      explain:   "M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7 | M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7",
+      simpler:   "M4 20l9-9 | M14 6l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2z | M19 3l.6 1.4L21 5l-1.4.6L19 7l-.6-1.4L17 5l1.4-.6L19 3z",
+      parts:     "M3 8h6v8H3z | M9 8h6v8H9z | M15 8h6v8h-6z",
+      translate: "M4 5h9 M8 5v2c0 4-2 7-5 9 M6 10c1 3 3 5 6 6 | M13 20l4-9 4 9 M14.5 17h5",
+      highlight: "M4 20h6 | M14 4l6 6-9 9H5v-6l9-9z",
+      star:      "M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z",
+      close:     "M6 6l12 12 M18 6L6 18"
+    };
+    function icon(name, size){
+      return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        ICONS[name].split(" | ").map(function(d){ return '<path d="' + d + '"/>'; }).join("") + '</svg>';
+    }
     var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
     var LS_KEY  = "ll_apikey";
     var AI_MODEL = "claude-sonnet-5";
     var dictMode = Store.get(LS_MODE) || "tap";
 
-    /* ---------- styles ---------- */
+    /* ---------- styles ----------
+       One card for everything the reader touches: a head, a tab strip, one panel per tab and a
+       footer of actions on the passage. A bottom sheet on phones, a floating card on wider
+       screens; the strip and the footer stay put while the panel scrolls. */
     var css = document.createElement("style");
     css.textContent = [
       /* on touch screens the app's own tap / hold gestures replace native selection */
@@ -4681,107 +7894,151 @@
       "  }",
       "}",
       ".ll-hit{background:var(--accent); color:var(--bg); border-radius:3px;}",
-      "#dictScrim{",
-      "  position:fixed; inset:0; z-index:59; background:transparent; display:none;",
-      "}",
+      /* text for screen readers only (the pill's announcement) */
+      ".ll-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}",
+      "#dictScrim{position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.18); display:none; touch-action:none;}",
       "#dictScrim.on{display:block;}",
       "#dictCard{",
       "  position:fixed; left:0; right:0; bottom:0; z-index:60;",
+      "  display:flex; flex-direction:column; max-height:66vh;",
       "  background:var(--panel); color:var(--ink);",
-      "  border-top:1px solid var(--line);",
-      "  border-radius:16px 16px 0 0;",
+      "  border-top:1px solid var(--line); border-radius:16px 16px 0 0;",
       "  box-shadow:0 -10px 40px rgba(0,0,0,.28);",
       "  transform:translateY(110%); visibility:hidden;",
-      "  transition:transform .24s ease, visibility 0s linear .24s;",
-      "  max-height:62vh; overflow-y:auto; overscroll-behavior:contain;",
-      "  padding:0 0 max(16px, env(safe-area-inset-bottom));",
+      "  transition:transform .22s ease, visibility 0s linear .22s;",
       "  font-family:var(--ui-font);",
       "}",
-      "#dictCard.open{transform:none; visibility:visible; transition:transform .24s ease, visibility 0s;}",
-      "#dictCard .grab{",
-      "  width:40px; height:4px; border-radius:999px; background:var(--line);",
-      "  margin:9px auto 4px;",
-      "}",
-      "#dictCard .inner{max-width:1100px; margin:0 auto; padding:6px 18px 4px;}",
-      "#dictCard .head{display:flex; align-items:flex-start; gap:12px;}",
+      "#dictCard.open{transform:none; visibility:visible; transition:transform .22s ease, visibility 0s;}",
+      "#dictCard:focus{outline:none;}",
+      "#dictCard:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}",
+      "#dictCard .grab{flex:none; width:40px; height:4px; border-radius:999px; background:var(--line); margin:8px auto 0;}",
+      "#dictCard .inner{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}",
+      /* head: the mark, the word or “This sentence” in the reader serif, a close button */
+      "#dictCard .head{flex:none; display:flex; align-items:center; gap:12px; padding:8px 16px 0;}",
       "#dictCard .mark{",
-      "  flex:none; width:38px; height:38px; border-radius:50%;",
+      "  flex:none; width:36px; height:36px; border-radius:50%;",
       "  display:flex; align-items:center; justify-content:center;",
-      "  background:color-mix(in srgb, var(--accent) 22%, transparent);",
-      "  color:var(--accent); font-size:1.188rem; margin-top:2px;",
+      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent);",
       "}",
-      "#dictCard .hw{flex:1; min-width:0;}",
-      "#dictCard .term{",
-      "  font-family:var(--reader-font); font-size:1.25rem; line-height:1.25;",
-      "  word-break:break-word;",
-      "}",
-      "#dictCard .ipa{color:var(--muted); font-size:0.9375rem; font-weight:400;}",
+      "#dictCard .hw{flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 10px;}",
+      "#dictCard .term{font-family:var(--reader-font); font-size:1.25rem; line-height:1.3; word-break:break-word;}",
+      "#dictCard .ipa{color:var(--muted); font-size:0.875rem; line-height:1.3;}",
       "#dictCard .x{",
-      "  flex:none; border:0; background:transparent; color:var(--muted);",
-      "  font-size:1.375rem; line-height:1; padding:4px 2px 4px 8px; cursor:pointer;",
+      "  flex:none; width:36px; height:36px; margin-right:-8px; border:0; border-radius:10px;",
+      "  background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer;",
       "}",
-      "#dictCard .senses{margin:10px 0 2px; display:grid; gap:9px;}",
-      "#dictCard .sense{font-size:0.9375rem; line-height:1.5;}",
-      "#dictCard .pos{",
-      "  color:var(--accent); font-style:italic; margin-right:7px;",
-      "}",
-      "#dictCard .syn{",
-      "  display:block; margin-top:3px; font-size:0.7812rem; color:var(--muted);",
-      "}",
+      "#dictCard .x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}",
+      "@media (pointer: coarse){ #dictCard .x{width:44px; height:44px; margin-right:-12px;} }",
+      /* the sentence itself, cut at three lines with a way to see it all */
       "#dictCard .quote{",
-      "  font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55;",
-      "  padding:10px 12px; margin:4px 0 12px;",
-      "  border-left:3px solid var(--accent);",
-      "  background:color-mix(in srgb, var(--accent) 8%, transparent);",
-      "  border-radius:0 8px 8px 0;",
+      "  flex:none; margin:10px 16px 0; padding:8px 12px; font-family:var(--reader-font); font-size:0.9375rem; line-height:1.5;",
+      "  border-left:3px solid var(--accent); border-radius:0 8px 8px 0;",
+      "  background:color-mix(in srgb, var(--accent) 8%, transparent); overflow-wrap:break-word;",
       "}",
-      "#dictCard .note{color:var(--muted); font-size:0.7812rem; padding:2px 0 6px;}",
+      "#dictCard .quote.clamp{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}",
+      "#dictCard .more{",
+      "  flex:none; align-self:flex-end; margin:2px 12px 0; padding:4px 6px; border:0; border-radius:6px;",
+      "  background:transparent; color:var(--muted); font:inherit; font-size:0.75rem; cursor:pointer;",
+      "}",
+      "#dictCard .more:hover{color:var(--ink); background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      /* the tab strip: equal tabs, the chosen one underlined in the accent */
+      "#dictCard .tabs{flex:none; display:flex; gap:2px; margin:10px 0 0; padding:0 8px; border-bottom:1px solid var(--line);}",
+      "#dictCard [role=tab]{",
+      "  flex:1 1 0; min-width:0; height:40px; position:relative;",
+      "  display:flex; align-items:center; justify-content:center; gap:6px; padding:0 6px;",
+      "  border:0; border-radius:8px 8px 0 0; background:transparent; color:var(--muted);",
+      "  font:inherit; font-size:0.8125rem; font-weight:600; white-space:nowrap; cursor:pointer;",
+      "}",
+      "#dictCard [role=tab] svg{flex:none;}",
+      "#dictCard [role=tab]:focus-visible{outline-offset:-3px;}",
+      "#dictCard [role=tab]:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}",
+      "#dictCard [role=tab][aria-selected=true]{color:var(--ink);}",
+      "#dictCard [role=tab][aria-selected=true]::after{",
+      "  content:\"\"; position:absolute; left:6px; right:6px; bottom:-1px; height:2px; border-radius:2px 2px 0 0; background:var(--accent);",
+      "}",
+      "#dictCard [role=tab][aria-disabled=true]{opacity:.42; cursor:default;}",
+      "#dictCard [role=tab][aria-disabled=true]:hover{background:transparent; color:var(--muted);}",
+      "#dictCard .bdg{",
+      "  font-size:0.6875rem; line-height:1; padding:3px 6px; border-radius:999px; font-variant-numeric:tabular-nums;",
+      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--ink);",
+      "}",
+      "#dictCard .dot{flex:none; width:6px; height:6px; border-radius:50%; background:var(--accent);}",
+      "@media (pointer: coarse){ #dictCard [role=tab]{height:44px;} }",
+      "@media (max-width:359px){ #dictCard [role=tab]{gap:4px; padding:0 4px; font-size:0.75rem;} }",
+      /* the panels scroll between the strip and the footer */
+      "#dictCard .body{flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:12px 16px;}",
+      "#dictCard .panel[hidden]{display:none;}",
+      "#dictCard .panel:focus{outline:none;}",
+      "#dictCard .panel:focus-visible{outline:2px solid var(--accent); outline-offset:-2px; border-radius:8px;}",
+      "#dictCard .foot{",
+      "  flex:none; display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px calc(12px + env(safe-area-inset-bottom, 0px));",
+      "  border-top:1px solid var(--line);",
+      "}",
+      "#dictCard .empty{color:var(--muted); font-size:0.875rem; line-height:1.5; text-align:center; padding:22px 8px;}",
+      /* the keyboard's way in: a field to type a word or a sentence into */
+      "#dictCard .lookup{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:2px 0 4px;}",
+      "#dictCard .lookup input{",
+      "  flex:1; min-width:0; min-height:40px; padding:0 12px; border:1px solid var(--line); border-radius:10px;",
+      "  background:var(--bg); color:var(--ink); font:inherit; font-size:0.9375rem;",
+      "}",
+      "#dictCard .lookup .hint{flex-basis:100%; color:var(--muted); font-size:0.78rem; line-height:1.45;}",
+      /* meaning: senses with the part of speech as an italic accent word, synonyms in muted */
+      "#dictCard .senses{display:grid; gap:9px;}",
+      "#dictCard .sense{font-size:0.9375rem; line-height:1.5;}",
+      "#dictCard .pos{color:var(--accent); font-style:italic; margin-right:6px;}",
+      "#dictCard .syn{display:block; margin-top:3px; font-size:0.78rem; color:var(--muted);}",
+      "#dictCard .note{color:var(--muted); font-size:0.78rem; line-height:1.45; padding:2px 0 6px;}",
       "#dictCard .sec{",
       "  font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;",
       "  color:var(--muted); margin:14px 0 6px;",
       "}",
-      "#dictCard .sec:first-child{margin-top:4px;}",
+      "#dictCard .panel > .sec:first-child, #dictCard .tr-slot > .sec:first-child{margin-top:0;}",
       "#dictCard .brk{display:grid; gap:7px; margin-top:2px;}",
       "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
       "#dictCard .brk i{color:var(--muted); font-style:italic;}",
-      /* word parts: a row of tiles, one per prefix / root / suffix, joined by plus signs */
+      /* word parts: a row of tiles, one per prefix / root / suffix, joined by plus signs (drawn
+         as part of the tile that follows, so a wrapped row never starts with a stray sign) */
       "#dictCard .parts{display:flex; flex-wrap:wrap; align-items:stretch; gap:6px 4px; margin:2px 0 6px;}",
       "#dictCard .part{",
-      "  display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:12em;",
+      "  display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:12em; position:relative;",
       "  padding:6px 9px 7px; border-radius:10px; border:1px solid var(--line);",
       "  background:var(--panel); font:inherit; color:var(--ink); text-align:left;",
       "}",
+      "#dictCard .part + .part{margin-left:18px;}",
+      "#dictCard .part + .part::before{content:\"+\"; position:absolute; left:-15px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:0.9375rem;}",
       "#dictCard button.part{cursor:pointer; border-color:color-mix(in srgb, var(--accent) 45%, var(--line));}",
       "#dictCard button.part:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
       "#dictCard .part .pt{font-family:var(--reader-font); font-size:1.0625rem; line-height:1.2; font-weight:600;}",
       "#dictCard .part .pk{font-size:0.7812rem; line-height:1.3; color:var(--accent); margin-top:1px;}",
       "#dictCard .part .pm{font-size:0.7812rem; line-height:1.35; margin-top:2px;}",
       "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
-      "#dictCard .plus{align-self:center; color:var(--muted); font-size:0.9375rem; padding:0 1px;}",
       "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
-      /* translation slot (filled by translate.js): the translation in the reader font, an engine line */
-      "#dictCard .tr-slot{margin:2px 0 4px;}",
-      "#dictCard .tr-slot:empty{display:none;}",
+      /* translation (filled by translate.js): the translation in the reader font, an engine line */
       "#dictCard .tr-out{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 4px; overflow-wrap:break-word;}",
       "#dictCard .tr-out[dir=rtl]{text-align:right;}",
-      "#dictCard .tr-eng{color:var(--muted); font-size:0.7812rem; padding:0 0 4px;}",
-      /* simplify: the plainer text, each change dotted in the accent colour with a tap-to-show note */
-      "#dictCard .simple{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:4px 0 2px;}",
+      "#dictCard .tr-eng{color:var(--muted); font-size:0.78rem; padding:0 0 4px;}",
+      /* simpler: how plain to make it, then the plainer text with each change dotted in the
+         accent colour and a tap-to-show note */
+      "#dictCard .lvl{margin:0 0 12px;}",
+      "#dictCard .lvl .sec{margin-top:0;}",
+      /* four longish labels: the pill wraps onto a second row rather than scrolling out of sight */
+      "#dictCard .lvl .seg{max-width:100%; flex-wrap:wrap; overflow:visible; row-gap:4px;}",
+      "#dictCard .simple{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:0 0 2px;}",
       "#dictCard .chg{",
       "  display:inline; font:inherit; color:inherit; background:transparent; border:0; padding:0; margin:0;",
       "  cursor:pointer; border-radius:2px; text-decoration:underline dotted var(--accent);",
       "  text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
-      "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 16%, transparent);}",
+      "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 14%, transparent);}",
+      /* text on the ink tint is ink: muted slips under 4.5:1 on the tint on eight themes */
       "#dictCard .chgnote{",
       "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
-      "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--muted);",
+      "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--ink);",
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
-      "#dictCard .clause{",
-      "  padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;",
-      "}",
+      /* explain: one box per clause, its roles as small tiles */
+      "#dictCard .clause{padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;}",
       "#dictCard .clause .ctext{font-family:var(--reader-font); font-size:0.9375rem; line-height:1.45;}",
       "#dictCard .clause .ckind{",
       "  display:inline-block; font-size:0.6875rem; color:var(--accent); font-weight:600;",
@@ -4793,34 +8050,94 @@
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
       "#dictCard .role b{",
-      "  display:block; font-size:0.625rem; font-weight:700; letter-spacing:.08em;",
-      "  text-transform:uppercase; color:var(--muted); margin-bottom:1px;",
+      "  display:block; font-size:0.6875rem; font-weight:700; letter-spacing:.08em;",
+      "  text-transform:uppercase; color:var(--ink); margin-bottom:1px;",
       "}",
       "#dictCard .tense{font-size:0.7812rem; color:var(--muted); margin-top:7px; line-height:1.4;}",
       "#dictCard .tense b{color:var(--ink); font-weight:600;}",
-      "#dictCard .plain{",
-      "  font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55;",
-      "  padding:8px 0 2px;",
+      "#dictCard .plain{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 2px;}",
+      /* style: the register as a quiet pill, then a row per figure of speech; a row marks its
+         own words in the quote above */
+      "#dictCard #dictExpl > .sec:first-child{margin-top:0;}",
+      "#dictCard .style{display:grid; gap:6px; margin:0 0 4px;}",
+      "#dictCard .pill{",
+      "  display:inline-block; padding:2px 9px; border-radius:999px; flex:none;",
+      "  font-size:0.7188rem; line-height:1.55; white-space:nowrap; border:1px solid var(--line);",
+      "}",
+      "#dictCard .pill.ink{background:color-mix(in srgb, var(--ink) 6%, transparent); color:var(--ink);}",
+      "#dictCard .pill.acc{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent); color:var(--ink);}",
+      "#dictCard .reg{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px;}",
+      "#dictCard .reg .rnote{color:var(--muted); font-size:0.78rem; line-height:1.45;}",
+      "#dictCard .figrow{",
+      "  display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; width:100%; margin:0; text-align:left;",
+      "  padding:7px 9px; border:1px solid var(--line); border-radius:10px; background:transparent;",
+      "  color:var(--ink); font-family:inherit; font-size:0.8125rem; line-height:1.5; cursor:pointer;",
+      "  transition:background .2s, border-color .2s;",
+      "}",
+      "#dictCard .figrow:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      "#dictCard .figrow[aria-pressed=true]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}",
+      "#dictCard .figrow .ftext{font-family:var(--reader-font);}",
+      "#dictCard .figrow .fnote{color:var(--muted);}",
+      "@media (pointer: coarse){ #dictCard .figrow{min-height:44px;} }",
+      "#dictCard .quote mark.fig{",
+      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--ink); border-radius:3px;",
+      "  text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
       "#dictCard .ai{font-size:0.9375rem; line-height:1.55; white-space:pre-wrap; padding:2px 0 4px;}",
-      "#dictCard .acts{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 2px;}",
+      /* chips: quiet actions; .go is the one primary action of a panel (the AI rewrite, a translation) */
+      "#dictCard .acts{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px;}",
       "#dictCard .act{",
-      "  padding:7px 13px; border-radius:999px; border:1px solid var(--line);",
-      "  background:transparent; color:var(--ink); font-size:0.8125rem; cursor:pointer;",
+      "  display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 12px; border-radius:999px;",
+      "  border:1px solid var(--line); background:transparent; color:var(--ink);",
+      "  font:inherit; font-size:0.8125rem; cursor:pointer; transition:background .15s, border-color .15s;",
       "}",
+      "#dictCard .act:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); border-color:var(--accent);}",
+      "#dictCard .act:active{transform:scale(.97);}",
+      "#dictCard .act[aria-pressed=true]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}",
       "#dictCard .act.go{background:var(--accent); border-color:var(--accent); color:var(--panel);}",
+      "#dictCard .act.go:hover{background:var(--accent);}",
+      "@media (pointer: coarse){ #dictCard .act{min-height:40px;} }",
+      /* the selection pill: Define / Explain and Highlight, a small popover above the selection */
       "#dictPill{",
-      "  position:fixed; z-index:58; display:none; gap:2px; padding:3px; border-radius:999px;",
-      "  border:1px solid var(--accent); background:var(--accent); color:var(--panel);",
+      "  position:fixed; z-index:58; display:none; padding:3px; border-radius:999px;",
+      "  border:1px solid var(--line); background:var(--panel); color:var(--ink);",
       "  font-family:var(--ui-font); font-size:0.8125rem; font-weight:600;",
-      "  box-shadow:0 4px 16px rgba(0,0,0,.25);",
+      "  box-shadow:0 10px 30px rgba(0,0,0,.18);",
       "}",
       "#dictPill.on{display:flex;}",
-      "#dictPill button{border:0; background:transparent; color:inherit; font:inherit; padding:5px 11px; border-radius:999px; cursor:pointer;}",
-      "#dictPill button:hover{background:rgba(0,0,0,.16);}",
-      "@media (min-width:820px){",
-      "  #dictCard{left:auto; right:22px; bottom:22px; width:440px;",
-      "    border-radius:16px; border:1px solid var(--line); max-height:70vh;}",
+      "#dictPill button{",
+      "  display:flex; align-items:center; gap:6px; height:32px; padding:0 12px; position:relative;",
+      "  border:0; border-radius:999px; background:transparent; color:inherit; font:inherit; cursor:pointer;",
+      "}",
+      "#dictPill button + button{margin-left:3px;}",
+      "#dictPill button + button::before{content:\"\"; position:absolute; left:-2px; top:8px; bottom:8px; width:1px; background:var(--line);}",
+      "#dictPill button svg{color:var(--accent);}",
+      "#dictPill button:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      "#dictPill button:active{transform:scale(.97);}",
+      /* wider screens: a floating card by the bottom-right corner, no scrim */
+      "@media (min-width:561px){",
+      "  #dictScrim{background:transparent;}",
+      /* above the dock (the read-aloud bar, the page-turn bar) and under the header */
+      "  #dictCard{",
+      "    left:auto; right:22px; bottom:calc(var(--dockH, 0px) + 22px); width:460px; max-width:calc(100vw - 44px);",
+      "    max-height:min(72vh, calc(100vh - var(--headH, 0px) - var(--dockH, 0px) - 44px));",
+      "    border:1px solid var(--line); border-radius:12px; box-shadow:0 2px 14px rgba(0,0,0,.12);",
+      "    transform:translateY(12px); opacity:0;",
+      "    transition:transform .22s ease, opacity .22s ease, visibility 0s linear .22s;",
+      "  }",
+      "  #dictCard.open{transform:none; opacity:1; transition:transform .22s ease, opacity .22s ease, visibility 0s;}",
+      "  #dictCard .grab{display:none;}",
+      "  #dictCard .head{padding-top:14px;}",
+      "  #dictCard .foot{padding-bottom:12px;}",
+      "}",
+      "@media (forced-colors: active){",
+      "  #dictCard [role=tab][aria-selected=true]{text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:6px;}",
+      "  #dictCard [role=tab][aria-disabled=true]{color:GrayText; opacity:1;}",
+      "  #dictCard .bdg, #dictCard .mark, #dictPill{border:1px solid ButtonText;}",
+      "  #dictCard .dot{background:ButtonText;}",
+      "  #dictCard .pill{border-color:ButtonText;}",
+      "  #dictCard .figrow[aria-pressed=true]{border-color:Highlight; border-width:2px;}",
+      "  #dictCard .quote mark.fig{background:Highlight; color:HighlightText;}",
       "}"
     ].join("\n");
     document.head.appendChild(css);
@@ -4828,26 +8145,45 @@
     /* ---------- card markup ---------- */
     var scrim = document.createElement("div"); scrim.id = "dictScrim";
     var card  = document.createElement("div"); card.id  = "dictCard";
-    card.innerHTML = '<div class="grab"></div><div class="inner"></div>';
+    card.innerHTML = '<div class="grab" aria-hidden="true"></div><div class="inner"></div>';
     document.body.appendChild(scrim);
     document.body.appendChild(card);
     var inner = card.querySelector(".inner");
     var pill = document.createElement("div"); pill.id = "dictPill";
-    pill.innerHTML = '<button type="button" data-act="lookup">Explain</button><button type="button" data-act="simplify">Simplify</button><button type="button" data-act="mark">Highlight</button><button type="button" data-act="translate">Translate</button>';
+    pill.setAttribute("role", "group"); pill.setAttribute("aria-label", "Selected text");
+    pill.innerHTML = '<button type="button" data-act="lookup">' + icon("explain", 16) + '<span>Explain</span></button>' +
+                     '<button type="button" data-act="mark">' + icon("highlight", 16) + '<span>Highlight</span></button>';
     document.body.appendChild(pill);
+    /* the pill is announced when it appears (it never takes focus) */
+    var pillLive = document.createElement("div"); pillLive.className = "ll-sr"; pillLive.setAttribute("aria-live", "polite");
+    document.body.appendChild(pillLive);
 
     var openedAt = 0, cardOpener = null;
     card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "false"); card.setAttribute("aria-label", "Dictionary"); card.tabIndex = -1;
-    function openCard(){
+    /* focusEl: a control inside the card to land on instead of the card itself */
+    function openCard(focusEl){
       openedAt = Date.now(); scrim.classList.add("on"); card.classList.add("open"); hidePill();
+      document.documentElement.classList.add("lock-card");   /* a phone holds the page still under the sheet */
       if (!cardOpener) cardOpener = document.activeElement;
-      setTimeout(function(){ if (card.classList.contains("open")) card.focus({ preventScroll: true }); }, 60);
+      setTimeout(function(){
+        if (!card.classList.contains("open")) return;
+        var f = typeof focusEl === "function" ? focusEl() : focusEl;
+        (f && card.contains(f) ? f : card).focus({ preventScroll: true });
+      }, 60);
     }
     function closeCard(){
       var wasOpen = card.classList.contains("open");
       scrim.classList.remove("on"); card.classList.remove("open");
+      document.documentElement.classList.remove("lock-card");
       clearHit();
-      if (wasOpen && cardOpener && cardOpener.focus && document.contains(cardOpener) && cardOpener !== document.body) cardOpener.focus({ preventScroll: true });
+      /* focus goes back where the card came from: the pill is shown again first when it came
+         from there (the selection is still there), and a control no longer on screen gives way
+         to the document itself rather than letting focus fall to the body */
+      if (wasOpen && cardOpener && cardOpener.focus && document.contains(cardOpener) && cardOpener !== document.body){
+        if (cardOpener.closest("#dictPill")) updatePill();
+        var to = cardOpener.getClientRects().length ? cardOpener : document.getElementById("main");
+        if (to) to.focus({ preventScroll: true });
+      }
       cardOpener = null;
     }
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
@@ -4860,6 +8196,172 @@
       if (card.classList.contains("open")){ e.preventDefault(); e.stopImmediatePropagation(); }
       closeCard();
     }, true);
+
+    /* ---------- the card's shape ----------
+       Everything the reader touches opens the same card: a head, a strip of tabs, a panel per
+       tab and a footer of actions on the passage. cur is what the card shows now; every
+       asynchronous answer checks cur.gen, so a late one never draws over the next word. A
+       panel keeps its result while the card stays open, so switching tabs costs nothing. */
+    var TABS = {
+      meaning:   { label: "Meaning",   icon: "meaning" },
+      parts:     { label: "Parts",     icon: "parts" },
+      translate: { label: "Translate", icon: "translate" },
+      explain:   { label: "Explain",   icon: "explain" },
+      simpler:   { label: "Simpler",   icon: "simpler", attr: ' data-m="simplify"' }
+    };
+    var cur = null, gen = 0;
+    function buildCard(o){
+      o.gen = ++gen; o.lazy = o.lazy || {}; cur = o;
+      stopSpeech();
+      var h = '<div class="head"><div class="mark">' + icon(o.icon, 20) + '</div><div class="hw">' +
+              '<div class="term">' + esc(o.title) + '</div>' + (o.ipa ? '<div class="ipa">' + esc(o.ipa) + '</div>' : '') + '</div>' +
+              '<button type="button" class="x" aria-label="Close" title="Close">' + icon("close", 20) + '</button></div>';
+      if (o.quote) h += '<div class="quote clamp" id="dictQuote">' + esc(o.quote) + '</div>' +
+                        '<button type="button" class="more" hidden aria-expanded="false" aria-controls="dictQuote">Show all</button>';
+      /* one tab needs no strip (the lookup field): its panel is a plain region then */
+      var tabbed = o.tabs.length > 1;
+      if (tabbed){
+        h += '<div class="tabs" role="tablist" aria-label="' + esc(o.tabsLabel) + '">';
+        o.tabs.forEach(function(t){
+          var d = TABS[t];
+          h += '<button type="button" role="tab" id="dictTab-' + t + '" aria-controls="dictPanel-' + t + '" aria-selected="false" tabindex="-1" data-tab="' + t + '"' +
+               (d.attr || '') + (o.off && o.off[t] ? ' aria-disabled="true"' : '') + '>' + icon(d.icon, 18) + '<span>' + d.label + '</span></button>';
+        });
+        h += '</div>';
+      }
+      h += '<div class="body">';
+      o.tabs.forEach(function(t){
+        h += '<div class="panel" id="dictPanel-' + t + '" data-tab="' + t + '"' + (tabbed ? ' role="tabpanel" aria-labelledby="dictTab-' + t + '" tabindex="0"' : '') + ' hidden>' +
+             ((o.panels && o.panels[t]) || '') + '</div>';
+      });
+      h += '</div>';
+      if (o.foot.length){
+        h += '<div class="foot" id="dictMarkActs">';
+        o.foot.forEach(function(a){
+          h += '<button type="button" class="act" data-m="' + a.m + '"' + (a.id ? ' id="' + a.id + '"' : '') + (a.pressed ? ' aria-pressed="false"' : '') + '>' + esc(a.label) + '</button>';
+        });
+        h += '</div>';
+      }
+      inner.innerHTML = h;
+      card.setAttribute("aria-label", o.dialogLabel);
+      inner.querySelector(".x").addEventListener("click", closeCard);
+      var more = inner.querySelector(".more");
+      if (more) more.addEventListener("click", function(){
+        var open = !inner.querySelector("#dictQuote").classList.toggle("clamp");
+        more.textContent = open ? "Show less" : "Show all";
+        more.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      var strip = inner.querySelector(".tabs");
+      if (strip){
+        strip.addEventListener("click", function(e){
+          var b = e.target.closest("[role=tab]");
+          if (b && b.getAttribute("aria-disabled") !== "true") select(b.dataset.tab, false);
+        });
+        /* arrow keys walk the tabs that have something to show; Home and End jump */
+        strip.addEventListener("keydown", function(e){
+          var step = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
+          if (!(e.key in step)) return;
+          var list = tabButtons().filter(function(b){ return b.getAttribute("aria-disabled") !== "true"; });
+          var i = list.indexOf(inner.querySelector("[role=tab][aria-selected=true]"));
+          var j = e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : (i + step[e.key] + list.length) % list.length;
+          e.preventDefault();
+          if (list[j]) select(list[j].dataset.tab, true);
+        });
+      }
+      var foot = inner.querySelector(".foot");
+      if (foot) foot.addEventListener("click", function(e){ var b = e.target.closest("button"); if (b) footAct(b); });
+      select(o.active);
+      if (more){ var q = inner.querySelector("#dictQuote"); if (q.scrollHeight > q.clientHeight + 2) more.hidden = false; }
+    }
+    function tabButtons(){ return Array.prototype.slice.call(inner.querySelectorAll("[role=tab]")); }
+    function tabEl(t){ return inner.querySelector('[role=tab][data-tab="' + t + '"]'); }
+    function panelEl(t){ return inner.querySelector('.panel[data-tab="' + t + '"]'); }
+    function select(t, focus){
+      if (!cur || cur.tabs.indexOf(t) < 0) return;
+      cur.active = t;
+      tabButtons().forEach(function(b){
+        var on = b.dataset.tab === t;
+        b.setAttribute("aria-selected", on ? "true" : "false"); b.tabIndex = on ? 0 : -1;
+        if (on){ var d = b.querySelector(".dot"); if (d) d.remove(); }
+      });
+      Array.prototype.forEach.call(inner.querySelectorAll(".panel"), function(p){ p.hidden = p.dataset.tab !== t; });
+      var body = inner.querySelector(".body"); if (body) body.scrollTop = 0;
+      if (focus){ var b = tabEl(t); if (b) b.focus({ preventScroll: true }); }
+      /* a panel drawn the first time its tab opens */
+      if (cur.lazy[t]){ var f = cur.lazy[t]; delete cur.lazy[t]; f(); }
+    }
+    /* a tab that has nothing yet is dimmed; when its answer comes it lights up, with a count or
+       a dot so the reader knows there is something there */
+    function markTab(t, mark){
+      var b = tabEl(t); if (!b) return;
+      b.removeAttribute("aria-disabled");
+      var old = b.querySelector(".bdg, .dot"); if (old) old.remove();
+      if (mark === "dot"){ if (cur && cur.active !== t) b.insertAdjacentHTML("beforeend", '<span class="dot" aria-hidden="true"></span>'); }
+      else if (mark) b.insertAdjacentHTML("beforeend", '<span class="bdg">' + esc(mark) + '</span>');
+    }
+    /* the footer acts on the passage in the book; Copy takes what the open tab shows */
+    function footAct(b){
+      var m = b.dataset.m;
+      if (!cur) return;
+      if (m === "copy"){ copyPlain(copyText()); return; }
+      if (m === "say"){ speakPlain(cur.title, b, null); return; }
+      var L = window.__ll;
+      if (!L || !L.Marks || !cur.span) return;
+      if (m === "read"){ closeCard(); L.Speak.start(cur.span.start); return; }
+      clearHit();
+      var mk = L.Marks.addHighlight(cur.span.start, cur.span.end);
+      closeCard();
+      if (mk && m === "note") L.Marks.openPanel(mk.key);
+      else if (mk) L.Marks.toast("Highlighted");
+    }
+    function copyText(){
+      var p = panelEl(cur.active), out;
+      if (cur.active === "simpler" && cur.simple) return cur.simple;
+      if (cur.active === "translate" && p && (out = p.querySelector(".tr-out"))) return out.textContent;
+      return cur.kind === "word" ? cur.title : cur.sentence;
+    }
+    function copyPlain(s){
+      var done = function(){ if (window.__ll && window.__ll.Marks) window.__ll.Marks.toast("Copied"); };
+      var fallback = function(){
+        var ta = document.createElement("textarea");
+        ta.value = s; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch(_){}
+        document.body.removeChild(ta);
+        done();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).then(done, fallback);
+      else fallback();
+    }
+    /* one plain utterance at a time (Say it, Read aloud in Simpler): the narrator's voice at the
+       saved rate; the button shows it is speaking and a second press stops it */
+    var utter = null, utterBtn = null, utterLabel = "";
+    function resetSpeechBtn(){
+      if (utterBtn){ if (utterLabel) utterBtn.textContent = utterLabel; utterBtn.setAttribute("aria-pressed", "false"); }
+      utterBtn = null; utterLabel = "";
+    }
+    function stopSpeech(){
+      if (!utter) return;
+      utter = null;
+      try { speechSynthesis.cancel(); } catch(_){}
+      resetSpeechBtn();
+    }
+    function speakPlain(s, btn, stopLabel){
+      if (utter){ stopSpeech(); return; }
+      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
+      if (window.__ll && window.__ll.Speak && window.__ll.Speak.isPlaying()) window.__ll.Speak.pause();
+      var u = new SpeechSynthesisUtterance(s);
+      var name = Store.get("ll_tts_voice") || "", vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
+      for (var i = 0; i < vs.length; i++) if (vs[i].name === name){ u.voice = vs[i]; break; }
+      u.rate = Math.min(2, Math.max(0.5, parseFloat(Store.get("ll_tts_rate") || "1") || 1));
+      u.onend = u.onerror = function(){ if (utter === u){ utter = null; resetSpeechBtn(); } };
+      utter = u; utterBtn = btn; utterLabel = stopLabel ? btn.textContent : "";
+      if (stopLabel) btn.textContent = stopLabel;
+      btn.setAttribute("aria-pressed", "true");
+      try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch(_){ utter = null; resetSpeechBtn(); }
+    }
+    /* closing the card (any way) stops what it was saying */
+    new MutationObserver(function(){ if (!card.classList.contains("open")) stopSpeech(); }).observe(card, { attributes: true, attributeFilter: ["class"] });
 
     /* ---------- highlight the tapped word ---------- */
     var hitEl = null;
@@ -4997,14 +8499,18 @@
       });
     }
 
-    function renderWord(term, res){
-      var h = '<div class="head">' +
-              '<div class="mark">' + ICON_BOOK + '</div><div class="hw">';
+    /* the Meaning panel, and the head once the headword and its sound are known */
+    function renderWord(term, res, my){
+      if (!cur || cur.kind !== "word" || cur.gen !== my) return;
+      var p = panelEl("meaning"), h = '';
       if (res){
-        h += '<div class="term">' + esc(res.word);
-        if (res.entry.i) h += ' <span class="ipa">' + esc(res.entry.i) + '</span>';
-        h += '</div></div>' +
-             '<button class="x" aria-label="Close">×</button></div>';
+        cur.title = res.word;
+        inner.querySelector(".term").textContent = res.word;
+        var hw = inner.querySelector(".hw"), ipa = hw.querySelector(".ipa");
+        if (res.entry.i){
+          if (!ipa){ ipa = document.createElement("div"); ipa.className = "ipa"; hw.appendChild(ipa); }
+          ipa.textContent = res.entry.i;
+        } else if (ipa) ipa.remove();
         h += '<div class="senses">';
         res.entry.m.slice(0,6).forEach(function(m){
           h += '<div class="sense">';
@@ -5016,22 +8522,16 @@
         h += '</div>';
         if (res.online) h += '<div class="note">Looked up online — not in the offline dictionary.</div>';
       } else {
-        h += '<div class="term">' + esc(term) + '</div></div>' +
-             '<button class="x" aria-label="Close">×</button></div>' +
-             '<div class="note">No definition found' +
-             (navigator.onLine ? '' : ' — you’re offline, so only the built-in dictionary was searched') +
-             '.</div>';
+        h += '<div class="empty">No definition found' +
+             (navigator.onLine ? '' : ' — you’re offline, so only the built-in dictionary was searched') + '.</div>';
       }
-      h += '<div class="tr-slot" data-kind="word"></div>';
-      inner.innerHTML = h;
-      inner.querySelector(".x").addEventListener("click", closeCard);
+      p.innerHTML = h;
       renderParts(term, res);
-      Translate.slot(term, inner.querySelector(".tr-slot"));
     }
 
     /* ---------- word parts (prefix / root / suffix, see llMorph) ----------
-       Drawn under the definition once morph.js and the chunks for the possible stems are
-       in; the definition itself never waits for it. */
+       Drawn in the Parts panel once morph.js and the chunks for the possible stems are in;
+       the tab lights up with the number of parts. The definition never waits for it. */
     var partsToken = 0;
     function shortDef(entry){
       var m = null;
@@ -5061,7 +8561,7 @@
       return null;
     }
     function renderParts(term, res){
-      var token = ++partsToken;
+      var token = ++partsToken, my = cur.gen;
       var words = [term.toLowerCase().replace(/[’]/g, "'")];
       if (res && res.word && words.indexOf(res.word) < 0) words.push(res.word);
       need(["morph"]).then(function(){
@@ -5069,13 +8569,12 @@
         words.forEach(function(w){ cands = cands.concat(window.llMorph.candidates(w)); });
         return withWords(cands.concat(cands.map(function(c){ return IRREG[c]; })));
       }).then(function(){
-        if (token !== partsToken || !card.classList.contains("open")) return;
+        if (token !== partsToken || !cur || cur.gen !== my || !card.classList.contains("open")) return;
         var r = null;
         for (var i = 0; i < words.length && !r; i++) r = window.llMorph.analyse(words[i], partLookup);
         if (!r) return;
-        var h = '<div class="sec">Word parts</div><div class="parts">';
-        r.parts.forEach(function(p, i){
-          if (i) h += '<span class="plus" aria-hidden="true">+</span>';
+        var h = '<div class="parts">';
+        r.parts.forEach(function(p){
           /* a base is shown as the word it is (hurry, not the hurri- of "unhurried") */
           var tile = '<span class="pt">' + esc(p.kind === "base" && p.word ? p.word : p.text) + '</span><small class="pk">' + esc(p.kind) + '</small>' +
                      (p.meaning ? '<span class="pm">' + esc(p.meaning) + '</span>' : '') +
@@ -5093,30 +8592,49 @@
           var b = e.target.closest("button.part");
           if (b) defineWord(b.dataset.w);
         });
-        inner.appendChild(box);
+        var p = panelEl("parts");
+        p.innerHTML = ""; p.appendChild(box);
+        markTab("parts", String(r.parts.length));
       }).catch(function(err){ console.warn("Word parts unavailable", err); });
     }
 
-    function defineWord(term){
-      inner.innerHTML = '<div class="note">Looking up “' + esc(term) + '”…' +
-        (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
+    /* the Translate panel is handed to translate.js as soon as the card is built: the on-device
+       translator fills it by itself and the tab gets a dot; other engines wait for a press */
+    function runTranslate(text, span){
+      var p = panelEl("translate"), el = p && p.querySelector(".tr-slot"), my = cur.gen;
+      if (!el) return;
+      Translate.slot(text, el, { span: span, onResult: function(){ if (cur && cur.gen === my) markTab("translate", "dot"); } });
+    }
+
+    /* the word card: Meaning at once, Parts when the analyser answers, Translate when it can;
+       hit = the word's character span in #doc, when it was tapped in the text */
+    function defineWord(term, hit){
+      var foot = [];
+      if (hit && state.mode === "doc") foot.push({ m: "hl", label: "Highlight" });
+      foot.push({ m: "copy", label: "Copy" });
+      if ("speechSynthesis" in window) foot.push({ m: "say", label: "Say it", id: "dictSay", pressed: true });
+      buildCard({ kind: "word", term: term, title: term, icon: "meaning", dialogLabel: "Dictionary", tabsLabel: "Word",
+        tabs: ["meaning", "parts", "translate"], off: { parts: true }, active: "meaning", span: hit || null, foot: foot,
+        panels: { meaning: '<div class="note">Looking up “' + esc(term) + '”…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>',
+                  translate: '<div class="tr-slot" data-kind="word"></div>' } });
       openCard();
+      runTranslate(term, null);
+      var my = cur.gen;
       lookupLocal(term).then(function(res){
-        if (res){ renderWord(term, res); return; }
-        if (!navigator.onLine){ renderWord(term, null); return; }
+        if (!cur || cur.gen !== my) return;
+        if (res){ renderWord(term, res, my); return; }
+        if (!navigator.onLine){ renderWord(term, null, my); return; }
         var lw = term.toLowerCase();
         var base = IRREG[lw] || lw;
         return lookupOnline(base).then(function(r2){
-          if (r2) { renderWord(term, r2); return; }
-          if (base === lw) { renderWord(term, null); return; }
-          return lookupOnline(lw).then(function(r3){ renderWord(term, r3); });
+          if (r2) { renderWord(term, r2, my); return; }
+          if (base === lw) { renderWord(term, null, my); return; }
+          return lookupOnline(lw).then(function(r3){ renderWord(term, r3, my); });
         });
       });
     }
 
     /* ---------- sentence explaining (offline, rule-based — see llExplain) ---------- */
-    var currentSentence = null, currentSpan = null;
-
     function kindLabel(c){
       var first = "";
       if (c.kind === "sub") return (c.label || "clause") + (c.sub ? " — “" + c.sub.toLowerCase() + "”" : "");
@@ -5130,8 +8648,53 @@
     function role(label, val){
       return '<span class="role"><b>' + esc(label) + '</b>' + esc(val) + '</span>';
     }
-    function renderExplain(r){
-      var h = '<div class="sec">Explain</div>';
+    /* how the sentence is written: its register, and the figures of speech in it. Nothing is
+       drawn for plain everyday prose. */
+    function renderStyle(r){
+      var st = r.style;
+      if (!st) return '';
+      var figs = st.figurative || [], reg = st.register || { kind: "neutral", note: "" };
+      if (!figs.length && reg.kind === "neutral") return '';
+      var h = '<div class="sec">Style</div><div class="style">' +
+        '<div class="reg"><span class="pill ink">' + esc(reg.kind) + '</span><span class="rnote">' + esc(reg.note || '') + '</span></div>';
+      figs.forEach(function(f, i){
+        h += '<button type="button" class="figrow" aria-pressed="false" data-fig="' + i + '">' +
+             '<span class="pill acc">' + esc(f.kind) + '</span>' +
+             '<span class="ftext">“' + esc(f.text) + '”</span>' +
+             '<span class="fnote">' + esc(f.note) + '</span></button>';
+      });
+      return h + '</div>';
+    }
+    /* a row marks its own words in the quote above: on hover, on focus, and while it is pressed */
+    function wireStyle(r, sentence){
+      var quote = inner.querySelector("#dictQuote"), rows = inner.querySelectorAll(".figrow");
+      var figs = (r.style && r.style.figurative) || [];
+      if (!quote || !rows.length) return;
+      function show(i){
+        var f = figs[i];
+        if (!f){ quote.textContent = sentence; return; }
+        quote.innerHTML = esc(sentence.slice(0, f.start)) + '<mark class="fig">' + esc(sentence.slice(f.start, f.end)) +
+                          '</mark>' + esc(sentence.slice(f.end));
+      }
+      function held(){
+        for (var i = 0; i < rows.length; i++) if (rows[i].getAttribute("aria-pressed") === "true") return i;
+        return -1;
+      }
+      Array.prototype.forEach.call(rows, function(b, i){
+        b.addEventListener("mouseenter", function(){ show(i); });
+        b.addEventListener("focus", function(){ show(i); });
+        b.addEventListener("mouseleave", function(){ show(held()); });
+        b.addEventListener("blur", function(){ show(held()); });
+        b.addEventListener("click", function(){
+          var on = b.getAttribute("aria-pressed") === "true";
+          Array.prototype.forEach.call(rows, function(o){ o.setAttribute("aria-pressed", "false"); });
+          b.setAttribute("aria-pressed", on ? "false" : "true");
+          show(on ? -1 : i);
+        });
+      });
+    }
+    function renderExplain(r, sentence){
+      var h = renderStyle(r);
       if (!r.clauses.length){
         h += '<div class="note">Nothing to break down here.</div>';
         return h;
@@ -5167,7 +8730,7 @@
         });
         h += '</div>';
       }
-      if (r.plain && r.plain.replace(/\W/g, "").toLowerCase() !== currentSentence.replace(/\W/g, "").toLowerCase()){
+      if (r.plain && r.plain.replace(/\W/g, "").toLowerCase() !== sentence.replace(/\W/g, "").toLowerCase()){
         h += '<div class="sec">In plainer words</div><div class="plain">' + esc(r.plain) + '</div>';
       }
       return h;
@@ -5192,59 +8755,59 @@
       });
       return h + '</div>';
     }
-
-    function explainSentence(sentence, span){
-      sentence = String(sentence || "").replace(/\s+/g, " ").trim();
-      if (!sentence) return;
-      currentSentence = sentence;
-      currentSpan = (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
-      var h = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw">' +
-              '<div class="term">' + (/\s/.test(sentence) ? 'This sentence' : 'This word') + '</div></div>' +
-              '<button class="x" aria-label="Close">×</button></div>' +
-              '<div class="quote">' + esc(sentence) + '</div>' +
-              '<div class="tr-slot" data-kind="sentence"></div>' +
-              '<div class="acts" id="dictMarkActs"><button class="act" data-m="simplify">Simplify</button>' +
-              (currentSpan ? '<button class="act" data-m="hl">Highlight</button><button class="act" data-m="note">Note…</button><button class="act" data-m="read">Read from here</button>' : '') + '</div>' +
-              '<div id="dictAi"></div>' +
-              '<div id="dictExpl"><div class="note">Reading it…' +
-              (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
-      inner.innerHTML = h;
-      inner.querySelector(".x").addEventListener("click", closeCard);
-      var ma = inner.querySelector("#dictMarkActs");
-      if (ma) ma.addEventListener("click", function(e){
-        var b = e.target.closest("button"); if (!b) return;
-        if (b.dataset.m === "simplify"){ renderSimplify(sentence, currentSpan); return; }
-        if (!window.__ll || !window.__ll.Marks) return;
-        if (b.dataset.m === "read"){ closeCard(); window.__ll.Speak.start(currentSpan.start); return; }
-        var m = window.__ll.Marks.addHighlight(currentSpan.start, currentSpan.end);
-        closeCard();
-        if (m && b.dataset.m === "note") window.__ll.Marks.openPanel(m.key);
-        else if (m) window.__ll.Marks.toast("Highlighted");
-      });
-      openCard();
+    /* the Explain panel: chunks for every word in the sentence (plus irregular base forms, which
+       can start with another letter), then the analysis and the key words */
+    function runExplain(sentence){
+      var my = cur.gen, box = inner.querySelector("#dictExpl");
+      if (!box) return;
+      box.innerHTML = '<div class="note">Reading it…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
       renderAiButton(sentence);
-      Translate.slot(sentence, inner.querySelector(".tr-slot"), { span: currentSpan });
-
-      var box = inner.querySelector("#dictExpl");
-      /* chunks for every word in the sentence (plus irregular base forms, which can start with another letter) */
-      var words = (sentence.toLowerCase().match(/[a-z\u00C0-\u024F'\u2019-]+/g) || []).map(function(w){ return w.replace(/[\u2019]/g, "'"); });
+      var words = (sentence.toLowerCase().match(/[a-zÀ-ɏ'’-]+/g) || []).map(function(w){ return w.replace(/[’]/g, "'"); });
       var extra = [];
       words.forEach(function(w){ if (IRREG[w]) extra.push(IRREG[w]); variants(w).forEach(function(v){ extra.push(v); }); });
-      Promise.all([withWords(words.concat(extra)), window.__ll.need(["explain"])]).then(function(){
-        if (currentSentence !== sentence) return;
+      Promise.all([withWords(words.concat(extra)), need(["explain"])]).then(function(){
+        if (!cur || cur.gen !== my) return;
         var r = window.llExplain.explain(sentence, find, window.llExplain.rank);
-        box.innerHTML = renderExplain(r) + renderKeywords(r) +
+        box.innerHTML = renderExplain(r, sentence) + renderKeywords(r) +
           (navigator.onLine ? '' : '<div class="note">Offline — explained with the built-in dictionary only.</div>');
+        wireStyle(r, sentence);
       }).catch(function(err){
         console.error(err);
-        box.innerHTML = '<div class="note">Couldn’t analyse this sentence.</div>';
+        if (cur && cur.gen === my) box.innerHTML = '<div class="note">Couldn’t analyse this sentence.</div>';
       });
     }
 
+    /* the sentence card: Explain, Simpler and Translate over one quoted sentence. Explain is
+       drawn when its tab is open (at once, from a hold or a right-click), Simpler the first time
+       its tab opens, Translate as soon as the on-device translator can (a press otherwise). */
+    function validSpan(span){
+      return (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
+    }
+    function openSentence(text, span, tab){
+      text = String(text || "").replace(/\s+/g, " ").trim();
+      if (!text) return;
+      var sp = validSpan(span);
+      /* the same passage again (Simpler asked for from another module, say): just turn to that tab */
+      if (cur && cur.kind === "sentence" && cur.sentence === text && card.classList.contains("open") &&
+          (sp && cur.span ? sp.start === cur.span.start && sp.end === cur.span.end : !sp && !cur.span)){ select(tab); return; }
+      var foot = [];
+      if (sp) foot.push({ m: "hl", label: "Highlight" }, { m: "note", label: "Note…" }, { m: "read", label: "Read from here" });
+      foot.push({ m: "copy", label: "Copy" });
+      buildCard({ kind: "sentence", sentence: text, title: /\s/.test(text) ? "This sentence" : "This word", icon: "explain",
+        dialogLabel: "Sentence", tabsLabel: "Sentence", quote: text, tabs: ["explain", "simpler", "translate"], active: tab || "explain",
+        span: sp, foot: foot,
+        panels: { explain: '<div id="dictExpl"></div><div id="dictAi"></div>',
+                  simpler: '<div class="lvl" id="simpLevel"></div><div id="simpBody"></div>',
+                  translate: '<div class="tr-slot" data-kind="sentence"></div>' },
+        lazy: { explain: function(){ runExplain(text); }, simpler: function(){ runSimplify(text); } } });
+      openCard();
+      runTranslate(text, sp);
+    }
+    function explainSentence(sentence, span){ openSentence(sentence, span, "explain"); }
+
     /* ---------- simplify: a plainer version of the selected sentence(s), offline (see llExplain.simplify) ----------
-       Drawn in the same card: the original, the plainer text with every change dotted (a tap
-       shows what it was and why), a summary line, and Copy / Read aloud / Highlight / AI actions. */
-    var simpToken = 0, simpUtter = null;
+       The Simpler panel: the plainer text with every change dotted (a tap shows what it was and
+       why), a summary line, Read aloud and an optional AI rewrite. */
     /* the dictionary chunks the simplifier needs: every word with its variants and base forms,
        then the synonyms those entries list (the swap rule reads their entries too) */
     function simplifyWords(text){
@@ -5260,59 +8823,87 @@
         return withWords(syns);
       });
     }
-    function simplifyText(text){
-      return Promise.all([simplifyWords(text), window.__ll.need(["explain"])]).then(function(){
-        return window.llExplain.simplify(text, find, window.llExplain.rank);
+    /* how plain to make it: the reader's choice is kept between passages and between visits */
+    var LS_LEVEL = "ll_simplify_level";
+    var SIMP_LEVELS = [["light", "Light"], ["plain", "Plain"], ["very", "Very plain"], ["kid", "For a 10-year-old"]];
+    function simpLevel(){
+      var v = Store.get(LS_LEVEL) || "plain";
+      for (var i = 0; i < SIMP_LEVELS.length; i++) if (SIMP_LEVELS[i][0] === v) return v;
+      return "plain";
+    }
+    function levelName(l){
+      for (var i = 0; i < SIMP_LEVELS.length; i++) if (SIMP_LEVELS[i][0] === l) return SIMP_LEVELS[i][1];
+      return "Plain";
+    }
+    function simplifyText(text, level){
+      var lv = level || simpLevel();
+      /* the plainest level glosses words as it goes, and the plain meanings it glosses them with
+         live in morph.js, so that table is fetched with the rest */
+      var libs = lv === "kid" ? ["explain", "morph"] : ["explain"];
+      return Promise.all([simplifyWords(text), need(libs)]).then(function(){
+        return window.llExplain.simplify(text, find, window.llExplain.rank, { level: lv });
       });
     }
-    function stopSimpleSpeech(){
-      if (!simpUtter) return;
-      simpUtter = null;
-      try { speechSynthesis.cancel(); } catch(_){}
-      var b = inner.querySelector("#simpRead");
-      if (b){ b.textContent = "Read aloud"; b.setAttribute("aria-pressed", "false"); }
-    }
-    /* closing the card (any way) stops a reading of the simpler text */
-    new MutationObserver(function(){ if (!card.classList.contains("open")) stopSimpleSpeech(); }).observe(card, { attributes: true, attributeFilter: ["class"] });
-    function simpleSummary(changes){
-      var swaps = 0, phrases = 0, active = 0, splits = 0;
+    function simpleSummary(changes, level){
+      var swaps = 0, phrases = 0, active = 0, splits = 0, cut = 0, gloss = 0;
       changes.forEach(function(c){
         if (c.why === "rarer word") swaps++;
-        else if (c.why === "shorter phrase" || c.why === "idiom") phrases++;
+        else if (c.why === "shorter phrase" || c.why === "idiom" || c.why === "connector" || c.why === "abbreviation") phrases++;
         else if (c.why === "passive to active") active++;
         else if (c.why === "split long sentence") splits++;
+        else if (c.why === "shortened" || c.why === "aside removed") cut++;
+        else if (c.why === "glossed") gloss++;
       });
-      var parts = [];
+      var parts = [levelName(level)];
       function count(k, one, many){ if (k) parts.push(k + " " + (k === 1 ? one : many)); }
       count(swaps, "word swapped", "words swapped");
       count(phrases, "phrase shortened", "phrases shortened");
       count(active, "sentence turned active", "sentences turned active");
       count(splits, "sentence split", "sentences split");
-      return parts.length ? parts.join(" · ") : "Nothing to simplify — this is already plain.";
+      count(cut, "part shortened", "parts shortened");
+      count(gloss, "word explained", "words explained");
+      if (parts.length === 1) parts.push("nothing to simplify — this is already plain");
+      return parts.join(" · ");
     }
-    function renderSimplify(text, span){
-      text = String(text || "").replace(/\s+/g, " ").trim();
-      if (!text) return;
-      var token = ++simpToken;
-      stopSimpleSpeech();
-      currentSentence = null; currentSpan = null;      /* a late explain result must not draw over this card */
-      var sp = (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
-      inner.innerHTML = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw"><div class="term">Simpler</div></div>' +
-        '<button class="x" aria-label="Close">×</button></div>' +
-        '<div class="quote">' + esc(text) + '</div>' +
-        '<div id="simpBody"><div class="note">Making it plainer…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div></div>';
-      inner.querySelector(".x").addEventListener("click", closeCard);
-      openCard();
-      simplifyText(text).then(function(r){
-        if (token !== simpToken) return;
-        drawSimple(r, text, sp);
+    /* opens the card on the Simpler tab (the pill's Explain leads there too, one tab over) */
+    function renderSimplify(text, span){ openSentence(text, span, "simpler"); }
+    /* the four strengths, above the text; choosing one redraws the passage at that strength */
+    function drawLevels(){
+      var box = inner.querySelector("#simpLevel");
+      if (!box) return;
+      var now = simpLevel();
+      box.innerHTML = '<div class="sec" id="simpLevelL">How plain</div>' +
+        '<div class="chips seg" id="simpLevels" role="group" aria-labelledby="simpLevelL">' +
+        SIMP_LEVELS.map(function(p){
+          var on = p[0] === now;
+          return '<button type="button" class="chip' + (on ? ' on' : '') + '" data-l="' + p[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + esc(p[1]) + '</button>';
+        }).join("") + '</div>';
+    }
+    function runSimplify(text){
+      var my = cur.gen, body = inner.querySelector("#simpBody"), box = inner.querySelector("#simpLevel");
+      if (!body) return;
+      if (box && !box.dataset.wired){
+        box.dataset.wired = "1";
+        box.addEventListener("click", function(e){
+          var b = e.target.closest("#simpLevels .chip");
+          if (!b || b.dataset.l === simpLevel()) return;
+          Store.set(LS_LEVEL, b.dataset.l);
+          drawLevels();
+          runSimplify(text);
+        });
+      }
+      drawLevels();
+      body.innerHTML = '<div class="note">Making it plainer…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
+      var level = simpLevel();
+      simplifyText(text, level).then(function(r){
+        if (!cur || cur.gen !== my) return;
+        drawSimple(r, text);
       }).catch(function(err){
         console.error(err);
-        if (token !== simpToken) return;
-        inner.querySelector("#simpBody").innerHTML = '<div class="note">Couldn’t simplify this.</div>';
+        if (cur && cur.gen === my) body.innerHTML = '<div class="note">Couldn’t simplify this.</div>';
       });
     }
-    function drawSimple(r, text, sp){
+    function drawSimple(r, text){
       var body = inner.querySelector("#simpBody"), out = r.text, h = '<div class="simple">', pos = 0;
       r.changes.forEach(function(c){
         h += esc(out.slice(pos, c.start)) +
@@ -5321,29 +8912,23 @@
         pos = c.end;
       });
       h += esc(out.slice(pos)) + '</div>' +
-           '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes)) + '</div>' +
-           '<div class="acts" id="simpActs"><button class="act" data-s="copy">Copy</button>' +
-           ("speechSynthesis" in window ? '<button class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
-           (sp ? '<button class="act" data-s="hl">Highlight</button>' : '') +
-           (navigator.onLine ? '<button class="act go" data-s="ai">Simplify with AI</button>' : '') + '</div>' +
+           '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes, r.level || simpLevel())) + '</div>' +
+           '<div class="acts" id="simpActs">' +
+           ("speechSynthesis" in window ? '<button type="button" class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
+           (navigator.onLine ? '<button type="button" class="act go" data-s="ai">' + icon("star", 16) + '<span>Simplify with AI</span></button>' : '') + '</div>' +
            '<div id="simpAi"></div>' +
            (navigator.onLine ? '' : '<div class="note">Offline — simplified with the built-in dictionary only.</div>');
       body.innerHTML = h;
+      cur.simple = out;
       body.addEventListener("click", function(e){
         var chg = e.target.closest("button.chg");
         if (chg){ toggleChangeNote(chg); return; }
         var b = e.target.closest("#simpActs button"); if (!b) return;
-        var act = b.dataset.s;
-        if (act === "copy") copySimple(out);
-        else if (act === "read") readSimple(out, b);
-        else if (act === "hl"){
-          var m = window.__ll && window.__ll.Marks ? window.__ll.Marks.addHighlight(sp.start, sp.end) : null;
-          closeCard();
-          if (m) window.__ll.Marks.toast("Highlighted");
-        } else if (act === "ai"){
+        if (b.dataset.s === "read") speakPlain(out, b, "Stop");
+        else if (b.dataset.s === "ai"){
           var key = Store.get(LS_KEY) || "";
           if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
-          simplifyWithAI(text, key, inner.querySelector("#simpAi"));
+          simplifyWithAI(text, key, inner.querySelector("#simpAi"), r.level || simpLevel());
         }
       });
     }
@@ -5358,37 +8943,18 @@
       note.textContent = "was “" + chg.dataset.from + "” — " + chg.dataset.why;
       chg.parentNode.insertBefore(note, chg.nextSibling);
     }
-    function copySimple(s){
-      var done = function(){ if (window.__ll && window.__ll.Marks) window.__ll.Marks.toast("Copied"); };
-      var fallback = function(){
-        var ta = document.createElement("textarea");
-        ta.value = s; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
-        document.body.appendChild(ta); ta.select();
-        try { document.execCommand("copy"); } catch(_){}
-        document.body.removeChild(ta);
-        done();
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).then(done, fallback);
-      else fallback();
-    }
-    /* one plain utterance in the narrator's voice at the saved rate; the button toggles to Stop */
-    function readSimple(s, btn){
-      if (simpUtter){ stopSimpleSpeech(); return; }
-      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
-      if (window.__ll && window.__ll.Speak && window.__ll.Speak.isPlaying()) window.__ll.Speak.pause();
-      var u = new SpeechSynthesisUtterance(s);
-      var name = Store.get("ll_tts_voice") || "", vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
-      for (var i = 0; i < vs.length; i++) if (vs[i].name === name){ u.voice = vs[i]; break; }
-      u.rate = Math.min(2, Math.max(0.5, parseFloat(Store.get("ll_tts_rate") || "1") || 1));
-      u.onend = u.onerror = function(){ if (simpUtter === u){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); } };
-      simpUtter = u; btn.textContent = "Stop"; btn.setAttribute("aria-pressed", "true");
-      try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch(_){ simpUtter = null; btn.textContent = "Read aloud"; btn.setAttribute("aria-pressed", "false"); }
-    }
-    function simplifyWithAI(text, apiKey, aiBox){
-      var token = simpToken;
+    /* the rewrite Claude is asked for follows the strength the reader chose */
+    var AI_LEVEL = {
+      light: "Rewrite this, but replace only difficult words with everyday ones. Keep the sentences as they are.",
+      plain: "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; do not add anything.",
+      very:  "Rewrite this in very plain English: short sentences, everyday words. Keep every fact and the same tone; do not add anything.",
+      kid:   "Rewrite this for a ten-year-old: short sentences, everyday words, explain any hard word in brackets, keep every fact."
+    };
+    function simplifyWithAI(text, apiKey, aiBox, level){
+      var my = cur.gen;
       aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
-      var prompt = "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; " +
-        "do not add anything. Reply with the rewritten text only.\n\n" + text;
+      var ask = AI_LEVEL[level] || AI_LEVEL.plain;
+      var prompt = ask + " Reply with the rewritten text only.\n\n" + text;
       fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -5401,7 +8967,7 @@
       })
       .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
       .then(function(res){
-        if (token !== simpToken) return;
+        if (!cur || cur.gen !== my) return;
         var j = res.j;
         if (!res.ok) throw new Error((j && j.error && j.error.message) || "the request failed");
         var txt = (j.content || []).map(function(c){ return c.text || ""; }).join("").trim();
@@ -5410,22 +8976,22 @@
         aiBox.querySelector(".ai").textContent = txt;
       })
       .catch(function(err){
-        if (token !== simpToken) return;
+        if (!cur || cur.gen !== my) return;
         aiBox.innerHTML = '<div class="note">Couldn’t get a rewrite (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
-          '<div class="acts"><button class="act" id="simpAiRetry">Try again</button><button class="act" id="simpAiKey">Change key</button></div>';
-        aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
-        aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox); });
+          '<div class="acts"><button type="button" class="act" id="simpAiRetry">Try again</button><button type="button" class="act" id="simpAiKey">Change key</button></div>';
+        aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox, level); });
+        aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox, level); });
       });
     }
     /* for tests and other modules */
-    window.llSimplify = { render: renderSimplify, simplify: simplifyText };
+    window.llSimplify = { render: renderSimplify, simplify: simplifyText, levels: SIMP_LEVELS, level: simpLevel };
 
-    /* ---------- optional: explain with AI (online + your own key) ---------- */
+    /* ---------- optional: explain with AI (online + your own key) — the last block of the Explain panel ---------- */
     function renderAiButton(sentence){
       var aiBox = inner.querySelector("#dictAi");
       if (!aiBox) return;
       if (!navigator.onLine){ aiBox.innerHTML = ""; return; }
-      aiBox.innerHTML = '<div class="acts"><button class="act go" id="dictAiBtn">Explain with AI</button></div>';
+      aiBox.innerHTML = '<div class="acts"><button type="button" class="act go" id="dictAiBtn">' + icon("star", 16) + '<span>Explain with AI</span></button></div>';
       aiBox.querySelector("#dictAiBtn").addEventListener("click", function(){
         var key = Store.get(LS_KEY) || "";
         if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
@@ -5433,6 +8999,7 @@
       });
     }
     function explainWithAI(sentence, apiKey, aiBox){
+      var my = cur.gen;
       aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
       var prompt = "Explain this sentence from a book in plain English, in 2-3 short sentences: what it means, " +
         "and what it implies about the people, the situation or the mood. If it contains an idiom or unusual phrase, " +
@@ -5453,7 +9020,7 @@
       })
       .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
       .then(function(res){
-        if (currentSentence !== sentence) return;
+        if (!cur || cur.gen !== my) return;
         var j = res.j;
         if (!res.ok){
           var msg = (j && j.error && j.error.message) || "the request failed";
@@ -5465,14 +9032,17 @@
         aiBox.querySelector(".ai").textContent = txt;
       })
       .catch(function(err){
-        if (currentSentence !== sentence) return;
+        if (!cur || cur.gen !== my) return;
         aiBox.innerHTML = '<div class="note">Couldn’t get an explanation (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
-          '<div class="acts"><button class="act" id="dictAiRetry">Try again</button><button class="act" id="dictAiKey">Change key</button></div>';
+          '<div class="acts"><button type="button" class="act" id="dictAiRetry">Try again</button><button type="button" class="act" id="dictAiKey">Change key</button></div>';
         aiBox.querySelector("#dictAiRetry").addEventListener("click", function(){ explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
         aiBox.querySelector("#dictAiKey").addEventListener("click", function(){ if (askForKey(true)) explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
       });
     }
-    window.addEventListener("online", function(){ if (currentSentence && card.classList.contains("open")) renderAiButton(currentSentence); });
+    /* back online: the AI chip is offered again (unless an answer is already there) */
+    window.addEventListener("online", function(){
+      if (cur && cur.kind === "sentence" && card.classList.contains("open") && !inner.querySelector("#dictAi .ai")) renderAiButton(cur.sentence);
+    });
     window.addEventListener("offline", function(){ var b = inner.querySelector("#dictAiBtn"); if (b) b.parentNode.removeChild(b); });
 
     function askForKey(keepOpen){
@@ -5501,11 +9071,13 @@
 
     function wordAt(x, y){
       var r = rangeAt(x, y);
-      if (!r) return null;
-      var n = r.startContainer;
-      if (n.nodeType !== 3) return null;
+      return r ? wordInNode(r.startContainer, r.startOffset) : null;
+    }
+    /* the word around character `offset` of text node `n` inside the document (a tap, or the caret) */
+    function wordInNode(n, offset){
+      if (!n || n.nodeType !== 3) return null;
       if (!n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
-      var t = n.textContent, i = Math.min(r.startOffset, t.length - 1);
+      var t = n.textContent, i = Math.min(offset, t.length - 1);
       if (i < 0) return null;
       if (!WORDCH.test(t[i]) && i > 0 && WORDCH.test(t[i-1])) i--;
       if (!WORDCH.test(t[i])) return null;
@@ -5646,8 +9218,9 @@
         var w = wordAt(e.clientX, e.clientY);
         if (!w) return;
         e.stopPropagation();
+        var s0 = Anchor.offsetOf(w.node, w.s), hit = s0 === null ? null : { start: s0, end: s0 + (w.e - w.s) };
         markHit(w.node, w.s, w.e);
-        defineWord(w.word);
+        defineWord(w.word, hit);
       }, true);
 
       /* desktop: long-press equivalent is a right-click (on a selection, or on the sentence under the pointer) */
@@ -5660,23 +9233,67 @@
       });
     }
 
-    /* selected text (mouse drag, or the native handles when the dictionary is off):
-       a small floating button offers to define one word or explain a longer selection */
+    /* the keyboard's way in (the card otherwise opens from a tap, a hold or the pill): d looks up
+       the selection, else the word at the caret (caret browsing), else it opens the card with a
+       field to type into — a route that needs no pointer and no caret browsing at all */
+    function lookupKey(){
+      var s = selectionText();
+      if (s){ lookupText(s, window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null); return; }
+      var sel = window.getSelection();
+      if (sel && sel.isCollapsed && sel.focusNode){
+        var w = wordInNode(sel.focusNode, sel.focusOffset);
+        if (w){
+          var s0 = Anchor.offsetOf(w.node, w.s);
+          markHit(w.node, w.s, w.e);
+          defineWord(w.word, s0 === null ? null : { start: s0, end: s0 + (w.e - w.s) });
+          return;
+        }
+      }
+      openLookup();
+    }
+    function openLookup(){
+      buildCard({ kind: "lookup", title: "Look up", icon: "meaning", dialogLabel: "Dictionary", tabsLabel: "Word",
+        tabs: ["meaning"], active: "meaning", span: null, foot: [],
+        panels: { meaning: '<form class="lookup" id="dictLookup"><input type="search" id="dictLookupIn" aria-label="Word or sentence to look up" placeholder="A word, or a sentence to explain…" autocomplete="off" spellcheck="false">' +
+                           '<button type="submit" class="act go">Look up</button>' +
+                           '<div class="hint">One word is defined; more words are explained.</div></form>' } });
+      openCard(function(){ return inner.querySelector("#dictLookupIn"); });
+      inner.querySelector("#dictLookup").addEventListener("submit", function(e){
+        e.preventDefault();
+        var v = inner.querySelector("#dictLookupIn").value.replace(/\s+/g, " ").trim();
+        if (v) lookupText(v, null);
+      });
+    }
+    function docOpen(){ return state.mode === "doc"; }
+    Keys.add("d", "Define or explain the selected text", lookupKey, function(){ return docOpen() && dictMode !== "off"; });
+    Menu.add({ order: 61, group: "tools", icon: icon("meaning", 20), label: "Define or explain…", key: "D", run: lookupKey, show: docOpen });
+
+    /* selected text (mouse drag, or the native handles when the dictionary is off): a small
+       pill offers to define one word or explain a longer selection, and to highlight it.
+       Simpler and Translate are tabs of the card the first button opens. */
     function lookupText(s, off){
       var words = s.split(/\s+/).filter(Boolean);
-      if (words.length === 1) defineWord(words[0].replace(/^[^A-Za-zÀ-ɏ]+|[^A-Za-zÀ-ɏ]+$/g, "") || words[0]);
+      if (words.length === 1) defineWord(words[0].replace(/^[^A-Za-zÀ-ɏ]+|[^A-Za-zÀ-ɏ]+$/g, "") || words[0], off);
       else explainSentence(s, off);
     }
-    function hidePill(){ pill.classList.remove("on"); }
+    function hidePill(){ pill.classList.remove("on"); pillLive.textContent = ""; }
     function updatePill(){
       var s = selectionText();
       if (!s || card.classList.contains("open")){ hidePill(); return; }
-      var words = s.split(/\s+/).length;
-      pill.querySelector("[data-act=lookup]").textContent = words > 1 ? "Explain" : "Define";
-      pill.querySelector("[data-act=simplify]").style.display = words >= 3 ? "" : "none";   /* a plainer version needs a sentence */
+      var kind = s.split(/\s+/).length > 1 ? "explain" : "meaning";
+      var look = pill.querySelector("[data-act=lookup]");
+      if (look.dataset.kind !== kind){
+        look.dataset.kind = kind;
+        look.innerHTML = icon(kind, 16) + '<span>' + (kind === "explain" ? "Explain" : "Define") + '</span>';
+      }
       var rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
       if (!rect || (!rect.width && !rect.height)){ hidePill(); return; }
+      var was = pill.classList.contains("on");
       pill.classList.add("on");
+      /* the selection is the pill's: a highlight's own popover never sits under it */
+      if (window.Marks_hidePop) window.Marks_hidePop();
+      var said = "Selected text: " + (kind === "explain" ? "Explain" : "Define") + ", Highlight";
+      if (!was || pillLive.textContent !== said) pillLive.textContent = said;
       var pw = pill.offsetWidth, ph = pill.offsetHeight;
       var x = Math.min(Math.max(8, rect.left + rect.width / 2 - pw / 2), window.innerWidth - pw - 8);
       var y = rect.top - ph - 10;
@@ -5696,13 +9313,8 @@
         if (window.Marks_highlightSelection) window.Marks_highlightSelection();
         hidePill(); return;
       }
-      if (b.dataset.act === "simplify"){
-        var so = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
-        hidePill(); if (s) renderSimplify(s, so); return;
-      }
       var off = window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null;
       hidePill();
-      if (b.dataset.act === "translate"){ if (s) Translate.show(s, off); return; }
       if (s) lookupText(s, off);
     });
     window.addEventListener("scroll", hidePill, { passive: true });
@@ -5712,13 +9324,13 @@
     var sheet = document.querySelector(".sheet-inner");
     if (sheet){
       var g = document.createElement("div");
-      g.className = "group";
+      g.className = "group"; g.id = "dictGroup";
       g.innerHTML =
-        '<div class="label">Dictionary</div>' +
-        '<div class="chips" id="dictChips">' +
-          '<button class="chip" data-dm="tap">Tap a word</button>' +
-          '<button class="chip" data-dm="hold">Hold only</button>' +
-          '<button class="chip" data-dm="off">Off</button>' +
+        '<div class="label" id="dictLabel">Dictionary</div>' +
+        '<div class="chips seg" id="dictChips" role="group" aria-labelledby="dictLabel">' +
+          '<button type="button" class="chip" data-dm="tap" aria-pressed="false">Tap a word</button>' +
+          '<button type="button" class="chip" data-dm="hold" aria-pressed="false">Hold only</button>' +
+          '<button type="button" class="chip" data-dm="off" aria-pressed="false">Off</button>' +
         '</div>' +
         '<div class="hint">' +
           'Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline. ' +
@@ -5727,7 +9339,7 @@
       sheet.appendChild(g);
       function syncChips(){
         g.querySelectorAll("#dictChips .chip").forEach(function(c){
-          c.classList.toggle("on", c.dataset.dm === dictMode);
+          var on = c.dataset.dm === dictMode; c.classList.toggle("on", on); c.setAttribute("aria-pressed", on ? "true" : "false");
         });
       }
       g.querySelectorAll("#dictChips .chip").forEach(function(c){
@@ -5753,17 +9365,8 @@
         if (!el) return;
         Translate.load().then(function(T){ T.slot(text, el, opts); }, function(){ el.innerHTML = '<div class="note">Couldn’t load the translator.</div>'; });
       },
-      /* the pill's Translate: the card opens straight on a translation view */
-      show: function(text, span){
-        text = String(text || "").replace(/\s+/g, " ").trim();
-        if (!text) return;
-        currentSentence = null;
-        inner.innerHTML = '<div class="head"><div class="mark">' + ICON_STAR + '</div><div class="hw"><div class="term">Translation</div></div>' +
-          '<button class="x" aria-label="Close">×</button></div><div class="quote">' + esc(text) + '</div><div class="tr-slot" data-kind="show"></div>';
-        inner.querySelector(".x").addEventListener("click", closeCard);
-        openCard();
-        Translate.slot(text, inner.querySelector(".tr-slot"), { span: span, auto: true, close: closeCard });
-      }
+      /* opens the sentence card on its Translate tab */
+      show: function(text, span){ openSentence(text, span, "translate"); }
     };
     /* target languages: BCP-47 code, English name, native name */
     var TR_LANGS = [["es","Spanish","Español"],["fr","French","Français"],["de","German","Deutsch"],["it","Italian","Italiano"],["pt","Portuguese","Português"],["nl","Dutch","Nederlands"],["sv","Swedish","Svenska"],["da","Danish","Dansk"],["no","Norwegian","Norsk"],["fi","Finnish","Suomi"],["pl","Polish","Polski"],["cs","Czech","Čeština"],["sk","Slovak","Slovenčina"],["hu","Hungarian","Magyar"],["ro","Romanian","Română"],["el","Greek","Ελληνικά"],["tr","Turkish","Türkçe"],["ru","Russian","Русский"],["uk","Ukrainian","Українська"],["ar","Arabic","العربية"],["he","Hebrew","עברית"],["fa","Persian","فارسی"],["hi","Hindi","हिन्दी"],["bn","Bengali","বাংলা"],["ur","Urdu","اردو"],["id","Indonesian","Bahasa Indonesia"],["ms","Malay","Bahasa Melayu"],["vi","Vietnamese","Tiếng Việt"],["th","Thai","ไทย"],["zh","Chinese (Simplified)","简体中文"],["zh-Hant","Chinese (Traditional)","繁體中文"],["ja","Japanese","日本語"],["ko","Korean","한국어"],["sw","Swahili","Kiswahili"],["ca","Catalan","Català"],["en","English","English"]];
@@ -5801,12 +9404,12 @@
         trIo.observe(tg);
       } else $("#gear").addEventListener("click", trSeen, { once: true });
     }
-    Menu.add({ order: 62, key: "",
+    Menu.add({ order: 62, key: "", group: "tools", icon: icon("translate", 20),
       label: function(){ var T = window.llTranslate; return T && T.isOn() ? (T.isPartial() ? "Translate the rest" : "Show original") : "Translate this document…"; },
       run: function(){ Translate.load().then(function(T){ T.togglePage(); }, function(){ Marks.toast("Couldn’t load the translator"); }); },
       show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     /* only while a translation is incomplete does "Translate the rest" take the entry above */
-    Menu.add({ order: 63, label: "Show original", run: function(){ Translate.load().then(function(T){ T.showOriginal(); }); },
+    Menu.add({ order: 63, group: "tools", icon: icon("translate", 20), label: "Show original", run: function(){ Translate.load().then(function(T){ T.showOriginal(); }); },
       show: function(){ var T = window.llTranslate; return !!(T && T.isOn() && T.isPartial()); } });
     /* a document left translated comes back translated: the script is wanted as soon as it opens */
     document.addEventListener("ll:fileopened", function(){
@@ -5827,6 +9430,7 @@
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
+  window.Marks_hidePop = Marks.hidePop;
 
   /* ---------- boot ---------- */
   Prefs.load();
@@ -5840,7 +9444,7 @@
   syncCustomUI();
   $("#softenPdf").checked = !!state.soften;
   document.querySelectorAll("#flowChips .chip").forEach(function(ch){
-    ch.classList.toggle("on", ch.dataset.flow === state.flow);
+    var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
   });
   applyTheme();
   applyType();
@@ -5848,6 +9452,10 @@
   $("#cWake").checked = state.wake !== false;
   AutoTheme.apply();
   show("empty");
+  /* the sheet's section strip, now that every group is in place */
+  SheetTabs.build();
+  if (!Speak.supported) $("#speakBtn").hidden = true;
+  syncSpeakBtn();
   Launch.boot();
 
   /* warm up the small parsers once the page is idle, so the first open feels instant */
@@ -5866,14 +9474,23 @@
       if (toastEl) return;
       toastEl = document.createElement("div");
       toastEl.id = "updateToast"; toastEl.setAttribute("role", "status");
-      toastEl.innerHTML = '<span>A new version of Lamplight is ready.</span><button type="button" id="updateReload">Reload</button><button type="button" id="updateLater" aria-label="Later">\u00D7</button>';
+      toastEl.innerHTML = '<span>A new version of Lamplight is ready.</span><button type="button" id="updateReload">Reload</button><button type="button" id="updateLater" aria-label="Later" title="Later">' + ICONS.close + '</button>';
       document.body.appendChild(toastEl);
+      /* the offer keeps the bottom row and reports its height (--updateH, like the dock's --dockH):
+         the small toast and the translation pill step up over it instead of hiding behind it */
+      var ro = null, setH = function(){ if (toastEl && toastEl.isConnected) document.body.style.setProperty("--updateH", (toastEl.offsetHeight + 8) + "px"); };
+      setH();
+      if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(toastEl); }
       toastEl.querySelector("#updateReload").addEventListener("click", function(){
         wantReload = true;
         if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
         else location.reload();
       });
-      toastEl.querySelector("#updateLater").addEventListener("click", function(){ toastEl.remove(); toastEl = null; });
+      toastEl.querySelector("#updateLater").addEventListener("click", function(){
+        if (ro) ro.disconnect();
+        document.body.style.removeProperty("--updateH");
+        toastEl.remove(); toastEl = null;
+      });
     }
     function watch(worker){
       if (!worker) return;
@@ -5899,7 +9516,7 @@
         location.reload();
       });
     }
-    return { register: register, hasToast: function(){ return !!toastEl; } };
+    return { register: register, hasToast: function(){ return !!toastEl; }, offer: toast };
   })();
   Updates.register();
   if (window.__ll) window.__ll.Updates = Updates;

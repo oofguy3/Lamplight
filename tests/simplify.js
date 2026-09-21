@@ -1,6 +1,6 @@
-/* Simplify in the browser: the pill offers it for a selection of three words or more, the Simpler
-   card shows the plainer text with each change dotted and explained, Copy and Read aloud work,
-   the explain card hands over to it, a plain sentence says so. Screenshots at two widths in Day
+/* Simplify in the browser: the pill's Explain opens the sentence card, whose Simpler tab shows
+   the plainer text with each change dotted and explained, Copy (in the footer) and Read aloud
+   work, the tab exists for a plain sentence too and says so. Screenshots at two widths in Day
    and Dusk go to $LL_SHOTS (default: the OS temp dir).
      NODE_PATH=$(npm root -g) node tests/simplify.js */
 const fs = require("fs"), os = require("os"), path = require("path");
@@ -48,13 +48,21 @@ const pillState = (page) => page.evaluate(() => {
 const cardOpen = (page) => page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open") && document.querySelector("#dictCard .simple"), null, { timeout: 30000 });
 const cardInfo = (page) => page.evaluate(() => ({
   title: (document.querySelector("#dictCard .term") || {}).textContent,
+  tab: ((document.querySelector("#dictCard [role=tab][aria-selected=true]") || {}).dataset || {}).tab,
   quote: (document.querySelector("#dictCard .quote") || {}).textContent,
   simple: (document.querySelector("#dictCard .simple") || {}).textContent,
   changes: Array.from(document.querySelectorAll("#dictCard .chg")).map((c) => ({ text: c.textContent, title: c.getAttribute("title"), expanded: c.getAttribute("aria-expanded") })),
   summary: (document.getElementById("simpSum") || {}).textContent,
   acts: Array.from(document.querySelectorAll("#simpActs button")).map((b) => b.textContent),
+  foot: Array.from(document.querySelectorAll("#dictMarkActs button")).map((b) => b.textContent),
   offline: !!Array.from(document.querySelectorAll("#dictCard .note")).find((n) => /Offline/.test(n.textContent))
 }));
+/* the pill's Explain opens the sentence card; a click on its Simpler tab (data-m=simplify) shows the plainer text */
+async function openSimpler(page){
+  await page.click("#dictPill [data-act=lookup]");
+  await page.waitForSelector('#dictCard [role=tab][data-m="simplify"]', { timeout: 20000 });
+  await page.click('#dictCard [role=tab][data-m="simplify"]');
+}
 
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -71,26 +79,28 @@ const cardInfo = (page) => page.evaluate(() => ({
   let page = await newPage(ctx, url);
   await openFixture(page, "sample.md");
   try {
-    /* 1. the pill: Simplify between Explain and Highlight for a sentence, hidden for one word */
+    /* 1. the pill: Explain and Highlight for a sentence; Simpler is a tab of the card Explain opens */
     await selectPhrase(page, SENTENCE);
     let pill = await pillState(page);
     R.check("selecting a sentence shows the pill", pill.on, JSON.stringify(pill));
-    R.check("pill reads Explain · Simplify · Highlight · Translate", pill.buttons.join(" · ") === "Explain · Simplify · Highlight · Translate", pill.buttons.join(" · "));
-    R.check("the Simplify button carries data-act=simplify", await page.$eval("#dictPill [data-act=simplify]", (b) => b.textContent === "Simplify"));
+    R.check("pill reads Explain · Highlight", pill.buttons.join(" · ") === "Explain · Highlight", pill.buttons.join(" · "));
+    await page.click("#dictPill [data-act=lookup]");
+    await page.waitForSelector('#dictCard [role=tab][data-m="simplify"]', { timeout: 20000 });
+    R.check("the card's Simpler tab carries data-m=simplify", await page.$eval('#dictCard [role=tab][data-m="simplify"]', (b) => b.textContent.trim() === "Simpler" && b.dataset.tab === "simpler"));
 
-    /* 2. the Simpler card */
-    await page.click("#dictPill [data-act=simplify]");
+    /* 2. the Simpler tab */
+    await page.click('#dictCard [role=tab][data-m="simplify"]');
     await cardOpen(page);
     let info = await cardInfo(page);
-    R.check("card title is Simpler", info.title === "Simpler", info.title);
+    R.check("card titled This sentence, on the Simpler tab", info.title === "This sentence" && info.tab === "simpler", info.title + " / " + info.tab);
     R.check("the original is quoted above", info.quote === SENTENCE, info.quote);
     R.check("the simplified text differs from the original", info.simple && info.simple !== SENTENCE, info.simple);
     R.check("at least one change, with a title starting 'was:'", info.changes.length >= 1 && info.changes.every((c) => /^was: /.test(c.title)), JSON.stringify(info.changes));
     R.check("extraordinary became a plainer word", info.changes.some((c) => c.title === "was: extraordinary") && !/extraordinary/.test(info.simple), info.simple);
     R.check("summary line counts the changes", /\d+ words? swapped/.test(info.summary), info.summary);
-    R.check("actions: Copy, Read aloud, Highlight, Simplify with AI", info.acts.join("|") === "Copy|Read aloud|Highlight|Simplify with AI", info.acts.join("|"));
+    R.check("Simpler offers Read aloud and Simplify with AI; the footer Highlight, Note…, Read from here, Copy", info.acts.join("|") === "Read aloud|Simplify with AI" && info.foot.join("|") === "Highlight|Note…|Read from here|Copy", info.acts.join("|") + " / " + info.foot.join("|"));
     R.check("no offline note while online", !info.offline);
-    R.check("card is a labelled dialog with real buttons", await page.evaluate(() => document.getElementById("dictCard").getAttribute("role") === "dialog" && Array.from(document.querySelectorAll("#dictCard .chg, #simpActs .act")).every((b) => b.tagName === "BUTTON")));
+    R.check("card is a labelled dialog with real buttons", await page.evaluate(() => document.getElementById("dictCard").getAttribute("role") === "dialog" && Array.from(document.querySelectorAll("#dictCard .chg, #simpActs .act, #dictMarkActs .act")).every((b) => b.tagName === "BUTTON")));
     const simpleText = info.simple;
     await page.waitForTimeout(300);
     await shot(page, "simplify-desktop-day");
@@ -104,12 +114,12 @@ const cardInfo = (page) => page.evaluate(() => ({
     note = await page.evaluate(() => { const c = document.querySelector("#dictCard .chg"); const n = c.nextSibling; return { expanded: c.getAttribute("aria-expanded"), note: n && n.classList && n.classList.contains("chgnote") }; });
     R.check("tapping again closes it", note.expanded === "false" && !note.note, JSON.stringify(note));
 
-    /* 4. Copy and Read aloud */
-    await page.click('#simpActs [data-s="copy"]');
+    /* 4. Copy (the footer's, which takes what the open tab shows) and Read aloud */
+    await page.click('#dictMarkActs [data-m="copy"]');
     await page.waitForTimeout(300);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => "")).catch(() => "");
     const toast = await page.evaluate(() => (document.getElementById("toast") || {}).textContent || "");
-    R.check("Copy puts the simplified text on the clipboard and toasts Copied", clip === simpleText && toast === "Copied", JSON.stringify({ clip: clip.slice(0, 60), toast }));
+    R.check("Copy on the Simpler tab puts the simplified text on the clipboard and toasts Copied", clip === simpleText && toast === "Copied", JSON.stringify({ clip: clip.slice(0, 60), toast }));
     await page.evaluate(() => { localStorage.setItem("ll_tts_voice", "Daniel"); localStorage.setItem("ll_tts_rate", "1.3"); });
     await page.click('#simpActs [data-s="read"]');
     await page.waitForTimeout(200);
@@ -122,23 +132,24 @@ const cardInfo = (page) => page.evaluate(() => ({
     await page.waitForTimeout(300);
     R.check("Escape closes the card", await page.evaluate(() => !document.getElementById("dictCard").classList.contains("open")));
 
-    /* 6. the explain card offers Simplify first and hands over */
+    /* 6. the explain card (a right-click) has Simpler one tab over */
     const pt = await phraseRect(page, "Nobody could have");
     await page.mouse.click(pt.x1, pt.y1, { button: "right" });
     await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open") && document.getElementById("dictMarkActs"), null, { timeout: 20000 });
+    const tabs = await page.$$eval("#dictCard [role=tab]", (bs) => bs.map((b) => b.dataset.tab + (b.dataset.m ? ":" + b.dataset.m : "")));
     const acts = await page.$$eval("#dictMarkActs button", (bs) => bs.map((b) => b.dataset.m));
-    R.check("explain card actions start with Simplify", acts[0] === "simplify" && acts.indexOf("hl") > 0, acts.join(","));
-    await page.click('#dictMarkActs [data-m="simplify"]');
+    R.check("explain card: Explain · Simpler · Translate tabs, Highlight in the footer", tabs.join(",") === "explain,simpler:simplify,translate" && acts.indexOf("hl") >= 0, tabs.join(",") + " / " + acts.join(","));
+    await page.click('#dictCard [data-m="simplify"]');
     await cardOpen(page);
     info = await cardInfo(page);
-    R.check("…and it switches to the Simpler card for that sentence", info.title === "Simpler" && info.quote === SENTENCE && info.simple === simpleText, JSON.stringify({ title: info.title, quote: info.quote }));
+    R.check("…and the Simpler tab shows the plainer version of that sentence", info.tab === "simpler" && info.quote === SENTENCE && info.simple === simpleText, JSON.stringify({ tab: info.tab, quote: info.quote }));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
-    /* 7. Highlight from the card */
+    /* 7. Highlight from the card's footer */
     await selectPhrase(page, SENTENCE);
-    await page.click("#dictPill [data-act=simplify]");
+    await openSimpler(page);
     await cardOpen(page);
-    await page.click('#simpActs [data-s="hl"]');
+    await page.click('#dictMarkActs [data-m="hl"]');
     await page.waitForTimeout(300);
     R.check("Highlight marks the selection and closes the card", (await page.evaluate(() => document.querySelectorAll("#doc mark.ll-mark").length)) >= 1 && !(await page.evaluate(() => document.getElementById("dictCard").classList.contains("open"))));
     await page.evaluate(() => window.getSelection().removeAllRanges());
@@ -147,22 +158,23 @@ const cardInfo = (page) => page.evaluate(() => ({
     await page.evaluate(() => window.llSimplify.render("The cat sat on the mat."));
     await cardOpen(page);
     info = await cardInfo(page);
-    R.check("a plain sentence says it is already plain", info.summary === "Nothing to simplify — this is already plain." && info.changes.length === 0 && info.simple === "The cat sat on the mat.", JSON.stringify(info));
+    /* the summary now opens with the chosen strength (see tests/explain2.js) */
+    R.check("a plain sentence says it is already plain, at the chosen strength", info.summary === "Plain · nothing to simplify — this is already plain" && info.changes.length === 0 && info.simple === "The cat sat on the mat.", JSON.stringify(info));
     await page.keyboard.press("Escape"); await page.waitForTimeout(200);
     const api = await page.evaluate(() => window.llSimplify.simplify("They commenced walking towards the village, and the window was broken by the storm.").then((r) => ({ text: r.text, whys: r.changes.map((c) => c.why) })));
     R.check("llSimplify.simplify(text) resolves with the plainer text", api.text === "They began walking towards the village, and the storm broke the window." && api.whys.indexOf("rarer word") >= 0 && api.whys.indexOf("passive to active") >= 0, JSON.stringify(api));
 
-    /* 9. one word: no Simplify in the pill */
+    /* 9. one word: the pill offers Define */
     await selectPhrase(page, "extraordinary");
     pill = await pillState(page);
-    R.check("a one-word selection offers Define, Highlight and Translate (no Simplify)", pill.on && pill.buttons.join(" · ") === "Define · Highlight · Translate", JSON.stringify(pill));
+    R.check("a one-word selection offers Define and Highlight", pill.on && pill.buttons.join(" · ") === "Define · Highlight", JSON.stringify(pill));
     await page.evaluate(() => window.getSelection().removeAllRanges());
     await page.waitForTimeout(250);
 
     /* 10. dusk, and offline */
     await setTheme(page, "dusk");
     await selectPhrase(page, SENTENCE);
-    await page.click("#dictPill [data-act=simplify]");
+    await openSimpler(page);
     await cardOpen(page);
     await page.waitForTimeout(400);
     await shot(page, "simplify-desktop-dusk");
@@ -190,7 +202,7 @@ const cardInfo = (page) => page.evaluate(() => ({
     const fits = await page.evaluate(() => { const c = document.getElementById("dictCard"); return c.scrollWidth <= c.clientWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth + 1; });
     R.check("phone: the card has no horizontal overflow", fits);
     const info = await cardInfo(page);
-    R.check("phone: without a text span there is no Highlight action", info.acts.indexOf("Highlight") < 0 && info.acts[0] === "Copy", info.acts.join("|"));
+    R.check("phone: without a text span the footer has only Copy (no Highlight)", info.foot.join("|") === "Copy" && info.acts[0] === "Read aloud", info.foot.join("|") + " / " + info.acts.join("|"));
     await shot(page, "simplify-phone-day");
     await setTheme(page, "dusk");
     await page.waitForTimeout(400);

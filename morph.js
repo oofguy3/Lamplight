@@ -732,6 +732,16 @@
      pregnant with"), so the everyday words that most often sit inside a longer one carry a
      short meaning of their own here. A word's part of speech still comes from the dictionary. */
   var BASES = {
+    /* added for the glosses: each of these has a dictionary sense that reads oddly out of
+       context ("predict: indicate by signs", "summit: a meeting of heads of governments") */
+    predict: "say what will happen", summit: "the highest point", inherit: "receive from someone who has died",
+    curious: "wanting to know; strange", hesitate: "pause before doing something", glitter: "shine with flashes of light",
+    linger: "stay longer than expected", anticipate: "expect; look forward to", notion: "an idea",
+    vivid: "bright and clear", profound: "very deep or strong", obscure: "hard to understand; little known",
+    peculiar: "strange; belonging to only one", threshold: "the doorway; where something begins",
+    deliberate: "done on purpose; slow and careful", reluctant: "unwilling", solitude: "being alone",
+    weary: "very tired", mourn: "feel sad that someone has died", ponder: "think carefully about",
+    scarce: "hard to find; not enough", murmur: "a low soft sound", restless: "unable to keep still",
     able: "having the skill or power", accept: "take what is offered", act: "do something", add: "put together with",
     admit: "let in; agree it is true", adopt: "take as your own", advise: "say what someone should do", agree: "have the same opinion",
     allow: "let happen", amaze: "surprise greatly", amuse: "make someone smile", announce: "tell everyone",
@@ -1222,7 +1232,7 @@
     return ok ? phrase : joined(c, negable ? "not" : "in");
   }
 
-  var api = { PREFIXES: PREFIXES, SUFFIXES: SUFFIXES, ROOTS: ROOTS, analyse: analyse, candidates: candidates };
+  var api = { PREFIXES: PREFIXES, SUFFIXES: SUFFIXES, ROOTS: ROOTS, BASES: BASES, analyse: analyse, candidates: candidates };
   global.llMorph = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : this);

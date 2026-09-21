@@ -30,8 +30,8 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
   const family = (page, sel) => page.$eval(sel, (el) => getComputedStyle(el).fontFamily);
   const loaded = (page, id) => page.waitForFunction((i) => window.llFonts && window.llFonts.loaded(i), id, { timeout: 15000 }).then(() => true, () => false);
   const errors = (page, label) => R.check(label + ": no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
-  /* the font menu lives in the settings sheet, which the gear opens */
-  const sheet = async (page) => { if (!(await page.$eval("#sheet", (s) => s.classList.contains("open")))) { await page.click("#gear"); await page.waitForTimeout(250); } };
+  /* the font menu lives in the settings sheet (the s key, the ⋯ menu, or the test hook) */
+  const sheet = async (page) => { if (!(await page.$eval("#sheet", (s) => s.classList.contains("open")))) { await page.evaluate(() => window.llPop.sheet(true)); await page.waitForTimeout(250); } };
 
   const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, serviceWorkers: "block" });
   let page = await open(ctx);
@@ -305,14 +305,14 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
       await p.evaluate((t) => localStorage.setItem("ll_prefs", JSON.stringify({ theme: t, font: "literata" })), sheetTheme);
       await p.reload({ waitUntil: "load" });
       await openFixture(p, "sample.md");
-      await p.click("#gear");
+      await p.evaluate(() => window.llPop.sheet(true));
       await p.waitForTimeout(400);
       await p.$eval("#fontSel", (el) => el.scrollIntoView({ block: "center" }));
       await p.screenshot({ path: path.join(SHOTS, "fonts-sheet-" + tag + "-" + sheetTheme + ".png") });
       await p.evaluate((t) => localStorage.setItem("ll_prefs", JSON.stringify({ theme: t, font: "literata" })), panelTheme);
       await p.reload({ waitUntil: "load" });
       await openFixture(p, "sample.md");
-      await p.click("#gear");
+      await p.evaluate(() => window.llPop.sheet(true));
       await p.click("#fontBrowse");
       await p.waitForTimeout(1200);                       /* let the previews land */
       await p.screenshot({ path: path.join(SHOTS, "fonts-panel-" + tag + "-" + panelTheme + ".png") });
