@@ -281,16 +281,22 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
   try {
     const page = await newPage(growCtx, url);
     await openFixture(page, "sample.md");
+    const dock = () => page.evaluate(() => { const d = document.getElementById("dock").getBoundingClientRect(), v = document.getElementById("docView").getBoundingClientRect(); return { wrap: document.getElementById("tts").classList.contains("tts-wrap"), dockH: getComputedStyle(document.documentElement).getPropertyValue("--dockH").trim(), dockTop: d.top, dockHpx: Math.round(d.height), viewBottom: v.bottom }; });
     await page.keyboard.press("p"); await page.waitForTimeout(450);
-    await page.evaluate(() => { window.__ll.Speak.start(); }); await page.waitForTimeout(300);
-    await page.evaluate(() => window.llSpeak.setSleep(15)); await page.waitForTimeout(400);
-    const g1 = await page.evaluate(() => { const d = document.getElementById("dock").getBoundingClientRect(), v = document.getElementById("docView").getBoundingClientRect(); return { wrap: document.getElementById("tts").classList.contains("tts-wrap"), dockH: getComputedStyle(document.documentElement).getPropertyValue("--dockH").trim(), dockTop: d.top, dockHpx: Math.round(d.height), viewBottom: v.bottom }; });
-    R.check("the sleep timer wraps the bar to two rows and --dockH follows", g1.wrap && g1.dockH === g1.dockHpx + "px", JSON.stringify(g1));
+    const g0 = await dock();
+    /* read aloud joins the pager in the dock, with no resize to prompt a new measurement */
+    await page.evaluate(() => { window.__ll.Speak.start(); }); await page.waitForTimeout(450);
+    const g1 = await dock();
+    R.check("starting read aloud makes the dock taller and --dockH follows", g1.dockHpx > g0.dockHpx + 20 && g1.dockH === g1.dockHpx + "px", JSON.stringify([g0, g1]));
     R.check("the pages are laid out again to clear the taller dock", g1.viewBottom <= g1.dockTop + 0.5, JSON.stringify(g1));
+    /* the sleep timer's chip joins the compact bar without costing it a second row */
+    await page.evaluate(() => window.llSpeak.setSleep(15)); await page.waitForTimeout(400);
+    const gs = await dock();
+    R.check("the sleep timer's chip fits the row and leaves --dockH where it was", !gs.wrap && gs.dockHpx === g1.dockHpx && gs.dockH === gs.dockHpx + "px", JSON.stringify(gs));
     await page.evaluate(() => window.llSpeak.setSleep(0)); await page.waitForTimeout(400);
-    const g2 = await page.evaluate(() => { const d = document.getElementById("dock").getBoundingClientRect(), v = document.getElementById("docView").getBoundingClientRect(); return { dockTop: d.top, viewBottom: v.bottom }; });
-    R.check("clearing the timer gives the room back to the pages", Math.abs(g2.dockTop - g2.viewBottom - 12) <= 1, JSON.stringify(g2));
-    await page.evaluate(() => window.__ll.Speak.stop());
+    await page.evaluate(() => window.__ll.Speak.stop()); await page.waitForTimeout(450);
+    const g2 = await dock();
+    R.check("stopping gives the room back to the pages", g2.dockHpx === g0.dockHpx && Math.abs(g2.dockTop - g2.viewBottom - 12) <= 1, JSON.stringify([g0, g2]));
     R.check("dock growth: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
   } catch (err){ R.check("dock growth (exception)", false, String(err).split("\n")[0]); }

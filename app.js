@@ -1472,6 +1472,7 @@
             Library.setTitle(book.title + (book.author ? " — " + book.author : ""));
             Tabs.setName(Library.currentId(), book.title + (book.author ? " — " + book.author : ""));
           }
+          if (book.lang) Speak.setDocLang(book.lang);     /* the book says what language it is in */
           setDocHtml(book.html, {toc: book.toc, keepIds: true});
         }).catch(fail);
 
@@ -1674,7 +1675,7 @@
     var opf = new DOMParser().parseFromString(opfXml, "application/xml");
     var q = function(sel, root){ return Array.prototype.slice.call((root || opf).getElementsByTagName(sel)); };
     var meta = function(name){ var el = q(name)[0] || q("dc:" + name)[0]; return el ? el.textContent.trim() : ""; };
-    var title = meta("title"), author = meta("creator");
+    var title = meta("title"), author = meta("creator"), lang = meta("language");
     var items = {}, navHref = null, ncxHref = null;
     q("item").forEach(function(it){
       var id = it.getAttribute("id"), href = pathJoin(opfPath, it.getAttribute("href") || "");
@@ -1758,7 +1759,7 @@
                  : ncxHref && zip.file(ncxHref) ? zip.file(ncxHref).async("string").then(function(src){ return tocFromNcx(src, ncxHref); })
                  : Promise.resolve([]);
       return tocJob.catch(function(){ return []; }).then(function(toc){
-        return { html: html, title: title, author: author, toc: toc };
+        return { html: html, title: title, author: author, lang: lang, toc: toc };
       });
     });
     function tocFromNav(src, href){
@@ -3907,13 +3908,13 @@
   var Speak = (function(){
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     var bar = $("#tts"), playBtn = $("#ttsPlay"), rateEl = $("#ttsRate"), rateV = $("#ttsRateV"), voiceSel = $("#ttsVoice");
-    var womanBtn = $("#ttsWoman"), manBtn = $("#ttsMan"), voicesBtn = $("#ttsVoices"), sleepBtn = $("#ttsSleep");
+    var voicesBtn = $("#ttsVoiceBtn"), voiceNameEl = $("#ttsVoiceName"), sleepBtn = $("#ttsSleep");
     var units = [], idx = -1, playing = false, active = false, utter = null, gen = 0, pdfPage = 0, pdfUnitsDoc = null;
     var startGen = 0;     /* bumped by every start and stop: a PDF page load from an earlier reading bails out */
     var wait = null, between = false, sampleGen = 0, voiceKey = "";
     var rate = parseFloat(Store.get("ll_tts_rate") || "1") || 1;
-    var voiceName = Store.get("ll_tts_voice") || "";
-    var dialogueName = Store.get("ll_tts_dialogue") || "";     /* "" = auto (the other voice), "same", or a voice name */
+    var voiceName = "";        /* the narrator's voice id, remembered per language */
+    var dialogueName = "";     /* "" = auto (the other voice), "same", or a voice id */
     var expr = Store.get("ll_tts_expr") || "natural";           /* off | natural | dramatic */
     var pitchPref = clamp(parseFloat(Store.get("ll_tts_pitch") || "1") || 1, 0.7, 1.3);
     var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
@@ -3922,43 +3923,217 @@
     function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
     function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
 
-    /* ---- voices ---- */
-    /* the API says nothing about gender, so guess it from the name: the words woman / man,
-       then the first names Apple, Microsoft, Google, Amazon and espeak give their voices */
+    /* ---- what language this document is in ----
+       Which voices to offer, and what to tell the engine, both hang on this. The browser's
+       detector reads the first couple of thousand characters where there is one; failing that,
+       what the book declares (an EPUB's dc:language); failing that, the page's own language.
+       The answer is kept per document, and #doc carries it so hyphenation follows the text. */
+    var declaredLang = "", detectedLang = "", langGen = 0, langSeen = {}, lastPrefix = null;
+    function docLang(){ return (detectedLang || declaredLang || document.documentElement.lang || "en").slice(0, 2).toLowerCase(); }
+    function applyDocLang(){
+      var d = $("#doc"), l = detectedLang || declaredLang;
+      if (d && l) d.setAttribute("lang", l);
+      loadForLang();
+      if (Side.is("voices")) Side.refresh("voices", renderPanel);
+    }
+    function setDocLang(l){
+      l = String(l || "").trim();
+      if (!l) return;
+      declaredLang = l; applyDocLang();
+    }
+    /* the browser's on-device detector, where it exists; anything it can't place is left alone */
+    function detectFrom(text, key){
+      text = String(text || "").slice(0, 2000);
+      if (!/\S{20}|\S+\s+\S+\s+\S+/.test(text)) return;
+      if (key && langSeen[key]){ detectedLang = langSeen[key]; applyDocLang(); return; }
+      var LD = window.LanguageDetector || (window.ai && window.ai.languageDetector) || null;
+      if (!LD || typeof LD.create !== "function"){ applyDocLang(); return; }
+      var my = ++langGen;
+      Promise.resolve(LD.create()).then(function(det){ return det.detect(text); }).then(function(rs){
+        if (my !== langGen) return;
+        var top = rs && rs[0], l = top && (top.detectedLanguage || top.language) || "";
+        if (!l || l === "und") return;
+        detectedLang = l;
+        if (key) langSeen[key] = l;
+        applyDocLang();
+      }).catch(function(){});
+    }
+    /* a new file wipes the last answer; the text itself arrives later, when #doc is rebuilt */
+    document.addEventListener("ll:fileopened", function(){
+      declaredLang = ""; detectedLang = ""; langGen++; lastPrefix = null;
+    });
+    if (typeof MutationObserver !== "undefined") new MutationObserver(function(){
+      var t = ($("#doc").textContent || "").slice(0, 2000);
+      if (t === lastPrefix) return;
+      lastPrefix = t;
+      detectFrom(t, Library.currentId && Library.currentId());
+    }).observe($("#doc"), { childList: true });
+
+    /* ---- voices ----
+       The API says nothing about gender or quality, so both are read off the voice's name and
+       its voiceURI. Android names four voices "English United States" and puts the only clue in
+       the URI (en-us-x-sfg#female_1-local); Microsoft writes "Microsoft Aria Online (Natural) -
+       English (United States)"; Apple hides the name in a bundle id. Whatever the guess, a
+       reader can correct it from the picker, and that correction wins for good. */
     function set(s){ var o = {}; s.split(" ").forEach(function(w){ if (w) o[w] = 1; }); return o; }
-    var WOMEN = set("samantha karen moira tessa fiona victoria kate serena allison ava susan zira hazel heera aria jenny sara sonia libby emma olivia amy joanna kendra kimberly salli ivy nicole raveena aditi zoe flo martha shelley nicky sandy grandma kathy princess vicki catherine natasha matilda isha veena sangeeta anna alice ellen laura paulina monica luciana joana yuna kyoko ting-ting mei-jia sin-ji lekha milena amelie audrey aurelie chantal marie carmit damayanti ioana melina alva nora satu zosia zuzana mariska kanya yelda helena petra federica paola angelica marisol laila o-ren yu-shu linda hedda katja hortense julie elsa haruka ayumi sayaka heami huihui yaoyao hanhan yating tracy irina maria gadis kalpana hoda vlasta heidi helle sabina daria ewa");
-    var MEN = set("daniel alex fred david george mark ryan guy christopher eric steffan thomas brian matthew joey justin kevin russell aaron arthur gordon lee oliver reed rishi rocko tom bruce junior ralph albert eddy grandpa evan nathan jamie jorge diego juan carlos luca xander yannick maged majed tarik otoya hattori nicolas markus viktor jordi li-mu yuri james richard sean stefan conrad paul pablo raul cosimo ichiro kangkang zhiwei danny pavel adam frank andika hemant naayf ivan filip lado szabolcs jakub karsten jon bengt pattara tolga rizwan ravi");
-    function voiceGender(v){
-      var name = typeof v === "string" ? v : (v && v.name) || "", low = name.toLowerCase();
-      if (/\b(female|woman)\b/.test(low)) return "f";
-      if (/\b(male|man)\b/.test(low)) return "m";
-      var ts = low.split(/[\s,.()+_\/\\:\[\]"']+/), i;
-      for (i = 0; i < ts.length; i++){
-        if (WOMEN[ts[i]] || /^(f|female)\d$/.test(ts[i])) return "f";     /* espeak variants: en+f3 */
-        if (MEN[ts[i]] || /^(m|male)\d$/.test(ts[i])) return "m";
-      }
-      if (/^google\s/.test(low)) return "f";     /* Chrome's Google voices are women except "UK English Male" */
+    var WOMEN = set("samantha karen moira tessa fiona victoria kate serena allison ava susan zira hazel heera aria jenny sara sonia libby emma olivia amy joanna kendra kimberly salli ivy nicole raveena aditi zoe flo martha shelley nicky sandy grandma kathy princess vicki catherine natasha matilda isha veena sangeeta anna alice ellen laura paulina monica luciana joana yuna kyoko ting-ting mei-jia sin-ji lekha milena amelie audrey aurelie chantal marie carmit damayanti ioana melina alva nora satu zosia zuzana mariska kanya yelda helena petra federica paola angelica marisol laila o-ren yu-shu linda hedda katja hortense julie elsa haruka ayumi sayaka heami huihui yaoyao hanhan yating tracy irina maria gadis kalpana hoda vlasta heidi helle sabina daria ewa " +
+      /* Microsoft's natural (neural) set, and the Samsung / CereProc / Acapela names */
+      "michelle ana maisie clara emily molly luna leah mia nancy neerja denise vivienne amala louisa isabella elvira dalia paloma francisca nanami sunhi xiaoxiao xiaoyi yunjhe hiujia hsiaochen aarohi kalina nabanita vesna adri lena bianca giselle carla pernille sofie noora hulda dhwani gul dilara hila rehema imani zuri ella marta agnieszka wanda inga tanishaa yasmin heather rachel lucy sharon katherine sarah nadia astrid xenia klara ines lia salome eleni zofia bella " +
+      "jessa shruti swara sneha kavya nilam eda seyma leyla oksana polina svetlana anu");
+    var MEN = set("daniel alex fred david george mark ryan guy christopher eric steffan thomas brian matthew joey justin kevin russell aaron arthur gordon lee oliver reed rishi rocko tom bruce junior ralph albert eddy grandpa evan nathan jamie jorge diego juan carlos luca xander yannick maged majed tarik otoya hattori nicolas markus viktor jordi li-mu yuri james richard sean stefan conrad paul pablo raul cosimo ichiro kangkang zhiwei danny pavel adam frank andika hemant naayf ivan filip lado szabolcs jakub karsten jon bengt pattara tolga rizwan ravi " +
+      /* Microsoft's natural (neural) set, and the Samsung / CereProc / Acapela names */
+      "davis tony jason roger brandon andrew alfie william duncan liam connor mitchell sam wayne prabhat henri killian alvaro keita injoon yunxi yunyang yunjian wangwen hamed shakir bassel moaz taim saleh hoang namminh dmitry maxim borys ostap jonas mattias finn magnus harri klaus bernd christoph lorenzo antonio miguel rodrigo joaquin nestor rafael arnau macia " +
+      "graham rod will peter giles madhur mohan valluvar arjun anbu kumar orhan ahmet burak taha");
+    /* old, thin voices and outright novelties: kept, but never recommended */
+    var PLAIN = set("fred albert junior ralph bruce kathy princess agnes bahh bells boing bubbles cellos deranged hysterical jester organ superstar trinoids whisper zarvox wobble");
+    var NOVELTY = /\b(bad|good) news\b|\bpipe organ\b|\bzarvox\b|\btrinoids\b|\bbubbles\b|\bderanged\b|\bboing\b|\bjester\b|\bsuperstar\b/i;
+    var GOOD = /natural|neural|premium|enhanced|siri|wavenet|studio/i;
+    var THIN = /compact|e-?speak|pico|flite|festival/i;
+
+    function nameOf(v){ return typeof v === "string" ? v : (v && v.name) || ""; }
+    function uriOf(v){ return typeof v === "string" ? "" : (v && v.voiceURI) || ""; }
+    /* a voice's stable id: Android gives four voices one name, so the URI comes first */
+    function voiceId(v){ return typeof v === "string" ? v : (v && (v.voiceURI || v.name)) || ""; }
+    function readMap(key){
+      try { var o = JSON.parse(Store.get(key) || "{}"); return o && typeof o === "object" ? o : {}; } catch(_){ return {}; }
+    }
+    var genderFix = readMap("ll_voice_gender");     /* the reader's own corrections, by voice id */
+    var hiddenFix = readMap("ll_voice_hidden");     /* voices struck off the short lists */
+    function isHidden(v){ return !!hiddenFix[voiceId(v)]; }
+    function setHidden(v, on){
+      var id = voiceId(v);
+      if (on) hiddenFix[id] = 1; else delete hiddenFix[id];
+      Store.set("ll_voice_hidden", JSON.stringify(hiddenFix));
+    }
+    /* "woman" or "man" written out, wherever it hides: "…#female_1-local", "…_m_…", "en+f3".
+       Underscores are word characters, so \b is no use here */
+    function genderWord(s){
+      var low = String(s).toLowerCase();
+      if (/(^|[^a-z])(fe-?male|woman|women|girl)([^a-z]|$)/.test(low)) return "f";
+      if (/(^|[^a-z])(male|man|men|boy)([^a-z]|$)/.test(low)) return "m";
+      if (/[_#][f][_#0-9]/.test(low)) return "f";
+      if (/[_#][m][_#0-9]/.test(low)) return "m";
       return "";
     }
+    /* a first name we know, from the name or from an Apple bundle id. Hyphens are kept inside a
+       token, so Ting-Ting and Li-Mu still match; a trailing Neural / Natural is trimmed off */
+    function tokenGender(s){
+      var ts = String(s).toLowerCase().split(/[\s,.()+_\/\\:\[\]#"'’]+/), i, t;
+      for (i = 0; i < ts.length; i++){
+        t = ts[i].replace(/(neural|natural)$/, "");
+        if (!t) continue;
+        if (WOMEN[t] || /^(f|female)\d$/.test(t)) return "f";     /* espeak variants: en+f3 */
+        if (MEN[t] || /^(m|male)\d$/.test(t)) return "m";
+      }
+      return "";
+    }
+    function voiceGender(v){
+      var fix = genderFix[voiceId(v)];
+      if (fix === "f" || fix === "m") return fix;
+      if (fix === "x") return "";                    /* corrected to "neither" */
+      var name = nameOf(v), uri = uriOf(v);
+      return genderWord(name) || tokenGender(name) || genderWord(uri) || tokenGender(uri) ||
+             (/^google\s/i.test(name) ? "f" : "");   /* Chrome's Google voices are women except "UK English Male" */
+    }
+    function setGender(v, g){
+      var id = voiceId(v);
+      if (g) genderFix[id] = g; else delete genderFix[id];
+      Store.set("ll_voice_gender", JSON.stringify(genderFix));
+    }
+    /* does this device tell us anything at all about who is speaking? */
+    function anyGenderKnown(){
+      return voices().some(function(v){ return !!voiceGender(v); });
+    }
+    /* the name a reader recognises: "Microsoft Aria Online (Natural) - English (United States)"
+       is Aria; an Android voice with no name of its own is the woman or the man its URI numbers */
+    function baseName(v){
+      var n = nameOf(v).trim(), m = n.match(/^Microsoft\s+([A-Za-zÀ-ɏ'’-]+)/);
+      if (m) return m[1].replace(/(Neural|Natural)$/, "");
+      n = n.replace(/^(Google|Android|Chrome OS|Samsung|CereProc|Acapela)\s+/i, "");
+      n = n.split(/\s+[-–—]\s+/)[0];
+      n = n.replace(/\s*\([^)]*\)/g, "").replace(/\s+(Online|Desktop|Mobile|Compact|Premium|Enhanced|Natural|Neural)$/i, "").trim();
+      if (!tokenGender(n)){
+        var u = uriOf(v).toLowerCase().match(/#(fe)?male[_\-]?(\d+)?/);
+        if (u) return (u[1] ? "Woman" : "Man") + (u[2] ? " " + u[2] : "");
+      }
+      return n || nameOf(v) || "Voice";
+    }
+    /* where a device names two voices the same ("English United States" twice over), the second
+       and third are numbered, so the bar, the cards and the list all call one voice one thing */
+    var nameCache = null;
+    function buildNames(){
+      var seen = {}, map = {};
+      voices().forEach(function(v){
+        var base = baseName(v);
+        seen[base] = (seen[base] || 0) + 1;
+        map[voiceId(v)] = seen[base] > 1 ? base + " " + seen[base] : base;
+      });
+      nameCache = map;
+    }
+    function shortName(v){
+      if (!v || typeof v === "string") return baseName(v);
+      if (!nameCache) buildNames();
+      return nameCache[voiceId(v)] || baseName(v);
+    }
+    /* the little words under a name: what it is good at, and where it speaks from */
+    function voiceTags(v){
+      var t = [], both = nameOf(v) + " " + uriOf(v);
+      if (GOOD.test(both)) t.push("natural");
+      t.push(v.localService ? "offline" : "online");
+      if (v.lang) t.push(v.lang);
+      return t;
+    }
     function voices(){ return supported ? speechSynthesis.getVoices() : []; }
-    function docLang(){ return (document.documentElement.lang || "en").slice(0, 2).toLowerCase(); }
     function langOf(v){ return (v.lang || "").slice(0, 2).toLowerCase(); }
-    /* the document's language first, local voices before online ones, then by name */
-    function sortedVoices(){
-      var lang = docLang();
+    /* the reader's own locale, tidied: some systems report "en-US@posix" */
+    function uiLocale(){ return String(navigator.language || "en").toLowerCase().replace(/_/g, "-").split("@")[0] || "en"; }
+    /* how good a voice is likely to sound, for this document: a natural voice, one that works
+       offline, one that speaks the right language — less the compact and novelty voices */
+    function voiceScore(v, lang){
+      var both = (nameOf(v) + " " + uriOf(v)), s = 0;
+      if (GOOD.test(both)) s += 4;
+      if (v.localService) s += 3;
+      if (langOf(v) === (lang || docLang())) s += 2;
+      if ((v.lang || "").toLowerCase().replace(/_/g, "-") === uiLocale()) s += 1;
+      if (THIN.test(both) || tokenIn(PLAIN, nameOf(v))) s -= 2;
+      if (NOVELTY.test(nameOf(v))) s -= 3;
+      return s;
+    }
+    function tokenIn(table, s){
+      return String(s).toLowerCase().split(/[\s,.()+_\/\\:\[\]#"'’-]+/).some(function(t){ return !!table[t]; });
+    }
+    /* best first: the score, then the document's language, then the name */
+    function sortedVoices(lang){
+      var l = lang || docLang();
       return voices().slice().sort(function(a, b){
-        var al = langOf(a) === lang ? 0 : 1, bl = langOf(b) === lang ? 0 : 1;
+        var d = voiceScore(b, l) - voiceScore(a, l);
+        if (d) return d;
+        var al = langOf(a) === l ? 0 : 1, bl = langOf(b) === l ? 0 : 1;
         if (al !== bl) return al - bl;
-        if (!a.localService !== !b.localService) return a.localService ? -1 : 1;
-        return a.name.localeCompare(b.name);
+        return nameOf(a).localeCompare(nameOf(b));
       });
     }
-    function gendered(g){ return sortedVoices().filter(function(v){ return voiceGender(v) === g; }); }
-    /* the best voice of a gender: language match, local first; strict = only that language */
-    function bestVoice(g, lang, notName, strict){
-      var vs = gendered(g).filter(function(v){ return v.name !== notName; });
+    function gendered(g, lang){ return sortedVoices(lang).filter(function(v){ return voiceGender(v) === g; }); }
+    /* a voice struck off is not offered again, unless nothing else is left */
+    function unhidden(vs){ var open = vs.filter(function(v){ return !isHidden(v); }); return open.length ? open : vs; }
+    /* the best voice of a gender: language match first; strict = only that language */
+    function bestVoice(g, lang, notId, strict){
+      var vs = unhidden(gendered(g, lang).filter(function(v){ return voiceId(v) !== notId && nameOf(v) !== notId; }));
       if (lang){ var same = vs.filter(function(v){ return langOf(v) === lang; }); if (same.length || strict) vs = same; }
       return vs[0] || null;
+    }
+    /* with nothing chosen, the best woman for this document reads it (and the best man the
+       quoted speech): the pair a reader is offered before they touch anything */
+    function autoNarrator(){
+      var lang = docLang();
+      return bestVoice("f", lang) || unhidden(sortedVoices(lang))[0] || null;
+    }
+    function findVoice(id){
+      if (!id) return null;
+      var vs = voices(), i;
+      for (i = 0; i < vs.length; i++) if (voiceId(vs[i]) === id) return vs[i];
+      for (i = 0; i < vs.length; i++) if (nameOf(vs[i]) === id) return vs[i];     /* a name stored by an older version */
+      return null;
     }
     function voiceOptions(vs, selected){
       var groups = { f: [], m: [], "": [] };
@@ -3966,56 +4141,76 @@
       return [["f", "Women"], ["m", "Men"], ["", "Other"]].map(function(g){
         if (!groups[g[0]].length) return "";
         return '<optgroup label="' + g[1] + '">' + groups[g[0]].map(function(v){
-          return '<option value="' + esc(v.name) + '"' + (v.name === selected ? ' selected' : '') + '>' + esc(v.name) + (v.localService ? "" : " (online)") + '</option>';
+          var id = voiceId(v);
+          return '<option value="' + esc(id) + '"' + (id === selected || nameOf(v) === selected ? ' selected' : '') + '>' + esc(nameOf(v)) + (v.localService ? "" : " (online)") + '</option>';
         }).join("") + '</optgroup>';
       }).join("");
     }
-    function currentVoice(){
-      var vs = voices(), name = voiceSel.value || voiceName;
-      return vs.filter(function(v){ return v.name === name; })[0] || null;
-    }
+    function currentVoice(){ return findVoice(voiceName) || autoNarrator(); }
     /* the voice for quoted speech: the one chosen, the narrator, or (auto) the other gender in
        the narrator's language; failing that the narrator's own voice pitched a little away */
     function dialogueVoice(narr){
       narr = narr || currentVoice();
       if (dialogueName === "same") return { voice: narr, pitchOffset: 0 };
-      var chosen = dialogueName ? voices().filter(function(v){ return v.name === dialogueName; })[0] : null;
+      var chosen = dialogueName ? findVoice(dialogueName) : null;
       if (chosen) return { voice: chosen, pitchOffset: 0 };
-      var g = narr ? voiceGender(narr) : "", lang = narr ? langOf(narr) : docLang(), not = narr ? narr.name : "";
+      var g = narr ? voiceGender(narr) : "", lang = narr ? langOf(narr) : docLang(), not = narr ? voiceId(narr) : "";
       var other = g === "f" ? bestVoice("m", lang, not, true) : g === "m" ? bestVoice("f", lang, not, true)
                 : (bestVoice("m", lang, not, true) || bestVoice("f", lang, not, true));
+      /* no second voice of the other gender: the next best voice of any gender still reads it */
+      if (!other && !g) other = sortedVoices(lang).filter(function(v){ return langOf(v) === lang && voiceId(v) !== not; })[0] || null;
       if (other) return { voice: other, pitchOffset: 0 };
       return { voice: narr, pitchOffset: g === "m" ? 0.15 : -0.15 };
     }
-    function syncSexButtons(){
-      var g = voiceGender(currentVoice());
-      [[womanBtn, "f"], [manBtn, "m"]].forEach(function(p){
-        p[0].classList.toggle("on", g === p[1]); p[0].setAttribute("aria-pressed", g === p[1] ? "true" : "false");
-      });
+    /* the bar says who is reading, in one word */
+    function syncBar(){
+      var v = currentVoice(), n = v ? shortName(v) : "";
+      voiceNameEl.textContent = n || "Voices";
+      voicesBtn.setAttribute("aria-label", n ? "Voice: " + n + " — choose another" : "Voices");
+      voicesBtn.title = n ? n + " — choose another voice" : "Voices";
     }
     function fillVoices(){
-      var vs = sortedVoices(), key = vs.map(function(v){ return v.name; }).join("\n");
-      voiceSel.innerHTML = voiceOptions(vs, voiceName) || '<option value="">Default voice</option>';
-      womanBtn.hidden = !bestVoice("f"); manBtn.hidden = !bestVoice("m");
-      syncSexButtons();
-      /* voices can arrive late; redraw the panel when the list really changed */
-      if (key !== voiceKey){ voiceKey = key; if (Side.is("voices")) Side.refresh("voices", renderPanel); }
+      var vs = sortedVoices(), key = vs.map(function(v){ return voiceId(v); }).join("\n");
+      var fresh = key !== voiceKey;     /* voices arrive late, and a phone can gain or lose them */
+      if (fresh){ voiceKey = key; nameCache = null; loadForLang(); }
+      voiceSel.innerHTML = voiceOptions(vs, voiceName || voiceId(currentVoice())) || '<option value="">Default voice</option>';
+      syncBar();
+      if (fresh && Side.is("voices")) Side.refresh("voices", renderPanel);
     }
-    if (supported){ fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
-    function setVoice(name){
-      voiceName = name; Store.set("ll_tts_voice", name);
-      voiceSel.value = name;
-      var narr = $("#ttsNarr"); if (narr) narr.value = name;
-      syncSexButtons(); syncHint();
+    if (supported){ loadForLang(); fillVoices(); speechSynthesis.addEventListener("voiceschanged", fillVoices); }
+    /* the narrator and the dialogue voice are remembered per language, so an English book and a
+       Spanish one keep their own pair; the last choice of all is the fallback for a new language */
+    function langKey(k, lang){ return "ll_tts_" + k + "_" + (lang || docLang()); }
+    function loadForLang(){
+      var lang = docLang();
+      var v = Store.get(langKey("voice", lang)), d = Store.get(langKey("dialogue", lang));
+      if (v === null){
+        var last = Store.get("ll_tts_voice") || "", lv = findVoice(last);
+        v = lv && langOf(lv) === lang ? last : "";
+        d = lv && langOf(lv) === lang ? (Store.get("ll_tts_dialogue") || "") : "";
+      }
+      voiceName = v || ""; dialogueName = d || "";
+      voiceSel.value = voiceName || voiceId(currentVoice());
+      syncBar();
+    }
+    function setVoice(id){
+      voiceName = id;
+      Store.set(langKey("voice"), id); Store.set("ll_tts_voice", id);
+      voiceSel.value = id || voiceId(currentVoice());
+      syncBar(); syncPanel();
       restart();
     }
-    /* ♀ / ♂: the best voice of that gender; pressed again, the next one */
-    function pickGender(g){
-      var list = gendered(g); if (!list.length) return;
-      var cur = currentVoice(), i = cur ? list.indexOf(cur) : -1;
-      var lang = docLang(), same = list.filter(function(v){ return langOf(v) === lang; });
-      if (i < 0 && same.length) list = same;
-      setVoice(list[(i + 1) % list.length].name);
+    function setDialogue(id){
+      dialogueName = id;
+      Store.set(langKey("dialogue"), id); Store.set("ll_tts_dialogue", id);
+      syncPanel();
+      restart();
+    }
+    /* Swap: the narrator reads the dialogue and the dialogue voice reads the narration */
+    function swapPair(){
+      var narr = currentVoice(), d = dialogueVoice(narr).voice;
+      if (!narr || !d || d === narr) return;
+      setDialogue(voiceId(narr)); setVoice(voiceId(d));
     }
 
     /* ---- sentence units ---- */
@@ -4177,12 +4372,18 @@
         pauseAfter: pause
       };
     }
-    function utterFor(u, prev, next){
+    /* the first sentences after Play come in a little under speed and settle: an engine that
+       opens at full tilt sounds like it is already late */
+    var RAMP = [0.85, 0.92, 1], rampN = RAMP.length, rampAt = -1;
+    function rampFactor(){ return RAMP[rampN] || 1; }
+    /* a sentence said again after a settings change keeps its own step on the ramp */
+    function rampStep(i){ if (i !== rampAt){ rampAt = i; if (rampN < RAMP.length) rampN++; } }
+    function utterFor(u, prev, next, ramp){
       var x = express(u, { prev: prev, next: next, expr: expr });
       var narr = currentVoice(), v = narr, off = 0;
       if (u.dialogue){ var d = dialogueVoice(narr); v = d.voice; off = d.pitchOffset; }
       var ut = new SpeechSynthesisUtterance(u.text);
-      ut.rate = clamp(rate * x.rate, 0.5, 2.5);
+      ut.rate = clamp(rate * x.rate * (ramp || 1), 0.5, 2.5);
       ut.pitch = clamp(pitchPref + (x.pitch - 1) + off, 0.5, 1.6);
       ut.volume = clamp(x.volume, 0.4, 1);
       if (v){ ut.voice = v; ut.lang = v.lang; }
@@ -4359,7 +4560,8 @@
       paint(u); ensureVisible(u);
       if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
       var sec = sectionFor(u); if (sec !== album) setMeta(sec);
-      var s = utterFor(u, units[idx - 1], units[idx + 1]);
+      var s = utterFor(u, units[idx - 1], units[idx + 1], rampFactor());
+      rampStep(idx);
       utter = s.utter;
       utter.onend = function(){
         if (myGen !== gen || !playing) return;
@@ -4390,6 +4592,7 @@
     function play(){
       if (!units.length) return;
       playing = true; playIcon(playBtn, true); playBtn.setAttribute("aria-label", "Pause");
+      rampN = 0; rampAt = -1;
       armSleep(); mediaPlay();
       speakCurrent();
     }
@@ -4453,6 +4656,7 @@
       /* load the first page now, the rest while reading */
       return PdfText.get(page).then(function(t){
         if (!live()) return false;
+        detectFrom(t, Library.currentId && Library.currentId());     /* a PDF has no #doc to read the language off */
         unitsFromText(t, 0, units); units.forEach(function(u){ u.page = page; });
         pdfUnitsDoc = doc;
         var next = page + 1;
@@ -4484,15 +4688,39 @@
         setTimeout(function(){ if (myGen === sampleGen) speechSynthesis.speak(s.utter); }, 0);
       })();
     }
+    /* one voice, one line, in the voice's own language: what every ▶ in the picker plays. A new
+       preview (or closing the panel) stops the one before it */
+    var PREVIEW = "The lamp hums quietly. \"Are you still reading?\" she asked.";
+    function preview(v){
+      if (!supported) return;
+      if (playing) pause();
+      var list = [], myGen = ++sampleGen, i = 0;
+      unitsFromText(PREVIEW, 0, list);
+      try { speechSynthesis.cancel(); } catch(_){}
+      (function next(){
+        if (myGen !== sampleGen || i >= list.length) return;
+        var u = list[i], x = express(u, { prev: list[i - 1], next: list[i + 1], expr: expr });
+        var ut = new SpeechSynthesisUtterance(u.text);
+        ut.rate = clamp(rate * x.rate, 0.5, 2.5);
+        ut.pitch = clamp(pitchPref + (x.pitch - 1), 0.5, 1.6);
+        ut.volume = clamp(x.volume, 0.4, 1);
+        if (v){ ut.voice = v; ut.lang = v.lang; }
+        ut.onend = function(){ if (myGen !== sampleGen) return; i++; setTimeout(next, x.pauseAfter); };
+        setTimeout(function(){ if (myGen === sampleGen) speechSynthesis.speak(ut); }, 0);
+      })();
+    }
+    function stopPreview(){ sampleGen++; if (supported) try { speechSynthesis.cancel(); } catch(_){} }
 
     /* ---- the voices panel ---- */
     function pitchLabel(){ return pitchPref.toFixed(2); }
     function hintText(){
       var narr = currentVoice();
-      if (!narr || dialogueName) return dialogueName === "same" ? "Quoted speech is read in the narrator’s voice." : "";
+      if (!narr) return "";
+      if (dialogueName === "same") return "Quoted speech is read in the narrator’s voice.";
       var d = dialogueVoice(narr), g = voiceGender(narr);
-      if (d.voice && d.voice !== narr) return "Auto: " + d.voice.name + " reads the quoted speech.";
-      return "Auto: no " + (g === "f" ? "man’s" : g === "m" ? "woman’s" : "second") + " voice for this language, so quoted speech is the narrator pitched " + (d.pitchOffset > 0 ? "higher" : "lower") + ".";
+      if (dialogueName) return d.voice && d.voice !== narr ? shortName(d.voice) + " reads the quoted speech." : "";
+      if (d.voice && d.voice !== narr) return "Chosen for you: " + shortName(d.voice) + " reads the quoted speech.";
+      return "No " + (g === "f" ? "man’s" : g === "m" ? "woman’s" : "second") + " voice for this language, so quoted speech is the narrator pitched " + (d.pitchOffset > 0 ? "higher" : "lower") + ".";
     }
     function syncHint(){ var h = $("#ttsDlgHint"); if (h) h.textContent = hintText(); }
     function exprChips(){
@@ -4509,25 +4737,153 @@
       });
       restart();
     }
+    /* the icons this panel draws, kept here so the read-aloud region owns them */
+    var V_ICONS = {
+      play:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg>',
+      pair:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
+      cards: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h6v8H3z"/><path d="M9 8h6v8H9z"/><path d="M15 8h6v8h-6z"/></svg>',
+      expr:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7"/><path d="M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7"/></svg>',
+      clock: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M12 7v5l3 2"/></svg>'
+    };
+    var SEX = { f: "♀", m: "♂", "": "—" };
+    var SEXNAME = { f: "a woman’s voice", m: "a man’s voice", "": "not marked" };
+    var allOpen = false, filterText = "";
+    var langNames = null;
+    /* "English", "Spanish" — the language written out, where the browser can; else its code */
+    function langLabel(code){
+      var l = String(code || "").slice(0, 2);
+      if (!l) return "Other";
+      if (langNames === null){
+        langNames = false;
+        try {
+          if (typeof Intl !== "undefined" && Intl.DisplayNames){
+            try { langNames = new Intl.DisplayNames([uiLocale()], { type: "language" }); }
+            catch(_){ langNames = new Intl.DisplayNames(["en"], { type: "language" }); }
+          }
+        } catch(_){ langNames = false; }
+      }
+      try { if (langNames) return langNames.of(l) || l; } catch(_){}
+      return l;
+    }
+    function tagsHtml(v){
+      return '<span class="v-tags">' + voiceTags(v).map(function(t){ return '<span class="v-tag">' + esc(t) + '</span>'; }).join("") + '</span>';
+    }
+    /* the title carries the whole name, for the long Windows labels a narrow card shortens */
+    function nameHtml(v){
+      var n = shortName(v);
+      return '<span class="v-name" title="' + esc(nameOf(v) || n) + '">' + esc(n) + '</span>';
+    }
+    function previewBtn(v){
+      var lab = "Hear " + shortName(v);
+      return '<button type="button" class="v-play" data-play="' + esc(voiceId(v)) + '" title="' + esc(lab) + '" aria-label="' + esc(lab) + '">' + V_ICONS.play + '</button>';
+    }
+    function sexChip(v){
+      var g = voiceGender(v), lab = shortName(v) + " is " + SEXNAME[g] + " — change";
+      return '<button type="button" class="chip v-sex" data-sex="' + esc(voiceId(v)) + '" title="' + esc(lab) + '" aria-label="' + esc(lab) + '">' + SEX[g] + '</button>';
+    }
+    /* the label repeats the name: a dozen buttons all called "Narrator" tell a screen reader nothing */
+    function assignBtns(v, nId, dId){
+      var id = voiceId(v), n = shortName(v);
+      return '<button type="button" class="chip v-assign" data-role="narr" data-id="' + esc(id) + '" aria-pressed="' + (id === nId) + '" aria-label="' + esc(n + " reads the narration") + '">Narrator</button>' +
+             '<button type="button" class="chip v-assign" data-role="dlg" data-id="' + esc(id) + '" aria-pressed="' + (id === dId) + '" aria-label="' + esc(n + " reads the quoted speech") + '">Dialogue</button>';
+    }
+    function pairRow(label, v){
+      if (!v) return '<div class="v-row"><span class="v-role">' + label + '</span><span class="v-who"><span class="v-name">No voice yet</span></span></div>';
+      return '<div class="v-row"><span class="v-role">' + label + '</span>' +
+             '<span class="v-who">' + nameHtml(v) + tagsHtml(v) + '</span>' + previewBtn(v) + '</div>';
+    }
+    function pairRows(narr, d){ return pairRow("Narrator", narr) + pairRow("Dialogue", d); }
+    /* up to six cards: the three best women and the three best men for this language, side by
+       side, topped up with whatever else scores well where a device names fewer */
+    function cardVoices(lang){
+      var all = sortedVoices(lang).filter(function(v){ return !isHidden(v); });
+      var here = all.filter(function(v){ return langOf(v) === lang; });
+      if (here.length < 2) here = all;
+      var w = here.filter(function(v){ return voiceGender(v) === "f"; }).slice(0, 3);
+      var m = here.filter(function(v){ return voiceGender(v) === "m"; }).slice(0, 3);
+      var out = [], i;
+      for (i = 0; i < 3; i++){ if (w[i]) out.push(w[i]); if (m[i]) out.push(m[i]); }
+      here.forEach(function(v){ if (out.length < 6 && out.indexOf(v) < 0) out.push(v); });
+      return out.slice(0, 6);
+    }
+    function cardsHtml(lang, nId, dId){
+      var list = cardVoices(lang);
+      if (!list.length) return '<p class="hint">This browser offers no voices yet.</p>';
+      return '<div class="v-cards">' + list.map(function(v){
+        return '<div class="v-card">' +
+          '<div class="v-card-top">' + nameHtml(v) + sexChip(v) + previewBtn(v) + '</div>' +
+          tagsHtml(v) +
+          '<div class="v-acts">' + assignBtns(v, nId, dId) + '</div></div>';
+      }).join("") + '</div>';
+    }
+    /* the whole list, one tap away: by language, then women, men and the rest */
+    function listHtml(lang, nId, dId){
+      var order = [], byLang = {}, hidden = [];
+      sortedVoices(lang).forEach(function(v){
+        if (isHidden(v)){ hidden.push(v); return; }
+        var l = langOf(v) || "??";
+        if (!byLang[l]){ byLang[l] = { f: [], m: [], "": [] }; order.push(l); }
+        byLang[l][voiceGender(v)].push(v);
+      });
+      var shown = 0;
+      var html = order.map(function(l){
+        var g = byLang[l];
+        return '<div class="v-group"><div class="label">' + esc(langLabel(l)) + '</div>' +
+          [["f", "Women"], ["m", "Men"], ["", "Other"]].map(function(sec){
+            if (!g[sec[0]].length) return "";
+            return '<div class="v-sub"><div class="v-sub-l">' + sec[1] + '</div>' + g[sec[0]].map(function(v){
+              shown++;
+              var find = (nameOf(v) + " " + shortName(v) + " " + (v.lang || "") + " " + langLabel(l)).toLowerCase();
+              return '<div class="v-item" data-find="' + esc(find) + '">' + previewBtn(v) +
+                '<span class="v-who">' + nameHtml(v) + tagsHtml(v) + '</span>' +
+                '<span class="v-acts">' + assignBtns(v, nId, dId) + sexChip(v) +
+                '<button type="button" class="chip v-hide" data-hide="' + esc(voiceId(v)) + '" aria-label="' + esc("Hide " + shortName(v)) + '">Hide</button></span></div>';
+            }).join("") + '</div>';
+          }).join("") + '</div>';
+      }).join("");
+      if (hidden.length) html += '<div class="v-group v-hidden"><div class="label">Hidden (' + hidden.length + ')</div><div class="chips">' + hidden.map(function(v){
+        return '<button type="button" class="chip" data-show="' + esc(voiceId(v)) + '" aria-label="' + esc("Show " + shortName(v) + " again") + '">' + esc(shortName(v)) + '</button>';
+      }).join("") + '</div></div>';
+      return { html: html || '<p class="hint">No voices to list.</p>', count: shown };
+    }
     function renderPanel(body, foot){
-      var vs = sortedVoices();
+      var lang = docLang(), narr = currentVoice(), d = dialogueVoice(narr).voice;
+      var nId = narr ? voiceId(narr) : "", dId = d ? voiceId(d) : "";
+      var list = listHtml(lang, nId, dId);
       body.innerHTML = '<div class="tts-panel">' +
-        '<div class="rowline"><label for="ttsNarr">Narrator</label><select id="ttsNarr" class="sel" tabindex="0">' + (voiceOptions(vs, voiceName) || '<option value="">Default voice</option>') + '</select></div>' +
-        '<div class="rowline"><label for="ttsDlg">Dialogue</label><select id="ttsDlg" class="sel">' +
-          '<option value=""' + (!dialogueName ? ' selected' : '') + '>Auto — the other voice</option>' +
-          '<option value="same"' + (dialogueName === "same" ? ' selected' : '') + '>Same as narrator</option>' + voiceOptions(vs, dialogueName) + '</select></div>' +
-        '<div class="hint" id="ttsDlgHint">' + esc(hintText()) + '</div>' +
-        '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
-        '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
-        '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
-        '<div class="rowline"><label id="ttsSleepL">Stop after</label><div class="chips tts-sleep-chips" role="group" aria-labelledby="ttsSleepL" id="ttsSleepChips">' + sleepChips() + '</div></div>' +
-        '<div class="hint">Minutes from now; reading stops at the end of the sentence. End of chapter stops before the next heading, or at the end of a PDF page.</div>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.pair + '<span>Reading to you</span></div>' +
+          '<div class="card v-pair"><div id="ttsPair">' + pairRows(narr, d) + '</div>' +
+            '<div class="v-pair-acts"><button type="button" class="chip" id="ttsSwap">Swap the two</button>' +
+            '<button type="button" class="chip" id="ttsAuto">Choose for me</button></div></div>' +
+          '<p class="hint" id="ttsDlgHint">' + esc(hintText()) + '</p>' +
+          '<p class="hint" id="ttsNoGender"' + (anyGenderKnown() ? ' hidden' : '') + '>Your device doesn’t say which voices are women’s and which are men’s — mark them below and Lamplight will remember.</p>' +
+        '</section>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.cards + '<span>Good for this text</span></div>' +
+          cardsHtml(lang, nId, dId) +
+        '</section>' +
+        '<section class="group">' +
+          '<details class="v-all" id="ttsAll"' + (allOpen ? ' open' : '') + '><summary>All voices (' + list.count + ')</summary>' +
+            '<input type="search" id="ttsFilter" class="v-filter" placeholder="Filter by name or language" aria-label="Filter voices" value="' + esc(filterText) + '">' +
+            '<p class="hint" id="ttsFilterNone" hidden>No voice matches that.</p>' +
+            '<div class="v-list" id="ttsList">' + list.html + '</div></details>' +
+        '</section>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.expr + '<span>Expression</span></div>' +
+          '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
+          '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
+          '<div class="rowline"><label for="ttsPitch">Pitch</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
+        '</section>' +
+        '<section class="group">' +
+          '<div class="label">' + V_ICONS.clock + '<span>Sleep timer</span></div>' +
+          '<div class="rowline"><label id="ttsSleepL">Stop after</label><div class="chips tts-sleep-chips" role="group" aria-labelledby="ttsSleepL" id="ttsSleepChips">' + sleepChips() + '</div></div>' +
+          '<div class="hint">Minutes from now; reading stops at the end of the sentence. End of chapter stops before the next heading, or at the end of a PDF page.</div>' +
+        '</section>' +
         '</div>';
-      foot.innerHTML = '<button class="chip" id="ttsSample">Hear a sample</button>';
-      var narr = body.querySelector("#ttsNarr"), dlg = body.querySelector("#ttsDlg"), chips = body.querySelector("#ttsExpr"), sleep = body.querySelector("#ttsSleepChips");
+      foot.innerHTML = '<button class="chip" id="ttsSample">Hear the pair</button>';
+      var chips = body.querySelector("#ttsExpr"), sleep = body.querySelector("#ttsSleepChips");
       var pitchEl = body.querySelector("#ttsPitch"), pitchV = body.querySelector("#ttsPitchV");
-      narr.addEventListener("change", function(){ setVoice(narr.value); });
-      dlg.addEventListener("change", function(){ dialogueName = dlg.value; Store.set("ll_tts_dialogue", dialogueName); syncHint(); restart(); });
       sleep.addEventListener("click", function(e){
         var ch = e.target.closest(".chip"); if (!ch) return;
         setSleep(ch.dataset.sleep === "chapter" ? "chapter" : +ch.dataset.sleep);
@@ -4546,8 +4902,79 @@
         restart();
       });
       foot.querySelector("#ttsSample").addEventListener("click", sample);
+      if (filterText) applyFilter();
     }
-    function openPanel(){ Side.open("voices", "Read-aloud voices", renderPanel); }
+    /* the panel is redrawn whole only when the voice list itself changes; a choice made inside it
+       repaints the parts that moved, so the button pressed keeps the focus */
+    function syncPanel(){
+      if (!Side.is("voices")) return;
+      var narr = currentVoice(), d = dialogueVoice(narr).voice, box = Side.body;
+      var nId = narr ? voiceId(narr) : "", dId = d ? voiceId(d) : "";
+      Array.prototype.forEach.call(box.querySelectorAll(".v-assign"), function(b){
+        var on = b.dataset.id === (b.dataset.role === "narr" ? nId : dId);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".v-sex"), function(b){
+        var v = findVoice(b.dataset.sex); if (!v) return;
+        var g = voiceGender(v), lab = shortName(v) + " is " + SEXNAME[g] + " — change";
+        b.textContent = SEX[g]; b.title = lab; b.setAttribute("aria-label", lab);
+      });
+      var pair = box.querySelector("#ttsPair"); if (pair) pair.innerHTML = pairRows(narr, d);
+      var note = box.querySelector("#ttsNoGender"); if (note) note.hidden = anyGenderKnown();
+      syncHint();
+    }
+    function applyFilter(){
+      var box = Side.body.querySelector("#ttsList"); if (!box) return;
+      var q = filterText.trim().toLowerCase(), any = 0;
+      Array.prototype.forEach.call(box.querySelectorAll(".v-item"), function(it){
+        var on = !q || it.dataset.find.indexOf(q) >= 0;
+        it.hidden = !on; if (on) any++;
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".v-sub"), function(s){
+        s.hidden = !s.querySelector(".v-item:not([hidden])");
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".v-group"), function(g){
+        if (!g.classList.contains("v-hidden")) g.hidden = !g.querySelector(".v-item:not([hidden])");
+      });
+      var none = Side.body.querySelector("#ttsFilterNone"); if (none) none.hidden = !!any;
+    }
+    /* one listener for the whole panel: it is redrawn often, the drawer's body is not */
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("voices")) return;
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.play !== undefined){ preview(findVoice(b.dataset.play)); return; }
+      if (b.classList.contains("v-assign")){
+        if (b.dataset.role === "narr") setVoice(b.dataset.id); else setDialogue(b.dataset.id === voiceId(currentVoice()) ? "same" : b.dataset.id);
+        return;
+      }
+      if (b.dataset.sex !== undefined){
+        var v = findVoice(b.dataset.sex); if (!v) return;
+        var g = voiceGender(v);
+        setGender(v, g === "f" ? "m" : g === "m" ? "x" : "f");
+        syncPanel(); syncBar(); restart();
+        return;
+      }
+      if (b.dataset.hide !== undefined || b.dataset.show !== undefined){
+        var id = b.dataset.hide !== undefined ? b.dataset.hide : b.dataset.show;
+        var vv = findVoice(id); if (!vv) return;
+        setHidden(vv, b.dataset.hide !== undefined);
+        allOpen = true;
+        syncBar();
+        Side.refresh("voices", renderPanel);
+        var s = Side.body.querySelector("#ttsAll summary"); if (s) s.focus({ preventScroll: true });
+        return;
+      }
+      if (b.id === "ttsSwap"){ swapPair(); return; }
+      if (b.id === "ttsAuto"){ setVoice(""); setDialogue(""); return; }
+    });
+    Side.body.addEventListener("input", function(e){
+      if (!Side.is("voices") || e.target.id !== "ttsFilter") return;
+      filterText = e.target.value; applyFilter();
+    });
+    Side.body.addEventListener("toggle", function(e){
+      if (Side.is("voices") && e.target.id === "ttsAll") allOpen = e.target.open;
+    }, true);
+    function openPanel(){ Side.open("voices", "Read-aloud voices", renderPanel, stopPreview); }
 
     playBtn.addEventListener("click", function(){ if (playing) pause(); else play(); });
     $("#ttsStop").addEventListener("click", stop);
@@ -4558,8 +4985,6 @@
       restart();
     });
     voiceSel.addEventListener("change", function(){ setVoice(voiceSel.value); });
-    womanBtn.addEventListener("click", function(){ pickGender("f"); });
-    manBtn.addEventListener("click", function(){ pickGender("m"); });
     voicesBtn.addEventListener("click", openPanel);
     sleepBtn.addEventListener("click", openPanel);
     window.addEventListener("resize", measure);
@@ -4570,14 +4995,20 @@
     /* test hook: the pure pieces, and what the panel would choose */
     window.llSpeak = {
       voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
+      voiceScore: voiceScore, shortName: shortName, voiceTags: voiceTags, voiceId: voiceId, cardVoices: function(){ return cardVoices(docLang()); },
+      setGender: function(id, g){ var v = findVoice(id); if (v){ setGender(v, g); syncPanel(); syncBar(); } },
+      setHidden: function(id, on){ var v = findVoice(id); if (v) setHidden(v, on); },
+      currentVoice: currentVoice, setVoice: setVoice, setDialogue: setDialogue, preview: preview,
       plan: function(text){ var out = []; unitsFromText(String(text || ""), 0, out); return out; },
       settings: function(){ return { voice: voiceName, dialogue: dialogueName, expr: expr, pitch: pitchPref, rate: rate }; },
-      openPanel: openPanel, sample: sample,
+      lang: docLang, setDocLang: setDocLang, detect: detectFrom, ramp: RAMP.slice(),
+      openPanel: openPanel, sample: sample, sampleText: SAMPLE, previewText: PREVIEW,
       sleep: function(){ return { mode: sleepMode, at: sleepAt }; }, setSleep: setSleep,
       sections: function(){ return sections.slice(); }, silentWav: silentWav
     };
     return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
-             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel, supported: supported };
+             units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel,
+             setDocLang: setDocLang, supported: supported };
   })();
 
   /* ============================================================

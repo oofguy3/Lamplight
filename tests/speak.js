@@ -1,28 +1,40 @@
-/* Read aloud: voices by gender, a second voice for quoted speech, expression read off the
-   text, lock-screen (Media Session) controls, the sleep timer, and the review fixes (PDF
-   start/stop races, settings changes in the breath between sentences, exact offsets across
-   whitespace runs, the panel and bar layouts, a linear planner). Headless Chromium has no
-   voices, so the speech API is stubbed before the app loads and every utterance is logged;
-   the Media Session and <audio> are stubbed the same way. Screenshots go to $LL_SHOTS
-   (default: the OS temp dir). */
+/* Read aloud: who a voice is (its name, its voiceURI, an Apple bundle id, an Android
+   #female_1), how good it is likely to sound, the compact picker (the pair, the cards, the full
+   list behind a fold), per-language memory, previews, the speed ramp, the language of the
+   document, a second voice for quoted speech, expression read off the text, lock-screen (Media
+   Session) controls, the sleep timer, and the review fixes (PDF start/stop races, settings
+   changes in the breath between sentences, exact offsets across whitespace runs, the panel and
+   bar layouts, a linear planner). Headless Chromium has no voices, so the speech API is stubbed
+   before the app loads with a realistic mixed list — Apple names, Microsoft "Online (Natural)"
+   names, two Android voices whose only clue is the URI, an espeak voice and two Spanish ones —
+   and every utterance is logged; the Media Session and <audio> are stubbed the same way.
+   Screenshots go to $LL_SHOTS (default: the OS temp dir). */
 const fs = require("fs"), os = require("os"), path = require("path");
 const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-speak");
 
 const STUB = `(function(){
   var voices = [
-    { name: "Samantha", lang: "en-US", localService: true, default: true, voiceURI: "Samantha" },
-    { name: "Daniel", lang: "en-GB", localService: true, default: false, voiceURI: "Daniel" },
+    { name: "Samantha", lang: "en-US", localService: true, default: true, voiceURI: "com.apple.voice.compact.en-US.Samantha" },
+    { name: "Daniel", lang: "en-GB", localService: true, default: false, voiceURI: "com.apple.voice.compact.en-GB.Daniel" },
     { name: "Google US English", lang: "en-US", localService: false, default: false, voiceURI: "Google US English" },
     { name: "espeak", lang: "en", localService: true, default: false, voiceURI: "espeak" },
-    { name: "Microsoft David Desktop - English (United States)", lang: "en-US", localService: true, default: false, voiceURI: "David" }
+    { name: "Microsoft David Desktop - English (United States)", lang: "en-US", localService: true, default: false, voiceURI: "David" },
+    { name: "Microsoft Aria Online (Natural) - English (United States)", lang: "en-US", localService: false, default: false, voiceURI: "Microsoft Server Speech Text to Speech Voice (en-US, AriaNeural)" },
+    { name: "Microsoft Guy Online (Natural) - English (United States)", lang: "en-US", localService: false, default: false, voiceURI: "Microsoft Server Speech Text to Speech Voice (en-US, GuyNeural)" },
+    { name: "English United States", lang: "en-US", localService: true, default: false, voiceURI: "en-us-x-sfg#female_1-local" },
+    { name: "English United States", lang: "en-US", localService: true, default: false, voiceURI: "en-us-x-iom#male_2-local" },
+    { name: "Karen (Enhanced)", lang: "en-AU", localService: true, default: false, voiceURI: "com.apple.voice.enhanced.en-AU.Karen" },
+    { name: "Bad News", lang: "en-US", localService: true, default: false, voiceURI: "com.apple.speech.synthesis.voice.BadNews" },
+    { name: "Mónica", lang: "es-ES", localService: true, default: false, voiceURI: "com.apple.voice.compact.es-ES.Monica" },
+    { name: "Microsoft Alvaro Online (Natural) - Spanish (Spain)", lang: "es-ES", localService: false, default: false, voiceURI: "Microsoft Server Speech Text to Speech Voice (es-ES, AlvaroNeural)" }
   ];
   var log = window.__speakLog = [];
   /* each utterance ends after __speakDelay ms (5 by default; the sleep-timer checks make it 30 s) */
   var synth = {
     getVoices: function(){ return voices.slice(); },
     speak: function(u){
-      log.push({ text: u.text, voice: u.voice && u.voice.name, pitch: u.pitch, rate: u.rate, volume: u.volume });
+      log.push({ text: u.text, voice: u.voice && u.voice.name, lang: u.lang, pitch: u.pitch, rate: u.rate, volume: u.volume });
       setTimeout(function(){ if (u.onstart) u.onstart({}); }, 1);
       setTimeout(function(){ if (u.onend) u.onend({}); }, window.__speakDelay || 5);
     },
@@ -49,6 +61,19 @@ const STUB = `(function(){
 const near = (a, b, eps) => Math.abs(a - b) <= (eps || 0.002);
 const noQuotes = (s) => !/[“”"‘«»]/.test(s);
 const collapse = (s) => s.replace(/\s+/g, " ");
+/* Play eases in: the first three sentences run at 85 %, 92 % and 100 % of the chosen speed, so
+   a check on an absolute rate divides the ramp back out of the log first */
+const RAMP = [0.85, 0.92, 1];
+const unramp = (log) => log.map((e, i) => Object.assign({}, e, { rate: e.rate / (RAMP[i] || 1) }));
+/* the stubbed voices, by the name the engine reports */
+const V = {
+  samantha: "Samantha", daniel: "Daniel", google: "Google US English", espeak: "espeak",
+  david: "Microsoft David Desktop - English (United States)",
+  aria: "Microsoft Aria Online (Natural) - English (United States)",
+  guy: "Microsoft Guy Online (Natural) - English (United States)",
+  android: "English United States", karen: "Karen (Enhanced)", news: "Bad News",
+  monica: "Mónica", alvaro: "Microsoft Alvaro Online (Natural) - Spanish (Spain)"
+};
 
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -71,7 +96,7 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     await page.keyboard.press("Escape"); await page.waitForTimeout(250);
   }
   async function openVoices(page){
-    await page.click("#ttsVoices");
+    await page.click("#ttsVoiceBtn");
     await page.waitForFunction(() => document.getElementById("side").classList.contains("open") && document.getElementById("ttsExpr"), null, { timeout: 5000 });
     await page.waitForTimeout(350);
   }
@@ -81,17 +106,41 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     await page.waitForTimeout(200);
   }
   /* the bar's controls in DOM order and in visual order (rows by vertical centre, then left to right) */
+  /* the bar's controls in DOM order and in visual order (rows by vertical centre, then left to
+     right). The mirror select is out of the flow, so only the buttons and the speed row count */
   const layout = (page) => page.evaluate(() => {
-    const els = Array.from(document.querySelectorAll("#tts button:not([hidden]), #tts label, #tts select"));
+    const els = Array.from(document.querySelectorAll("#tts button:not([hidden]), #tts label"));
     const boxes = els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.id || e.tagName, cy: r.top + r.height / 2, x: r.left, h: r.height }; });
     const rows = [];
     boxes.slice().sort((a, b) => a.cy - b.cy).forEach((b) => { const r = rows[rows.length - 1]; if (r && Math.abs(r[0].cy - b.cy) < 12) r.push(b); else rows.push([b]); });
     const visual = []; rows.forEach((r) => r.sort((a, b) => a.x - b.x).forEach((b) => visual.push(b.id)));
-    const rateV = document.getElementById("ttsRateV").getBoundingClientRect(), sel = document.getElementById("ttsVoice").getBoundingClientRect();
+    const rateV = document.getElementById("ttsRateV").getBoundingClientRect(), vb = document.getElementById("ttsVoiceBtn").getBoundingClientRect();
     return { dom: boxes.map((b) => b.id), visual, rows: rows.map((r) => r.map((b) => b.id)), minH: Math.min.apply(null, boxes.map((b) => b.h)),
-      overflow: document.documentElement.scrollWidth > window.innerWidth, gap: Math.round(sel.left - rateV.right), slider: Math.round(document.getElementById("ttsRate").getBoundingClientRect().width),
+      overflow: document.documentElement.scrollWidth > window.innerWidth, gap: Math.round(vb.left - rateV.right), slider: Math.round(document.getElementById("ttsRate").getBoundingClientRect().width),
       barH: document.getElementById("tts").getBoundingClientRect().height };
   });
+  /* what the picker is showing right now */
+  const panelState = (page) => page.evaluate(() => ({
+    pair: Array.from(document.querySelectorAll("#ttsPair .v-row")).map((r) => ({
+      role: r.querySelector(".v-role").textContent, name: r.querySelector(".v-name").textContent,
+      tags: Array.from(r.querySelectorAll(".v-tag")).map((t) => t.textContent), play: !!r.querySelector(".v-play")
+    })),
+    cards: Array.from(document.querySelectorAll(".v-card")).map((c) => ({
+      name: c.querySelector(".v-name").textContent, sex: c.querySelector(".v-sex").textContent,
+      tags: Array.from(c.querySelectorAll(".v-tag")).map((t) => t.textContent),
+      on: Array.from(c.querySelectorAll(".v-assign")).filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent)
+    })),
+    all: document.querySelector("#ttsAll summary").textContent,
+    allOpen: document.getElementById("ttsAll").open,
+    listed: Array.from(document.querySelectorAll("#ttsList .v-item:not([hidden]) .v-name")).map((n) => n.textContent),
+    listShown: document.getElementById("ttsList").checkVisibility(),
+    groups: Array.from(document.querySelectorAll("#ttsList .v-group:not([hidden]) > .label")).map((g) => g.textContent),
+    subs: Array.from(document.querySelectorAll("#ttsList .v-sub:not([hidden]) .v-sub-l")).map((g) => g.textContent),
+    hiddenRow: (document.querySelector(".v-hidden .label") || {}).textContent || "",
+    note: !document.getElementById("ttsNoGender").hidden,
+    hint: document.getElementById("ttsDlgHint").textContent,
+    bar: document.getElementById("ttsVoiceName").textContent
+  }));
   const sleepChip = (page) => page.evaluate(() => {
     const c = document.getElementById("ttsSleep"), w = document.getElementById("ttsSleepW"), v = document.getElementById("ttsSleepV"), shown = getComputedStyle(w).display !== "none";
     return { hidden: c.hidden, text: (shown ? w.textContent + " " : "") + v.textContent, label: c.getAttribute("aria-label"), title: c.title, live: c.getAttribute("aria-live"),
@@ -100,7 +149,7 @@ const collapse = (s) => s.replace(/\s+/g, " ");
 
   const ctx = await context(1200, 800);
   try {
-    /* ---- 1. voiceGender ---- */
+    /* ---- 1. who is speaking: the name, then the voiceURI ---- */
     let page = await newPage(ctx, url);
     const names = ["Samantha", "Daniel", "Microsoft Zira", "Google UK English Male", "espeak", "Google US English",
       "Microsoft David Desktop - English (United States)", "Karen (Enhanced)", "Bad News", "English (Great Britain)+m3", "Ting-Ting", "Google UK English Female"];
@@ -109,6 +158,71 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     R.check("voiceGender classifies voice names", JSON.stringify(got) === JSON.stringify(want), names.map((n, i) => n + "=" + JSON.stringify(got[i])).join(", "));
     const objGender = await page.evaluate(() => window.llSpeak.voiceGender({ name: "Daniel", lang: "en-GB" }));
     R.check("voiceGender takes a voice object", objGender === "m", objGender);
+    /* the Microsoft natural (neural) set, where the first name is buried in a long label */
+    const msNames = ["Microsoft Aria Online (Natural) - English (United States)", "Microsoft Guy Online (Natural) - English (United States)",
+      "Microsoft Sonia Online (Natural) - English (United Kingdom)", "Microsoft Ryan Online (Natural) - English (United Kingdom)",
+      "Microsoft Michelle Online (Natural) - English (United States)", "Microsoft Davis Online (Natural) - English (United States)",
+      "Microsoft Alvaro Online (Natural) - Spanish (Spain)", "Microsoft Elvira Online (Natural) - Spanish (Spain)",
+      "Microsoft AriaNeural", "Microsoft AndrewNeural", "Microsoft Kimberly", "Microsoft Brandon"];
+    const msWant = ["f", "m", "f", "m", "f", "m", "m", "f", "f", "m", "f", "m"];
+    const msGot = await page.evaluate((ns) => ns.map((n) => window.llSpeak.voiceGender(n)), msNames);
+    R.check("voiceGender knows the Microsoft natural names (Aria, Sonia, Michelle, Kimberly; Guy, Ryan, Davis, Andrew)",
+      JSON.stringify(msGot) === JSON.stringify(msWant), msNames.map((n, i) => n.replace(/^Microsoft /, "") + "=" + JSON.stringify(msGot[i])).join(", "));
+    /* Android names four voices the same and tells you nothing but the URI */
+    const uris = [
+      [{ name: "English United States", lang: "en-US", voiceURI: "en-us-x-sfg#female_1-local" }, "f"],
+      [{ name: "English United States", lang: "en-US", voiceURI: "en-us-x-iom#male_2-local" }, "m"],
+      [{ name: "English United Kingdom", lang: "en-GB", voiceURI: "en-gb-x-gba#female_2-local" }, "f"],
+      [{ name: "Deutsch", lang: "de-DE", voiceURI: "de-de-x-nfh#male_1-local" }, "m"],
+      [{ name: "Voice", lang: "en-US", voiceURI: "com.apple.voice.compact.en-US.Samantha" }, "f"],
+      [{ name: "Voice", lang: "en-GB", voiceURI: "com.apple.voice.compact.en-GB.Daniel" }, "m"],
+      [{ name: "", lang: "en-GB", voiceURI: "urn:moz-tts:sapi:Microsoft Hazel Desktop?en-GB" }, "f"],
+      [{ name: "Chrome OS US English", lang: "en-US", voiceURI: "en-us_m_1" }, "m"],
+      [{ name: "espeak-ng", lang: "en", voiceURI: "espeak-ng" }, ""]
+    ];
+    const uriGot = await page.evaluate((vs) => vs.map((v) => window.llSpeak.voiceGender(v)), uris.map((u) => u[0]));
+    R.check("voiceGender falls back to the voiceURI: Android #female_1 / #male_2, Apple bundle ids, an _m_ token",
+      JSON.stringify(uriGot) === JSON.stringify(uris.map((u) => u[1])), uris.map((u, i) => u[0].voiceURI + "=" + JSON.stringify(uriGot[i])).join(", "));
+    /* the name a reader recognises */
+    const shorts = [
+      [{ name: V.aria, voiceURI: "…AriaNeural" }, "Aria"],
+      [{ name: V.karen, voiceURI: "com.apple.voice.enhanced.en-AU.Karen" }, "Karen"],
+      [{ name: V.david, voiceURI: "David" }, "David"],
+      [{ name: V.android, voiceURI: "en-us-x-sfg#female_1-local" }, "Woman 1"],
+      [{ name: V.android, voiceURI: "en-us-x-iom#male_2-local" }, "Man 2"],
+      [{ name: V.google, voiceURI: V.google }, "US English"],
+      [{ name: V.samantha, voiceURI: "com.apple.voice.compact.en-US.Samantha" }, "Samantha"]
+    ];
+    const shortGot = await page.evaluate((vs) => vs.map((v) => window.llSpeak.shortName(v)), shorts.map((x) => x[0]));
+    R.check("shortName: Aria out of a Windows label, Woman 1 / Man 2 out of an Android URI, Karen without (Enhanced)",
+      JSON.stringify(shortGot) === JSON.stringify(shorts.map((x) => x[1])), JSON.stringify(shortGot));
+    /* the quality score: natural and offline win, compact and novelty lose */
+    const sc = await page.evaluate(() => {
+      const S = window.llSpeak, mk = (name, lang, local, uri) => ({ name: name, lang: lang, localService: local, voiceURI: uri || name });
+      return {
+        naturalLocal: S.voiceScore(mk("Microsoft Ava Online (Natural) - English (United States)", "en-US", true), "en"),
+        naturalOnline: S.voiceScore(mk("Microsoft Aria Online (Natural) - English (United States)", "en-US", false), "en"),
+        plainLocal: S.voiceScore(mk("Microsoft David Desktop - English (United States)", "en-US", true, "David"), "en"),
+        compact: S.voiceScore(mk("Samantha", "en-US", true, "com.apple.voice.compact.en-US.Samantha"), "en"),
+        espeak: S.voiceScore(mk("espeak", "en", true), "en"),
+        novelty: S.voiceScore(mk("Bad News", "en-US", true, "com.apple.speech.synthesis.voice.BadNews"), "en"),
+        otherLang: S.voiceScore(mk("Mónica", "es-ES", true), "en")
+      };
+    });
+    R.check("voiceScore: natural + offline + the right language beats compact, espeak, novelty and another language",
+      sc.naturalLocal === 10 && sc.naturalOnline === 7 && sc.plainLocal === 6 && sc.compact === 4 && sc.espeak === 3 && sc.novelty === 3 && sc.otherLang === 3 &&
+      sc.naturalLocal > sc.naturalOnline && sc.naturalOnline > sc.plainLocal && sc.plainLocal > sc.compact && sc.compact > sc.novelty, JSON.stringify(sc));
+    const order = await page.evaluate(() => window.llSpeak.sortedVoices().slice(0, 6).map((v) => window.llSpeak.shortName(v)));
+    R.check("sortedVoices puts the best first: an enhanced offline voice, then the two natural ones, then the plain local ones",
+      JSON.stringify(order) === JSON.stringify(["Karen", "Aria", "Guy", "Woman 1", "Man 2", "David"]), JSON.stringify(order));
+    const tags = await page.evaluate(() => {
+      const S = window.llSpeak, vs = S.sortedVoices();
+      const by = {}; vs.forEach((v) => { by[S.shortName(v)] = S.voiceTags(v); });
+      return by;
+    });
+    R.check("voiceTags say what a voice is good at, whether it works offline, and its locale",
+      JSON.stringify(tags.Karen) === JSON.stringify(["natural", "offline", "en-AU"]) && JSON.stringify(tags.Aria) === JSON.stringify(["natural", "online", "en-US"]) &&
+      JSON.stringify(tags["Woman 1"]) === JSON.stringify(["offline", "en-US"]), JSON.stringify(tags));
 
     /* ---- 5. the planner: exact offsets, quotes trimmed, apostrophes left alone ---- */
     const plan = await page.evaluate(() => {
@@ -185,24 +299,37 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     R.check("pure pieces: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
 
-    /* ---- 2. the bar: grouped voices, ♀ ♂, the dialogue voice ---- */
+    /* ---- 2. the bar: one button naming the narrator, and the mirror select behind it ---- */
     page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await startBar(page);
+    const btn = await page.evaluate(() => {
+      const b = document.getElementById("ttsVoiceBtn"), sel = document.getElementById("ttsVoice");
+      return { name: document.getElementById("ttsVoiceName").textContent, label: b.getAttribute("aria-label"), title: b.title,
+        pop: b.getAttribute("aria-haspopup"), chevron: !!b.querySelector("svg"),
+        selValue: sel.value, selTab: sel.tabIndex, selHidden: sel.getAttribute("aria-hidden"),
+        selBox: Math.round(sel.getBoundingClientRect().width), gone: !document.getElementById("ttsWoman") && !document.getElementById("ttsMan") && !document.getElementById("ttsVoices") };
+    });
+    R.check("the bar names the narrator, with a chevron into the picker; the ♀ ♂ and Voices… buttons are gone",
+      btn.name === "Karen" && btn.label === "Voice: Karen — choose another" && btn.title === "Karen — choose another voice" && btn.pop === "dialog" && btn.chevron && btn.gone, JSON.stringify(btn));
+    R.check("#ttsVoice stays as a hidden mirror of the choice: out of the tab order, out of the flow",
+      btn.selValue === "com.apple.voice.enhanced.en-AU.Karen" && btn.selTab === -1 && btn.selHidden === "true" && btn.selBox <= 1, JSON.stringify(btn));
     const groups = await page.$$eval("#ttsVoice optgroup", (gs) => gs.map((g) => g.label + ":" + Array.from(g.querySelectorAll("option")).map((o) => o.textContent).join("|")));
-    R.check("voice select is grouped Women / Men / Other, local before online",
-      JSON.stringify(groups) === JSON.stringify(["Women:Samantha|Google US English (online)", "Men:Daniel|Microsoft David Desktop - English (United States)", "Other:espeak"]), JSON.stringify(groups));
-    const sexBtns = await page.evaluate(() => [document.getElementById("ttsWoman").hidden, document.getElementById("ttsMan").hidden, document.getElementById("ttsWoman").getAttribute("aria-pressed")]);
-    R.check("♀ and ♂ are shown when such voices exist; ♀ pressed for Samantha", sexBtns[0] === false && sexBtns[1] === false && sexBtns[2] === "true", JSON.stringify(sexBtns));
-    const auto1 = await page.evaluate(() => ({ narr: document.getElementById("ttsVoice").value, dlg: window.llSpeak.dialogueVoice().voice.name }));
-    R.check("dialogue voice defaults to the other gender (Samantha → Daniel)", auto1.narr === "Samantha" && auto1.dlg === "Daniel", JSON.stringify(auto1));
-    await page.click("#ttsMan"); await page.waitForTimeout(100);
-    const auto2 = await page.evaluate(() => ({ narr: document.getElementById("ttsVoice").value, dlg: window.llSpeak.dialogueVoice().voice.name, pressed: document.getElementById("ttsMan").getAttribute("aria-pressed"), stored: localStorage.getItem("ll_tts_voice") }));
-    R.check("♂ picks Daniel and the dialogue voice flips to Samantha", auto2.narr === "Daniel" && auto2.dlg === "Samantha" && auto2.pressed === "true" && auto2.stored === "Daniel", JSON.stringify(auto2));
-    await page.click("#ttsWoman"); await page.waitForTimeout(100);
-    R.check("♀ picks Samantha again", await page.$eval("#ttsVoice", (s) => s.value) === "Samantha");
+    R.check("the mirror lists every voice, grouped Women / Men / Other, best first",
+      groups.length === 3 && groups[0].indexOf("Women:Karen (Enhanced)|" + V.aria) === 0 && groups[1].indexOf("Men:" + V.guy) === 0 &&
+      groups[2] === "Other:Bad News|espeak", JSON.stringify(groups));
+    const auto1 = await page.evaluate(() => ({ narr: window.llSpeak.currentVoice().name, dlg: window.llSpeak.dialogueVoice().voice.name }));
+    R.check("with nothing chosen the pair is the best woman and the best man for this language",
+      auto1.narr === V.karen && auto1.dlg === V.guy, JSON.stringify(auto1));
+    /* the button opens the picker */
+    await page.click("#ttsVoiceBtn");
+    await page.waitForFunction(() => document.getElementById("side").classList.contains("open") && document.getElementById("ttsPair"), null, { timeout: 5000 });
+    R.check("the voice button opens the Voices panel", await page.$eval("#sideTitle", (t) => t.textContent) === "Read-aloud voices");
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     const desk = await layout(page);
     R.check("bar stays one row on desktop, controls ≥ 36 px, DOM order is the visual order", desk.barH < 70 && desk.minH >= 36 && desk.rows.length === 1 && JSON.stringify(desk.dom) === JSON.stringify(desk.visual) && desk.gap > 0, JSON.stringify(desk));
+    R.check("the bar reads ‹ ▶ › · Speed · [voice] · ×",
+      JSON.stringify(desk.visual) === JSON.stringify(["ttsPrev", "ttsPlay", "ttsNext", "LABEL", "ttsVoiceBtn", "ttsStop"]), JSON.stringify(desk.visual));
     await shot(page, "bar-1200-day");
 
     /* a change in the breath after a sentence is picked up by the next one, not by replaying the last */
@@ -213,7 +340,7 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     await page.waitForTimeout(900);
     const breath = await page.evaluate(() => window.__speakLog.slice());
     R.check("a speed change during the breath is honoured by the next sentence and doesn't replay the finished one",
-      breath.length === 2 && breath[0].text === "The Lamp" && breath[1].text === "A short sample book for Lamplight." && near(breath[1].rate, 1.2), JSON.stringify(breath.map((e) => e.text + " @" + e.rate)));
+      breath.length === 2 && breath[0].text === "The Lamp" && breath[1].text === "A short sample book for Lamplight." && near(unramp(breath)[1].rate, 1.2), JSON.stringify(breath.map((e) => e.text + " @" + e.rate)));
     await page.$eval("#ttsRate", (el) => { el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); });
 
     /* ---- 3. reading: narrator vs dialogue voice, expression from the text ---- */
@@ -224,8 +351,13 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     R.check("reads the heading, then the first paragraph sentence by sentence",
       texts[0] === "The Lamp" && texts[2] === "Chapter 1" && texts[3] === "The lamp hums quietly as she turns the page." && texts[4] === "One more chapter," && texts[5] === "she tells herself," && texts[6] === "just one more.", JSON.stringify(texts.slice(0, 8)));
     R.check("narration is spoken by the narrator, quoted speech by the dialogue voice, without quote marks",
-      log[3] && log[3].voice === "Samantha" && log[4] && log[4].voice === "Daniel" && log[5].voice === "Samantha" && log[6].voice === "Daniel" && texts.every(noQuotes), JSON.stringify(log.slice(3, 7)));
-    R.check("heading is slower and lower; plain sentence neutral", log[0] && near(log[0].rate, 0.9) && near(log[0].pitch, 0.95) && log[3] && log[3].pitch === 1 && log[3].rate === 1, JSON.stringify([log[0], log[3]]));
+      log[3] && log[3].voice === V.karen && log[4] && log[4].voice === V.guy && log[5].voice === V.karen && log[6].voice === V.guy && texts.every(noQuotes), JSON.stringify(log.slice(3, 7).map((e) => e.voice)));
+    R.check("each utterance carries its voice's own language", log[3].lang === "en-AU" && log[4].lang === "en-US", JSON.stringify([log[3].lang, log[4].lang]));
+    const flat = unramp(log);
+    R.check("heading is slower and lower; plain sentence neutral", flat[0] && near(flat[0].rate, 0.9) && near(flat[0].pitch, 0.95) && flat[3] && flat[3].pitch === 1 && flat[3].rate === 1, JSON.stringify([flat[0], flat[3]]));
+    R.check("Play eases in: the first three sentences run at 85 %, 92 % and 100 % of the speed",
+      near(log[0].rate / 0.9, 0.85) && near(log[1].rate, 0.92) && near(log[2].rate / 0.9, 1) && near(log[3].rate, 1),
+      JSON.stringify(log.slice(0, 4).map((e) => e.text + " @" + e.rate)));
 
     /* ---- lock-screen controls: metadata, the silent loop, the handlers ---- */
     const ms1 = await page.evaluate(() => {
@@ -254,50 +386,132 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     R.check("stop clears playbackState to none and the metadata", ms3.state === "none" && ms3.meta === null && !ms3.on, JSON.stringify(ms3));
 
     const q = await readFrom(page, "He asked, “Are you coming?”", 2);
-    R.check("the unit ending in ? has a higher pitch than the plain one", q[0] && q[0].text === "He asked," && q[0].pitch === 1 && q[1] && q[1].text === "Are you coming?" && q[1].pitch > 1.05 && q[1].voice === "Daniel", JSON.stringify(q.slice(0, 2)));
+    R.check("the unit ending in ? has a higher pitch than the plain one", q[0] && q[0].text === "He asked," && q[0].pitch === 1 && q[1] && q[1].text === "Are you coming?" && q[1].pitch > 1.05 && q[1].voice === V.guy, JSON.stringify(q.slice(0, 2)));
     const off = await offsetOf(page, "“Wait!” he shouted");
     await page.evaluate((o) => { window.__speakLog.length = 0; window.__ll.Speak.start(o + 1); }, off);
     const painted = await page.evaluate(() => CSS.highlights && CSS.highlights.has("ll-speak-dialogue"));
     R.check("a dialogue unit is painted with the ll-speak-dialogue highlight", painted === true, String(painted));
     await page.waitForFunction(() => window.__speakLog.length >= 2, null, { timeout: 20000 }).catch(() => null);
-    const w = await page.evaluate(() => window.__speakLog.slice());
-    R.check("“Wait!” + shouted: higher rate, full volume, pitch above the question", w[0] && w[0].text === "Wait!" && w[0].voice === "Daniel" && w[0].rate > 1.1 && w[0].volume === 1 && w[0].pitch > q[1].pitch && w[1] && w[1].text === "he shouted." && w[1].voice === "Samantha", JSON.stringify(w.slice(0, 2)));
+    const w = unramp(await page.evaluate(() => window.__speakLog.slice()));
+    R.check("“Wait!” + shouted: higher rate, full volume, pitch above the question", w[0] && w[0].text === "Wait!" && w[0].voice === V.guy && w[0].rate > 1.1 && w[0].volume === 1 && w[0].pitch > q[1].pitch && w[1] && w[1].text === "he shouted." && w[1].voice === V.karen, JSON.stringify(w.slice(0, 2)));
     await shot(page, "reading-1200-day");
 
-    /* ---- the Voices panel ---- */
+    /* ---- the Voices panel: a pair, six cards, the rest behind a fold ---- */
     await openVoices(page);
+    const P = await panelState(page);
+    R.check("the panel opens on the pair that is reading: a role, a name, its tags and a preview each",
+      P.pair.length === 2 && P.pair[0].role === "Narrator" && P.pair[0].name === "Karen" && P.pair[1].role === "Dialogue" && P.pair[1].name === "Guy" &&
+      JSON.stringify(P.pair[0].tags) === JSON.stringify(["natural", "offline", "en-AU"]) && P.pair.every((r) => r.play), JSON.stringify(P.pair));
+    R.check("the pair says in one line who reads the quoted speech", /Guy reads the quoted speech/.test(P.hint), P.hint);
+    R.check("six cards, the best women and men for this text alternating, the two in use pressed",
+      JSON.stringify(P.cards.map((c) => c.name)) === JSON.stringify(["Karen", "Guy", "Aria", "Man 2", "Woman 1", "David"]) &&
+      JSON.stringify(P.cards.map((c) => c.sex)) === JSON.stringify(["♀", "♂", "♀", "♂", "♀", "♂"]) &&
+      JSON.stringify(P.cards[0].on) === JSON.stringify(["Narrator"]) && JSON.stringify(P.cards[1].on) === JSON.stringify(["Dialogue"]) &&
+      JSON.stringify(P.cards[2].on) === JSON.stringify([]), JSON.stringify(P.cards));
+    R.check("the full list is folded away, counted, and the device's gender note stays hidden",
+      P.all === "All voices (13)" && !P.allOpen && !P.listShown && P.listed.length === 13 && !P.note, JSON.stringify([P.all, P.allOpen, P.listShown, P.note]));
     const panel = await page.evaluate(() => ({
-      narr: document.getElementById("ttsNarr").value, dlg: document.getElementById("ttsDlg").value,
-      dlgOpts: Array.from(document.getElementById("ttsDlg").options).slice(0, 2).map((o) => o.textContent),
-      groups: Array.from(document.querySelectorAll("#ttsDlg optgroup")).map((g) => g.label),
-      hint: document.getElementById("ttsDlgHint").textContent, checked: document.querySelector("#ttsExpr [aria-checked=true]").dataset.expr,
+      checked: document.querySelector("#ttsExpr [aria-checked=true]").dataset.expr,
       pitch: document.getElementById("ttsPitch").value, sample: !!document.getElementById("ttsSample"), title: document.getElementById("sideTitle").textContent,
+      sections: Array.from(document.querySelectorAll(".tts-panel > .group > .label span")).map((l) => l.textContent),
+      icons: Array.from(document.querySelectorAll(".tts-panel > .group > .label svg")).length,
       sleep: Array.from(document.querySelectorAll("#ttsSleepChips .chip")).map((c) => c.textContent + (c.getAttribute("aria-pressed") === "true" ? "*" : "")),
       sleepLabel: document.querySelector('#ttsSleepChips .chip[data-sleep="15"]').getAttribute("aria-label")
     }));
-    R.check("Voices panel: narrator, dialogue (Auto / Same / grouped), expression, pitch, sample",
-      panel.title === "Read-aloud voices" && panel.narr === "Samantha" && panel.dlg === "" && panel.dlgOpts[0].indexOf("Auto") === 0 && panel.dlgOpts[1] === "Same as narrator" &&
-      JSON.stringify(panel.groups) === JSON.stringify(["Women", "Men", "Other"]) && /Daniel/.test(panel.hint) && panel.checked === "natural" && panel.pitch === "1" && panel.sample, JSON.stringify(panel));
+    R.check("the panel's sections: the pair, the cards, expression and pitch, the sleep timer — each with its icon",
+      panel.title === "Read-aloud voices" && JSON.stringify(panel.sections) === JSON.stringify(["Reading to you", "Good for this text", "Expression", "Sleep timer"]) &&
+      panel.icons === 4 && panel.checked === "natural" && panel.pitch === "1" && panel.sample, JSON.stringify(panel));
     R.check("Voices panel: a Stop after row of chips, Off pressed", JSON.stringify(panel.sleep) === JSON.stringify(["Off*", "15", "30", "45", "60 min", "End of chapter"]) && panel.sleepLabel === "15 minutes", JSON.stringify(panel.sleep));
     const fit = await page.evaluate(() => {
-      const body = document.querySelector("#side .side-body"), narr = document.getElementById("ttsNarr").getBoundingClientRect(), side = document.getElementById("side").getBoundingClientRect();
-      return { sw: body.scrollWidth, cw: body.clientWidth, narrRight: Math.round(narr.right), sideRight: Math.round(side.right), pitchV: document.getElementById("ttsPitchV").textContent, longest: Array.from(document.getElementById("ttsNarr").options).map((o) => o.textContent.length).sort((a, b) => b - a)[0] };
+      const body = document.querySelector("#side .side-body"), side = document.getElementById("side").getBoundingClientRect();
+      const wide = Array.from(document.querySelectorAll(".tts-panel .v-name, .tts-panel .chip")).map((e) => Math.round(e.getBoundingClientRect().right));
+      return { sw: body.scrollWidth, cw: body.clientWidth, past: wide.filter((r) => r > side.right).length, pitchV: document.getElementById("ttsPitchV").textContent };
     });
-    R.check("Voices panel: a Windows-style voice name doesn't push the selects past the drawer", fit.sw === fit.cw && fit.narrRight < fit.sideRight && fit.pitchV === "1.00" && fit.longest > 40, JSON.stringify(fit));
+    R.check("nothing in the panel is pushed past the drawer, however long the Windows names are",
+      fit.sw === fit.cw && fit.past === 0 && fit.pitchV === "1.00", JSON.stringify(fit));
     await shot(page, "panel-1200-day");
-    /* hear a sample: both voices, no quote marks */
+    /* ▶ on a card: one line, one voice, in that voice's language */
+    await page.evaluate(() => { window.__speakLog.length = 0; });
+    await page.click('.v-card:nth-child(3) .v-play');
+    await page.waitForFunction(() => window.__speakLog.length >= 2, null, { timeout: 10000 }).catch(() => null);
+    const prev = await page.evaluate(() => window.__speakLog.slice());
+    R.check("a card's ▶ previews that voice alone, with the sample line and its own language",
+      prev.length >= 2 && prev.every((e) => e.voice === V.aria && e.lang === "en-US") && prev[0].text === "The lamp hums quietly." && prev[1].text === "Are you still reading?", JSON.stringify(prev));
+    /* a second preview stops the first */
+    const stopped = await page.evaluate(async () => {
+      window.__speakDelay = 400; window.__speakLog.length = 0;
+      document.querySelector('.v-card:nth-child(1) .v-play').click();
+      await new Promise((r) => setTimeout(r, 50));
+      document.querySelector('.v-card:nth-child(2) .v-play').click();
+      await new Promise((r) => setTimeout(r, 1400));
+      window.__speakDelay = 5;
+      return window.__speakLog.map((e) => e.voice);
+    });
+    R.check("starting another preview stops the one before it", stopped.filter((v) => v === V.karen).length === 1 && stopped.filter((v) => v === V.guy).length >= 2, JSON.stringify(stopped));
+    /* assigning from a card */
+    await page.click('.v-card:nth-child(3) .v-assign[data-role="narr"]'); await page.waitForTimeout(80);
+    const picked = await panelState(page);
+    const storedPick = await page.evaluate(() => [localStorage.getItem("ll_tts_voice_en"), localStorage.getItem("ll_tts_voice")]);
+    R.check("Narrator on a card moves the pair, the bar and the stored choice for this language",
+      picked.pair[0].name === "Aria" && picked.pair[1].name === "Guy" && picked.bar === "Aria" &&
+      JSON.stringify(picked.cards[2].on) === JSON.stringify(["Narrator"]) && storedPick[0] === storedPick[1] && /AriaNeural/.test(storedPick[0]), JSON.stringify([picked.pair.map((r) => r.name), picked.bar, storedPick]));
+    /* Swap exchanges the two */
+    await page.click("#ttsSwap"); await page.waitForTimeout(80);
+    const swapped = await panelState(page);
+    R.check("Swap the two exchanges narrator and dialogue", swapped.pair[0].name === "Guy" && swapped.pair[1].name === "Aria" && swapped.bar === "Guy", JSON.stringify(swapped.pair.map((r) => r.name)));
+    /* the gender chip corrects the device and is remembered */
+    await page.click('.v-card:nth-child(3) .v-sex'); await page.waitForTimeout(80);
+    const fixed = await panelState(page);
+    const storedSex = await page.evaluate(() => JSON.parse(localStorage.getItem("ll_voice_gender") || "{}"));
+    R.check("the ♀ ♂ — chip cycles, is stored per voice, and the classifier obeys it",
+      fixed.cards[2].sex === "♂" && Object.keys(storedSex).length === 1 && storedSex[Object.keys(storedSex)[0]] === "m" &&
+      (await page.evaluate(() => window.llSpeak.voiceGender(window.llSpeak.sortedVoices()[1]))) === "m", JSON.stringify([fixed.cards[2], storedSex]));
+    await page.click('.v-card:nth-child(3) .v-sex'); await page.waitForTimeout(60);
+    const unmarked = await panelState(page);
+    R.check("a third tap marks a voice as neither, and the cards follow", unmarked.cards[2].sex === "—", JSON.stringify(unmarked.cards.map((c) => c.name + c.sex)));
+    await page.click('.v-card:nth-child(3) .v-sex'); await page.waitForTimeout(60);
+    /* restore the pair Lamplight would have chosen */
+    await page.evaluate(() => { window.llSpeak.setVoice(""); window.llSpeak.setDialogue(""); });
+    await page.waitForTimeout(80);
+    const reset = await panelState(page);
+    R.check("Choose for me hands the pair back to Lamplight", reset.pair[0].name === "Karen" && reset.pair[1].name === "Guy" && reset.bar === "Karen", JSON.stringify(reset.pair.map((r) => r.name)));
+    /* the full list: open it, filter it, hide a voice */
+    await page.click("#ttsAll summary"); await page.waitForTimeout(150);
+    const all = await panelState(page);
+    R.check("All voices opens a list grouped by language, then women, men and the rest",
+      all.allOpen && all.listed.length === 13 && JSON.stringify(all.groups) === JSON.stringify(["English", "Spanish"]) &&
+      JSON.stringify(all.subs) === JSON.stringify(["Women", "Men", "Other", "Women", "Men"]), JSON.stringify([all.groups, all.subs, all.listed]));
+    await page.fill("#ttsFilter", "spanish"); await page.waitForTimeout(120);
+    const filtered = await panelState(page);
+    R.check("the filter narrows the list by name or language", JSON.stringify(filtered.listed) === JSON.stringify(["Mónica", "Alvaro"]) && JSON.stringify(filtered.groups) === JSON.stringify(["Spanish"]), JSON.stringify(filtered.listed));
+    await page.fill("#ttsFilter", "zzz"); await page.waitForTimeout(120);
+    R.check("a filter that matches nothing says so", await page.$eval("#ttsFilterNone", (e) => !e.hidden));
+    await page.fill("#ttsFilter", ""); await page.waitForTimeout(120);
+    await shot(page, "all-1200-day");
+    await page.locator("#ttsList .v-item .v-hide").first().click(); await page.waitForTimeout(200);
+    const hid = await panelState(page);
+    const storedHide = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("ll_voice_hidden") || "{}")));
+    R.check("hiding a voice takes it out of the cards, the list and the count, and offers it back",
+      hid.cards.map((c) => c.name).indexOf("Karen") < 0 && hid.listed.indexOf("Karen") < 0 && hid.all === "All voices (12)" &&
+      hid.hiddenRow === "Hidden (1)" && storedHide.length === 1, JSON.stringify([hid.all, hid.cards.map((c) => c.name), hid.hiddenRow, storedHide]));
+    R.check("with the best woman hidden the pair falls to the next one", hid.pair[0].name === "Aria" && hid.bar === "Aria", JSON.stringify(hid.pair.map((r) => r.name)));
+    await page.click('.v-hidden .chip'); await page.waitForTimeout(200);
+    const shown = await panelState(page);
+    R.check("show again puts it back", shown.all === "All voices (13)" && shown.pair[0].name === "Karen" && shown.hiddenRow === "", JSON.stringify([shown.all, shown.pair[0].name]));
+    await page.click("#ttsAll summary"); await page.waitForTimeout(120);
+    /* hear the pair: both voices, no quote marks */
     await page.evaluate(() => { window.__speakLog.length = 0; });
     await page.click("#ttsSample");
     await page.waitForFunction(() => window.__speakLog.length >= 4, null, { timeout: 10000 }).catch(() => null);
     const smp = await page.evaluate(() => window.__speakLog.slice());
-    R.check("hear a sample speaks the line in both voices", smp.length === 4 && smp[0].voice === "Samantha" && smp[1].text === "Are you still reading?" && smp[1].voice === "Daniel" && smp[3].text === "Just one more chapter!" && smp[3].voice === "Daniel", JSON.stringify(smp));
-    /* dialogue: same as narrator; pitch slider */
-    await page.selectOption("#ttsDlg", "same"); await page.waitForTimeout(50);
-    const same = await page.evaluate(() => ({ dlg: window.llSpeak.dialogueVoice().voice.name, stored: localStorage.getItem("ll_tts_dialogue") }));
-    R.check("dialogue “Same as narrator” is honoured and persisted", same.dlg === "Samantha" && same.stored === "same", JSON.stringify(same));
-    await page.selectOption("#ttsDlg", "Daniel"); await page.waitForTimeout(50);
-    R.check("a chosen dialogue voice is honoured", await page.evaluate(() => window.llSpeak.dialogueVoice().voice.name) === "Daniel");
-    await page.selectOption("#ttsDlg", ""); await page.waitForTimeout(50);
+    R.check("hear the pair speaks the line in both voices", smp.length === 4 && smp[0].voice === V.karen && smp[1].text === "Are you still reading?" && smp[1].voice === V.guy && smp[3].text === "Just one more chapter!" && smp[3].voice === V.guy, JSON.stringify(smp.map((e) => e.text)));
+    /* dialogue: the narrator's own voice, and a voice chosen by hand */
+    await page.evaluate(() => window.llSpeak.setDialogue("same")); await page.waitForTimeout(60);
+    const same = await page.evaluate(() => ({ dlg: window.llSpeak.dialogueVoice().voice.name, stored: localStorage.getItem("ll_tts_dialogue_en") }));
+    R.check("dialogue “Same as narrator” is honoured and persisted", same.dlg === V.karen && same.stored === "same", JSON.stringify(same));
+    await page.click('.v-card:nth-child(6) .v-assign[data-role="dlg"]'); await page.waitForTimeout(80);
+    R.check("a chosen dialogue voice is honoured", await page.evaluate(() => window.llSpeak.dialogueVoice().voice.name) === V.david);
+    await page.evaluate(() => window.llSpeak.setDialogue("")); await page.waitForTimeout(60);
 
     /* ---- 4. expression Off: pitch 1, rate = speed, voices still switch ---- */
     await page.click('#ttsExpr .chip[data-expr="off"]'); await page.waitForTimeout(50);
@@ -305,15 +519,15 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     R.check("expression Off is selected and persisted", offState.checked === "off" && offState.stored === "off", JSON.stringify(offState));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     await page.$eval("#ttsRate", (el) => { el.value = "1.5"; el.dispatchEvent(new Event("input", { bubbles: true })); });
-    const o = await readFrom(page, "“Wait!” he shouted", 3);
+    const o = unramp(await readFrom(page, "“Wait!” he shouted", 3));
     R.check("Off: every unit has pitch 1 and rate = speed, but the voices still switch",
-      o.length >= 3 && o.every((e) => e.pitch === 1 && near(e.rate, 1.5) && e.volume === 1) && o[0].voice === "Daniel" && o[1].voice === "Samantha", JSON.stringify(o.slice(0, 3)));
+      o.length >= 3 && o.every((e) => e.pitch === 1 && near(e.rate, 1.5) && e.volume === 1) && o[0].voice === V.guy && o[1].voice === V.karen, JSON.stringify(o.slice(0, 3)));
     await page.$eval("#ttsRate", (el) => { el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); });
     /* dramatic, then back to natural, through the panel */
     await openVoices(page);
     await page.click('#ttsExpr .chip[data-expr="dramatic"]'); await page.waitForTimeout(50);
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
-    const d = await readFrom(page, "“Wait!” he shouted", 1);
+    const d = unramp(await readFrom(page, "“Wait!” he shouted", 1));
     R.check("Dramatic pushes the offsets harder", d[0] && near(d[0].pitch, 1.3) && near(d[0].rate, 1.338), JSON.stringify(d[0]));
     await openVoices(page);
     await page.click('#ttsExpr .chip[data-expr="natural"]'); await page.waitForTimeout(50);
@@ -333,10 +547,34 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     await page.evaluate(() => window.__ll.Speak.stop());
     R.check("bar and panel: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
 
+    /* ---- 5. one pair per language: an English book and a Spanish one keep their own ---- */
+    await startBar(page);
+    await openVoices(page);
+    await page.evaluate(() => window.llSpeak.setVoice(window.llSpeak.voiceId(window.llSpeak.sortedVoices()[1])));     /* Aria */
+    await page.waitForTimeout(80);
+    await page.evaluate(() => window.__ll.Speak.setDocLang("es"));
+    await page.waitForTimeout(150);
+    const es = await panelState(page);
+    R.check("a Spanish document is offered Spanish voices, and the English choice is left alone",
+      es.pair[0].name === "Mónica" && es.pair[1].name === "Alvaro" && es.bar === "Mónica" &&
+      JSON.stringify(es.cards.map((c) => c.name)) === JSON.stringify(["Mónica", "Alvaro"]), JSON.stringify([es.pair.map((r) => r.name), es.cards.map((c) => c.name), es.bar]));
+    await page.click('.v-card:nth-child(2) .v-assign[data-role="narr"]'); await page.waitForTimeout(80);
+    const esKeys = await page.evaluate(() => ({ en: localStorage.getItem("ll_tts_voice_en"), es: localStorage.getItem("ll_tts_voice_es") }));
+    R.check("each language stores its own narrator", /AriaNeural/.test(esKeys.en) && /AlvaroNeural/.test(esKeys.es), JSON.stringify(esKeys));
+    await page.evaluate(() => window.__ll.Speak.setDocLang("en"));
+    await page.waitForTimeout(150);
+    const backEn = await panelState(page);
+    R.check("coming back to English brings the English choice back", backEn.pair[0].name === "Aria" && backEn.bar === "Aria", JSON.stringify([backEn.pair[0].name, backEn.bar]));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(250);
+    await page.evaluate(() => window.__ll.Speak.stop());
+
     /* ---- persistence across a reload ---- */
     await page.reload({ waitUntil: "load" }); await page.waitForTimeout(300);
-    const kept = await page.evaluate(() => window.llSpeak.settings());
-    R.check("voice, dialogue, expression and pitch survive a reload", kept.voice === "Samantha" && kept.dialogue === "" && kept.expr === "natural" && kept.pitch === 1.2, JSON.stringify(kept));
+    const kept = await page.evaluate(() => ({ s: window.llSpeak.settings(), narr: window.llSpeak.currentVoice().name, bar: document.getElementById("ttsVoiceName").textContent,
+      fixes: Object.keys(JSON.parse(localStorage.getItem("ll_voice_gender") || "{}")).length }));
+    R.check("the voice chosen for this language, the expression, the pitch and the gender corrections survive a reload",
+      /AriaNeural/.test(kept.s.voice) && kept.narr === V.aria && kept.bar === "Aria" && kept.s.dialogue === "" && kept.s.expr === "natural" && kept.s.pitch === 1.2 && kept.fixes === 1, JSON.stringify(kept));
+    await page.evaluate(() => { localStorage.removeItem("ll_tts_voice_en"); localStorage.removeItem("ll_tts_voice"); localStorage.removeItem("ll_voice_gender"); });
 
     /* ---- 6. dark theme screenshots ---- */
     await openFixture(page, "sample.md");
@@ -418,13 +656,24 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     await startBar(page);
     const rows = await layout(page);
     R.check("phone: two rows, the buttons then speed, voice and ×, controls ≥ 36 px, no horizontal scroll",
-      rows.rows.length === 2 && rows.rows[0].indexOf("ttsPlay") >= 0 && rows.rows[0].indexOf("ttsVoices") >= 0 && rows.rows[1].indexOf("ttsVoice") >= 0 && rows.rows[1].indexOf("ttsStop") >= 0 && rows.minH >= 36 && !rows.overflow, JSON.stringify(rows));
+      rows.rows.length === 2 && rows.rows[0].indexOf("ttsPlay") >= 0 && rows.rows[1].indexOf("ttsVoiceBtn") >= 0 && rows.rows[1].indexOf("ttsStop") >= 0 && rows.minH >= 36 && !rows.overflow, JSON.stringify(rows));
     R.check("phone: the focus order is the visual order", JSON.stringify(rows.dom) === JSON.stringify(rows.visual), JSON.stringify(rows.dom) + " vs " + JSON.stringify(rows.visual));
     await readFrom(page, "He asked, “Are you coming?”", 2);
     await page.evaluate(() => window.__ll.Speak.pause());
     await shot(page, "bar-390-day");
     await openVoices(page);
+    const ph = await panelState(page);
+    const oneCol = await page.evaluate(() => { const cs = document.querySelectorAll(".v-card"); return cs.length > 1 && Math.abs(cs[0].getBoundingClientRect().left - cs[1].getBoundingClientRect().left) < 1; });
+    R.check("phone: the picker is a sheet with the same pair and cards, one card to a row",
+      ph.pair[0].name === "Karen" && ph.cards.length === 6 && ph.all === "All voices (13)" && oneCol, JSON.stringify([ph.pair.map((r) => r.name), ph.cards.length, oneCol]));
+    R.check("phone: nothing in the picker overflows the sheet",
+      await page.evaluate(() => { const b = document.querySelector("#side .side-body"); return b.scrollWidth === b.clientWidth && document.documentElement.scrollWidth <= window.innerWidth; }));
     await shot(page, "panel-390-day");
+    await page.evaluate(() => { document.getElementById("ttsAll").open = true; document.getElementById("sideBody").scrollTop = 620; });
+    await page.waitForTimeout(200);
+    await shot(page, "all-390-day");
+    await page.evaluate(() => { document.getElementById("ttsAll").open = false; document.getElementById("sideBody").scrollTop = 0; });
+    await page.waitForTimeout(150);
     /* the timer chip fits on the first row in its short form */
     await page.click('#ttsSleepChips .chip[data-sleep="15"]'); await page.waitForTimeout(50);
     await shot(page, "sleep-panel-390-day");
@@ -457,18 +706,107 @@ const collapse = (s) => s.replace(/\s+/g, " ");
       await startBar(page);
       const a = await layout(page);
       const wantRows = wpx <= 720 ? 2 : 1;
-      R.check(wpx + " px: " + wantRows + " row(s), speed value clear of the voice select, focus order is the visual order",
+      R.check(wpx + " px: " + wantRows + " row(s), speed value clear of the voice button, focus order is the visual order",
         a.rows.length === wantRows && a.gap >= 4 && a.slider >= 60 && JSON.stringify(a.dom) === JSON.stringify(a.visual) && !a.overflow, JSON.stringify(a));
       if (wpx === 640) await shot(page, "bar-640-day");
-      /* with the timer chip showing, one row needs more room: the bar wraps rather than overlaps */
+      /* the compact bar has room for the timer chip too: it never overlaps and never grows a row
+         it does not need (with the long voice select on the bar, 740 and 800 px both wrapped) */
       await page.evaluate(() => window.llSpeak.setSleep(15));
       const t = await layout(page);
-      R.check(wpx + " px with the timer chip: no overlap, DOM order kept", t.gap >= 4 && t.slider >= 60 && JSON.stringify(t.dom) === JSON.stringify(t.visual) && !t.overflow && (wpx > 830 || t.rows.length === 2), JSON.stringify(t));
+      R.check(wpx + " px with the timer chip: still " + wantRows + " row(s), no overlap, DOM order kept",
+        t.gap >= 4 && t.slider >= 60 && JSON.stringify(t.dom) === JSON.stringify(t.visual) && !t.overflow && t.rows.length === wantRows, JSON.stringify(t));
       if (wpx === 740) await shot(page, "sleep-bar-740-day");
       await page.close();
     } catch (err){ R.check(wpx + " px (exception)", false, String(err).split("\n")[0]); }
     await mid.close();
   }
+
+  /* ---- a device that says nothing about who is speaking: the note, and a correction that sticks ---- */
+  const blindCtx = await b.newContext({ viewport: { width: 1200, height: 800 } });
+  await blindCtx.addInitScript(STUB);
+  await blindCtx.addInitScript(`(function(){
+    var vs = [{ name: "English United States", lang: "en-US", localService: true, voiceURI: "en-us-x-tpc-local" },
+              { name: "English United States", lang: "en-US", localService: true, voiceURI: "en-us-x-tpd-local" },
+              { name: "English United Kingdom", lang: "en-GB", localService: true, voiceURI: "en-gb-x-rjs-local" }];
+    speechSynthesis.getVoices = function(){ return vs.slice(); };
+  })();`);
+  try {
+    const page = await newPage(blindCtx, url);
+    await openFixture(page, "sample.md");
+    await startBar(page);
+    await page.evaluate(() => window.__ll.Speak.pause());
+    await openVoices(page);
+    const blind = await panelState(page);
+    R.check("with no gender anywhere the panel says so and marks every voice as unknown",
+      blind.note && blind.cards.length === 3 && blind.cards.every((c) => c.sex === "—") && blind.all === "All voices (3)", JSON.stringify([blind.note, blind.cards.map((c) => c.name + c.sex)]));
+    R.check("the pair still names two different voices, one pitched away from the other",
+      blind.pair[0].name !== blind.pair[1].name && /quoted speech/.test(blind.hint), JSON.stringify([blind.pair.map((r) => r.name), blind.hint]));
+    await page.click('.v-card:nth-child(2) .v-sex'); await page.waitForTimeout(100);
+    const marked = await panelState(page);
+    R.check("marking one of them a woman is enough for the note to go and the pair to follow",
+      marked.cards[1].sex === "♀" && !marked.note && marked.pair[0].name === marked.cards[1].name, JSON.stringify([marked.cards.map((c) => c.name + c.sex), marked.pair.map((r) => r.name), marked.note]));
+    const room = await page.evaluate(() => { const b = document.querySelector("#side .side-body"), side = document.getElementById("side").getBoundingClientRect();
+      return { sw: b.scrollWidth, cw: b.clientWidth, past: Array.from(document.querySelectorAll(".tts-panel .v-name, .tts-panel .chip")).filter((e) => e.getBoundingClientRect().right > side.right).length }; });
+    R.check("long identical names are cut short rather than pushed past the drawer", room.sw === room.cw && room.past === 0, JSON.stringify(room));
+    await shot(page, "no-gender-1200-day");
+    await page.keyboard.press("Escape"); await page.waitForTimeout(250);
+    R.check("no gender information: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await page.close();
+  } catch (err){ R.check("no gender information (exception)", false, String(err).split("\n")[0]); }
+  await blindCtx.close();
+
+  /* ---- the language of the document: what the browser's detector makes of the text, what an
+     EPUB declares, and what #doc then carries for hyphenation ---- */
+  const langCtx = await context(1200, 800);
+  await langCtx.addInitScript(`(function(){
+    window.__detected = [];
+    Object.defineProperty(window, "LanguageDetector", { configurable: true, value: {
+      create: function(){
+        return Promise.resolve({ detect: function(text){
+          window.__detected.push(text.length);
+          return Promise.resolve([{ detectedLanguage: "es", confidence: 0.95 }, { detectedLanguage: "en", confidence: 0.02 }]);
+        } });
+      }
+    } });
+  })();`);
+  try {
+    const page = await newPage(langCtx, url);
+    await openFixture(page, "sample.md");
+    await page.waitForFunction(() => document.getElementById("doc").lang === "es", null, { timeout: 5000 }).catch(() => null);
+    const det = await page.evaluate(() => ({ lang: document.getElementById("doc").lang, seen: window.__detected.slice(), reported: window.llSpeak.lang(),
+      narr: window.llSpeak.currentVoice().name, dlg: window.llSpeak.dialogueVoice().voice.name, bar: document.getElementById("ttsVoiceName").textContent }));
+    R.check("the detector reads the opening of the document and #doc carries the answer",
+      det.lang === "es" && det.reported === "es" && det.seen.length >= 1 && det.seen[0] > 0 && det.seen[0] <= 2000, JSON.stringify(det));
+    R.check("a document detected as Spanish is read by Spanish voices",
+      det.narr === V.monica && det.dlg === V.alvaro && det.bar === "Mónica", JSON.stringify([det.narr, det.dlg, det.bar]));
+    const spoken = await page.evaluate(() => { window.__speakLog.length = 0; window.__ll.Speak.start(0); return null; });
+    await page.waitForFunction(() => window.__speakLog.length >= 1, null, { timeout: 5000 }).catch(() => null);
+    const sl = await page.evaluate(() => window.__speakLog.slice(0, 1));
+    R.check("and the engine is told that language", sl[0] && sl[0].lang === "es-ES" && sl[0].voice === V.monica, JSON.stringify(sl));
+    await page.evaluate(() => window.__ll.Speak.stop());
+    /* an EPUB says what language it is in; the detector's answer for that book replaces it */
+    await openFixture(page, "sample.epub");
+    await page.waitForTimeout(400);
+    const ep = await page.evaluate(() => ({ lang: document.getElementById("doc").lang, reported: window.llSpeak.lang(), runs: window.__detected.length }));
+    R.check("another book is detected afresh, and its answer replaces the one it declared",
+      ep.runs >= 2 && ep.lang === "es" && ep.reported === "es", JSON.stringify(ep));
+    R.check("language detection: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await page.close();
+  } catch (err){ R.check("language detection (exception)", false, String(err).split("\n")[0]); }
+  await langCtx.close();
+  /* with no detector at all the reader is left where the page says it is */
+  const plainCtx = await context(1200, 800);
+  try {
+    const page = await newPage(plainCtx, url);
+    await openFixture(page, "sample.epub");
+    await page.waitForTimeout(400);
+    const ep = await page.evaluate(() => ({ lang: document.getElementById("doc").lang, reported: window.llSpeak.lang(), narr: window.llSpeak.currentVoice().name }));
+    R.check("without a detector an EPUB's own dc:language sets #doc[lang] and the voices",
+      ep.lang === "en" && ep.reported === "en" && ep.narr === V.karen, JSON.stringify(ep));
+    R.check("no detector: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await page.close();
+  } catch (err){ R.check("no detector (exception)", false, String(err).split("\n")[0]); }
+  await plainCtx.close();
 
   /* ---- PDFs: units come from the page text, quoted speech gets the other voice, and a
      stop or restart while a page's text loads leaves no ghost reading and no duplicate pages ---- */
@@ -479,7 +817,7 @@ const collapse = (s) => s.replace(/\s+/g, " ");
     await page.keyboard.press("r");
     await page.waitForFunction(() => window.__speakLog.length >= 6, null, { timeout: 30000 }).catch(() => null);
     const log = await page.evaluate(() => window.__speakLog.slice());
-    const spoken = log.filter((e) => e.voice === "Samantha").length, quoted = log.filter((e) => e.voice === "Daniel");
+    const spoken = log.filter((e) => e.voice === V.karen).length, quoted = log.filter((e) => e.voice === V.guy);
     R.check("PDF: read aloud runs from the page text, narration and quoted speech in their own voices",
       spoken >= 3 && quoted.length >= 1 && quoted.every((e) => noQuotes(e.text)) && log.some((e) => /lamp hums quietly/.test(e.text)), JSON.stringify(log.slice(0, 6)));
     await page.waitForTimeout(1500);

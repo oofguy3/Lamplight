@@ -1044,16 +1044,14 @@
   #tts [hidden]{display:none;}
   #tts .tts-break{display:none;}
   #tts label{display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--muted); flex:1; min-width:90px; min-height:36px;}
-  #tts input[type=range]{flex:1; min-width:50px;}
+  #tts input[type=range]{flex:1; min-width:50px; max-width:340px;}
   #tts .val{min-width:34px;}
-  #tts select{
-    max-width:150px; min-width:0; min-height:36px; padding:7px 8px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink);
-    font-family:var(--ui-font); font-size:0.7812rem; text-overflow:ellipsis;
-  }
-  /* ♀ ♂ pick a voice of that gender; the one matching the narrator is shown pressed */
-  #tts .tts-sex{min-width:36px; padding:0 7px; font-size:1.0625rem; font-weight:400; line-height:1;}
-  #tts .tts-sex.on{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}
-  #tts .tts-voices{font-size:0.8125rem; padding:0 11px; white-space:nowrap;}
+  /* the picker is the voice button and its panel; the select behind it only mirrors the choice */
+  #tts .tts-mirror{position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap;}
+  /* who is reading, in one word, with the way into the panel */
+  #tts .tts-voice{font-size:0.8125rem; font-weight:600; padding:0 8px 0 11px; gap:4px; max-width:11em;}
+  #tts .tts-voice svg{width:16px; height:16px; color:var(--muted);}
+  #tts .tts-voice-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   /* the sleep timer, while one is set ("Stops in 12 min"); it opens the voices panel */
   #tts .tts-sleep{font-size:0.75rem; font-weight:500; padding:0 10px; gap:0.3em; white-space:nowrap; background:color-mix(in srgb, var(--accent) 12%, transparent); font-variant-numeric:tabular-nums;}
   #tts .tts-x{font-size:1.125rem;}
@@ -1068,20 +1066,108 @@
   #tts.tts-wrap .tts-break{display:block; flex-basis:100%; height:0;}
   #tts.tts-wrap .tts-x{margin-left:auto;}
   #tts.tts-wrap label{min-width:0; flex:1 1 140px;}
-  #tts.tts-wrap select{max-width:none; flex:1 1 110px; font-size:0.75rem;}
   @media (max-width:400px){
     #tts .ctl{min-width:36px; padding:0 7px;}
-    #tts .tts-sex{min-width:34px; padding:0 5px;}
+    #tts .tts-voice{padding:0 6px 0 9px; max-width:8em;}
     #tts .tts-sleep{padding:0 7px; font-size:0.7188rem;}
     #tts #ttsSleepW{display:none;}   /* just "12 min": the first row is full */
   }
-  /* the voices panel (narrator, dialogue voice, expression, pitch, sleep timer). The single
-     column is minmax(0,1fr), not auto, so a long Windows voice name shrinks the select instead
-     of widening the rows past the drawer */
-  .tts-panel{display:grid; grid-template-columns:minmax(0,1fr); gap:12px; padding-top:4px;}
-  .tts-panel .sel{flex:1; min-width:0; max-width:100%; text-overflow:ellipsis;}
-  .tts-panel .hint{margin-top:-4px; line-height:1.45;}
+
+  /* ---------- the voices panel ----------
+     A handful of good choices first — the pair that is reading, then up to six cards for this
+     document's language — with the whole list folded away under "All voices". Every name can be
+     heard before it is chosen, and the ♀ ♂ — chip corrects a device that guessed wrong. */
+  .tts-panel{display:grid; grid-template-columns:minmax(0,1fr); gap:18px; padding-top:4px;}
+  /* minmax(0,1fr), not the implicit auto: an auto track takes its contents' max-content width, so
+     one long voice name would carry the whole panel past the drawer instead of being shortened */
+  .tts-panel .group, .v-pair, .v-card, .v-list, .v-group, .v-sub{grid-template-columns:minmax(0, 1fr);}
+  .tts-panel .group{gap:12px;}
+  .tts-panel .hint{line-height:1.45;}
   .tts-panel .tts-sleep-chips .chip{padding:7px 11px; font-size:0.7812rem;}
+  .tts-panel .rowline label{min-width:72px;}
+  /* a voice's name, and the little words under it. min-width:0 so a device that calls a voice
+     "English United States" shortens it rather than pushing the panel past the drawer */
+  .v-name{font-size:0.9375rem; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; max-width:100%;}
+  .v-tags{display:flex; flex-wrap:wrap; gap:4px;}
+  .v-tag{
+    font-size:0.625rem; font-weight:600; letter-spacing:.03em; text-transform:uppercase; color:var(--muted);
+    border:1px solid var(--line); border-radius:999px; padding:1px 6px; white-space:nowrap;
+  }
+  .v-who{flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 9px;}
+  /* ▶ preview: a quiet round button that speaks one line in that voice */
+  .v-play{
+    flex:none; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; padding:0;
+    border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--ink); cursor:pointer;
+    transition:border-color .2s, background .2s, transform .12s;
+  }
+  .v-play svg{width:14px; height:14px;}
+  .v-play:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .v-play:active{transform:scale(.94);}
+  /* the pair: who reads the narration, who reads the quoted speech */
+  .v-pair{display:grid; gap:8px; padding:12px 14px;}
+  .v-row{display:flex; align-items:center; gap:12px; min-height:44px;}
+  .v-row + .v-row{border-top:1px solid var(--line); padding-top:8px;}
+  .v-role{
+    flex:none; width:80px; font-size:0.625rem; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--muted);
+  }
+  .v-pair-acts{display:flex; flex-wrap:wrap; gap:8px; padding-top:2px;}
+  .v-pair-acts .chip{padding:7px 12px; font-size:0.7812rem;}
+  /* the cards: two columns of good voices, one under 400px */
+  .v-cards{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px;}
+  .v-card{
+    background:color-mix(in srgb, var(--panel) 60%, var(--bg)); border:1px solid var(--line); border-radius:12px;
+    padding:10px; display:grid; gap:8px; align-content:start;
+  }
+  .v-card-top{display:flex; align-items:center; gap:5px;}
+  .v-card-top .v-name{flex:1; font-size:0.875rem;}
+  .v-card-top .v-sex{flex:none; min-width:30px; padding:5px 6px; font-size:0.875rem;}
+  .v-card .v-play{width:28px; height:28px;}
+  .v-acts{display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
+  .v-acts .chip{padding:6px 10px; font-size:0.75rem;}
+  /* the two roles sit side by side in a card, however narrow the column */
+  .v-card .v-acts{flex-wrap:nowrap;}
+  .v-card .v-acts .chip{flex:1 1 0; min-width:0; padding:6px 4px; text-align:center;}
+  .v-acts .v-sex{min-width:34px; padding:6px 8px; font-size:0.9375rem; line-height:1; text-align:center;}
+  /* all of them, one tap away */
+  .v-all > summary{
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; min-height:44px;
+    font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+  }
+  .v-all > summary::-webkit-details-marker{display:none;}
+  .v-all > summary::after{
+    content:""; width:8px; height:8px; margin-left:2px; border-right:1.8px solid currentColor; border-bottom:1.8px solid currentColor;
+    transform:rotate(45deg) translate(-2px,-2px); transition:transform .18s ease;
+  }
+  .v-all[open] > summary::after{transform:rotate(-135deg) translate(-2px,-2px);}
+  .v-all > summary:hover{color:var(--ink);}
+  .v-filter{
+    width:100%; margin:4px 0 10px; padding:9px 12px; border:1px solid var(--line); border-radius:10px;
+    background:var(--bg); color:var(--ink); font-family:var(--ui-font); font-size:0.875rem;
+  }
+  .v-list{display:grid; gap:14px;}
+  .v-group{display:grid; gap:8px;}
+  .v-group[hidden], .v-sub[hidden], .v-item[hidden]{display:none;}
+  .v-sub{display:grid; gap:4px;}
+  .v-sub-l{font-size:0.75rem; color:var(--muted);}
+  /* a row in the full list: the voice on the first line, what you can do with it on the second —
+     the drawer is only so wide, and a name must never be clipped to fit a button beside it */
+  .v-item{display:grid; grid-template-columns:auto minmax(0, 1fr); align-items:center; gap:6px 10px; padding:8px 0;}
+  .v-item + .v-item{border-top:1px solid var(--line);}
+  .v-item .v-play{grid-row:1; grid-column:1;}
+  .v-item .v-who{grid-row:1; grid-column:2;}
+  .v-item .v-acts{grid-row:2; grid-column:1 / -1;}
+  .v-hidden .chips{gap:6px;}
+  @media (max-width:400px){
+    .v-cards{grid-template-columns:minmax(0, 1fr);}
+    .v-role{width:72px;}
+  }
+  @media (pointer: coarse){
+    .v-play, .v-card .v-play{width:40px; height:40px;}
+    .v-acts .chip, .v-card-top .v-sex{min-height:40px;}
+  }
+  @media (forced-colors: active){
+    .v-tag, .v-card, .v-play{border-color:ButtonText;}
+  }
   ::highlight(ll-speak){background:color-mix(in srgb, var(--accent) 24%, transparent); color:inherit;}
   ::highlight(ll-speak-dialogue){background:color-mix(in srgb, var(--accent) 12%, transparent); color:inherit; text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 65%, transparent);}
 
