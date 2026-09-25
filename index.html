@@ -294,6 +294,8 @@
     <button class="ctl tts-voice" id="ttsVoiceBtn" title="Voices" aria-label="Voices" aria-haspopup="dialog"><span class="tts-voice-name" id="ttsVoiceName">Voices</span><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
     <!-- the picker is the voice button and its panel; this select mirrors the choice for scripts -->
     <select id="ttsVoice" class="tts-mirror" tabindex="-1" aria-hidden="true"></select>
+    <!-- ElevenLabs narration: "Fetching…" while a clip is on its way, then the characters sent (audiobook.js) -->
+    <span class="tts-status"><span id="ttsStatus" aria-live="polite"></span><span id="ttsSent"></span></span>
     <button class="ctl tts-x" id="ttsStop" title="Stop reading" aria-label="Stop reading"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
   </div>
   <div id="pager">
@@ -320,8 +322,9 @@
 
 <input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" multiple hidden>
 
-<!-- parsers (pdf.js, mammoth, marked, DOMPurify, JSZip) and the sentence explainer live in vendor/ and explain.js
-     and are loaded on demand by app.js — see loadScript() / need() -->
+<!-- parsers (pdf.js, mammoth, marked, DOMPurify, JSZip), the sentence explainer and the read-aloud voices module
+     (who speaks, a voice per character, ElevenLabs narration) live in vendor/, explain.js and audiobook.js and are
+     loaded on demand by app.js — see loadScript() / need() -->
 <script src="./app.js"></script>
 </body>
 </html>

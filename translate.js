@@ -1,9 +1,8 @@
 /* Lamplight — Translate: the tapped word, a selected sentence or the whole document, into a
-   language the reader chooses. Three engines, in order of preference: the browser's built-in
+   language the reader chooses. Two engines, in order of preference: the browser's built-in
    on-device translator (Chrome / Edge, private and free, works offline once its language pack
-   is downloaded), the reader's own Anthropic key, and MyMemory (a free web service) for words
-   and sentences only. Everything translated is cached on the device, so a translated book
-   reopens translated, offline.
+   is downloaded), and MyMemory (a free web service) for words and sentences only. Everything
+   translated is cached on the device, so a translated book reopens translated, offline.
 
    Loaded on demand by app.js (see LIBS there), which owns the settings group, the menu entry
    and the card; this file talks to the reader through window.__ll and fills the card's
@@ -19,12 +18,11 @@
     set: function(k, v){ try { localStorage.setItem(k, v); } catch(_){} },
     remove: function(k){ try { localStorage.removeItem(k); } catch(_){} }
   };
-  var KEY_TO = "ll_tr_to", KEY_FROM = "ll_tr_from", KEY_ON = "ll_tr_on", KEY_API = "ll_apikey";
-  var AI_MODEL = "claude-sonnet-5";
+  var KEY_TO = "ll_tr_to", KEY_FROM = "ll_tr_from", KEY_ON = "ll_tr_on";
   var RTL = { ar: 1, he: 1, fa: 1, ur: 1 };
   var MM_CODES = { zh: "zh-CN", "zh-Hant": "zh-TW" };   /* MyMemory's names for the two Chinese scripts */
   var SENTENCE_CAP = 2000;                                 /* cached word / sentence records kept */
-  var PRIVACY = "The built-in translator runs on your device. Your Anthropic key sends text to api.anthropic.com; MyMemory is a free web service that receives the words or sentence you translate.";
+  var PRIVACY = "The built-in translator runs on your device. MyMemory is a free web service that receives the words or sentence you translate.";
 
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
   function norm(s){ return String(s || "").replace(/\s+/g, " ").trim(); }
@@ -123,78 +121,7 @@
     return { id: "builtin", ok: ok, available: available, translate: translate, destroyAll: destroyAll };
   })();
 
-  /* ---------- engine 2: the reader's Anthropic key (same request shape as Explain with AI) ---------- */
-  var Claude = (function(){
-    var BATCH = 2500;
-    function ok(){ return !!Store.get(KEY_API) && online(); }
-    function available(){ return Promise.resolve(ok() ? "ready" : "no"); }
-    /* the reply must be a JSON array of the same length; code fences and chatter around it are tolerated */
-    function parse(txt, n){
-      var s = String(txt || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-      var a = s.indexOf("["), b = s.lastIndexOf("]");
-      if (a < 0 || b < a) return null;
-      var arr;
-      try { arr = JSON.parse(s.slice(a, b + 1)); } catch(_){ return null; }
-      if (!Array.isArray(arr) || arr.length !== n || !arr.every(function(x){ return typeof x === "string"; })) return null;
-      return arr;
-    }
-    function ask(batch, src, t){
-      var chars = batch.reduce(function(n, s){ return n + s.length; }, 0);
-      var prompt = "Translate each string in this JSON array from " + nameOf(src) + " into " + nameOf(t) +
-        ". Reply with a JSON array of the same length, same order, translations only, no commentary.\n\n" + JSON.stringify(batch);
-      return fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": Store.get(KEY_API) || "",
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          max_tokens: Math.min(4000, Math.max(300, Math.round(chars * 2 / 3))),
-          messages: [{ role: "user", content: prompt }]
-        })
-      })
-      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, status: r.status, j: j }; }); })
-      .then(function(res){
-        if (!res.ok){ var e = new Error((res.j && res.j.error && res.j.error.message) || "the request failed"); e.status = res.status; throw e; }
-        var txt = (res.j.content || []).map(function(c){ return c.text || ""; }).join("");
-        return parse(txt, batch.length);
-      });
-    }
-    function translate(items, src, t, hooks){
-      /* batches of about 2500 characters, two in flight */
-      var batches = [], cur = [], idx = [], size = 0;
-      items.forEach(function(s, i){
-        if (cur.length && size + s.length > BATCH){ batches.push({ items: cur, idx: idx }); cur = []; idx = []; size = 0; }
-        cur.push(s); idx.push(i); size += s.length;
-      });
-      if (cur.length) batches.push({ items: cur, idx: idx });
-      return new Promise(function(resolve, reject){
-        var b = 0, active = 0, dead = false;
-        function next(){
-          if (dead) return;
-          if (!hooks.live() || b >= batches.length){ if (!active) resolve(); return; }
-          var bt = batches[b++]; active++;
-          ask(bt.items, src, t).then(function(out){ return out || ask(bt.items, src, t); })   /* one retry on a bad reply */
-            .then(function(out){
-              bt.idx.forEach(function(i, k){ hooks.onItem(i, out ? out[k] : null); });     /* a batch in flight at a cancel still lands */
-            }, function(err){
-              /* no connection, a bad key or a quota: stop here rather than fail every batch in turn */
-              if (!err || !err.status || err.status === 401 || err.status === 403 || err.status === 429 || err.status >= 500){ dead = true; reject(err || new Error("no connection")); return; }
-              bt.idx.forEach(function(i){ hooks.onItem(i, null); });
-            })
-            .then(function(){ active--; next(); });
-        }
-        if (!batches.length){ resolve(); return; }
-        for (var n = 0; n < 2 && n < batches.length; n++) next();
-      });
-    }
-    return { id: "claude", ok: ok, available: available, translate: translate };
-  })();
-
-  /* ---------- engine 3: MyMemory, for words and sentences ---------- */
+  /* ---------- engine 2: MyMemory, for words and sentences ---------- */
   var MyMemory = (function(){
     var MAX = 480;
     function ok(){ return online(); }
@@ -235,19 +162,18 @@
     return { id: "mymemory", ok: ok, available: available, translate: translate };
   })();
 
-  var ENGINES = { builtin: Builtin, claude: Claude, mymemory: MyMemory };
-  var LABEL = { builtin: "on-device", claude: "by Claude", mymemory: "by MyMemory (free web service)" };
-  /* which engine handles a job: built-in (ready, or after its download) → key → MyMemory for short texts */
+  var ENGINES = { builtin: Builtin, mymemory: MyMemory };
+  var LABEL = { builtin: "on-device", mymemory: "by MyMemory (free web service)" };
+  /* which engine handles a job: built-in (ready, or after its download) → MyMemory for short texts */
   function pick(kind, src, t){
     return Builtin.available(src, t).then(function(a){
       if (a !== "no") return { engine: Builtin, status: a };
-      if (Claude.ok()) return { engine: Claude, status: "ready" };
       if (kind === "short" && MyMemory.ok()) return { engine: MyMemory, status: "ready" };
       return null;
     });
   }
   function noEngineNote(){
-    return online() ? "Nothing here can translate this — use Chrome or Edge for the built-in translator, or add an Anthropic API key in the settings."
+    return online() ? "Nothing here can translate this — use Chrome or Edge for the built-in translator."
                     : "Offline — only cached translations are available.";
   }
 
@@ -259,8 +185,7 @@
     }).then(function(a){
       if (a === "ready") return name + " · built-in translator ready";
       if (a === "download" && online()) return name + " · built-in translator needs a download (about 30 MB) — the first translation starts it";
-      if (Claude.ok()) return name + " · using your Anthropic key";
-      if (online()) return name + " · words and sentences via MyMemory; add an Anthropic API key or use Chrome / Edge for whole documents";
+      if (online()) return name + " · words and sentences via MyMemory; use Chrome / Edge for whole documents";
       return name + " · offline — only cached translations";
     });
   }

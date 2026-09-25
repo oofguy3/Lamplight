@@ -19,7 +19,8 @@
     jszip:   ["./vendor/jszip.min.js"],
     explain: ["./explain.js"],
     morph:   ["./morph.js"],
-    translate: ["./translate.js"]
+    translate: ["./translate.js"],
+    audiobook: ["./audiobook.js"]   /* who speaks each line, a voice per character, ElevenLabs narration (see Speak.registerEngine) */
   };
   function need(names){
     var files = [];
@@ -2253,7 +2254,7 @@
   })();
 
   var Library = (function(){
-    var DB_NAME = "lamplight", DB_VERSION = 3;
+    var DB_NAME = "lamplight", DB_VERSION = 4;
     var dbp = null, books = [], positions = {}, current = null, pending = null, saveTimer = null, titleQueue = null;
     var ready = { doc: false, pdfPages: {} };
 
@@ -2274,8 +2275,23 @@
             mk.createIndex("doc", "doc");
           }
           if (!d.objectStoreNames.contains("translations")) d.createObjectStore("translations", { keyPath: "key" });
+          /* read-aloud audio clips (ElevenLabs) and the voices cast for each document's characters */
+          if (!d.objectStoreNames.contains("audio")){
+            var au = d.createObjectStore("audio", { keyPath: "key" });
+            au.createIndex("doc", "docId");
+          }
+          if (!d.objectStoreNames.contains("cast")) d.createObjectStore("cast", { keyPath: "docId" });
         };
-        req.onsuccess = function(){ resolve(req.result); };
+        /* another tab is installing a newer version: let go of the database so it can */
+        req.onblocked = function(){ try { Marks.toast("Close other Lamplight tabs to finish updating"); } catch(_){} };
+        req.onsuccess = function(){
+          var d = req.result;
+          d.onversionchange = function(){
+            d.close(); dbp = null;
+            try { Marks.toast("Lamplight was updated in another tab \u2014 reload to keep saving"); } catch(_){}
+          };
+          resolve(d);
+        };
         req.onerror = function(){ reject(req.error); };
       });
       dbp.catch(function(){ dbp = null; });
@@ -2604,7 +2620,7 @@
     function wipe(alsoTranslations){
       books = []; positions = {};
       Tabs.clear();
-      var stores = ["books", "positions", "marks"].concat(alsoTranslations ? ["translations"] : []);
+      var stores = ["books", "positions", "marks", "audio", "cast"].concat(alsoTranslations ? ["translations"] : []);
       var jobs = stores.map(function(s){ return tx(s, "readwrite", function(st){ st.clear(); }).catch(function(){}); });
       render();
       return Promise.all(jobs);
@@ -2628,11 +2644,20 @@
       if (!(f instanceof File)){ try { f = new File([b.blob], b.name, { type: b.blob.type }); } catch(_){ f = b.blob; f.name = b.name; } }
       openFile(f, { fromLibrary: true, fresh: !!fresh });
     }
+    /* a document's cached read-aloud clips and its voice cast (the index-cursor pattern of Marks.forget) */
+    function forgetAudio(id){
+      tx("audio", "readwrite", function(st){
+        var idx = st.index("doc").openKeyCursor(IDBKeyRange.only(id));
+        idx.onsuccess = function(){ var c = idx.result; if (c){ st.delete(c.primaryKey); c.continue(); } };
+      }).catch(function(){});
+      tx("cast", "readwrite", function(st){ st.delete(id); }).catch(function(){});
+    }
     function remove(id){
       books = books.filter(function(x){ return x.id !== id; });
       delete positions[id];
       Marks.forget(id);
       Tabs.drop(id);
+      forgetAudio(id);
       tx("books", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       tx("positions", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       if (current === id) current = null;
@@ -2661,7 +2686,7 @@
              pin: setPinned, togglePin: togglePin, move: movePinned, pinned: pinnedList, upNext: upNext,
              removeFinished: removeFinished, wipe: wipe,
              onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
-             flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render,
+             flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render, forgetAudio: forgetAudio,
              ready: loaded, currentId: function(){ return current; }, positionFor: function(id){ return positions[id]; },
              _debug: function(){ return { pending: pending, ready: ready, current: current }; } };
   })();
@@ -3902,8 +3927,19 @@
   })();
 
   /* ============================================================
-     Read aloud — Web Speech API, sentence by sentence, with a narrator and a
-     second voice for quoted speech, and a little expression read off the text
+     Read aloud — sentence by sentence, with a narrator, a second voice
+     for quoted speech (or a device voice per character, cast by
+     audiobook.js) and a little expression read off the text, through a
+     pluggable engine: the device voice (Web Speech API, built in below)
+     or one that registers itself, such as ElevenLabs narration in
+     audiobook.js.
+     Engine interface: label, supported(), prepare(units, ctx) → Promise
+     (or nothing: the device path stays synchronous), speak(i, opts),
+     cancel(); optionally ready() → Promise<bool> (may ask for a key),
+     setRate(rate), fillVoices(select), voiceChanged(value),
+     narratorName(), stop(), syncSettings(asked).
+     opts: { rate, ramp, live(), onend({ advanceTo, pauseAfter }?),
+             onerror(err), onboundary(start, end, unitIndex) }
      ============================================================ */
   var Speak = (function(){
     var supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
@@ -3921,6 +3957,37 @@
     if (!/^(off|natural|dramatic)$/.test(expr)) expr = "natural";
     rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "×";
     function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
+
+    /* ---- engines ---- */
+    var ENGINE_LIB = { eleven: "audiobook" };          /* which on-demand script provides an engine */
+    var engineName = Store.get("ll_tts_engine") === "eleven" ? "eleven" : "device";
+    var castOn = Store.get("ll_tts_cast") !== "off";  /* a device voice per character (audiobook.js works out who speaks) */
+    var engines = {}, runEngine = null, ctx = null, session = 0, devPlan = null;
+    var planned = 0, replanT = null;                  /* units the engine has planned; a re-plan waiting while PDF pages load */
+    /* one audio element for engines that play clips: it is created and touched inside the user gesture that starts
+       reading, since iOS Safari only lets an element play later once a gesture has played or loaded it */
+    var sharedAudio = null, audioPrimed = false;
+    function audioElement(){
+      if (!sharedAudio){ sharedAudio = new Audio(); sharedAudio.preload = "auto"; }
+      return sharedAudio;
+    }
+    function primeAudio(){
+      if (audioPrimed || engineName === "device" || !window.Audio) return;
+      try { audioElement().load(); audioPrimed = true; } catch(_){}
+    }
+    function registerEngine(name, engine){ engine.name = name; engines[name] = engine; }
+    function engineFor(){ return runEngine || engines.device; }
+    /* the engine chosen in settings, loaded on demand; the device voice when it cannot run */
+    function chooseEngine(cb){
+      if (engineName === "device" || (!engines[engineName] && !ENGINE_LIB[engineName])){ cb(engines.device); return; }
+      var fallback = function(){ Marks.toast("Using the device voice"); cb(engines.device); };
+      (engines[engineName] ? Promise.resolve() : need([ENGINE_LIB[engineName]])).then(function(){
+        var eng = engines[engineName];
+        if (!eng) return fallback();
+        if (!eng.supported()){ Marks.toast(eng.label + " isn’t available in this browser"); cb(engines.device); return; }
+        return Promise.resolve(eng.ready ? eng.ready() : true).then(function(ok){ if (ok) cb(eng); else fallback(); });
+      }).catch(function(err){ console.warn("read-aloud engine", err); fallback(); });
+    }
     function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
 
     /* ---- what language this document is in ----
@@ -4165,11 +4232,13 @@
     /* the bar says who is reading, in one word */
     function syncBar(){
       var v = currentVoice(), n = v ? shortName(v) : "";
+      if (runEngine && runEngine.narratorName) n = runEngine.narratorName() || n;
       voiceNameEl.textContent = n || "Voices";
       voicesBtn.setAttribute("aria-label", n ? "Voice: " + n + " — choose another" : "Voices");
       voicesBtn.title = n ? n + " — choose another voice" : "Voices";
     }
     function fillVoices(){
+      if (runEngine && runEngine.fillVoices){ runEngine.fillVoices(voiceSel); syncBar(); return; }
       var vs = sortedVoices(), key = vs.map(function(v){ return voiceId(v); }).join("\n");
       var fresh = key !== voiceKey;     /* voices arrive late, and a phone can gain or lose them */
       if (fresh){ voiceKey = key; nameCache = null; loadForLang(); }
@@ -4296,7 +4365,7 @@
             while (pi < parens.length && parens[pi][1] + 1 < b) pi++;
             var paren = false;
             for (var pj = pi; pj < parens.length && parens[pj][0] <= a; pj++){ if (b <= parens[pj][1] + 1){ paren = true; break; } }
-            splitLong(core, base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren }, meta || {}));
+            splitLong(core, base + p[0] + a, out, Object.assign({ dialogue: pc[2], paren: paren, para: base + p[0] }, meta || {}));
           });
         }
         if (out.length > before) out[out.length - 1].last = true;
@@ -4378,10 +4447,14 @@
     function rampFactor(){ return RAMP[rampN] || 1; }
     /* a sentence said again after a settings change keeps its own step on the ramp */
     function rampStep(i){ if (i !== rampAt){ rampAt = i; if (rampN < RAMP.length) rampN++; } }
-    function utterFor(u, prev, next, ramp){
+    function utterFor(u, prev, next, ramp, cast){
       var x = express(u, { prev: prev, next: next, expr: expr });
       var narr = currentVoice(), v = narr, off = 0;
-      if (u.dialogue){ var d = dialogueVoice(narr); v = d.voice; off = d.pitchOffset; }
+      if (u.dialogue){
+        /* a character's own voice: its pitch is added to the expression's */
+        if (cast && cast.voice){ v = cast.voice; off = (+cast.pitch || 1) - 1; }
+        else { var d = dialogueVoice(narr); v = d.voice; off = d.pitchOffset; }
+      }
       var ut = new SpeechSynthesisUtterance(u.text);
       ut.rate = clamp(rate * x.rate * (ramp || 1), 0.5, 2.5);
       ut.pitch = clamp(pitchPref + (x.pitch - 1) + off, 0.5, 1.6);
@@ -4389,6 +4462,43 @@
       if (v){ ut.voice = v; ut.lang = v.lang; }
       return { utter: ut, pauseAfter: x.pauseAfter };
     }
+
+    /* ---- the built-in engine: the device's own voices. With "a voice per character" on,
+       audiobook.js works out who speaks each dialogue unit and casts a device voice (and a pitch)
+       for every named character; lines no one is named for keep the dialogue voice ---- */
+    function castVoiceFor(i){
+      if (!devPlan || !castOn) return null;
+      var u = units[i];
+      if (!u || !u.dialogue) return null;
+      if (i >= devPlan.n) devPlan.extend(units);        /* PDF pages appended since the plan was made */
+      return devPlan.voiceFor(i);
+    }
+    engines.device = {
+      name: "device", label: "Read aloud",
+      supported: function(){ return supported; },
+      /* nothing to plan with one voice, and returning nothing keeps that path synchronous */
+      prepare: function(us, c){
+        devPlan = null;
+        if (!castOn) return;
+        var loaded = window.llAudiobook ? Promise.resolve() : need(["audiobook"]);
+        return loaded.then(function(){
+          return window.llAudiobook.deviceCast(us, c, { lang: docLang(), narrator: currentVoice(), voices: sortedVoices, gender: voiceGender, id: voiceId, find: findVoice });
+        }).then(function(p){ devPlan = p; }, function(err){ console.warn("read-aloud cast", err); devPlan = null; });   /* one voice, quietly */
+      },
+      speak: function(i, opts){
+        var u = units[i], s = utterFor(u, units[i - 1], units[i + 1], opts.ramp, castVoiceFor(i));
+        utter = s.utter;
+        utter.onend = function(){ opts.onend({ pauseAfter: s.pauseAfter }); };
+        utter.onerror = function(e){
+          if (e.error === "interrupted" || e.error === "canceled") return;
+          opts.onerror(e.error || "error");
+        };
+        /* Chrome needs a fresh call after cancel() on some platforms */
+        var mine = utter;
+        setTimeout(function(){ if (opts.live()) speechSynthesis.speak(mine); }, 0);
+      },
+      cancel: function(){ try { speechSynthesis.cancel(); } catch(_){} }
+    };
 
     /* ---- painting + revealing ---- */
     function paint(u){
@@ -4439,7 +4549,7 @@
       return silence;
     }
     function mediaPlay(){
-      try { var p = silentAudio().play(); if (p && p.catch) p.catch(function(){}); } catch(_){}     /* refused: no controls, reading carries on */
+      if (!runEngine || runEngine === engines.device) try { var p = silentAudio().play(); if (p && p.catch) p.catch(function(){}); } catch(_){}     /* refused: no controls, reading carries on */
       mediaState("playing");
     }
     function mediaPause(){
@@ -4554,31 +4664,43 @@
     /* ---- speaking ---- */
     function speakCurrent(){
       if (!units.length || idx < 0 || idx >= units.length){ finish(); return; }
-      var u = units[idx], myGen = ++gen;
+      var u = units[idx], myGen = ++gen, eng = engineFor();
       clearTimeout(wait); between = false; sampleGen++;
-      try { speechSynthesis.cancel(); } catch(_){}
+      eng.cancel();
       paint(u); ensureVisible(u);
       if (state.mode === "pdf" && u.page && Library.currentPdfPage() !== u.page) Toc.goPdfPage(u.page);
       var sec = sectionFor(u); if (sec !== album) setMeta(sec);
-      var s = utterFor(u, units[idx - 1], units[idx + 1], rampFactor());
+      var ramp = rampFactor();
       rampStep(idx);
-      utter = s.utter;
-      utter.onend = function(){
-        if (myGen !== gen || !playing) return;
-        if (idx + 1 >= units.length){ finish(); return; }
-        if (sleepDue(u, units[idx + 1])){ stop(); Marks.toast("Stopped by the sleep timer"); return; }
-        /* a breath between sentences, a longer one after a paragraph; Prev / Next cut it short */
-        between = true;
-        wait = setTimeout(function(){ if (myGen !== gen || !playing) return; idx++; speakCurrent(); }, s.pauseAfter);
-      };
-      utter.onerror = function(e){
-        if (myGen !== gen) return;
-        if (e.error === "interrupted" || e.error === "canceled") return;
-        Marks.toast("Speech stopped (" + (e.error || "error") + ")");
-        pause();
-      };
-      /* Chrome needs a fresh call after cancel() on some platforms */
-      setTimeout(function(){ if (myGen === gen && playing) speechSynthesis.speak(utter); }, 0);
+      eng.speak(idx, {
+        rate: rate, ramp: ramp,
+        live: function(){ return myGen === gen && playing; },
+        onend: function(r){
+          if (myGen !== gen || !playing) return;
+          /* an engine that played a whole clip of several units says where to carry on */
+          var to = (r && typeof r.advanceTo === "number") ? r.advanceTo : idx + 1;
+          if (to >= units.length){ finish(); return; }
+          if (sleepDue(units[to - 1], units[to])){ stop(); Marks.toast("Stopped by the sleep timer"); return; }
+          /* a breath between sentences, a longer one after a paragraph; Prev / Next cut it short */
+          between = true;
+          wait = setTimeout(function(){ if (myGen !== gen || !playing) return; idx = to; speakCurrent(); }, (r && r.pauseAfter) || 0);
+        },
+        onerror: function(err){
+          if (myGen !== gen) return;
+          if (err) Marks.toast("Speech stopped (" + err + ")");
+          pause();
+        },
+        /* a sub-range (a sentence inside a longer clip) is being spoken now */
+        onboundary: function(start, end, i){
+          if (myGen !== gen || !playing) return;
+          if (typeof i === "number" && units[i]){
+            idx = i;
+            if (state.mode === "pdf" && units[i].page && Library.currentPdfPage() !== units[i].page) Toc.goPdfPage(units[i].page);
+          }
+          var span = { start: start, end: end, dialogue: !!(typeof i === "number" && units[i] && units[i].dialogue) };
+          paint(span); ensureVisible(span);
+        }
+      });
     }
     /* a settings change mid-sentence restarts it; during the breath after one the pending timer
        starts the next unit with the new settings (restarting would replay the finished one) */
@@ -4598,7 +4720,7 @@
     }
     function pause(){
       playing = false; between = false; gen++; sampleGen++; clearTimeout(wait);
-      try { speechSynthesis.cancel(); } catch(_){}
+      engineFor().cancel();
       mediaPause();
       playIcon(playBtn, false); playBtn.setAttribute("aria-label", "Play");
     }
@@ -4607,7 +4729,12 @@
       startGen++;     /* a PDF page load still in flight belongs to a reading that is over */
       pause(); paint(null); active = false; units = []; idx = -1; sections = [];
       mediaState("none"); clearMeta(); clearSleep();
-      bar.classList.remove("on");
+      clearTimeout(replanT); replanT = null;
+      var was = runEngine;
+      if (runEngine && runEngine.stop) runEngine.stop();
+      runEngine = null; ctx = null; devPlan = null; session++;
+      bar.classList.remove("on"); bar.removeAttribute("data-engine");
+      if (was && was !== engines.device) fillVoices();     /* the mirror select lists the device voices again */
       document.body.classList.remove("tts-on");
       if (state.flow === "pages") relayoutPaged();
     }
@@ -4623,30 +4750,64 @@
       document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
       dockVar();
     }
+    /* the engine looks at the units (who speaks, clips…) before the first sentence plays */
+    function prepared(fn){
+      var eng = runEngine, mySession = session, p = null;
+      planned = units.length;
+      try { p = eng.prepare(units, ctx); } catch(err){ p = Promise.reject(err); }
+      if (!p || typeof p.then !== "function"){ fn(); return; }
+      mediaPlay();     /* still inside the gesture that started reading, so the lock-screen controls may follow */
+      p.then(function(){ if (mySession === session && active) fn(); }, function(err){
+        console.warn("read-aloud engine", err);
+        if (mySession !== session || !active) return;
+        Marks.toast((err && err.message) || (eng.label + " couldn’t start"));
+        stop();
+      });
+    }
     function startFrom(offset){
-      if (!supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
+      if (engineName === "device" && !supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
       if (state.mode !== "doc" && state.mode !== "pdf") return;
-      var my = ++startGen;
-      active = true; bar.classList.add("on"); fillVoices(); album = null;
-      document.body.classList.add("tts-on");
-      drawSleep(); measure();
-      if (state.flow === "pages") relayoutPaged();
-      loadSections(my);
-      if (state.mode === "doc"){
-        units = buildDocUnits();
-        var off = typeof offset === "number" ? offset : (Library.topCharOffset() || 0);
-        idx = 0;
-        for (var i = 0; i < units.length; i++){ if (units[i].end > off){ idx = i; break; } }
-        if (!units.length){ Marks.toast("Nothing to read"); stop(); return; }
-        play();
-      } else {
-        var page = Library.currentPdfPage();
-        loadPdfUnits(page, my).then(function(ok){
-          if (!ok) return;       /* stopped, restarted or the document changed while the page's text loaded */
-          if (!units.length){ Marks.toast("No text on this page"); stop(); return; }
-          idx = 0; play();
-        });
-      }
+      var my = ++startGen, mySession = ++session;
+      primeAudio();
+      chooseEngine(function(eng){
+        if (my !== startGen || mySession !== session) return;
+        if (state.mode !== "doc" && state.mode !== "pdf") return;
+        if (!eng.supported()){ Marks.toast("Read aloud isn’t available in this browser"); return; }
+        runEngine = eng;
+        ctx = { docId: Library.currentId(), mode: state.mode, lang: docLang(), title: mediaTitle() };
+        active = true; bar.classList.add("on"); album = null;
+        if (eng === engines.device) bar.removeAttribute("data-engine"); else bar.setAttribute("data-engine", eng.name);
+        fillVoices();
+        document.body.classList.add("tts-on");
+        drawSleep(); measure();
+        if (state.flow === "pages") relayoutPaged();
+        loadSections(my);
+        if (state.mode === "doc"){
+          units = buildDocUnits();
+          var off = typeof offset === "number" ? offset : (Library.topCharOffset() || 0);
+          idx = 0;
+          for (var i = 0; i < units.length; i++){ if (units[i].end > off){ idx = i; break; } }
+          if (!units.length){ Marks.toast("Nothing to read"); stop(); return; }
+          paint(units[idx]); ensureVisible(units[idx]);
+          prepared(play);
+        } else {
+          var page = Library.currentPdfPage();
+          loadPdfUnits(page, my).then(function(ok){
+            if (!ok) return;       /* stopped, restarted or the document changed while the page's text loaded */
+            if (!units.length){ Marks.toast("No text on this page"); stop(); return; }
+            prepared(function(){ idx = 0; play(); });
+          });
+        }
+      });
+    }
+    /* the engine plans the PDF units loaded so far (who speaks, clips…) */
+    function replan(doc){
+      replanT = null;
+      if (state.pdfDoc !== doc || !active || !runEngine || runEngine === engines.device) return;
+      planned = units.length;
+      var pp = null;
+      try { pp = runEngine.prepare(units, ctx); } catch(_){}
+      if (pp && pp.catch) pp.catch(function(){});
     }
     /* resolves to whether this reading is still the live one once the first page is in */
     function loadPdfUnits(page, my){
@@ -4667,6 +4828,13 @@
             if (!live()) return;
             var add = []; unitsFromText(tt, 0, add); add.forEach(function(u){ u.page = pg; });
             units = units.concat(add);
+            /* pages were appended: an engine that plans ahead extends its plan — at once when the reader is near
+               the end of it or this was the last page, otherwise once the pages stop coming */
+            if (runEngine && runEngine !== engines.device){
+              clearTimeout(replanT); replanT = null;
+              if (next > doc.numPages || idx >= planned - 20) replan(doc);
+              else replanT = setTimeout(function(){ replan(doc); }, 1500);
+            }
             setTimeout(more, 50);
           });
         })();
@@ -4727,6 +4895,80 @@
       return [["off", "Off"], ["natural", "Natural"], ["dramatic", "Dramatic"]].map(function(c){
         return '<button class="chip' + (expr === c[0] ? ' on' : '') + '" role="radio" aria-checked="' + (expr === c[0] ? "true" : "false") + '" data-expr="' + c[0] + '">' + c[1] + '</button>';
       }).join("");
+    }
+    function engineChips(){
+      return [["device", "Device voice"], ["eleven", "ElevenLabs"]].map(function(c){
+        var on = engineName === c[0];
+        return '<button class="chip' + (on ? ' on' : '') + '" role="radio" aria-checked="' + (on ? "true" : "false") + '" data-engine="' + c[0] + '">' + c[1] + '</button>';
+      }).join("");
+    }
+    function castChips(){
+      return [["off", "One voice"], ["on", "A voice per character"]].map(function(c){
+        var on = (castOn ? "on" : "off") === c[0];
+        return '<button class="chip' + (on ? ' on' : '') + '" role="radio" aria-checked="' + (on ? "true" : "false") + '" data-cast="' + c[0] + '">' + c[1] + '</button>';
+      }).join("");
+    }
+    var MODELS = [["eleven_multilingual_v2", "Multilingual v2"], ["eleven_v3", "v3 expressive"], ["eleven_flash_v2_5", "Flash v2.5"]];
+    function modelChips(){
+      return MODELS.map(function(c){ return '<button class="chip" role="radio" aria-checked="false" data-model="' + c[0] + '">' + c[1] + '</button>'; }).join("");
+    }
+    /* the rows under the pair: which engine reads, whether characters get voices of their own,
+       and the ElevenLabs rows (filled by audiobook.js once it has loaded) */
+    function engineRows(){
+      return '<div class="rowline"><label id="ttsEngineL">Voices from</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsEngineL" id="engineChips">' + engineChips() + '</div></div>' +
+        '<div class="rowline" id="castRow"><label id="ttsCastL">Characters</label><div class="chips" role="radiogroup" aria-labelledby="ttsCastL" id="castChips">' + castChips() + '</div></div>' +
+        '<p class="hint" id="ttsCastHint">Every named character gets a device voice of their own, worked out from the text on this device (“said Anna”, “he whispered”); lines no one is named for keep the dialogue voice.</p>' +
+        '<div class="rowline" id="castBtnRow"><button type="button" class="chip" id="ttsCastBtn">Voices for characters…</button></div>' +
+        '<div class="subgroup" id="elevenRow" data-engine-only="eleven">' +
+          '<div class="rowline"><label for="elevenNarrator">Narrator</label><select id="elevenNarrator" class="sel" disabled><option value="">Add a key first</option></select></div>' +
+          '<div class="rowline"><label id="elevenModelL">Model</label><div class="chips" role="radiogroup" aria-labelledby="elevenModelL" id="elevenModelChips">' + modelChips() + '</div></div>' +
+          '<div class="rowline"><button type="button" class="link-btn" id="elevenKeyLink">ElevenLabs API key…</button></div>' +
+          '<p class="hint">Each sentence is sent to ElevenLabs once and kept on this device, so replaying is free. Uses your ElevenLabs credits.</p>' +
+        '</div>';
+    }
+    /* the chips and rows above follow the settings; asked = the reader did something (opened the panel, chose an
+       engine, changed the key), so the ElevenLabs engine may fetch what its rows show */
+    function syncEngineUI(asked){
+      if (!Side.is("voices")) return;
+      var box = Side.body;
+      Array.prototype.forEach.call(box.querySelectorAll("#engineChips .chip"), function(c){
+        var on = c.dataset.engine === engineName; c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+      });
+      Array.prototype.forEach.call(box.querySelectorAll("#castChips .chip"), function(c){
+        var on = c.dataset.cast === (castOn ? "on" : "off"); c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+      });
+      var row = box.querySelector("#castRow"), hint = box.querySelector("#ttsCastHint"), btn = box.querySelector("#castBtnRow");
+      if (row) row.hidden = engineName !== "device";
+      if (hint) hint.hidden = engineName !== "device";
+      if (btn) btn.hidden = !(engineName === "eleven" || castOn);
+      Array.prototype.forEach.call(box.querySelectorAll("[data-engine-only]"), function(el){
+        var off = el.dataset.engineOnly !== engineName;
+        el.classList.toggle("dim", off);
+        if ("inert" in el) el.inert = off;          /* a greyed row leaves the tab order too */
+      });
+      if (engineName !== "device" && ENGINE_LIB[engineName]){
+        need([ENGINE_LIB[engineName]]).then(function(){ var e = engines[engineName]; if (e && e.syncSettings && Side.is("voices")) e.syncSettings(asked); }).catch(function(){});
+      }
+    }
+    function setEngine(name){
+      if (name !== "device" && name !== "eleven") return;
+      if (name === engineName){ syncEngineUI(true); return; }
+      engineName = name; Store.set("ll_tts_engine", name);
+      syncEngineUI(true);
+      /* a reading under way starts again from its sentence with the new engine */
+      if (active){ var at = units[idx] ? units[idx].start : undefined; stop(); startFrom(at); }
+    }
+    function setCast(on){
+      castOn = !!on; Store.set("ll_tts_cast", castOn ? "on" : "off");
+      syncEngineUI(true);
+      if (!active || runEngine !== engines.device) return;
+      if (!castOn){ devPlan = null; restart(); return; }
+      var p = engines.device.prepare(units, ctx);
+      if (p && p.then) p.then(function(){ if (active) restart(); }); else restart();
+    }
+    /* an engine's own script, loaded on demand (the key link and the Cast panel work before the engine has run) */
+    function withAudiobook(fn){
+      need(["audiobook"]).then(function(){ if (window.llAudiobook) fn(window.llAudiobook); }).catch(function(){ Marks.toast("Couldn’t load the voices module"); });
     }
     function setExpr(v){
       if (!/^(off|natural|dramatic)$/.test(v)) return;
@@ -4858,6 +5100,7 @@
             '<button type="button" class="chip" id="ttsAuto">Choose for me</button></div></div>' +
           '<p class="hint" id="ttsDlgHint">' + esc(hintText()) + '</p>' +
           '<p class="hint" id="ttsNoGender"' + (anyGenderKnown() ? ' hidden' : '') + '>Your device doesn’t say which voices are women’s and which are men’s — mark them below and Lamplight will remember.</p>' +
+          engineRows() +
         '</section>' +
         '<section class="group">' +
           '<div class="label">' + V_ICONS.cards + '<span>Good for this text</span></div>' +
@@ -4903,6 +5146,7 @@
       });
       foot.querySelector("#ttsSample").addEventListener("click", sample);
       if (filterText) applyFilter();
+      syncEngineUI(true);
     }
     /* the panel is redrawn whole only when the voice list itself changes; a choice made inside it
        repaints the parts that moved, so the button pressed keeps the focus */
@@ -4966,6 +5210,10 @@
       }
       if (b.id === "ttsSwap"){ swapPair(); return; }
       if (b.id === "ttsAuto"){ setVoice(""); setDialogue(""); return; }
+      if (b.dataset.engine !== undefined){ setEngine(b.dataset.engine); return; }
+      if (b.dataset.cast !== undefined){ setCast(b.dataset.cast === "on"); return; }
+      if (b.id === "ttsCastBtn"){ withAudiobook(function(a){ a.openCast(); }); return; }
+      if (b.id === "elevenKeyLink"){ withAudiobook(function(a){ a.askForKey(); }); return; }
     });
     Side.body.addEventListener("input", function(e){
       if (!Side.is("voices") || e.target.id !== "ttsFilter") return;
@@ -4982,16 +5230,24 @@
     $("#ttsNext").addEventListener("click", function(){ step(1); });
     rateEl.addEventListener("input", function(){
       rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "×"; Store.set("ll_tts_rate", String(rate));
-      restart();
+      if (runEngine && runEngine.setRate) runEngine.setRate(rate);     /* clips play faster or slower, nothing is made again */
+      else restart();
     });
-    voiceSel.addEventListener("change", function(){ setVoice(voiceSel.value); });
+    voiceSel.addEventListener("change", function(){
+      if (runEngine && runEngine.voiceChanged){ runEngine.voiceChanged(voiceSel.value); syncBar(); restart(); }
+      else setVoice(voiceSel.value);
+    });
     voicesBtn.addEventListener("click", openPanel);
     sleepBtn.addEventListener("click", openPanel);
     window.addEventListener("resize", measure);
-    window.addEventListener("pagehide", function(){ if (supported) try { speechSynthesis.cancel(); } catch(_){} if (silence) try { silence.pause(); } catch(_){} });
+    window.addEventListener("pagehide", function(){
+      if (supported) try { speechSynthesis.cancel(); } catch(_){}
+      if (runEngine && runEngine !== engines.device) runEngine.cancel();
+      if (silence) try { silence.pause(); } catch(_){}
+    });
 
     Menu.add({ order: 40, group: "reading", icon: ICONS.speaker, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
-               show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported; } });
+               show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported || engineName !== "device"; } });
     /* test hook: the pure pieces, and what the panel would choose */
     window.llSpeak = {
       voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
@@ -5004,11 +5260,16 @@
       lang: docLang, setDocLang: setDocLang, detect: detectFrom, ramp: RAMP.slice(),
       openPanel: openPanel, sample: sample, sampleText: SAMPLE, previewText: PREVIEW,
       sleep: function(){ return { mode: sleepMode, at: sleepAt }; }, setSleep: setSleep,
-      sections: function(){ return sections.slice(); }, silentWav: silentWav
+      sections: function(){ return sections.slice(); }, silentWav: silentWav,
+      findVoice: findVoice, castPlan: function(){ return devPlan; }
     };
-    return { start: startFrom, stop: stop, pause: pause, play: play, isActive: function(){ return active; }, isPlaying: function(){ return playing; },
+    return { start: startFrom, stop: stop, pause: pause, play: play, prev: function(){ step(-1); }, next: function(){ step(1); },
+             isActive: function(){ return active; }, isPlaying: function(){ return playing; },
              units: function(){ return units; }, index: function(){ return idx; }, buildDocUnits: buildDocUnits, openVoices: openPanel,
-             setDocLang: setDocLang, supported: supported };
+             setDocLang: setDocLang, supported: supported, docLang: docLang,
+             registerEngine: registerEngine, setEngine: setEngine, engine: function(){ return engineName; }, activeEngine: function(){ return runEngine; },
+             cast: function(){ return castOn; }, setCast: setCast, rate: function(){ return rate; }, context: function(){ return ctx; }, audioElement: audioElement,
+             syncBar: syncBar };
   })();
 
   /* ============================================================
@@ -7877,8 +8138,6 @@
         ICONS[name].split(" | ").map(function(d){ return '<path d="' + d + '"/>'; }).join("") + '</svg>';
     }
     var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
-    var LS_KEY  = "ll_apikey";
-    var AI_MODEL = "claude-sonnet-5";
     var dictMode = Store.get(LS_MODE) || "tap";
 
     /* ---------- styles ----------
@@ -8083,7 +8342,6 @@
       "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--ink); border-radius:3px;",
       "  text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
-      "#dictCard .ai{font-size:0.9375rem; line-height:1.55; white-space:pre-wrap; padding:2px 0 4px;}",
       /* chips: quiet actions; .go is the one primary action of a panel (the AI rewrite, a translation) */
       "#dictCard .acts{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px;}",
       "#dictCard .act{",
@@ -8761,7 +9019,6 @@
       var my = cur.gen, box = inner.querySelector("#dictExpl");
       if (!box) return;
       box.innerHTML = '<div class="note">Reading it…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>';
-      renderAiButton(sentence);
       var words = (sentence.toLowerCase().match(/[a-zÀ-ɏ'’-]+/g) || []).map(function(w){ return w.replace(/[’]/g, "'"); });
       var extra = [];
       words.forEach(function(w){ if (IRREG[w]) extra.push(IRREG[w]); variants(w).forEach(function(v){ extra.push(v); }); });
@@ -8796,7 +9053,7 @@
       buildCard({ kind: "sentence", sentence: text, title: /\s/.test(text) ? "This sentence" : "This word", icon: "explain",
         dialogLabel: "Sentence", tabsLabel: "Sentence", quote: text, tabs: ["explain", "simpler", "translate"], active: tab || "explain",
         span: sp, foot: foot,
-        panels: { explain: '<div id="dictExpl"></div><div id="dictAi"></div>',
+        panels: { explain: '<div id="dictExpl"></div>',
                   simpler: '<div class="lvl" id="simpLevel"></div><div id="simpBody"></div>',
                   translate: '<div class="tr-slot" data-kind="sentence"></div>' },
         lazy: { explain: function(){ runExplain(text); }, simpler: function(){ runSimplify(text); } } });
@@ -8914,9 +9171,7 @@
       h += esc(out.slice(pos)) + '</div>' +
            '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes, r.level || simpLevel())) + '</div>' +
            '<div class="acts" id="simpActs">' +
-           ("speechSynthesis" in window ? '<button type="button" class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') +
-           (navigator.onLine ? '<button type="button" class="act go" data-s="ai">' + icon("star", 16) + '<span>Simplify with AI</span></button>' : '') + '</div>' +
-           '<div id="simpAi"></div>' +
+           ("speechSynthesis" in window ? '<button type="button" class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') + '</div>' +
            (navigator.onLine ? '' : '<div class="note">Offline — simplified with the built-in dictionary only.</div>');
       body.innerHTML = h;
       cur.simple = out;
@@ -8925,11 +9180,6 @@
         if (chg){ toggleChangeNote(chg); return; }
         var b = e.target.closest("#simpActs button"); if (!b) return;
         if (b.dataset.s === "read") speakPlain(out, b, "Stop");
-        else if (b.dataset.s === "ai"){
-          var key = Store.get(LS_KEY) || "";
-          if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
-          simplifyWithAI(text, key, inner.querySelector("#simpAi"), r.level || simpLevel());
-        }
       });
     }
     /* a tap on a changed word shows (or hides) what it was and why it changed */
@@ -8943,116 +9193,8 @@
       note.textContent = "was “" + chg.dataset.from + "” — " + chg.dataset.why;
       chg.parentNode.insertBefore(note, chg.nextSibling);
     }
-    /* the rewrite Claude is asked for follows the strength the reader chose */
-    var AI_LEVEL = {
-      light: "Rewrite this, but replace only difficult words with everyday ones. Keep the sentences as they are.",
-      plain: "Rewrite this in plain English a 12-year-old would follow. Keep every fact and the same tone; use short sentences; do not add anything.",
-      very:  "Rewrite this in very plain English: short sentences, everyday words. Keep every fact and the same tone; do not add anything.",
-      kid:   "Rewrite this for a ten-year-old: short sentences, everyday words, explain any hard word in brackets, keep every fact."
-    };
-    function simplifyWithAI(text, apiKey, aiBox, level){
-      var my = cur.gen;
-      aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
-      var ask = AI_LEVEL[level] || AI_LEVEL.plain;
-      var prompt = ask + " Reply with the rewritten text only.\n\n" + text;
-      fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({ model: AI_MODEL, max_tokens: 600, messages: [{ role: "user", content: prompt }] })
-      })
-      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
-      .then(function(res){
-        if (!cur || cur.gen !== my) return;
-        var j = res.j;
-        if (!res.ok) throw new Error((j && j.error && j.error.message) || "the request failed");
-        var txt = (j.content || []).map(function(c){ return c.text || ""; }).join("").trim();
-        if (!txt) throw new Error("empty reply");
-        aiBox.innerHTML = '<div class="sec">Rewritten by Claude</div><div class="ai"></div>';
-        aiBox.querySelector(".ai").textContent = txt;
-      })
-      .catch(function(err){
-        if (!cur || cur.gen !== my) return;
-        aiBox.innerHTML = '<div class="note">Couldn’t get a rewrite (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
-          '<div class="acts"><button type="button" class="act" id="simpAiRetry">Try again</button><button type="button" class="act" id="simpAiKey">Change key</button></div>';
-        aiBox.querySelector("#simpAiRetry").addEventListener("click", function(){ simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox, level); });
-        aiBox.querySelector("#simpAiKey").addEventListener("click", function(){ if (askForKey(true)) simplifyWithAI(text, Store.get(LS_KEY) || "", aiBox, level); });
-      });
-    }
     /* for tests and other modules */
     window.llSimplify = { render: renderSimplify, simplify: simplifyText, levels: SIMP_LEVELS, level: simpLevel };
-
-    /* ---------- optional: explain with AI (online + your own key) — the last block of the Explain panel ---------- */
-    function renderAiButton(sentence){
-      var aiBox = inner.querySelector("#dictAi");
-      if (!aiBox) return;
-      if (!navigator.onLine){ aiBox.innerHTML = ""; return; }
-      aiBox.innerHTML = '<div class="acts"><button type="button" class="act go" id="dictAiBtn">' + icon("star", 16) + '<span>Explain with AI</span></button></div>';
-      aiBox.querySelector("#dictAiBtn").addEventListener("click", function(){
-        var key = Store.get(LS_KEY) || "";
-        if (!key){ if (!askForKey(true)) return; key = Store.get(LS_KEY) || ""; if (!key) return; }
-        explainWithAI(sentence, key, aiBox);
-      });
-    }
-    function explainWithAI(sentence, apiKey, aiBox){
-      var my = cur.gen;
-      aiBox.innerHTML = '<div class="note">Asking Claude…</div>';
-      var prompt = "Explain this sentence from a book in plain English, in 2-3 short sentences: what it means, " +
-        "and what it implies about the people, the situation or the mood. If it contains an idiom or unusual phrase, " +
-        "say what it means. No preamble.\n\n" + sentence;
-      fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          max_tokens: 350,
-          messages: [{ role: "user", content: prompt }]
-        })
-      })
-      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
-      .then(function(res){
-        if (!cur || cur.gen !== my) return;
-        var j = res.j;
-        if (!res.ok){
-          var msg = (j && j.error && j.error.message) || "the request failed";
-          throw new Error(msg);
-        }
-        var txt = (j.content || []).map(function(c){ return c.text || ""; }).join("").trim();
-        if (!txt) throw new Error("empty reply");
-        aiBox.innerHTML = '<div class="sec">Explained by Claude</div><div class="ai"></div>';
-        aiBox.querySelector(".ai").textContent = txt;
-      })
-      .catch(function(err){
-        if (!cur || cur.gen !== my) return;
-        aiBox.innerHTML = '<div class="note">Couldn’t get an explanation (' + esc(err && err.message ? err.message : "no connection") + ').</div>' +
-          '<div class="acts"><button type="button" class="act" id="dictAiRetry">Try again</button><button type="button" class="act" id="dictAiKey">Change key</button></div>';
-        aiBox.querySelector("#dictAiRetry").addEventListener("click", function(){ explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
-        aiBox.querySelector("#dictAiKey").addEventListener("click", function(){ if (askForKey(true)) explainWithAI(sentence, Store.get(LS_KEY) || "", aiBox); });
-      });
-    }
-    /* back online: the AI chip is offered again (unless an answer is already there) */
-    window.addEventListener("online", function(){
-      if (cur && cur.kind === "sentence" && card.classList.contains("open") && !inner.querySelector("#dictAi .ai")) renderAiButton(cur.sentence);
-    });
-    window.addEventListener("offline", function(){ var b = inner.querySelector("#dictAiBtn"); if (b) b.parentNode.removeChild(b); });
-
-    function askForKey(keepOpen){
-      var k = prompt("Paste an Anthropic API key to enable “Explain with AI”.\n\nIt is stored only on this device and is sent only to api.anthropic.com when you press the button. Leave blank to remove it.", Store.get(LS_KEY) || "");
-      if (k === null) return false;
-      k = k.trim();
-      if (k) Store.set(LS_KEY, k); else Store.remove(LS_KEY);
-      if (!keepOpen) closeCard();
-      return !!k;
-    }
 
     /* ---------- finding the word / sentence under the finger ---------- */
     function rangeAt(x, y){
@@ -9333,8 +9475,7 @@
           '<button type="button" class="chip" data-dm="off" aria-pressed="false">Off</button>' +
         '</div>' +
         '<div class="hint">' +
-          'Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline. ' +
-          '<a href="#" id="dictKeyLink" style="color:var(--accent)">Anthropic API key for “Explain with AI”…</a>' +
+          'Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline.' +
         '</div>';
       sheet.appendChild(g);
       function syncChips(){
@@ -9348,9 +9489,6 @@
           Store.set(LS_MODE, dictMode);
           syncChips(); applyMode();
         });
-      });
-      g.querySelector("#dictKeyLink").addEventListener("click", function(e){
-        e.preventDefault(); askForKey(true);
       });
       syncChips();
     }
@@ -9426,7 +9564,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
+  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
@@ -9434,6 +9572,7 @@
 
   /* ---------- boot ---------- */
   Prefs.load();
+  Store.remove("ll_apikey");   /* the key of the old online explainer: wiped from devices */
   /* first run on a device that asks for more contrast: start with the high-contrast theme */
   if (!Store.get("ll_prefs") && window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){
     state.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "hidark" : "hicon";

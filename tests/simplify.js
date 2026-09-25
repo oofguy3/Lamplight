@@ -98,7 +98,7 @@ async function openSimpler(page){
     R.check("at least one change, with a title starting 'was:'", info.changes.length >= 1 && info.changes.every((c) => /^was: /.test(c.title)), JSON.stringify(info.changes));
     R.check("extraordinary became a plainer word", info.changes.some((c) => c.title === "was: extraordinary") && !/extraordinary/.test(info.simple), info.simple);
     R.check("summary line counts the changes", /\d+ words? swapped/.test(info.summary), info.summary);
-    R.check("Simpler offers Read aloud and Simplify with AI; the footer Highlight, Note…, Read from here, Copy", info.acts.join("|") === "Read aloud|Simplify with AI" && info.foot.join("|") === "Highlight|Note…|Read from here|Copy", info.acts.join("|") + " / " + info.foot.join("|"));
+    R.check("Simpler offers Read aloud; the footer Highlight, Note…, Read from here, Copy", info.acts.join("|") === "Read aloud" && info.foot.join("|") === "Highlight|Note…|Read from here|Copy", info.acts.join("|") + " / " + info.foot.join("|"));
     R.check("no offline note while online", !info.offline);
     R.check("card is a labelled dialog with real buttons", await page.evaluate(() => document.getElementById("dictCard").getAttribute("role") === "dialog" && Array.from(document.querySelectorAll("#dictCard .chg, #simpActs .act, #dictMarkActs .act")).every((b) => b.tagName === "BUTTON")));
     const simpleText = info.simple;
@@ -183,7 +183,7 @@ async function openSimpler(page){
     await page.evaluate(() => window.llSimplify.render("Nobody could have predicted the extraordinary consequences of that small, deliberate decision."));
     await cardOpen(page);
     info = await cardInfo(page);
-    R.check("offline: still simplified, with a note and no AI button", /unusual/.test(info.simple) && info.offline && info.acts.indexOf("Simplify with AI") < 0, JSON.stringify({ acts: info.acts, offline: info.offline }));
+    R.check("offline: still simplified, with a note", /unusual/.test(info.simple) && info.offline && info.acts.join("|") === "Read aloud", JSON.stringify({ acts: info.acts, offline: info.offline }));
     await ctx.setOffline(false);
     await page.keyboard.press("Escape");
     R.check("no page errors (desktop)", !(page._errors || []).length, (page._errors || []).join(" | "));

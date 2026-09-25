@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.21-24";
+const VERSION = "2026.09.25-25";
 const CACHE = "lamplight-" + VERSION;
 const ASSETS = [
   "./",
@@ -11,6 +11,7 @@ const ASSETS = [
   "./explain.js",
   "./morph.js",
   "./translate.js",
+  "./audiobook.js",
   "./manifest.webmanifest",
   "./dict-index.json",
   "./icon-192.png",
@@ -118,7 +119,7 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-  /* only our own files: the online dictionary and the AI API go straight to the network */
+  /* only our own files: the online dictionary, MyMemory and api.elevenlabs.io go straight to the network */
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   const isPage =
     e.request.mode === "navigate" ||

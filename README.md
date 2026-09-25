@@ -1,6 +1,6 @@
 # Lamplight
 
-**A quiet, offline-first reader for PDF, EPUB, DOCX, TXT, Markdown and HTML — with a built-in dictionary, word parts, a sentence explainer and simplifier, translation, and a read-aloud voice that all work without an internet connection.**
+**A quiet, offline-first reader for PDF, EPUB, DOCX, TXT, Markdown and HTML — with a built-in dictionary, word parts, a sentence explainer and simplifier, translation, and read-aloud with a voice for every character, all working without an internet connection.**
 
 Lamplight is a progressive web app made of plain static files: no server, no accounts, no build step. Everything you open stays on your device.
 
@@ -62,11 +62,10 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
 - **Word parts** under every definition: the word broken into **prefix, root and suffix** with the meaning and origin of each part and a plain "so: not able to be broken" reading — from tables of 111 prefixes, 97 suffixes and endings and 357 Latin, Greek and Old English roots (`morph.js`, loaded on demand). Tapping a base looks it up in turn.
 - **Hold a sentence** (right-click on desktop, or select text) for an offline **Explain** card: the sentence split into clauses, who / did what / to whom, where and when, the tense with a one-line meaning, phrasal verbs and idioms found in the dictionary, and the sentence rewritten in plainer words. Key words are glossed underneath.
 - **About this text** (`i`): word, unique-word and sentence counts, reading time at your own speed, **reading level** (Flesch reading ease with a plain-English band, Flesch–Kincaid grade and age, Coleman–Liau as a second opinion), vocabulary richness, dialogue share, and the **thirty hardest words** in the document — tap one for its definition or find it in the text. Works for PDFs too.
-- **Simplify** any selected sentence or passage (the pill's *Simplify* button, or from the Explain card): an offline, rule-based rewrite that swaps rarer words for common ones, replaces idioms and wordy phrases, splits over-long sentences and turns clear passives into actives, with every change underlined and explained ("was 'extraordinary' — rarer word") so nothing is hidden; copy it, hear it read aloud, or ask for an AI rewrite with your key.
+- **Simplify** any selected sentence or passage (the pill's *Simplify* button, or from the Explain card): an offline, rule-based rewrite that swaps rarer words for common ones, replaces idioms and wordy phrases, splits over-long sentences and turns clear passives into actives, with every change underlined and explained ("was 'extraordinary' — rarer word") so nothing is hidden; copy it or hear it read aloud.
   **Four strengths**: *light* swaps only genuinely rare words; *plain* is the default; *very plain* also splits long sentences, breaks semicolons and dashes into full stops and rewrites stiff connectors; *for a ten-year-old* adds all of that plus cutting trailing clauses loose, reducing stacked adjectives, writing out abbreviations, saying large numbers in words and glossing any word still likely to be unfamiliar.
 - **Figures of speech and register** in the Explain card: similes, metaphors, personification, hyperbole and idioms are named and quoted — touch one and the exact words light up in the sentence — and the sentence's register (archaic, spoken, formal, literary or neutral) is given with the evidence for it.
-- **Translate** a tapped word, a selected sentence, or the **whole document** into any of 36 languages. Three engines, used in this order: the browser's **built-in on-device translator** (Chrome and Edge; private, free, and offline once its language pack is downloaded), your own **Anthropic API key**, or the free **MyMemory** web service for single words and sentences. A translated document shows each paragraph's translation beneath it without touching the original text, so highlights, search, positions and read aloud keep working; translations are cached on the device, so a translated book reopens translated, even offline.
-- Optional **Explain with AI** button (shown only when online) using an Anthropic API key you paste into settings; the key stays in local storage.
+- **Translate** a tapped word, a selected sentence, or the **whole document** into any of 36 languages. Two engines, used in this order: the browser's **built-in on-device translator** (Chrome and Edge; private, free, and offline once its language pack is downloaded), or the free **MyMemory** web service for single words and sentences. A translated document shows each paragraph's translation beneath it without touching the original text, so highlights, search, positions and read aloud keep working; translations are cached on the device, so a translated book reopens translated, even offline.
 
 **Keeping your place**
 - **Library**: every file you open is kept on the device with its progress; reopen and you are exactly where you left off — across font, width and flow changes. **Pin** the books you are reading to keep them at the top in an order you set, and the Continue card follows the pin.
@@ -80,6 +79,8 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
 
 **Reading aids**
 - **Read aloud** (Web Speech API) sentence by sentence, with a picker that leads on a handful of good choices rather than a hundred: a **recommended pair** of narrator and dialogue voice with a preview on each, six cards for the best women's and men's voices in the document's language, and the full list folded away behind one tap. Gender is read from the voice's identifier as well as its name, so the men's voices on Android and the Microsoft Natural set are recognised; where a device says nothing, a chip on each card lets you mark it and Lamplight remembers. Voices you never want can be hidden. Your choices are kept **per language**, so an English book and a Spanish one keep their own. There is a **separate voice for dialogue** (by default the other voice, so quoted speech is easy to tell from narration) and **expression read off the text**: questions lift, exclamations quicken, ellipses and paragraph ends pause, headings slow down, and "whispered" / "shouted" / "sighed" around a quote change how it is spoken. Off, Natural or Dramatic. The document's language is detected and used for the voice and for hyphenation, and playback eases in over the first three sentences. **Lock-screen and headphone controls** (play, pause, previous and next sentence) through the Media Session API, and a **sleep timer** that stops at the end of the sentence after 15 to 60 minutes or at the end of the chapter.
+- **A voice per character**: read aloud gives every speaking character their own device voice (turn off in settings). Who speaks each line is worked out on the device from the quoted lines and the speech tags around them (*said Anna*, *he whispered*, turn-taking); *Voices for characters…* shows who was found and lets you change each voice and its pitch. Lines no one is named for keep the dialogue voice.
+- **Read aloud with ElevenLabs voices** (optional): paste your own ElevenLabs API key and the book is narrated by a narrator voice plus a different voice for each speaking character, worked out offline from the text. Audio is generated as you listen and kept on the device, so replays are free. Limitations: speaker attribution understands English speech tags; dialogue introduced with an em-dash is read by the narrator.
 - Reading **ruler**, **auto-scroll** at your pace (timed page turns in Pages flow), and a progress readout with **time left** from your measured reading speed.
 - Screen wake lock while reading; keyboard shortcuts (`?` shows them all); works with reduced-motion and forced-colour settings.
 
@@ -107,6 +108,7 @@ app.js  app.css         the reader
 explain.js              the offline sentence explainer
 morph.js                word parts: prefixes, roots and suffixes with meanings
 translate.js            translation engines, the bilingual page view and its cache
+audiobook.js            who speaks each line, a voice per character, ElevenLabs narration (loaded on demand)
 sw.js                   service worker (bump VERSION on every release)
 manifest.webmanifest    PWA manifest
 dict1–6.json, dict-index.json   the offline dictionary (alphabetical chunks + index)
@@ -118,9 +120,9 @@ tests/                  browser tests (not needed to run the app)
 
 Opening `index.html` straight from a folder (`file://`) works for reading, but browsers block `fetch()` on `file://` URLs, so the offline dictionary, the bundled fonts (and the service worker) are only available when the folder is served over HTTP(S).
 
-### Explain with AI (optional)
+### Read aloud with ElevenLabs (optional)
 
-Settings → Dictionary → *Anthropic API key…* Paste a key from https://console.anthropic.com. It is stored only in your browser's local storage and sent only to `api.anthropic.com` when you press *Explain with AI*. Nothing else in the app talks to the network.
+Start reading aloud (`r`, or *Read aloud* in the menu), press the voice button in the bar to open *Read-aloud voices*, and under *Voices from* choose *ElevenLabs*; then *ElevenLabs API key…* and paste a key from your ElevenLabs account. Pick a narrator voice and a model; *Voices for characters…* shows who was found speaking in the open book and lets you change each voice. The key is stored only in your browser's local storage and is sent only to `api.elevenlabs.io` while reading aloud with that engine; every clip is kept in IndexedDB, so a sentence is only ever paid for once. The bar shows roughly how many characters have been sent.
 
 ## Keyboard shortcuts
 
@@ -128,11 +130,11 @@ Settings → Dictionary → *Anthropic API key…* Paste a key from https://cons
 
 ## Privacy
 
-Files, positions, highlights, notes and cached translations live in your browser's IndexedDB; settings, saved themes and reading stats in local storage. Nothing is uploaded anywhere. The only network requests the app makes are for its own files (cached after the first visit), the free `api.dictionaryapi.dev` lookup when a word is not in the offline dictionary and you are online, and — only when you press the button — the Anthropic API (with your key) or MyMemory (`api.mymemory.translated.net`, which receives the word or sentence you translate). The built-in translator runs on your device. Read aloud uses the speech voices installed on your device; some browsers list "online" voices that the browser itself fetches.
+Files, positions, highlights, notes, cached translations, cached read-aloud audio and the voices cast for each book's characters live in your browser's IndexedDB; settings, saved themes and reading stats (and, if you use that engine, your ElevenLabs key, narrator, model and voice list) in local storage. Nothing is uploaded anywhere unless you turn on the ElevenLabs read-aloud engine, which sends the sentences being read (and your key) to `api.elevenlabs.io` and nothing else. Apart from that, the only network requests the app makes are for its own files (cached after the first visit), the free `api.dictionaryapi.dev` lookup when a word is not in the offline dictionary and you are online, and — only when you press the button — MyMemory (`api.mymemory.translated.net`, which receives the word or sentence you translate). The built-in translator runs on your device, and so does working out who speaks each line. Read aloud with the device voice uses the speech voices installed on your device; some browsers list "online" voices that the browser itself fetches.
 
 ## Development
 
-Everything is hand-written ES5-style JavaScript in `app.js` (with `explain.js` and `morph.js` loaded on demand); there is no bundler and no dependencies to install. To work on it, serve the folder over HTTPS or `localhost` (for example `python3 -m http.server`) and open it in a browser.
+Everything is hand-written ES5-style JavaScript in `app.js` (with `explain.js`, `morph.js`, `translate.js` and `audiobook.js` loaded on demand); there is no bundler and no dependencies to install. To work on it, serve the folder over HTTPS or `localhost` (for example `python3 -m http.server`) and open it in a browser.
 
 Releasing: bump `VERSION` in `sw.js` — every file, `index.html` included, is served from that version's cache, so the shell and its scripts always match; installed copies pick the new version up in the background and show a *Reload* toast. Without the bump, a deployed change is not picked up by installed copies. The deploy workflow also runs Lighthouse against the published site and requires an accessibility score of at least 0.9.
 
@@ -150,7 +152,7 @@ NODE_PATH=$(npm root -g) node tests/themes.js       # contrast audit of every bu
 NODE_PATH=$(npm root -g) node tests/wordparts.js    # 300 word decompositions (node only)
 ```
 
-plus `themes-browser.js`, `fonts.js`, `type2.js`, `speak.js` (with a stubbed speech engine and media session), `wordparts-browser.js`, `about.js`, `stats.js` and `stats2.js` (with Playwright's fake clock), `library2.js`, `notes2.js`, `zen.js`, `print.js` (print media emulation), `translate.js` (stubbed translator, MyMemory and Anthropic routes), `simplify.js`, `explain2.js`, `pace.js` (a simulated reader driven against a fake clock) and `ui-a/b/c.js` for the interface itself. Each script starts its own server on a free port and exits non-zero on failure.
+plus `themes-browser.js`, `fonts.js`, `type2.js`, `speak.js` (with a stubbed speech engine and media session), `wordparts-browser.js`, `about.js`, `stats.js` and `stats2.js` (with Playwright's fake clock), `library2.js`, `notes2.js`, `zen.js`, `print.js` (print media emulation), `translate.js` (stubbed translator and MyMemory routes), `simplify.js`, `explain2.js`, `pace.js` (a simulated reader driven against a fake clock) and `ui-a/b/c.js` for the interface itself. Each script starts its own server on a free port and exits non-zero on failure.
 
 `tests/screenshots.js` remakes the pictures at the top of this file from the running app, so they never drift from it (`node tests/screenshots.js` for all of them, or name the ones you want).
 
@@ -172,5 +174,6 @@ Lamplight bundles these open-source projects; each keeps its own licence (in `ve
 - The word-frequency list inside `explain.js` (used to decide which words need glossing, and by *About this text* to find the hardest words) is derived from [google-10000-english](https://github.com/first20hours/google-10000-english), MIT.
 - The affix and root tables in `morph.js` were written for Lamplight from the classic school lists of Latin and Greek word roots.
 - The optional online word lookup uses the [Free Dictionary API](https://dictionaryapi.dev/).
+- The optional multi-voice narration uses the [ElevenLabs](https://elevenlabs.io/) text-to-speech API with your own key.
 
 Lamplight itself is released under the [MIT License](LICENSE).

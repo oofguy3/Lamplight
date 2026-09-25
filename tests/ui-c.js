@@ -154,13 +154,13 @@ const CONTRAST = `(el, behind) => {
     R.check("sentence card: Explain · Simpler · Translate over the quoted sentence", tabs.map((t) => t.label).join("·") === "Explain·Simpler·Translate" && head.title === "This sentence" && head.quote === SENTENCE, JSON.stringify(head));
     R.check("the Simpler tab carries data-m=simplify", await page.$eval('#dictCard [role=tab][data-m="simplify"]', (b) => b.dataset.tab === "simpler"));
     await page.waitForFunction(() => /main clause/.test(document.getElementById("dictExpl").textContent), null, { timeout: 20000 });
-    R.check("Explain is drawn at once, with the AI chip as its last block", await page.evaluate(() => /main clause/.test(document.getElementById("dictExpl").textContent) && !!document.querySelector("#dictPanel-explain #dictAiBtn.go")));
+    R.check("Explain is drawn at once", await page.evaluate(() => /main clause/.test(document.getElementById("dictExpl").textContent)));
     R.check("Simpler waits for its tab", await page.evaluate(() => document.getElementById("simpBody").children.length === 0));
     R.check("footer: Highlight · Note… · Read from here · Copy", (await footer(page)).join(",") === "hl:Highlight,note:Note…,read:Read from here,copy:Copy", (await footer(page)).join(","));
     await page.click('#dictCard [data-m="simplify"]');
     await page.waitForSelector("#dictCard .simple", { timeout: 30000 });
     const simp = await page.evaluate(() => ({ text: document.querySelector("#dictCard .simple").textContent, chg: document.querySelectorAll("#dictCard .chg").length, acts: Array.from(document.querySelectorAll("#simpActs button")).map((b) => b.textContent.trim()) }));
-    R.check("the Simpler tab renders the plainer sentence with its changes, Read aloud and Simplify with AI", /unusual/.test(simp.text) && simp.chg >= 1 && simp.acts.join("|") === "Read aloud|Simplify with AI", JSON.stringify(simp));
+    R.check("the Simpler tab renders the plainer sentence with its changes and Read aloud", /unusual/.test(simp.text) && simp.chg >= 1 && simp.acts.join("|") === "Read aloud", JSON.stringify(simp));
     await page.click(tab("translate"));
     await page.waitForSelector('#dictCard .tr-slot[data-kind="sentence"] .tr-out', { timeout: 15000 });
     R.check("the Translate tab shows the sentence translation", /^\[es\] Nobody/.test(await page.$eval("#dictCard .tr-out", (e) => e.textContent)));
@@ -192,10 +192,10 @@ const CONTRAST = `(el, behind) => {
     for (const th of ["newsprint", "candle", "terminal", "hidark"]){
       await theme(page, th); await page.waitForTimeout(150);
       await holdSentence(page, "Nobody could have");
-      await page.waitForSelector("#dictAiBtn", { timeout: 10000 }).catch(() => null);
+      await page.waitForSelector("#dictQuote", { timeout: 10000 }).catch(() => null);
       const rs = await page.evaluate((src) => { const c = eval(src), card = document.getElementById("dictCard"); return {
         tabOn: c(document.querySelector("#dictCard [role=tab][aria-selected=true]"), card), tabOff: c(document.querySelector("#dictCard [role=tab]:not([aria-selected=true])"), card),
-        go: c(document.getElementById("dictAiBtn"), card), quote: c(document.getElementById("dictQuote"), card), act: c(document.querySelector("#dictMarkActs .act"), card), pill: c(document.querySelector("#dictPill button"), document.getElementById("dictPill")) }; }, CONTRAST);
+        quote: c(document.getElementById("dictQuote"), card), act: c(document.querySelector("#dictMarkActs .act"), card), pill: c(document.querySelector("#dictPill button"), document.getElementById("dictPill")) }; }, CONTRAST);
       await page.keyboard.press("Escape"); await page.waitForTimeout(200);
       await tapWord(page, "misunderstanding");   /* "unexpected" is a highlight now, which a tap leaves alone */
       await page.waitForFunction((sel) => document.querySelector(sel + " .bdg"), tab("parts"), { timeout: 30000 });

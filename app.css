@@ -1072,6 +1072,16 @@
     #tts .tts-sleep{padding:0 7px; font-size:0.7188rem;}
     #tts #ttsSleepW{display:none;}   /* just "12 min": the first row is full */
   }
+  /* ElevenLabs narration: "Fetching…" / characters sent, shown only for that engine (#tts[data-engine]) */
+  #tts .tts-status{
+    display:none; font-size:0.7188rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    max-width:130px; font-variant-numeric:tabular-nums;
+  }
+  #tts[data-engine] .tts-status{display:block;}
+  #tts.fetching #ttsPlay{opacity:.55;}
+  @media (max-width:560px){ #tts .tts-status{max-width:76px; font-size:0.6875rem;} }
+  /* small phones: no room for the text, but the live region keeps announcing and the play button shows the wait */
+  @media (max-width:400px){ #tts .tts-status{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; max-width:none;} }
 
   /* ---------- the voices panel ----------
      A handful of good choices first — the pair that is reading, then up to six cards for this
@@ -1085,6 +1095,25 @@
   .tts-panel .hint{line-height:1.45;}
   .tts-panel .tts-sleep-chips .chip{padding:7px 11px; font-size:0.7812rem;}
   .tts-panel .rowline label{min-width:72px;}
+  /* the engine rows under the pair: the ElevenLabs rows grey out while the device voice is chosen */
+  .tts-panel .subgroup{display:grid; gap:12px;}
+  .tts-panel .subgroup.dim{opacity:.45; pointer-events:none;}
+  .tts-panel .rowline[hidden], .tts-panel .subgroup[hidden], .tts-panel .hint[hidden]{display:none;}
+  .tts-panel .rowline .sel{flex:1 1 140px; min-width:0; max-width:100%;}
+  /* voices for the narrator and each character (Cast panel) */
+  .cast-row{display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; padding:9px 4px; border-bottom:1px solid var(--line);}
+  .cast-row .cast-who{flex:1; min-width:0;}
+  .cast-row .cast-who b{display:block; font-size:0.875rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .cast-row .cast-who span{font-size:0.7188rem; color:var(--muted);}
+  .cast-row .cast-name{font-size:0.8125rem; font-weight:600;}
+  .cast-row .sel{
+    max-width:48%; padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:0.8125rem; text-overflow:ellipsis;
+  }
+  .cast-row .cast-pitch{display:flex; align-items:center; gap:8px; flex:1 1 100%; font-size:0.75rem; color:var(--muted);}
+  .cast-row .cast-pitch input[type=range]{flex:1; min-width:80px;}
+  .cast-row .cast-pitch .val{min-width:34px; font-variant-numeric:tabular-nums;}
+  .cast-note{font-size:0.75rem; color:var(--muted); padding:8px 4px 2px; line-height:1.45;}
   /* a voice's name, and the little words under it. min-width:0 so a device that calls a voice
      "English United States" shortens it rather than pushing the panel past the drawer */
   .v-name{font-size:0.9375rem; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; max-width:100%;}

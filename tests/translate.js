@@ -1,6 +1,6 @@
 /* Translate: the settings group and its hint, the card's Translate tab for a word / sentence / selection, the whole
    document under each block in shadow roots (offsets, highlights, search and read-aloud units
-   untouched), the cache (reopen, offline), the engine fallbacks (MyMemory, an Anthropic key),
+   untouched), the cache (reopen, offline), the engine fallback (MyMemory),
    the download flow, right-to-left output, PDFs. The browser's Translator / LanguageDetector
    are stubbed before the app loads; the web services are answered by page.route.
      NODE_PATH=$(npm root -g) node tests/translate.js        (LL_SHOTS=<dir> for the screenshots) */
@@ -42,12 +42,6 @@ async function routes(ctx, log){
     if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
     const u = new URL(route.request().url()); log.mm.push(u.searchParams.get("q") + " " + u.searchParams.get("langpair"));
     route.fulfill({ status: 200, contentType: "application/json", headers: CORS, body: JSON.stringify({ responseStatus: 200, responseData: { translatedText: "[mm] " + u.searchParams.get("q") } }) });
-  });
-  await ctx.route("https://api.anthropic.com/**", (route) => {
-    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
-    const body = JSON.parse(route.request().postData() || "{}"); log.ai.push(body);
-    const content = body.messages[0].content, arr = JSON.parse(content.slice(content.indexOf("\n\n[") + 2));
-    route.fulfill({ status: 200, contentType: "application/json", headers: CORS, body: JSON.stringify({ content: [{ type: "text", text: "```json\n" + JSON.stringify(arr.map((s) => "[ai] " + s)) + "\n```" }], stop_reason: "end_turn" }) });
   });
 }
 async function textPoint(page, word){
@@ -147,7 +141,7 @@ async function waitPrecache(page){
     await page.waitForFunction(() => /built-in translator ready/.test(document.getElementById("trHint").textContent), null, { timeout: 15000 }).catch(() => null);
     const hint = await page.$eval("#trHint", (h) => h.textContent);
     R.check("hint: built-in translator ready", /Spanish · built-in translator ready/.test(hint), hint.slice(0, 80));
-    R.check("hint carries the privacy line", /runs on your device/.test(hint) && /api\.anthropic\.com/.test(hint) && /MyMemory/.test(hint));
+    R.check("hint carries the privacy line", /runs on your device/.test(hint) && /MyMemory/.test(hint));
     await shot(page, "translate-settings-desktop-day");
     await page.selectOption("#trLang", "es");
     await page.waitForTimeout(200);
@@ -254,7 +248,7 @@ async function waitPrecache(page){
     await ctx.close();
   });
 
-  /* ---------------- B: no built-in translator, no key → MyMemory for words; a key → Claude for the page ---------------- */
+  /* ---------------- B: no built-in translator → MyMemory for words; nothing for the page ---------------- */
   await guard("fallbacks", async () => {
     const log = { mm: [], ai: [] };
     const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
@@ -279,25 +273,8 @@ async function waitPrecache(page){
     await page.waitForFunction(() => document.getElementById("sheet").classList.contains("open") && /MyMemory/.test(document.getElementById("trHint").textContent), null, { timeout: 15000 }).catch(() => null);
     const sheet = await page.evaluate(() => ({ open: document.getElementById("sheet").classList.contains("open"), hint: document.getElementById("trHint").textContent, tr: document.querySelectorAll("#doc .ll-tr").length }));
     R.check("no page engine: the settings open on the Translation group", sheet.open && sheet.tr === 0, JSON.stringify(sheet).slice(0, 120));
-    R.check("hint explains what is needed", /words and sentences via MyMemory; add an Anthropic API key or use Chrome \/ Edge for whole documents/.test(sheet.hint), sheet.hint.slice(0, 120));
+    R.check("hint explains what is needed", /words and sentences via MyMemory; use Chrome \/ Edge for whole documents/.test(sheet.hint), sheet.hint.slice(0, 120));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
-    /* a key: the document goes through the Anthropic API in batches */
-    await page.evaluate(() => localStorage.setItem("ll_apikey", "sk-ant-test"));
-    await page.evaluate(() => document.getElementById("trGroup").scrollIntoView());
-    await page.keyboard.press("s"); await page.waitForTimeout(200);
-    await page.evaluate(() => window.llTranslate.refreshHint());
-    await page.waitForFunction(() => /Anthropic key/.test(document.getElementById("trHint").textContent), null, { timeout: 5000 }).catch(() => null);
-    R.check("hint: using your Anthropic key", /Spanish · using your Anthropic key/.test(await page.$eval("#trHint", (h) => h.textContent)));
-    await page.keyboard.press("Escape"); await page.waitForTimeout(200);
-    await menu(page, /^Translate this document/);
-    const st = await waitDone(page);
-    const bodies = log.ai;
-    R.check("Anthropic route hit in batches", bodies.length >= 2 && st.engine === "claude", bodies.length + " requests; " + JSON.stringify(st));
-    const okBody = bodies.every((bd) => bd.model && bd.max_tokens <= 4000 && Array.isArray(JSON.parse(bd.messages[0].content.slice(bd.messages[0].content.indexOf("\n\n[") + 2))) && /from English into Spanish/.test(bd.messages[0].content));
-    R.check("each request: model, capped max_tokens, instruction + JSON array", okBody, JSON.stringify(bodies[0]).slice(0, 160));
-    const bl = await blocks(page);
-    R.check("Claude's translations applied to every block", bl.length >= 30 && bl.every((x) => x.tr === "[ai] " + x.text));
-    R.check("batches stay under about 2500 characters", bodies.every((bd) => JSON.stringify(JSON.parse(bd.messages[0].content.slice(bd.messages[0].content.indexOf("\n\n[") + 2))).length < 3200));
     R.check("no page errors (fallbacks)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
   });
