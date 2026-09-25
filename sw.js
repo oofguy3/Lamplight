@@ -1,8 +1,16 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.25-25";
+const VERSION = "2026.09.25-26";
 const CACHE = "lamplight-" + VERSION;
+/* caches that outlive a release: shared files on their way in, and the natural voices (the Kokoro model
+   and its voice files, kept there by kokoro-js): a 95 MB download that must not go with every update */
+const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices"];
+/* cross-origin isolation for the pages this worker serves: GitHub Pages cannot send these headers, and
+   without them WebAssembly threads (SharedArrayBuffer) are off, so the natural voices run single-threaded.
+   "credentialless" keeps cross-origin fetches (the online dictionary, ElevenLabs, huggingface.co) working;
+   a remote <img> in a saved page is fetched without cookies. One switch, should it ever break something. */
+const COI = true;
 const ASSETS = [
   "./",
   "./index.html",
@@ -87,7 +95,7 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== "lamplight-share").map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && !KEEP.includes(k)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -119,7 +127,8 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-  /* only our own files: the online dictionary, MyMemory and api.elevenlabs.io go straight to the network */
+  /* only our own files: the online dictionary, MyMemory, api.elevenlabs.io and huggingface.co (the natural voices'
+     model, which kokoro-js caches itself) go straight to the network */
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   const isPage =
     e.request.mode === "navigate" ||
@@ -134,13 +143,21 @@ self.addEventListener("fetch", (e) => {
       const c = await caches.open(CACHE);       /* this version's cache only, never a newer one still waiting */
       const hit = await c.match(e.request, { ignoreSearch: true });
       /* the cached shell was stored under "./"; hand it back under the URL that was asked for
-         (./?shared=1, ./?action=continue) so nothing downstream sees the wrong address */
-      const asPage = (r) => new Response(r.body, { status: r.status, statusText: r.statusText, headers: r.headers });
+         (./?shared=1, ./?action=continue) so nothing downstream sees the wrong address — and, for
+         a page, with the cross-origin isolation headers (COI above) */
+      const pageHeaders = (h) => {
+        const out = new Headers(h);
+        if (COI) { out.set("Cross-Origin-Opener-Policy", "same-origin"); out.set("Cross-Origin-Embedder-Policy", "credentialless"); }
+        return out;
+      };
+      const asPage = (r) => new Response(r.body, { status: r.status, statusText: r.statusText, headers: pageHeaders(r.headers) });
       if (hit) return isPage ? asPage(hit) : hit;
       try {
         const res = await fetch(e.request);
+        /* same-origin files that are not precached (vendor/kokoro/*.mjs and *.wasm, the worker) land here on first use */
         if (res.ok && res.type === "basic") c.put(e.request, res.clone()).catch(() => null);
-        return res;
+        /* a redirect (…/Lamplight → …/Lamplight/) must reach the browser as one, so it is passed on untouched */
+        return isPage && !res.redirected ? asPage(res) : res;
       } catch (err) {
         if (isPage) {
           const page = await c.match("./index.html");

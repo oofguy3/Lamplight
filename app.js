@@ -20,7 +20,7 @@
     explain: ["./explain.js"],
     morph:   ["./morph.js"],
     translate: ["./translate.js"],
-    audiobook: ["./audiobook.js"]   /* who speaks each line, a voice per character, ElevenLabs narration (see Speak.registerEngine) */
+    audiobook: ["./audiobook.js"]   /* who speaks each line, a voice per character, ElevenLabs and natural (Kokoro) narration (see Speak.registerEngine) */
   };
   function need(names){
     var files = [];
@@ -3931,8 +3931,8 @@
      for quoted speech (or a device voice per character, cast by
      audiobook.js) and a little expression read off the text, through a
      pluggable engine: the device voice (Web Speech API, built in below)
-     or one that registers itself, such as ElevenLabs narration in
-     audiobook.js.
+     or one that registers itself, such as ElevenLabs narration or the
+     natural voices (Kokoro, run on the device) in audiobook.js.
      Engine interface: label, supported(), prepare(units, ctx) → Promise
      (or nothing: the device path stays synchronous), speak(i, opts),
      cancel(); optionally ready() → Promise<bool> (may ask for a key),
@@ -3959,8 +3959,8 @@
     function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
 
     /* ---- engines ---- */
-    var ENGINE_LIB = { eleven: "audiobook" };          /* which on-demand script provides an engine */
-    var engineName = Store.get("ll_tts_engine") === "eleven" ? "eleven" : "device";
+    var ENGINE_LIB = { eleven: "audiobook", kokoro: "audiobook" };   /* which on-demand script provides an engine */
+    var engineName = /^(eleven|kokoro)$/.test(Store.get("ll_tts_engine") || "") ? Store.get("ll_tts_engine") : "device";
     var castOn = Store.get("ll_tts_cast") !== "off";  /* a device voice per character (audiobook.js works out who speaks) */
     var engines = {}, runEngine = null, ctx = null, session = 0, devPlan = null;
     var planned = 0, replanT = null;                  /* units the engine has planned; a re-plan waiting while PDF pages load */
@@ -3985,7 +3985,8 @@
         var eng = engines[engineName];
         if (!eng) return fallback();
         if (!eng.supported()){ Marks.toast(eng.label + " isn’t available in this browser"); cb(engines.device); return; }
-        return Promise.resolve(eng.ready ? eng.ready() : true).then(function(ok){ if (ok) cb(eng); else fallback(); });
+        /* null: the engine cannot run this time and has already said why, so no second toast */
+        return Promise.resolve(eng.ready ? eng.ready() : true).then(function(ok){ if (ok) cb(eng); else if (ok === null) cb(engines.device); else fallback(); });
       }).catch(function(err){ console.warn("read-aloud engine", err); fallback(); });
     }
     function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
@@ -4897,7 +4898,7 @@
       }).join("");
     }
     function engineChips(){
-      return [["device", "Device voice"], ["eleven", "ElevenLabs"]].map(function(c){
+      return [["device", "Device voice"], ["eleven", "ElevenLabs"], ["kokoro", "Natural voices"]].map(function(c){
         var on = engineName === c[0];
         return '<button class="chip' + (on ? ' on' : '') + '" role="radio" aria-checked="' + (on ? "true" : "false") + '" data-engine="' + c[0] + '">' + c[1] + '</button>';
       }).join("");
@@ -4913,7 +4914,8 @@
       return MODELS.map(function(c){ return '<button class="chip" role="radio" aria-checked="false" data-model="' + c[0] + '">' + c[1] + '</button>'; }).join("");
     }
     /* the rows under the pair: which engine reads, whether characters get voices of their own,
-       and the ElevenLabs rows (filled by audiobook.js once it has loaded) */
+       the ElevenLabs rows and the natural voices' rows (both filled by audiobook.js once it has loaded),
+       and how much read-aloud audio the device keeps */
     function engineRows(){
       return '<div class="rowline"><label id="ttsEngineL">Voices from</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsEngineL" id="engineChips">' + engineChips() + '</div></div>' +
         '<div class="rowline" id="castRow"><label id="ttsCastL">Characters</label><div class="chips" role="radiogroup" aria-labelledby="ttsCastL" id="castChips">' + castChips() + '</div></div>' +
@@ -4924,7 +4926,16 @@
           '<div class="rowline"><label id="elevenModelL">Model</label><div class="chips" role="radiogroup" aria-labelledby="elevenModelL" id="elevenModelChips">' + modelChips() + '</div></div>' +
           '<div class="rowline"><button type="button" class="link-btn" id="elevenKeyLink">ElevenLabs API key…</button></div>' +
           '<p class="hint">Each sentence is sent to ElevenLabs once and kept on this device, so replaying is free. Uses your ElevenLabs credits.</p>' +
-        '</div>';
+        '</div>' +
+        '<div class="subgroup" id="kokoroRow" data-engine-only="kokoro">' +
+          '<div class="rowline"><label for="kokoroNarrator">Narrator</label><select id="kokoroNarrator" class="sel"><option value="af_heart">Heart (woman)</option></select></div>' +
+          '<div class="rowline" id="kokoroDlRow"><span class="k-state" id="kokoroState" aria-live="polite">Checking…</span>' +
+            '<button type="button" class="chip" id="kokoroDl" hidden>Download natural voices (≈ 95 MB, once)</button>' +
+            '<button type="button" class="chip" id="kokoroRm" hidden>Remove</button></div>' +
+          '<progress id="kokoroProgress" class="k-progress" max="100" value="0" aria-label="Downloading the natural voices" hidden></progress>' +
+          '<p class="hint">Runs on this device. Nothing is sent anywhere.</p>' +
+        '</div>' +
+        '<div class="rowline" id="audioKeptRow" hidden><span class="k-state" id="audioKept">Audio kept on this device</span><button type="button" class="chip" id="audioClear">Clear</button></div>';
     }
     /* the chips and rows above follow the settings; asked = the reader did something (opened the panel, chose an
        engine, changed the key), so the ElevenLabs engine may fetch what its rows show */
@@ -4940,7 +4951,8 @@
       var row = box.querySelector("#castRow"), hint = box.querySelector("#ttsCastHint"), btn = box.querySelector("#castBtnRow");
       if (row) row.hidden = engineName !== "device";
       if (hint) hint.hidden = engineName !== "device";
-      if (btn) btn.hidden = !(engineName === "eleven" || castOn);
+      if (btn) btn.hidden = !(engineName !== "device" || castOn);
+      var kept = box.querySelector("#audioKeptRow"); if (kept) kept.hidden = engineName === "device";
       Array.prototype.forEach.call(box.querySelectorAll("[data-engine-only]"), function(el){
         var off = el.dataset.engineOnly !== engineName;
         el.classList.toggle("dim", off);
@@ -4951,7 +4963,7 @@
       }
     }
     function setEngine(name){
-      if (name !== "device" && name !== "eleven") return;
+      if (name !== "device" && name !== "eleven" && name !== "kokoro") return;
       if (name === engineName){ syncEngineUI(true); return; }
       engineName = name; Store.set("ll_tts_engine", name);
       syncEngineUI(true);
@@ -5214,6 +5226,9 @@
       if (b.dataset.cast !== undefined){ setCast(b.dataset.cast === "on"); return; }
       if (b.id === "ttsCastBtn"){ withAudiobook(function(a){ a.openCast(); }); return; }
       if (b.id === "elevenKeyLink"){ withAudiobook(function(a){ a.askForKey(); }); return; }
+      if (b.id === "kokoroDl"){ withAudiobook(function(a){ a.downloadKokoro(); }); return; }
+      if (b.id === "kokoroRm"){ withAudiobook(function(a){ a.removeKokoro(); }); return; }
+      if (b.id === "audioClear"){ withAudiobook(function(a){ a.clearAudio(); }); return; }
     });
     Side.body.addEventListener("input", function(e){
       if (!Side.is("voices") || e.target.id !== "ttsFilter") return;

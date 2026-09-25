@@ -1,13 +1,17 @@
-/* lamplight — who speaks each line, a voice per character, and read aloud with ElevenLabs voices (see llAudiobook) */
+/* lamplight — who speaks each line, a voice per character, and read aloud with ElevenLabs or natural (Kokoro) voices (see llAudiobook) */
 /* ============================================================
    Lamplight — read aloud with several voices
    Works out who speaks each line on the device (the dialogue units
    Speak builds, speech-verb tags, pronouns and turn-taking), casts a
    device voice for every character (the "A voice per character"
-   setting of the built-in engine), and registers the "eleven" engine
-   of Speak (app.js): a narrator voice plus a voice per character from
-   api.elevenlabs.io with the reader's own key, fetched clip by clip and
-   kept in IndexedDB so replaying costs nothing.
+   setting of the built-in engine), and registers two engines with Speak
+   (app.js) that play clips: "eleven" — a narrator voice plus a voice per
+   character from api.elevenlabs.io with the reader's own key — and
+   "kokoro" ("Natural voices") — the Kokoro-82M model run on this device
+   in workers/kokoro-worker.js after a one-time download. Both make their
+   clips a little ahead of playback and keep every clip in IndexedDB so
+   replaying costs nothing; the two differ only in where a clip comes from
+   (SRC below).
    window.llAudiobook.attribute(units) and .castDevice(cast, voices, opts)
    are the pure steps; .deviceCast(units, ctx, opts) is what Speak's
    device engine calls.
@@ -25,6 +29,10 @@
   var CONTEXT = 300;                    /* previous_text / next_text for continuity */
   var INFLIGHT = 2, AHEAD = 2;          /* requests at once, clips fetched ahead of playback */
   var VOICES_TTL = 24 * 60 * 60 * 1000;
+  /* natural voices: the Kokoro model in the worker, where the browser keeps it, and the clips kept on the device */
+  var K_KNARR = "ll_kokoro_narrator", KOKORO_MODEL = "kokoro-82m-q8", KOKORO_MB = 95;
+  var KOKORO_CACHES = ["transformers-cache", "kokoro-voices"];    /* Cache Storage: the model files, the voice files */
+  var AUDIO_CAP = 400 * 1024 * 1024;    /* clips kept in IndexedDB across all documents; the oldest go first */
 
   /* ============================================================
      1. Who speaks — offline heuristics (no network, no DOM)
@@ -396,8 +404,7 @@
     var docId = (ctx && ctx.docId) || "", id = opts.id || voiceId;
     var a = attribute(units);
     return loadCast(docId).then(function(rec){
-      if (!rec) rec = { docId: docId, voices: {}, device: {}, updated: 0 };
-      if (!rec.device) rec.device = {};
+      if (!rec) rec = newCast(docId);
       function assign(cast){
         var narr = opts.narrator ? id(opts.narrator) : "";
         if (castDevice(cast, opts.voices ? opts.voices() : [], { lang: opts.lang, narrator: narr, gender: opts.gender, id: id, rec: rec.device })){ rec.updated = Date.now(); saveCast(rec); }
@@ -529,14 +536,14 @@
   }
 
   /* ---- the cast of a document, kept in IndexedDB: { docId, voices: { key → ElevenLabs voice_id },
-     device: { key → { voice, pitch } }, updated } ---- */
+     device: { key → { voice, pitch } }, kokoro: { key → Kokoro voice name }, updated } ---- */
+  function newCast(docId){ return { docId: docId, voices: {}, device: {}, kokoro: {}, updated: 0 }; }
   function loadCast(docId){
     if (!docId || !Library) return Promise.resolve(null);
     return Library.tx("cast", "readonly", function(st){ return st.get(docId); })
       .then(function(r){
         if (!(r && r.docId === docId)) return null;
-        if (!r.voices || typeof r.voices !== "object") r.voices = {};
-        if (!r.device || typeof r.device !== "object") r.device = {};
+        ["voices", "device", "kokoro"].forEach(function(k){ if (!r[k] || typeof r[k] !== "object") r[k] = {}; });
         return r;
       }).catch(function(){ return null; });
   }
@@ -544,36 +551,51 @@
     if (!rec || !rec.docId || !Library) return;
     Library.tx("cast", "readwrite", function(st){ st.put(rec); }).catch(function(){});
   }
-  /* new characters get a distinct ElevenLabs voice from their gender's pool (not the narrator's), round-robin */
-  function assignVoices(cast, list, narrator, rec){
+  /* new characters get a distinct voice from their gender's pool (not the narrator's), round-robin; list is
+     [{ id, gender }] (ElevenLabs voices, or the Kokoro voices of the document's language) and map the record's
+     { character key → voice id } to fill (rec.voices or rec.kokoro). Returns whether map changed. */
+  function assignVoices(cast, list, narrator, map){
     var pools = { male: [], female: [], unknown: [] }, all = [], used = {}, changed = false, i, j;
     list.forEach(function(v){ if (v.id === narrator) return; all.push(v.id); pools[v.gender].push(v.id); });
     if (!all.length) all = list.map(function(v){ return v.id; });
-    Object.keys(rec.voices).forEach(function(k){ used[rec.voices[k]] = (used[rec.voices[k]] || 0) + 1; });
+    Object.keys(map).forEach(function(k){ used[map[k]] = (used[map[k]] || 0) + 1; });
     for (i = 0; i < cast.length; i++){
       var c = cast[i];
-      if (rec.voices[c.key]) continue;
+      if (map[c.key]) continue;
       var pool = pools[c.gender] && pools[c.gender].length ? pools[c.gender] : all, best = null, bestN = Infinity;
       for (j = 0; j < pool.length; j++){ var nn = used[pool[j]] || 0; if (nn < bestN){ bestN = nn; best = pool[j]; } }
       if (!best) best = narrator;
-      rec.voices[c.key] = best; used[best] = (used[best] || 0) + 1; changed = true;
+      map[c.key] = best; used[best] = (used[best] || 0) + 1; changed = true;
     }
     return changed;
   }
 
+  /* ---- where clips come from: ElevenLabs requests, or the Kokoro worker on this device. A plan carries its
+     source; the clip, prefetch, cache and playback code below reads the differences off it ---- */
+  var SRC = {
+    eleven: { name: "eleven", castKey: "voices", inflight: INFLIGHT, ahead: AHEAD, busy: "Fetching…", pack: true,
+              model: model, list: function(){ return voices(); }, narrator: narratorId, pool: function(list){ return list; },
+              options: voiceOptions, run: function(task){ return fetchClip(task, 0); } },
+    /* one clip per segment (a unit's run of text in one voice): no packing, so the highlight is exact per unit;
+       the worker makes one clip at a time, in the order asked, three ahead of playback */
+    kokoro: { name: "kokoro", castKey: "kokoro", inflight: 1, ahead: 3, busy: "Generating…", pack: false,
+              model: function(){ return KOKORO_MODEL; }, list: function(){ return Promise.resolve(KOKORO_VOICES); }, narrator: kokoroNarrator,
+              pool: function(list, lang){ return kokoroPool(lang); }, options: kokoroOptions, run: kokoroClip }
+  };
+
   /* ---- the plan: segments, cast and clips for the units being read ---- */
   var plan = null, prepSeq = 0, prepPromise = null;
-  function prepare(units, ctx){
+  function planFor(src, units, ctx){
     var docId = (ctx && ctx.docId) || "", a = attribute(units), my = ++prepSeq;
-    var prev = plan && plan.docId === docId ? plan : null;
-    if (!prev) plan = null;                       /* another document: its old plan must not play meanwhile */
-    var p = Promise.all([voices(), prev ? Promise.resolve(prev.rec) : loadCast(docId)]).then(function(r){
+    var prev = plan && plan.docId === docId && plan.src === src ? plan : null;
+    if (!prev) plan = null;                       /* another document or source: its old plan must not play meanwhile */
+    var p = Promise.all([src.list(), prev ? Promise.resolve(prev.rec) : loadCast(docId)]).then(function(r){
       if (my !== prepSeq) return prepPromise;     /* a newer prepare is under way: it is the one to wait for */
-      var list = r[0], rec = r[1] || { docId: docId, voices: {}, device: {}, updated: 0 };
-      var narrator = narratorId(list);
-      if (assignVoices(a.cast, list, narrator, rec)){ rec.updated = Date.now(); saveCast(rec); }
+      var list = r[0], rec = r[1] || newCast(docId);
+      var narrator = src.narrator(list);
+      if (assignVoices(a.cast, src.pool(list, (ctx && ctx.lang) || ""), narrator, rec[src.castKey])){ rec.updated = Date.now(); saveCast(rec); }
       var sig = a.cast.map(function(c){ return c.key + ":" + c.lines; }).join("|") + "|" + narrator;
-      plan = { docId: docId, title: (ctx && ctx.title) || "", units: units, segs: a.units, cast: a.cast, rec: rec, list: list, narrator: narrator, sig: sig, clips: null, firstClip: null };
+      plan = { src: src, docId: docId, title: (ctx && ctx.title) || "", units: units, segs: a.units, cast: a.cast, rec: rec, list: list, narrator: narrator, sig: sig, clips: null, firstClip: null };
       buildClips(); syncName();
       /* PDF pages appended to a plan: the panel is redrawn only when the cast changed */
       if (!prev || prev.sig !== sig) refreshCast();
@@ -581,7 +603,8 @@
     prepPromise = p;
     return p;
   }
-  function voiceFor(role){ return role === "narrator" ? plan.narrator : (plan.rec.voices[role] || plan.narrator); }
+  function prepare(units, ctx){ return planFor(SRC.eleven, units, ctx); }
+  function voiceFor(role){ return role === "narrator" ? plan.narrator : (plan.rec[plan.src.castKey][role] || plan.narrator); }
   /* a unit's segments as runs of one voice */
   function runsOf(i){
     var list = plan.segs[i] || [], out = [], k;
@@ -594,14 +617,15 @@
     return out;
   }
   /* consecutive runs of one voice packed into clips of at most MAX_CLIP characters; a unit is never
-     split across clips (a unit with several voices gives one clip per run); clips stay inside a page */
+     split across clips (a unit with several voices gives one clip per run); clips stay inside a page.
+     A source that does not pack (Kokoro) gets one clip per run. */
   function buildClips(){
-    var units = plan.units, clips = [], first = new Array(units.length), cur = null, mdl = model(), i, j;
+    var units = plan.units, clips = [], first = new Array(units.length), cur = null, mdl = plan.src.model(), i, j;
     for (i = 0; i < units.length; i++){
       var runs = runsOf(i), page = units[i].page || 0;
       for (j = 0; j < runs.length; j++){
         var r = runs[j];
-        if (!cur || j > 0 || cur.voice !== r.voice || cur.page !== page || cur.text.length + 1 + r.text.length > MAX_CLIP){
+        if (!cur || j > 0 || !plan.src.pack || cur.voice !== r.voice || cur.page !== page || cur.text.length + 1 + r.text.length > MAX_CLIP){
           if (cur) clips.push(cur);
           cur = { voice: r.voice, model: mdl, doc: plan.docId, text: "", parts: [], first: i, last: i, page: page, index: clips.length, key: null };
         }
@@ -619,10 +643,12 @@
     plan.clips = clips; plan.firstClip = first;
     expectNext = null;
   }
-  function isRunning(){ return !!(Speak && Speak.activeEngine && Speak.activeEngine() === engine); }
-  /* voices changed: new clips, and the sentence being read starts again with them */
-  function replan(){
-    if (!plan) return;
+  function isRunning(){ var e = Speak && Speak.activeEngine && Speak.activeEngine(); return !!e && (e === engine || e === kEngine); }
+  function elevenRunning(){ return !!(Speak && Speak.activeEngine && Speak.activeEngine() === engine); }
+  function kokoroRunning(){ return !!(Speak && Speak.activeEngine && Speak.activeEngine() === kEngine); }
+  /* voices changed: new clips, and the sentence being read starts again with them (src: only a plan of that source) */
+  function replan(src){
+    if (!plan || (src && plan.src !== src)) return;
     cancelQueued();      /* prefetches for the old voices or model are no longer wanted */
     buildClips();
     if (isRunning() && Speak.isPlaying()) Speak.play();
@@ -656,7 +682,46 @@
     return Library.tx("audio", "readonly", function(st){ return st.get(k); })
       .then(function(r){ return r && r.key === k && r.blob ? r : null; }).catch(function(){ return null; });
   }
-  function save(rec){ if (Library) Library.tx("audio", "readwrite", function(st){ st.put(rec); }).catch(function(){}); }
+  function save(rec){ if (Library) Library.tx("audio", "readwrite", function(st){ st.put(rec); }).then(scheduleTrim, function(){}); }
+  /* the clips kept on the device stay under AUDIO_CAP: after a put, once things are quiet, the oldest go first */
+  var trimT = null;
+  function scheduleTrim(){ clearTimeout(trimT); trimT = setTimeout(trimAudio, 2500); }
+  function scanAudio(){
+    var recs = [], total = 0;
+    if (!Library) return Promise.resolve({ recs: recs, total: 0 });
+    return Library.tx("audio", "readonly", function(st){
+      var cur = st.openCursor();
+      cur.onsuccess = function(){
+        var c = cur.result; if (!c) return;
+        var v = c.value || {}, n = v.size || (v.blob && v.blob.size) || 0;
+        total += n; recs.push({ key: c.primaryKey, created: v.created || 0, size: n });
+        c.continue();
+      };
+    }).then(function(){ return { recs: recs, total: total }; }).catch(function(){ return { recs: recs, total: total }; });
+  }
+  function audioTotal(){ return scanAudio().then(function(r){ return r.total; }); }
+  function trimAudio(){
+    trimT = null;
+    return scanAudio().then(function(r){
+      if (r.total <= AUDIO_CAP) return;
+      r.recs.sort(function(a, b){ return a.created - b.created; });
+      var drop = [], total = r.total, i = 0;
+      while (total > AUDIO_CAP && i < r.recs.length){ total -= r.recs[i].size; drop.push(r.recs[i].key); i++; }
+      return Library.tx("audio", "readwrite", function(st){ drop.forEach(function(k){ st.delete(k); }); });
+    }).then(audioSync).catch(function(){});
+  }
+  /* the row in the voices panel: "Audio kept on this device: 123 MB" */
+  function mb(n){ return Math.round(n / 1048576) + " MB"; }
+  function audioSync(){
+    if (typeof document === "undefined" || !document.getElementById("audioKept")) return;
+    audioTotal().then(function(n){ var el = document.getElementById("audioKept"); if (el) el.textContent = "Audio kept on this device: " + mb(n); });
+  }
+  /* the audio store only: every clip of every document, from either source; the model stays */
+  function clearAudio(){
+    if (!Library) return;
+    cancelQueued();
+    Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ loadedKey = null; toast("Cached audio cleared"); audioSync(); }, function(){ toast("Couldn’t clear the audio"); });
+  }
   function b64blob(b64){
     var bin = atob(b64), n = bin.length, bytes = new Uint8Array(n), i;
     for (i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
@@ -711,13 +776,14 @@
     return task.promise;
   }
   function getClip(clip, urgent){
+    var src = plan.src;      /* the plan may be another's by the time the cache has answered */
     return clipKey(clip).then(function(k){
       if (inflight[k]) return join(inflight[k], urgent);
       /* the cache is read before a request slot is taken, so a clip on the device never waits behind the network */
       return cached(k).then(function(rec){
         if (rec) return rec;
         if (inflight[k]) return join(inflight[k], urgent);
-        var task = { key: k, clip: clip, docId: clip.doc, cancelled: false };
+        var task = { key: k, clip: clip, docId: clip.doc, src: src, cancelled: false };
         task.promise = new Promise(function(res, rej){ task.res = res; task.rej = rej; });
         inflight[k] = task;
         if (urgent) queue.unshift(task); else queue.push(task);
@@ -726,28 +792,234 @@
       });
     });
   }
-  function pump(){ while (running < INFLIGHT && queue.length) launch(queue.shift()); }
+  function pump(){ while (queue.length && running < queue[0].src.inflight) launch(queue.shift()); }
   function launch(task){
     running++;
     runTask(task).then(function(rec){ settle(task); task.res(rec); }, function(err){ settle(task); task.rej(err); });
   }
   function settle(task){ running--; delete inflight[task.key]; pump(); }
   function runTask(task){
-    if (!navigator.onLine){ var o = new Error("Offline — no ElevenLabs audio cached from here"); o.offline = true; return Promise.reject(o); }
-    return fetchClip(task, 0).then(function(r){
+    if (task.src === SRC.eleven && !navigator.onLine){ var o = new Error("Offline — no ElevenLabs audio cached from here"); o.offline = true; return Promise.reject(o); }
+    return task.src.run(task).then(function(r){
       var out = { key: task.key, docId: task.docId, voice_id: task.clip.voice, model_id: task.clip.model, chars: task.clip.text.length,
-                  blob: r.blob, times: r.times, created: Date.now() };
+                  blob: r.blob, size: r.blob.size, times: r.times, created: Date.now() };
       save(out);
       return out;
     });
   }
-  /* drop what has not been sent yet and stop retrying what has; a request already on its way finishes and lands in the cache */
+  /* drop what has not been sent yet and stop retrying what has; an ElevenLabs request already on its way finishes
+     and lands in the cache, while the worker drops what it was making (it cannot be cut short) */
   function cancelQueued(){
     queue.splice(0).forEach(function(t){ t.cancelled = true; delete inflight[t.key]; var e = new Error("cancelled"); e.cancelled = true; t.rej(e); });
     Object.keys(inflight).forEach(function(k){ inflight[k].cancelled = true; });
+    kokoroCancel();
   }
   function prefetch(ci){
-    for (var j = ci + 1; j <= ci + AHEAD && plan && plan.clips[j]; j++) getClip(plan.clips[j], false).catch(function(){});
+    for (var j = ci + 1; j <= ci + plan.src.ahead && plan && plan.clips[j]; j++) getClip(plan.clips[j], false).catch(function(){});
+  }
+
+  /* ============================================================
+     4b. Natural voices — the Kokoro worker, made only once the reader picks the engine or presses
+         download, and the model it keeps on the device
+     ============================================================ */
+  /* the 28 English voices of Kokoro-82M (kokoro-js 1.2.1 knows these and no others); the first letter is the
+     language (a American, b British), the second the gender */
+  var KOKORO_VOICES = (function(){
+    var spec = [
+      ["af", "American", "female", "heart bella nicole sarah sky alloy aoede jessica kore nova river"],
+      ["am", "American", "male", "adam echo eric fenrir liam michael onyx puck santa"],
+      ["bf", "British", "female", "alice emma isabella lily"],
+      ["bm", "British", "male", "daniel fable george lewis"]
+    ], out = [];
+    spec.forEach(function(s){
+      s[3].split(" ").forEach(function(n){ out.push({ id: s[0] + "_" + n, name: n.charAt(0).toUpperCase() + n.slice(1), group: s[1], gender: s[2], lang: s[0].charAt(0) }); });
+    });
+    return out;
+  })();
+  /* the voice pool by document language (the letter Kokoro's voice names start with): English gets the
+     American and British voices; another language gets its own voices where the voice list has any, else
+     the English ones with a word of warning, once */
+  var KOKORO_LANGS = { en: "ab", es: "e", fr: "f", hi: "h", it: "i", ja: "j", pt: "p", zh: "z" };
+  var kokoroWarned = false;
+  function kokoroPool(lang){
+    lang = String(lang || "en").slice(0, 2).toLowerCase();
+    var letters = KOKORO_LANGS[lang] || "", pool = KOKORO_VOICES.filter(function(v){ return letters.indexOf(v.lang) >= 0; });
+    if (pool.length) return pool;
+    if (lang !== "en" && !kokoroWarned){ kokoroWarned = true; toast("Natural voices speak English; other languages may sound odd"); }
+    return KOKORO_VOICES.filter(function(v){ return v.lang === "a" || v.lang === "b"; });
+  }
+  function kokoroVoice(id){ for (var i = 0; i < KOKORO_VOICES.length; i++) if (KOKORO_VOICES[i].id === id) return KOKORO_VOICES[i]; return null; }
+  function kokoroNarrator(){ var id = Store.get(K_KNARR); return kokoroVoice(id) ? id : "af_heart"; }
+  function kokoroName(id){ var v = kokoroVoice(id); return v ? v.name : "Natural voice"; }
+  function kokoroOptions(list, selected){
+    var groups = [], by = {};
+    (list || KOKORO_VOICES).forEach(function(v){ if (!by[v.group]){ by[v.group] = []; groups.push(v.group); } by[v.group].push(v); });
+    return groups.map(function(g){
+      return '<optgroup label="' + esc(g) + '">' + by[g].map(function(v){
+        return '<option value="' + esc(v.id) + '"' + (v.id === selected ? ' selected' : '') + '>' + esc(v.name) + ' (' + (v.gender === "female" ? "woman" : "man") + ')</option>';
+      }).join("") + '</optgroup>';
+    }).join("");
+  }
+
+  /* ---- the worker: load with progress, generate in order, cancel ---- */
+  var kw = null, kLoad = null, kReady = false, kJobs = {}, kSeq = 0, kFiles = {}, kPct = -1, kThreads = 0;
+  var kHave = null;     /* { ready, bytes } — what Cache Storage held when last looked */
+  function kokoroWorker(){
+    if (kw) return kw;
+    kw = new Worker("./workers/kokoro-worker.js", { type: "module" });
+    kw.onmessage = function(e){
+      var m = e.data || {}, j;
+      if (m.type === "progress") kokoroProgress(m);
+      else if (m.type === "ready"){
+        kReady = true; kThreads = m.threads || 0; kFiles = {}; kPct = -1;
+        var l = kLoad; kLoad = null; if (l) l.res();
+        kHave = null; kokoroSync();
+      } else if (m.type === "audio"){
+        j = kJobs[m.id]; if (!j) return;         /* dropped meanwhile */
+        delete kJobs[m.id]; j.res({ samples: m.samples, sampleRate: m.sampleRate || 24000, ms: m.ms || 0 });
+      } else if (m.type === "error"){
+        if (m.id === null || m.id === undefined){
+          var ld = kLoad; kLoad = null; kFiles = {}; kPct = -1;
+          if (ld) ld.rej(new Error(m.message ? "Natural voices: " + String(m.message).slice(0, 80) : "Couldn’t load the natural voices"));
+          kokoroSync();
+        } else { j = kJobs[m.id]; if (j){ delete kJobs[m.id]; j.rej(new Error(m.message || "error")); } }
+      }
+    };
+    /* the script itself failed (offline before the runtime was ever cached, a browser without module workers):
+       everything waiting fails now, and the next try makes a new worker */
+    kw.onerror = function(){
+      var l = kLoad, jobs = kJobs;
+      kLoad = null; kReady = false; kJobs = {}; kFiles = {}; kPct = -1;
+      try { kw.terminate(); } catch(_){}
+      kw = null;
+      var err = new Error(navigator.onLine ? "Natural voices couldn’t start in this browser" : "Natural voices need a connection to download");
+      if (l) l.rej(err);
+      Object.keys(jobs).forEach(function(id){ jobs[id].rej(err); });
+      kokoroSync();
+    };
+    return kw;
+  }
+  /* the model loaded in the worker, downloading it first when it is not on the device; one load at a time */
+  function kokoroModel(){
+    if (kReady && kw) return Promise.resolve();
+    if (kLoad) return kLoad.promise;
+    var l = {};
+    l.promise = new Promise(function(res, rej){ l.res = res; l.rej = rej; });
+    kLoad = l;
+    try { kokoroWorker().postMessage({ type: "load" }); } catch(err){ kLoad = null; return Promise.reject(err); }
+    kokoroSync();
+    return l.promise;
+  }
+  /* files come from the browser's cache in a flash (loaded = total at once); only a real download shows a percentage */
+  function kokoroProgress(m){
+    kFiles[m.file] = { loaded: m.loaded || 0, total: m.total || 0 };
+    var loaded = 0, total = 0;
+    Object.keys(kFiles).forEach(function(f){ loaded += kFiles[f].loaded; total += kFiles[f].total; });
+    kPct = total && loaded < total ? Math.min(99, Math.round(loaded * 100 / total)) : -1;
+    if (kokoroRunning()) setStatus(kPct >= 0 ? "Downloading voices " + kPct + "%…" : "Preparing…");
+    var st = document.getElementById("kokoroState"), pr = document.getElementById("kokoroProgress");
+    if (st) st.textContent = kPct >= 0 ? "Downloading… " + kPct + "%" : "Preparing…";
+    if (pr){ pr.hidden = kPct < 0; if (kPct >= 0) pr.value = kPct; }
+  }
+  function kokoroGenerate(text, voice){
+    var id = ++kSeq;
+    return new Promise(function(res, rej){
+      kJobs[id] = { res: res, rej: rej };
+      try { kokoroWorker().postMessage({ type: "generate", id: id, text: text, voice: voice, speed: 1 }); }
+      catch(err){ delete kJobs[id]; rej(err); }
+    });
+  }
+  /* everything the worker has not made yet is dropped, and so is what it is making */
+  function kokoroCancel(){
+    var ids = Object.keys(kJobs);
+    if (!ids.length) return;
+    if (kw) try { kw.postMessage({ type: "cancel" }); } catch(_){}
+    ids.forEach(function(id){ var j = kJobs[id]; delete kJobs[id]; var e = new Error("cancelled"); e.cancelled = true; j.rej(e); });
+  }
+  /* Float32 samples → 16-bit PCM WAV, for the audio element and the cache */
+  function wavBlob(samples, rate){
+    var n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), i, s;
+    function str(o, t){ for (var k = 0; k < t.length; k++) v.setUint8(o + k, t.charCodeAt(k)); }
+    str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE");
+    str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, "data"); v.setUint32(40, n * 2, true);
+    for (i = 0; i < n; i++){ s = samples[i]; s = s < -1 ? -1 : s > 1 ? 1 : s; v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+    return new Blob([buf], { type: "audio/wav" });
+  }
+  /* a clip from the worker: the whole clip is one part (or, were it packed, parts in proportion to their text) */
+  function kokoroClip(task){
+    var clip = task.clip;
+    return kokoroModel().then(function(){ return kokoroGenerate(clip.text, clip.voice); }).then(function(r){
+      var secs = r.samples.length / r.sampleRate, len = clip.text.length || 1;
+      return { blob: wavBlob(r.samples, r.sampleRate), times: clip.parts.map(function(p){ return { a: p.s / len * secs, b: p.e / len * secs }; }) };
+    }).catch(function(err){
+      if (err && err.cancelled) throw err;
+      var e = new Error(!navigator.onLine && kReady ? "Offline — this natural voice isn’t on the device yet" : (err && err.message) || "Natural voices couldn’t make the audio");
+      e.offline = !navigator.onLine;
+      throw e;
+    });
+  }
+  /* is the model in Cache Storage (kokoro-js keeps it under the huggingface.co URLs), and how big is it */
+  function kokoroOnDevice(){
+    if (!(window.caches && caches.open)) return Promise.resolve({ ready: false, bytes: 0 });
+    var cache;
+    return caches.open(KOKORO_CACHES[0]).then(function(c){ cache = c; return c.keys(); }).then(function(keys){
+      var model = false, jobs = [];
+      keys.forEach(function(req){
+        var u = req.url || "";
+        if (u.indexOf("Kokoro-82M") < 0) return;
+        if (u.indexOf("model_quantized.onnx") >= 0) model = true;
+        jobs.push(cache.match(req).then(function(r){
+          if (!r) return 0;
+          var n = +r.headers.get("content-length") || 0;
+          return n || r.blob().then(function(b){ return b.size; });
+        }).catch(function(){ return 0; }));
+      });
+      return Promise.all(jobs).then(function(sizes){
+        var bytes = 0; sizes.forEach(function(n){ bytes += n; });
+        kHave = { ready: model, bytes: bytes };
+        return kHave;
+      });
+    }).catch(function(){ return { ready: false, bytes: 0 }; });
+  }
+  /* the Download button */
+  function downloadKokoro(){
+    if (kLoad) return;
+    if (!navigator.onLine && !(kHave && kHave.ready)){ toast("Connect to the internet once to download the natural voices"); return; }
+    kokoroModel().then(function(){ toast("Natural voices are ready"); }, function(err){ toast((err && err.message) || "Couldn’t download the natural voices"); });
+  }
+  /* the Remove button: the model and voice caches, the runtime files in the app's cache, and the worker holding the model */
+  function removeKokoro(){
+    if (!confirm("Remove the natural voices from this device (" + KOKORO_MB + " MB)? They can be downloaded again.")) return;
+    if (kokoroRunning() && Speak && Speak.stop) Speak.stop();
+    var l = kLoad, jobs = kJobs;
+    kLoad = null; kReady = false; kJobs = {}; kFiles = {}; kPct = -1;
+    if (kw){ try { kw.terminate(); } catch(_){} kw = null; }
+    var gone = new Error("Natural voices were removed");
+    if (l) l.rej(gone);
+    Object.keys(jobs).forEach(function(id){ jobs[id].rej(gone); });
+    var work = [];
+    if (window.caches){
+      KOKORO_CACHES.forEach(function(n){ work.push(caches.delete(n).catch(function(){})); });
+      work.push(caches.keys().then(function(keys){
+        return Promise.all(keys.filter(function(k){ return k.indexOf("lamplight-") === 0 && k !== "lamplight-share"; }).map(function(k){
+          return caches.open(k).then(function(c){
+            return c.keys().then(function(reqs){ return Promise.all(reqs.filter(function(r){ return r.url.indexOf("/vendor/kokoro/") >= 0; }).map(function(r){ return c.delete(r); })); });
+          });
+        }));
+      }).catch(function(){}));
+    }
+    Promise.all(work).then(function(){ kHave = { ready: false, bytes: 0 }; toast("Natural voices removed"); kokoroSync(); });
+  }
+  /* before reading starts: the download needs a connection; without one the device voice reads this time */
+  function kokoroReady(){
+    if (kReady || navigator.onLine) return Promise.resolve(true);
+    return kokoroOnDevice().then(function(h){
+      if (h.ready) return true;
+      toast("Natural voices aren’t downloaded yet — the device voice reads until you’re online");
+      return null;     /* Speak falls back without a second toast */
+    });
   }
 
   /* ============================================================
@@ -762,12 +1034,12 @@
     }
     return audioEl;
   }
-  /* "Fetching…" in the live region, the counter beside it; only a change is written, since screen readers
-     announce every write to a live region */
+  /* "Fetching…" / "Generating…" / "Preparing…" in the live region, the counter beside it (ElevenLabs only);
+     only a change is written, since screen readers announce every write to a live region */
   function setStatus(text){
     var el = document.getElementById("ttsStatus"), cnt = document.getElementById("ttsSent"), bar = document.getElementById("tts"), play = document.getElementById("ttsPlay");
     if (!el) return;
-    var live = text || "", counter = text ? "" : (sent ? "≈" + fmt(sent) + " chars sent" : ""), busy = text === "Fetching…";
+    var live = text || "", counter = (text || !(plan && plan.src === SRC.eleven)) ? "" : (sent ? "≈" + fmt(sent) + " chars sent" : ""), busy = !!live;
     if (el.textContent !== live) el.textContent = live;
     if (cnt && cnt.textContent !== counter) cnt.textContent = counter;
     if (bar) bar.classList.toggle("fetching", busy);
@@ -817,7 +1089,7 @@
     if (ci === undefined || !plan.clips[ci]){ opts.onend(); return; }
     var clip = plan.clips[ci];
     current = { clip: clip, index: ci, opts: opts, seq: mySeq, unit: -1, rec: null };
-    if (!(loadedKey && clip.key === loadedKey)) setStatus("Fetching…");
+    if (!(loadedKey && clip.key === loadedKey)) setStatus(plan.src.busy);
     getClip(clip, true).then(function(rec){
       if (mySeq !== seq) return;
       setStatus();
@@ -828,7 +1100,7 @@
     }, function(err){
       if (mySeq !== seq || (err && err.cancelled)) return;
       setStatus();
-      toast(err && err.message ? err.message : "ElevenLabs request failed");
+      toast(err && err.message ? err.message : (plan.src === SRC.eleven ? "ElevenLabs request failed" : "Natural voices couldn’t make the audio"));
       opts.onerror(null);
     });
   }
@@ -894,7 +1166,7 @@
     var ids = ["ttsVoice", "elevenNarrator"], i, el;
     for (i = 0; i < ids.length; i++){
       el = document.getElementById(ids[i]);
-      if (!el || el === from || (ids[i] === "ttsVoice" && !isRunning())) continue;
+      if (!el || el === from || (ids[i] === "ttsVoice" && !elevenRunning())) continue;
       el.value = id;
       if (el.value !== id && apiKey()) fillVoices(el);
     }
@@ -907,21 +1179,21 @@
   function setNarrator(id, from){
     if (!id) return;
     Store.set(K_NARR, id);
-    if (plan) plan.narrator = id;
-    showNarrator(id, from); replan();
+    if (plan && plan.src === SRC.eleven) plan.narrator = id;
+    showNarrator(id, from); replan(SRC.eleven);
   }
   /* the narrator select in the read-aloud bar; Speak restarts the sentence if it is playing */
   function voiceChanged(id){
     if (!id) return;
     Store.set(K_NARR, id);
-    if (plan){ plan.narrator = id; cancelQueued(); buildClips(); }
+    if (plan && plan.src === SRC.eleven){ plan.narrator = id; cancelQueued(); buildClips(); }
     showNarrator(id, document.getElementById("ttsVoice"));
   }
   function setModel(m){
     if (MODELS.indexOf(m) < 0) return;
     Store.set(K_MODEL, m);
     syncSettings(true);
-    replan();
+    replan(SRC.eleven);
   }
   /* asked: the reader did something (opened the panel, chose ElevenLabs, changed the key), so the voice list may be fetched */
   function syncSettings(asked){
@@ -935,13 +1207,61 @@
       else { sel.disabled = false; fillVoices(sel, !asked); }
     }
     if (link) link.textContent = apiKey() ? "Change the ElevenLabs API key…" : "ElevenLabs API key…";
+    audioSync();
   }
-  /* the panel is drawn afresh each time it opens, so its rows are handled from the document; the key link and
-     the Cast button are Speak's, so they work before this script has loaded */
+  /* ---- the natural voices' rows: narrator, and the model's download / ready / remove row ---- */
+  function kokoroFillVoices(sel){ sel.innerHTML = kokoroOptions(KOKORO_VOICES, kokoroNarrator()); }
+  function kokoroShowNarrator(id, from){
+    ["ttsVoice", "kokoroNarrator"].forEach(function(i){
+      var el = document.getElementById(i);
+      if (el && el !== from && !(i === "ttsVoice" && !kokoroRunning())) el.value = id;
+    });
+    if (Side && Side.is && Side.is("cast") && Side.body){ var el = Side.body.querySelector('select[data-key="narrator"]'); if (el && el !== from) el.value = id; }
+    syncName();
+  }
+  function kokoroSetNarrator(id, from){
+    if (!kokoroVoice(id)) return;
+    Store.set(K_KNARR, id);
+    if (plan && plan.src === SRC.kokoro) plan.narrator = id;
+    kokoroShowNarrator(id, from);
+    replan(SRC.kokoro);
+  }
+  /* the narrator select in the read-aloud bar; Speak restarts the sentence if it is playing */
+  function kokoroVoiceChanged(id){
+    if (!kokoroVoice(id)) return;
+    Store.set(K_KNARR, id);
+    if (plan && plan.src === SRC.kokoro){ plan.narrator = id; cancelQueued(); buildClips(); }
+    kokoroShowNarrator(id, document.getElementById("ttsVoice"));
+  }
+  function kokoroSync(){
+    if (typeof document === "undefined") return;
+    var sel = document.getElementById("kokoroNarrator"), st = document.getElementById("kokoroState");
+    var dl = document.getElementById("kokoroDl"), rm = document.getElementById("kokoroRm"), pr = document.getElementById("kokoroProgress");
+    if (sel){ if (sel.options.length < KOKORO_VOICES.length) kokoroFillVoices(sel); else sel.value = kokoroNarrator(); }
+    audioSync();
+    if (!st) return;
+    function show(text, canDl, canRm, pct){
+      st.textContent = text;
+      if (dl) dl.hidden = !canDl;
+      if (rm) rm.hidden = !canRm;
+      if (pr){ pr.hidden = pct < 0; if (pct >= 0) pr.value = pct; }
+    }
+    if (kLoad){ show(kPct >= 0 ? "Downloading… " + kPct + "%" : "Preparing…", false, false, kPct); return; }
+    function have(h){
+      if (h.ready) show("Ready · " + mb(h.bytes || KOKORO_MB * 1048576) + " on this device", false, true, -1);
+      else show(navigator.onLine ? "Not on this device yet" : "Not on this device yet — needs a connection once", true, false, -1);
+    }
+    if (kHave) have(kHave); else show("Checking…", false, false, -1);     /* what was last seen, while the cache is asked again */
+    kokoroOnDevice().then(function(h){ if (!kLoad && document.getElementById("kokoroState") === st) have(h); });
+  }
+
+  /* the panel is drawn afresh each time it opens, so its rows are handled from the document; the key link, the
+     download and remove buttons and the Cast button are Speak's, so they work before this script has loaded */
   if (typeof document !== "undefined"){
     document.addEventListener("change", function(e){
       var t = e.target;
       if (t && t.id === "elevenNarrator" && t.value) setNarrator(t.value, t);
+      if (t && t.id === "kokoroNarrator" && t.value) kokoroSetNarrator(t.value, t);
     });
     document.addEventListener("click", function(e){
       var c = e.target && e.target.closest ? e.target.closest("#elevenModelChips .chip") : null;
@@ -951,13 +1271,14 @@
 
   /* ---- the Cast panel: every character found in the document, with a voice each ---- */
   function speakEngine(){ return Speak && Speak.engine ? Speak.engine() : "device"; }
-  /* the ElevenLabs plan for the open document: the one being read, or worked out now for a text document */
-  function castPlan(){
+  /* the ElevenLabs or Kokoro plan for the open document: the one being read, or worked out now for a text document
+     (the cast needs no model and no key beyond the voice list) */
+  function castPlan(src){
     var docId = Library && Library.currentId ? Library.currentId() : "";
-    if (plan && plan.docId === (docId || "") && plan.clips) return Promise.resolve(plan);
+    if (plan && plan.src === src && plan.docId === (docId || "") && plan.clips) return Promise.resolve(plan);
     if (state && state.mode === "doc" && Speak && Speak.buildDocUnits){
       var units = Speak.buildDocUnits();
-      return prepare(units, { docId: docId, mode: "doc", title: document.title }).then(function(){ return plan; });
+      return planFor(src, units, { docId: docId, mode: "doc", title: document.title, lang: Speak.docLang ? Speak.docLang() : "" }).then(function(){ return plan; });
     }
     return Promise.reject(new Error("Start reading aloud first to find who speaks on these pages."));
   }
@@ -993,7 +1314,8 @@
   function renderCast(body, foot){
     if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ body.innerHTML = '<div class="empty-note">Open a book first.</div>'; return; }
     if (speakEngine() === "device"){ renderDeviceCast(body, foot); return; }
-    if (!apiKey()){
+    var src = speakEngine() === "kokoro" ? SRC.kokoro : SRC.eleven;
+    if (src === SRC.eleven && !apiKey()){
       body.innerHTML = '<div class="empty-note">Add an ElevenLabs API key first.</div>';
       var b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = "ElevenLabs API key…";
       b.addEventListener("click", function(){ askForKey(); });
@@ -1001,13 +1323,14 @@
       return;
     }
     body.innerHTML = '<div class="empty-note">Finding who speaks…</div>';
-    castPlan().then(function(pl){
+    castPlan(src).then(function(pl){
       if (!Side.is("cast")) return;
+      var map = pl.rec[pl.src.castKey];
       var h = '<div class="cast-row"><div class="cast-who"><b>Narrator</b><span>everything outside the quotes</span></div>' +
-              '<select class="sel" data-key="narrator" aria-label="Voice for the narrator">' + voiceOptions(pl.list, pl.narrator) + '</select></div>';
+              '<select class="sel" data-key="narrator" aria-label="Voice for the narrator">' + pl.src.options(pl.list, pl.narrator) + '</select></div>';
       pl.cast.forEach(function(c){
         h += '<div class="cast-row"><div class="cast-who"><b>' + esc(c.name) + '</b><span>' + esc(who(c)) + '</span></div>' +
-             '<select class="sel" data-key="' + esc(c.key) + '" aria-label="Voice for ' + esc(c.name) + '">' + voiceOptions(pl.list, pl.rec.voices[c.key] || pl.narrator) + '</select></div>';
+             '<select class="sel" data-key="' + esc(c.key) + '" aria-label="Voice for ' + esc(c.name) + '">' + pl.src.options(pl.list, map[c.key] || pl.narrator) + '</select></div>';
       });
       if (!pl.cast.length) h += '<div class="empty-note">No dialogue found — the narrator reads everything.</div>';
       else h += '<div class="cast-note">Speakers are worked out on this device from the quoted lines and speech tags (“said Anna”, “he whispered”). A change applies from the next sentence.</div>';
@@ -1017,8 +1340,11 @@
       focusBack(wrap);
       wrap.addEventListener("change", function(e){
         var sel = e.target.closest("select[data-key]"); if (!sel || !sel.value) return;
-        if (sel.dataset.key === "narrator"){ Store.set(K_NARR, sel.value); pl.narrator = sel.value; showNarrator(sel.value, sel); }
-        else { pl.rec.voices[sel.dataset.key] = sel.value; pl.rec.updated = Date.now(); saveCast(pl.rec); }
+        if (sel.dataset.key === "narrator"){
+          pl.narrator = sel.value;
+          if (pl.src === SRC.kokoro){ Store.set(K_KNARR, sel.value); kokoroShowNarrator(sel.value, sel); }
+          else { Store.set(K_NARR, sel.value); showNarrator(sel.value, sel); }
+        } else { map[sel.dataset.key] = sel.value; pl.rec.updated = Date.now(); saveCast(pl.rec); }
         if (plan === pl) replan();
       });
     }, function(err){
@@ -1088,7 +1414,7 @@
   }
 
   /* ============================================================
-     7. The engine, registered with Speak
+     7. The engines, registered with Speak
      ============================================================ */
   var engine = {
     label: "ElevenLabs narration",
@@ -1096,8 +1422,26 @@
     setRate: setRate, fillVoices: fillVoices, voiceChanged: voiceChanged, narratorName: narratorName, syncSettings: syncSettings
   };
   if (Speak && Speak.registerEngine) Speak.registerEngine("eleven", engine);
+  /* natural voices: the same clip player, fed by the worker; the model loads (or downloads, with its progress in
+     the bar) while the cast is worked out, and the first sentence waits for both */
+  var kEngine = {
+    label: "Natural voices",
+    supported: function(){ return supported() && !!(window.Worker && window.WebAssembly && window.caches); },
+    ready: kokoroReady,
+    prepare: function(units, ctx){
+      if (!kReady) setStatus("Preparing…");
+      var m = kokoroModel(); m.catch(function(){});
+      return planFor(SRC.kokoro, units, ctx).then(function(){ return m; });
+    },
+    speak: speak, cancel: cancel, stop: stop, setRate: setRate,
+    fillVoices: kokoroFillVoices, voiceChanged: kokoroVoiceChanged, narratorName: function(){ return kokoroName(kokoroNarrator()); }, syncSettings: kokoroSync
+  };
+  if (Speak && Speak.registerEngine) Speak.registerEngine("kokoro", kEngine);
 
   window.llAudiobook = { attribute: attribute, castDevice: castDevice, deviceCast: deviceCast, engine: engine, openCast: openCast, askForKey: askForKey,
                          voices: voices, setModel: setModel, syncSettings: syncSettings, sent: function(){ return sent; }, plan: function(){ return plan; },
-                         devicePlan: function(){ return devPlan; } };
+                         devicePlan: function(){ return devPlan; },
+                         kokoro: kEngine, kokoroVoices: KOKORO_VOICES, kokoroPool: kokoroPool, downloadKokoro: downloadKokoro, removeKokoro: removeKokoro,
+                         kokoroOnDevice: kokoroOnDevice, kokoroState: function(){ return { ready: kReady, loading: !!kLoad, pct: kPct, threads: kThreads, worker: !!kw, jobs: Object.keys(kJobs).length }; },
+                         clearAudio: clearAudio, audioTotal: audioTotal, trimAudio: trimAudio, wavBlob: wavBlob, assignVoices: assignVoices };
 })();

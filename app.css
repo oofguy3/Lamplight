@@ -1100,6 +1100,10 @@
   .tts-panel .subgroup.dim{opacity:.45; pointer-events:none;}
   .tts-panel .rowline[hidden], .tts-panel .subgroup[hidden], .tts-panel .hint[hidden]{display:none;}
   .tts-panel .rowline .sel{flex:1 1 140px; min-width:0; max-width:100%;}
+  /* natural voices: the download / ready row, its progress bar, and the audio kept on the device */
+  .tts-panel .k-state{font-size:0.8125rem; color:var(--muted); flex:1 1 auto; min-width:0; line-height:1.4;}
+  .tts-panel .k-progress{width:100%; height:8px; accent-color:var(--accent);}
+  .tts-panel .k-progress[hidden], .tts-panel .chip[hidden]{display:none;}
   /* voices for the narrator and each character (Cast panel) */
   .cast-row{display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; padding:9px 4px; border-bottom:1px solid var(--line);}
   .cast-row .cast-who{flex:1; min-width:0;}
