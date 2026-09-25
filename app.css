@@ -1079,9 +1079,14 @@
   }
   #tts[data-engine] .tts-status{display:block;}
   #tts.fetching #ttsPlay{opacity:.55;}
-  @media (max-width:560px){ #tts .tts-status{max-width:76px; font-size:0.6875rem;} }
-  /* small phones: no room for the text, but the live region keeps announcing and the play button shows the wait */
-  @media (max-width:400px){ #tts .tts-status{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; max-width:none;} }
+  /* phones: no room in the row, so the status sits in a small pill just above the bar, and only while
+     there is something to say ("Downloading voices 40%…", "Generating…") — a silent wait looks broken */
+  @media (max-width:560px){
+    #tts .tts-status{position:absolute; left:50%; transform:translateX(-50%); bottom:calc(100% + 8px); max-width:calc(100vw - 32px);
+      font-size:0.8125rem; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:5px 12px;
+      box-shadow:0 2px 8px rgba(0,0,0,.18);}
+    #tts[data-engine] .tts-status:has(#ttsStatus:empty):has(#ttsSent:empty){display:none;}
+  }
 
   /* ---------- the voices panel ----------
      A handful of good choices first — the pair that is reading, then up to six cards for this

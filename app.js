@@ -4954,9 +4954,7 @@
       if (btn) btn.hidden = !(engineName !== "device" || castOn);
       var kept = box.querySelector("#audioKeptRow"); if (kept) kept.hidden = engineName === "device";
       Array.prototype.forEach.call(box.querySelectorAll("[data-engine-only]"), function(el){
-        var off = el.dataset.engineOnly !== engineName;
-        el.classList.toggle("dim", off);
-        if ("inert" in el) el.inert = off;          /* a greyed row leaves the tab order too */
+        el.hidden = el.dataset.engineOnly !== engineName;   /* only the chosen engine's rows show */
       });
       if (engineName !== "device" && ENGINE_LIB[engineName]){
         need([ENGINE_LIB[engineName]]).then(function(){ var e = engines[engineName]; if (e && e.syncSettings && Side.is("voices")) e.syncSettings(asked); }).catch(function(){});

@@ -1037,6 +1037,10 @@
   }
   /* before reading starts: the download needs a connection; without one the device voice reads this time */
   function kokoroReady(){
+    if (!kReady && Store && Store.get("ll_kokoro_told") !== "1"){
+      Store.set("ll_kokoro_told", "1");
+      toast("Natural voices are made on this device: the first sentence can take a minute on a phone, then it keeps reading");
+    }
     if (kReady || navigator.onLine) return Promise.resolve(true);
     return kokoroOnDevice().then(function(h){
       if (h.ready) return true;
