@@ -78,5 +78,29 @@ self.onmessage = (e) => {
   } else if (m.type === "cancel") {
     queue = [];
     gen++;
+  } else if (m.type === "warm") {
+    /* fetch the voice files now, into the same cache and under the same keys kokoro-js uses, so
+       every voice works offline after "Download" rather than only the ones already heard */
+    warm(Array.isArray(m.voices) ? m.voices : []).then(
+      (n) => self.postMessage({ type: "warmed", n }),
+      (err) => self.postMessage({ type: "warmed", n: 0, message: message(err) })
+    );
   }
 };
+
+async function warm(names) {
+  const base = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/";
+  let cache = null, n = 0;
+  try { cache = await caches.open("kokoro-voices"); } catch (_) { return 0; }
+  for (const name of names) {
+    const url = base + name + ".bin";
+    try {
+      if (await cache.match(url)) { n++; continue; }
+      const r = await fetch(url);
+      if (!r.ok) continue;
+      await cache.put(url, r);
+      n++;
+    } catch (_) { /* offline or refused: the voice is fetched on first use instead */ }
+  }
+  return n;
+}

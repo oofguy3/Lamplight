@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.25-26";
+const VERSION = "2026.09.25-27";
 const CACHE = "lamplight-" + VERSION;
 /* caches that outlive a release: shared files on their way in, and the natural voices (the Kokoro model
    and its voice files, kept there by kokoro-js): a 95 MB download that must not go with every update */
@@ -150,14 +150,17 @@ self.addEventListener("fetch", (e) => {
         if (COI) { out.set("Cross-Origin-Opener-Policy", "same-origin"); out.set("Cross-Origin-Embedder-Policy", "credentialless"); }
         return out;
       };
+      /* the headers go on every same-origin response, not only the page: a cross-origin-isolated page may
+         only start a module worker (workers/kokoro-worker.js) and its nested pthread workers
+         (vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs) when those scripts carry COEP too */
       const asPage = (r) => new Response(r.body, { status: r.status, statusText: r.statusText, headers: pageHeaders(r.headers) });
-      if (hit) return isPage ? asPage(hit) : hit;
+      if (hit) return asPage(hit);
       try {
         const res = await fetch(e.request);
         /* same-origin files that are not precached (vendor/kokoro/*.mjs and *.wasm, the worker) land here on first use */
         if (res.ok && res.type === "basic") c.put(e.request, res.clone()).catch(() => null);
         /* a redirect (…/Lamplight → …/Lamplight/) must reach the browser as one, so it is passed on untouched */
-        return isPage && !res.redirected ? asPage(res) : res;
+        return res.redirected ? res : asPage(res);
       } catch (err) {
         if (isPage) {
           const page = await c.match("./index.html");

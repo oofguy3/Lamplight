@@ -4930,7 +4930,7 @@
         '<div class="subgroup" id="kokoroRow" data-engine-only="kokoro">' +
           '<div class="rowline"><label for="kokoroNarrator">Narrator</label><select id="kokoroNarrator" class="sel"><option value="af_heart">Heart (woman)</option></select></div>' +
           '<div class="rowline" id="kokoroDlRow"><span class="k-state" id="kokoroState" aria-live="polite">Checking…</span>' +
-            '<button type="button" class="chip" id="kokoroDl" hidden>Download natural voices (≈ 95 MB, once)</button>' +
+            '<button type="button" class="chip" id="kokoroDl" hidden>Download natural voices (≈ 110 MB, once)</button>' +
             '<button type="button" class="chip" id="kokoroRm" hidden>Remove</button></div>' +
           '<progress id="kokoroProgress" class="k-progress" max="100" value="0" aria-label="Downloading the natural voices" hidden></progress>' +
           '<p class="hint">Runs on this device. Nothing is sent anywhere.</p>' +

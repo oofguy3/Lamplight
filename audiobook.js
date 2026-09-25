@@ -864,13 +864,29 @@
   /* ---- the worker: load with progress, generate in order, cancel ---- */
   var kw = null, kLoad = null, kReady = false, kJobs = {}, kSeq = 0, kFiles = {}, kPct = -1, kThreads = 0;
   var kHave = null;     /* { ready, bytes } — what Cache Storage held when last looked */
+  /* a load that shows no sign of life for this long (no progress, no ready) is given up on, so a
+     refused nested worker or a stalled download never leaves the reader at "Preparing…" for ever */
+  var K_STALL = 90000, kTimer = null;
+  function kokoroWatch(){
+    clearTimeout(kTimer);
+    if (!kLoad) return;
+    kTimer = setTimeout(function(){
+      var l = kLoad; if (!l) return;
+      kLoad = null; kReady = false; kFiles = {}; kPct = -1;
+      try { if (kw) kw.terminate(); } catch(_){}
+      kw = null;
+      l.rej(new Error(navigator.onLine ? "Natural voices couldn’t start (no response from the voice engine)" : "Natural voices need a connection to download"));
+      kokoroSync();
+    }, K_STALL);
+  }
   function kokoroWorker(){
     if (kw) return kw;
     kw = new Worker("./workers/kokoro-worker.js", { type: "module" });
     kw.onmessage = function(e){
       var m = e.data || {}, j;
-      if (m.type === "progress") kokoroProgress(m);
+      if (m.type === "progress"){ kokoroProgress(m); kokoroWatch(); }
       else if (m.type === "ready"){
+        clearTimeout(kTimer);
         kReady = true; kThreads = m.threads || 0; kFiles = {}; kPct = -1;
         var l = kLoad; kLoad = null; if (l) l.res();
         kHave = null; kokoroSync();
@@ -879,6 +895,7 @@
         delete kJobs[m.id]; j.res({ samples: m.samples, sampleRate: m.sampleRate || 24000, ms: m.ms || 0 });
       } else if (m.type === "error"){
         if (m.id === null || m.id === undefined){
+          clearTimeout(kTimer);
           var ld = kLoad; kLoad = null; kFiles = {}; kPct = -1;
           if (ld) ld.rej(new Error(m.message ? "Natural voices: " + String(m.message).slice(0, 80) : "Couldn’t load the natural voices"));
           kokoroSync();
@@ -888,6 +905,7 @@
     /* the script itself failed (offline before the runtime was ever cached, a browser without module workers):
        everything waiting fails now, and the next try makes a new worker */
     kw.onerror = function(){
+      clearTimeout(kTimer);
       var l = kLoad, jobs = kJobs;
       kLoad = null; kReady = false; kJobs = {}; kFiles = {}; kPct = -1;
       try { kw.terminate(); } catch(_){}
@@ -907,6 +925,7 @@
     l.promise = new Promise(function(res, rej){ l.res = res; l.rej = rej; });
     kLoad = l;
     try { kokoroWorker().postMessage({ type: "load" }); } catch(err){ kLoad = null; return Promise.reject(err); }
+    kokoroWatch();
     kokoroSync();
     return l.promise;
   }
@@ -987,7 +1006,11 @@
   function downloadKokoro(){
     if (kLoad) return;
     if (!navigator.onLine && !(kHave && kHave.ready)){ toast("Connect to the internet once to download the natural voices"); return; }
-    kokoroModel().then(function(){ toast("Natural voices are ready"); }, function(err){ toast((err && err.message) || "Couldn’t download the natural voices"); });
+    kokoroModel().then(function(){
+      toast("Natural voices are ready");
+      /* the English voices (28 × 0.5 MB) come down right after the model so they all work offline */
+      try { kokoroWorker().postMessage({ type: "warm", voices: KOKORO_VOICES.map(function(v){ return v.id; }) }); } catch(_){}
+    }, function(err){ toast((err && err.message) || "Couldn’t download the natural voices"); });
   }
   /* the Remove button: the model and voice caches, the runtime files in the app's cache, and the worker holding the model */
   function removeKokoro(){
