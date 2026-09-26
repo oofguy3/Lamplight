@@ -4035,6 +4035,8 @@
       if (t === lastPrefix) return;
       lastPrefix = t;
       detectFrom(t, Library.currentId && Library.currentId());
+      /* natural voices start making the audio ahead as soon as a document opens (audiobook.js, once the model is on the device) */
+      if (engineName === "kokoro") need(["audiobook"]).then(function(){ if (window.llAudiobook && window.llAudiobook.feed) window.llAudiobook.feed(3000); }).catch(function(){});
     }).observe($("#doc"), { childList: true });
 
     /* ---- voices ----
@@ -4934,6 +4936,10 @@
             '<button type="button" class="chip" id="kokoroRm" hidden>Remove</button></div>' +
           '<progress id="kokoroProgress" class="k-progress" max="100" value="0" aria-label="Downloading the natural voices" hidden></progress>' +
           '<p class="hint">Runs on this device. Nothing is sent anywhere.</p>' +
+          '<div class="rowline" id="kokoroPrepRow"><span class="k-state" id="kokoroPrepState" aria-live="polite"></span>' +
+            '<button type="button" class="chip" id="kokoroPrep">Prepare book</button></div>' +
+          '<progress id="kokoroPrepProgress" class="k-progress" max="100" value="0" aria-label="Preparing the audiobook" hidden></progress>' +
+          '<p class="hint">Keep Lamplight open (plugging in helps); it carries on where it left off.</p>' +
         '</div>' +
         '<div class="rowline" id="audioKeptRow" hidden><span class="k-state" id="audioKept">Audio kept on this device</span><button type="button" class="chip" id="audioClear">Clear</button></div>';
     }
@@ -5226,6 +5232,7 @@
       if (b.id === "elevenKeyLink"){ withAudiobook(function(a){ a.askForKey(); }); return; }
       if (b.id === "kokoroDl"){ withAudiobook(function(a){ a.downloadKokoro(); }); return; }
       if (b.id === "kokoroRm"){ withAudiobook(function(a){ a.removeKokoro(); }); return; }
+      if (b.id === "kokoroPrep"){ withAudiobook(function(a){ a.prepareBook(); }); return; }
       if (b.id === "audioClear"){ withAudiobook(function(a){ a.clearAudio(); }); return; }
     });
     Side.body.addEventListener("input", function(e){

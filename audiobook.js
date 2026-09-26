@@ -33,6 +33,10 @@
   var K_KNARR = "ll_kokoro_narrator", KOKORO_MODEL = "kokoro-82m-q8", KOKORO_MB = 95;
   var KOKORO_CACHES = ["transformers-cache", "kokoro-voices"];    /* Cache Storage: the model files, the voice files */
   var AUDIO_CAP = 400 * 1024 * 1024;    /* clips kept in IndexedDB across all documents; the oldest go first */
+  /* natural voices without pauses (5b): the worker's measured speed per device (seconds of work per second of audio,
+     characters per second of audio), half an hour of audio made ahead, and the smart start's window and longest wait */
+  var K_RTF = "ll_kokoro_rtf", K_CPS = "ll_kokoro_cps", K_SLOWTIP = "ll_kokoro_slowtip";
+  var FEED_AHEAD = 30 * 60, HOLD_WINDOW = 10 * 60, HOLD_CAP = 90, WAV_BPS = 48000;   /* seconds; bytes per second of 24 kHz 16-bit WAV */
 
   /* ============================================================
      1. Who speaks — offline heuristics (no network, no DOM)
@@ -577,7 +581,7 @@
               model: model, list: function(){ return voices(); }, narrator: narratorId, pool: function(list){ return list; },
               options: voiceOptions, run: function(task){ return fetchClip(task, 0); } },
     /* one clip per segment (a unit's run of text in one voice): no packing, so the highlight is exact per unit;
-       the worker makes one clip at a time, in the order asked, three ahead of playback */
+       the worker makes one clip at a time, in the order asked, three ahead of playback, and the feeder (5b) keeps it busy further on */
     kokoro: { name: "kokoro", castKey: "kokoro", inflight: 1, ahead: 3, busy: "Generating…", pack: false,
               model: function(){ return KOKORO_MODEL; }, list: function(){ return Promise.resolve(KOKORO_VOICES); }, narrator: kokoroNarrator,
               pool: function(list, lang){ return kokoroPool(lang); }, options: kokoroOptions, run: kokoroClip }
@@ -694,19 +698,29 @@
       cur.onsuccess = function(){
         var c = cur.result; if (!c) return;
         var v = c.value || {}, n = v.size || (v.blob && v.blob.size) || 0;
-        total += n; recs.push({ key: c.primaryKey, created: v.created || 0, size: n });
+        total += n; recs.push({ key: c.primaryKey, created: v.created || 0, size: n, docId: v.docId || "" });
         c.continue();
       };
     }).then(function(){ return { recs: recs, total: total }; }).catch(function(){ return { recs: recs, total: total }; });
   }
   function audioTotal(){ return scanAudio().then(function(r){ return r.total; }); }
+  /* other documents' clips go first, oldest first; then the open document's behind the reading position; never
+     the open document's clips from the reading position on (all of them when it has no plan to tell where that is) */
   function trimAudio(){
     trimT = null;
-    return scanAudio().then(function(r){
+    var doc = (Library && Library.currentId && Library.currentId()) || "", p = plan && plan.docId === doc && plan.clips ? plan : null, keep = null;
+    var from = p ? readPos(p) : 0;
+    var ready = p ? keyed(p, from).then(function(){ keep = {}; for (var k = from; k < p.clips.length; k++) keep[p.clips[k].key] = 1; }) : Promise.resolve();
+    return ready.then(scanAudio).then(function(r){
       if (r.total <= AUDIO_CAP) return;
-      r.recs.sort(function(a, b){ return a.created - b.created; });
-      var drop = [], total = r.total, i = 0;
-      while (total > AUDIO_CAP && i < r.recs.length){ total -= r.recs[i].size; drop.push(r.recs[i].key); i++; }
+      r.recs.sort(function(a, b){ return ((a.docId === doc) - (b.docId === doc)) || a.created - b.created; });
+      var drop = [], total = r.total, i, x;
+      for (i = 0; i < r.recs.length && total > AUDIO_CAP; i++){
+        x = r.recs[i];
+        if (doc && x.docId === doc && (!keep || keep[x.key])) continue;
+        total -= x.size; drop.push(x.key);
+      }
+      if (feed.have) drop.forEach(function(k){ delete feed.have[k]; });
       return Library.tx("audio", "readwrite", function(st){ drop.forEach(function(k){ st.delete(k); }); });
     }).then(audioSync).catch(function(){});
   }
@@ -720,7 +734,8 @@
   function clearAudio(){
     if (!Library) return;
     cancelQueued();
-    Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ loadedKey = null; toast("Cached audio cleared"); audioSync(); }, function(){ toast("Couldn’t clear the audio"); });
+    feed.have = null; feed.haveDoc = null; feed.haveP = null;
+    Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ loadedKey = null; toast("Cached audio cleared"); audioSync(); prepSync(); }, function(){ toast("Couldn’t clear the audio"); });
   }
   function b64blob(b64){
     var bin = atob(b64), n = bin.length, bytes = new Uint8Array(n), i;
@@ -781,7 +796,7 @@
       if (inflight[k]) return join(inflight[k], urgent);
       /* the cache is read before a request slot is taken, so a clip on the device never waits behind the network */
       return cached(k).then(function(rec){
-        if (rec) return rec;
+        if (rec){ known(rec); return rec; }
         if (inflight[k]) return join(inflight[k], urgent);
         var task = { key: k, clip: clip, docId: clip.doc, src: src, cancelled: false };
         task.promise = new Promise(function(res, rej){ task.res = res; task.rej = rej; });
@@ -803,7 +818,7 @@
     return task.src.run(task).then(function(r){
       var out = { key: task.key, docId: task.docId, voice_id: task.clip.voice, model_id: task.clip.model, chars: task.clip.text.length,
                   blob: r.blob, size: r.blob.size, times: r.times, created: Date.now() };
-      save(out);
+      save(out); known(out);
       return out;
     });
   }
@@ -892,7 +907,8 @@
         kHave = null; kokoroSync();
       } else if (m.type === "audio"){
         j = kJobs[m.id]; if (!j) return;         /* dropped meanwhile */
-        delete kJobs[m.id]; j.res({ samples: m.samples, sampleRate: m.sampleRate || 24000, ms: m.ms || 0 });
+        delete kJobs[m.id]; kokoroMeasure(m, j.n);
+        j.res({ samples: m.samples, sampleRate: m.sampleRate || 24000, ms: m.ms || 0 });
       } else if (m.type === "error"){
         if (m.id === null || m.id === undefined){
           clearTimeout(kTimer);
@@ -943,7 +959,7 @@
   function kokoroGenerate(text, voice){
     var id = ++kSeq;
     return new Promise(function(res, rej){
-      kJobs[id] = { res: res, rej: rej };
+      kJobs[id] = { res: res, rej: rej, n: String(text || "").length };
       try { kokoroWorker().postMessage({ type: "generate", id: id, text: text, voice: voice, speed: 1 }); }
       catch(err){ delete kJobs[id]; rej(err); }
     });
@@ -1016,8 +1032,9 @@
   function removeKokoro(){
     if (!confirm("Remove the natural voices from this device (" + KOKORO_MB + " MB)? They can be downloaded again.")) return;
     if (kokoroRunning() && Speak && Speak.stop) Speak.stop();
+    feedStop();
     var l = kLoad, jobs = kJobs;
-    kLoad = null; kReady = false; kJobs = {}; kFiles = {}; kPct = -1;
+    kLoad = null; kReady = false; kJobs = {}; kFiles = {}; kPct = -1; kHave = { ready: false, bytes: 0 };
     if (kw){ try { kw.terminate(); } catch(_){} kw = null; }
     var gone = new Error("Natural voices were removed");
     if (l) l.rej(gone);
@@ -1062,11 +1079,12 @@
     return audioEl;
   }
   /* "Fetching…" / "Generating…" / "Preparing…" in the live region, the counter beside it (ElevenLabs only);
-     only a change is written, since screen readers announce every write to a live region */
-  function setStatus(text){
+     only a change is written, since screen readers announce every write to a live region. idle: a line that
+     is not a wait on the worker (the smart start's count), so the play button stays pressable */
+  function setStatus(text, idle){
     var el = document.getElementById("ttsStatus"), cnt = document.getElementById("ttsSent"), bar = document.getElementById("tts"), play = document.getElementById("ttsPlay");
     if (!el) return;
-    var live = text || "", counter = (text || !(plan && plan.src === SRC.eleven)) ? "" : (sent ? "≈" + fmt(sent) + " chars sent" : ""), busy = !!live;
+    var live = text || "", counter = (text || !(plan && plan.src === SRC.eleven)) ? "" : (sent ? "≈" + fmt(sent) + " chars sent" : ""), busy = !!live && !idle;
     if (el.textContent !== live) el.textContent = live;
     if (cnt && cnt.textContent !== counter) cnt.textContent = counter;
     if (bar) bar.classList.toggle("fetching", busy);
@@ -1110,26 +1128,36 @@
       return;
     }
     if (!plan || !plan.clips){ opts.onerror("not ready"); return; }
+    /* straight on from the clip that just ended, rather than a start (play, a skip, a new reading) */
+    var cont = endedAt > 0 && Date.now() - endedAt < 1500;
+    endedAt = 0;
     /* after a clip ends, the next clip may start inside the same unit (a sentence with two voices) */
     if (expectNext !== null && plan.clips[expectNext] && plan.clips[expectNext].first <= i && i <= plan.clips[expectNext].last) ci = expectNext;
     expectNext = null;
     if (ci === undefined || !plan.clips[ci]){ opts.onend(); return; }
     var clip = plan.clips[ci];
     current = { clip: clip, index: ci, opts: opts, seq: mySeq, unit: -1, rec: null };
-    if (!(loadedKey && clip.key === loadedKey)) setStatus(plan.src.busy);
+    if (!(loadedKey && clip.key === loadedKey) && !got(clip)) setStatus(plan.src.busy);     /* a clip already made: no "Generating…" flash */
+    /* natural voices: a start may wait until enough is made ahead (5b); flowing on to a clip already made never does */
+    var gate = plan.src === SRC.kokoro && !(cont && got(clip)) ? smartStart(ci, cont, mySeq) : null;
     getClip(clip, true).then(function(rec){
       if (mySeq !== seq) return;
-      setStatus();
       current.rec = rec;
-      playClip(rec, clip, i, opts, mySeq);
-      var k = clipIndex(clip);
-      if (k >= 0) prefetch(k);
+      function go(){
+        if (mySeq !== seq) return;
+        setStatus();
+        playClip(rec, clip, i, opts, mySeq);
+        var k = clipIndex(clip);
+        if (k >= 0) prefetch(k);
+      }
+      if (gate) gate.then(go); else go();
     }, function(err){
       if (mySeq !== seq || (err && err.cancelled)) return;
       setStatus();
       toast(err && err.message ? err.message : (plan.src === SRC.eleven ? "ElevenLabs request failed" : "Natural voices couldn’t make the audio"));
       opts.onerror(null);
     });
+    if (plan.src === SRC.kokoro) feedKick();
   }
   function playClip(rec, clip, i, opts, mySeq){
     var a = audio(), part = -1, k;
@@ -1145,7 +1173,7 @@
     }
     a.onended = function(){
       if (mySeq !== seq) return;
-      stopTicker();
+      stopTicker(); endedAt = Date.now();
       /* the next clip is found by what this one was, not by its old index: the plan may have been rebuilt meanwhile */
       var k = clipIndex(clip), nx = k >= 0 ? plan.clips[k + 1] : null;
       expectNext = nx ? k + 1 : null;
@@ -1161,7 +1189,7 @@
     a.load();
   }
   function cancel(){
-    seq++; stopTicker(); current = null;
+    seq++; stopTicker(); current = null; holdEnd();
     if (audioEl){ try { audioEl.pause(); } catch(_){} }
     setStatus();
   }
@@ -1172,6 +1200,288 @@
     if (url){ try { URL.revokeObjectURL(url); } catch(_){} url = null; }
   }
   function setRate(r){ if (audioEl) audioEl.playbackRate = r; }
+
+  /* ============================================================
+     5b. Natural voices without pauses — the feeder keeps the worker making the clips after the reading
+         position (half an hour of audio, or the whole document once Prepare book is pressed) while the reader
+         reads, listens or pauses; the worker's measured speed says how long a start must wait so that reading
+         never catches up with it; the clips on the device are known by key, so none is made twice
+     ============================================================ */
+  var feed = { busy: false, prep: false, t: null, have: null, haveDoc: null, haveP: null, bad: {}, msg: "", full: false, keying: false };
+  var hold = null, endedAt = 0, wake = null, wakeAsk = false;
+  function rtf(){ var v = parseFloat(Store.get(K_RTF)); return v > 0 ? v : 0; }
+  function cps(){ var v = parseFloat(Store.get(K_CPS)); return v > 0 ? v : 14; }
+  function ema(old, x){ return old > 0 ? old * 0.7 + x * 0.3 : x; }
+  /* every clip the worker makes: seconds of work per second of audio, and characters per second of audio */
+  function kokoroMeasure(m, chars){
+    var secs = m.samples && m.sampleRate ? m.samples.length / m.sampleRate : 0;
+    if (!(secs > 0.2) || !(m.ms > 0)) return;
+    Store.set(K_RTF, ema(rtf(), m.ms / 1000 / secs).toFixed(4));
+    if (chars > 0) Store.set(K_CPS, ema(parseFloat(Store.get(K_CPS)) || 0, chars / secs).toFixed(4));
+  }
+  /* the smart start (pure): making r seconds of work per second of audio, playing the next W seconds without
+     catching up needs W·(r−1)/r seconds made first; have is what is made already, eta how long the rest takes.
+     A wait longer than cap (90 s) is not worth it: reading starts at once, with pauses, and slow says so */
+  function holdFor(r, W, have, cap){
+    r = +r || 0; W = Math.max(0, +W || 0); have = Math.max(0, +have || 0); cap = cap > 0 ? cap : HOLD_CAP;
+    if (!(r > 1)) return { hold: false, eta: 0, need: 0, slow: false };
+    var need = W * (r - 1) / r, eta = Math.max(0, need - have) * r;
+    if (have >= need) return { hold: false, eta: 0, need: need, slow: false };
+    if (eta > cap) return { hold: false, eta: eta, need: need, slow: true };
+    return { hold: true, eta: eta, need: need, slow: false };
+  }
+
+  /* ---- what is on the device: the keys of the open document's clips (seconds of audio where known) ---- */
+  function recSecs(rec){ var t = rec && rec.times, l = t && t.length ? t[t.length - 1] : null; return l && !l.rel && l.b > 0 ? l.b : 0; }
+  function got(c){ return !!(c && c.key && feed.have && c.doc === feed.haveDoc && feed.have[c.key]); }
+  /* a clip's seconds of audio: measured once made, else from its length */
+  function secsOf(c){ var h = got(c) ? feed.have[c.key] : 0; return typeof h === "number" && h > 0 ? h : (c.text.length || 1) / cps(); }
+  function keyed(p, from){ return Promise.all(p.clips.slice(from || 0).map(clipKey)); }
+  function feedHave(docId){
+    if (feed.haveDoc === docId && feed.have) return Promise.resolve(feed.have);
+    if (feed.haveDoc === docId && feed.haveP) return feed.haveP;
+    feed.haveDoc = docId; feed.have = null;
+    var p = feed.haveP = (Library ? Library.tx("audio", "readonly", function(st){
+      var ix = st.index("doc");
+      return ix.getAllKeys ? ix.getAllKeys(IDBKeyRange.only(docId)) : null;
+    }) : Promise.resolve(null)).catch(function(){ return null; }).then(function(keys){
+      var h = {};
+      (keys || []).forEach(function(k){ h[k] = true; });
+      if (feed.haveP === p){ feed.have = h; feed.haveP = null; }
+      return h;
+    });
+    return p;
+  }
+  /* a clip made or read from the device: the smart start and the Prepare book line may move on */
+  function known(rec){
+    if (!rec || !rec.key || !feed.have || rec.docId !== feed.haveDoc) return;
+    var was = feed.have[rec.key];
+    feed.have[rec.key] = recSecs(rec) || true;
+    if (!was){ if (hold) holdCheck(); prepSync(); }
+  }
+  /* the clip at the reading position: the one playing or paused on, else the one at the top of the screen */
+  function readPos(p){
+    var i = -1, j, k;
+    if (plan === p && isRunning()){
+      if (current && current.clip){ k = clipIndex(current.clip); if (k >= 0) return k; }
+      i = Speak && Speak.index ? Speak.index() : -1;
+    } else if (state && state.mode === "doc" && Library && Library.topCharOffset){
+      var off = Library.topCharOffset() || 0;
+      for (j = 0; j < p.units.length; j++) if (p.units[j].end > off){ i = j; break; }
+    } else if (state && state.mode === "pdf" && Library && Library.currentPdfPage){
+      var pg = Library.currentPdfPage() || 0;
+      for (j = 0; j < p.units.length; j++) if ((p.units[j].page || 0) >= pg){ i = j; break; }
+    }
+    k = i >= 0 ? p.firstClip[i] : 0;
+    if (k === undefined) k = i >= p.units.length ? p.clips.length : 0;     /* read past the pages planned so far */
+    return k;
+  }
+
+  /* ---- the feeder: one clip at a time (the worker is sequential), in reading order ---- */
+  function feedOn(){
+    return !!(Speak && Speak.engine && Speak.engine() === "kokoro" && state && (state.mode === "doc" || state.mode === "pdf") &&
+              !elevenRunning() && kEngine.supported());
+  }
+  /* the open document's natural-voices plan: the one being read, else worked out now for a text document */
+  function feedPlan(){
+    var doc = (Library && Library.currentId && Library.currentId()) || "";
+    function mine(){ return plan && plan.src === SRC.kokoro && plan.docId === doc && plan.clips ? plan : null; }
+    if (mine()) return Promise.resolve(mine());
+    if (state && state.mode === "doc" && Speak && Speak.buildDocUnits){
+      return castPlan(SRC.kokoro).then(function(){ var p = mine(); if (!p) throw new Error("replanned"); return p; });
+    }
+    var e = new Error("Start reading this PDF aloud, then prepare it (the pages loaded so far)"); e.noplan = true;
+    return Promise.reject(e);
+  }
+  /* the next clip to make: the first neither on the device nor on its way, from the reading position on, within half
+     an hour of audio (preparing: the whole document, from the reading position, then from its start), and within
+     the audio the device keeps */
+  function feedPick(p){
+    var n = p.clips.length, start = readPos(p), all = feed.prep, acc = 0, bytes = 0, flying = 0, j, c, s;
+    for (j = 0; j < (all ? n : n - start); j++){
+      c = p.clips[(start + j) % n]; s = secsOf(c);
+      if (!all && acc >= FEED_AHEAD) break;
+      bytes += s * WAV_BPS + 44;
+      if (bytes > AUDIO_CAP) return { full: true, flying: flying };
+      acc += s;
+      if (got(c) || feed.bad[c.key]) continue;
+      if (inflight[c.key]){ flying++; continue; }
+      return { clip: c };
+    }
+    return { flying: flying };
+  }
+  function feedKick(ms){
+    if (feed.busy) return;
+    clearTimeout(feed.t);
+    feed.t = setTimeout(feedStep, ms || 0);
+  }
+  /* another document, or the voices removed: the feeder and any preparing stop */
+  function feedStop(){
+    clearTimeout(feed.t); feed.t = null;
+    if (feed.busy) cancelQueued();
+    feed.full = false; feed.msg = ""; feed.bad = {};
+    if (feed.prep){ feed.prep = false; wakeOff(); }
+    prepSync();
+  }
+  function prepEnd(msg){ feed.prep = false; if (msg) feed.msg = msg; wakeOff(); prepSync(); }
+  function feedStep(){
+    feed.t = null;
+    if (feed.busy || typeof document === "undefined" || document.visibilityState === "hidden") return;   /* hidden: goes on once visible */
+    if (!feedOn()){ if (feed.prep) prepEnd(); return; }
+    /* nothing is downloaded unasked: without Prepare book the model must be on the device (or on its way for reading) */
+    if (!(feed.prep || kReady || kLoad || (kHave && kHave.ready))){
+      if (!kHave) kokoroOnDevice().then(function(h){ if (h.ready) feedKick(); });
+      return;
+    }
+    var p = null, c = null;
+    feed.busy = true;
+    feedPlan().then(function(pl){
+      p = pl;
+      return feedHave(p.docId).then(function(){ return keyed(p); });
+    }).then(function(){
+      if (plan !== p || !feedOn()) return "again";
+      prepSync();
+      var x = feedPick(p);
+      if (x.clip){ c = x.clip; return getClip(c, false).then(function(){ return "next"; }); }
+      feed.full = !!x.full;
+      if (feed.prep && !x.flying) prepEnd();
+      return x.flying ? "again" : "idle";
+    }).then(function(how){
+      feed.busy = false;
+      /* idle: everything within reach is made; the reading position moves on, so it looks again now and then */
+      feedKick(how === "next" ? 0 : how === "again" ? 1000 : 20000);
+    }, function(err){
+      feed.busy = false;
+      if (err && err.cancelled){ feedKick(500); return; }
+      if (err && err.noplan){ if (feed.prep) prepEnd(err.message); return; }
+      if (c && kReady){ feed.bad[c.key] = true; feedKick(1000); return; }     /* the model works, not on this text: skipped */
+      if (feed.prep) prepEnd((err && err.message) || "Natural voices couldn’t make the audio");
+    });
+  }
+
+  /* ---- the smart start: reading that starts (or has caught up with the worker) waits, counting down in the bar,
+     until enough is made that it won't catch up again in the next ten minutes (or the rest of the document);
+     never longer than a minute and a half, and the play button starts it at once ---- */
+  function smartStart(ci, cont, mySeq){
+    /* hidden, the feeder rests, so there would be nothing to wait for */
+    if (!(rtf() > 1) || !plan || (typeof document !== "undefined" && document.visibilityState === "hidden")) return null;
+    var p = plan;
+    return new Promise(function(res){
+      feedHave(p.docId).then(function(){ return keyed(p, ci); }).then(function(){
+        if (mySeq !== seq) return;
+        if (cont && plan === p && got(p.clips[ci])){ res(); return; }
+        hold = { seq: mySeq, ci: ci, plan: p, res: res, eta: 0, at: 0, timer: null, shown: false };
+        holdCheck();
+      });
+    });
+  }
+  function holdCheck(){
+    var h = hold;
+    if (!h) return;
+    if (h.seq !== seq){ holdEnd(); return; }
+    if (plan !== h.plan){
+      /* the plan was rebuilt (PDF pages appended): the same clip in the new one */
+      var at = current && current.seq === h.seq ? clipIndex(current.clip) : -1;
+      if (at < 0){ holdRelease(); return; }
+      h.plan = plan; h.ci = at;
+      keyed(plan, at).then(holdCheck);
+      return;
+    }
+    var p = h.plan, W = 0, have = 0, gap = false, k, c, s;
+    for (k = h.ci; k < p.clips.length && W < HOLD_WINDOW; k++){
+      c = p.clips[k]; s = secsOf(c); W += s;
+      if (!gap && got(c)) have += s; else gap = true;
+    }
+    var x = holdFor(rtf(), Math.min(W, HOLD_WINDOW), have);
+    if (!x.hold){
+      if (x.slow && Store.get(K_SLOWTIP) !== "1"){
+        Store.set(K_SLOWTIP, "1");
+        toast("This phone makes speech slower than it reads. Tap Prepare book in the Voices panel for no pauses.");
+      }
+      holdRelease(); return;
+    }
+    h.eta = x.eta; h.at = Date.now();
+    holdShow();
+    if (!h.timer) h.timer = setInterval(holdShow, 1000);
+  }
+  function holdShow(){
+    var h = hold;
+    if (!h || typeof document === "undefined") return;
+    var left = Math.max(0, Math.ceil(h.eta - (Date.now() - h.at) / 1000)), sec = left % 60;
+    var el = document.getElementById("ttsStatus"), play = document.getElementById("ttsPlay");
+    if (el && h.shown) el.setAttribute("aria-live", "off");     /* the first line is announced, not every second after it */
+    h.shown = true;
+    setStatus("Starts in " + Math.floor(left / 60) + ":" + (sec < 10 ? "0" : "") + sec + ", then no pauses", true);
+    if (play && play.getAttribute("aria-label") !== "Start now") play.setAttribute("aria-label", "Start now");
+  }
+  function holdEnd(){
+    var h = hold;
+    if (!h) return null;
+    hold = null; clearInterval(h.timer);
+    if (h.shown && typeof document !== "undefined"){
+      var el = document.getElementById("ttsStatus"), play = document.getElementById("ttsPlay");
+      if (el) el.setAttribute("aria-live", "polite");
+      if (play) play.setAttribute("aria-label", Speak && Speak.isPlaying && Speak.isPlaying() ? "Pause" : "Play");
+    }
+    return h;
+  }
+  function holdRelease(){
+    var h = holdEnd();
+    if (!h || h.seq !== seq) return;
+    if (h.shown) setStatus(h.plan.src.busy);     /* until the clip itself is ready */
+    h.res();
+  }
+
+  /* ---- Prepare book: the whole document made ahead (a PDF's pages loaded so far), so it plays with no pauses and
+     offline. Pressed again, it stops; clips already made are skipped, so pressing it after a reload carries on ---- */
+  function wakeOn(){
+    if (!feed.prep || wake || wakeAsk || typeof navigator === "undefined" || !(navigator.wakeLock && navigator.wakeLock.request) || document.visibilityState !== "visible") return;
+    wakeAsk = true;
+    navigator.wakeLock.request("screen").then(function(l){
+      wakeAsk = false;
+      if (!feed.prep){ l.release().catch(function(){}); return; }
+      wake = l;
+      l.addEventListener("release", function(){ if (wake === l) wake = null; });
+    }, function(){ wakeAsk = false; });
+  }
+  function wakeOff(){ if (wake){ var l = wake; wake = null; l.release().catch(function(){}); } }
+  function prepareBook(){
+    feed.msg = ""; feed.full = false;
+    if (feed.prep){ prepEnd(); return; }
+    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ feed.msg = "Open a book first"; prepSync(); return; }
+    if (!navigator.onLine && !kReady && !(kHave && kHave.ready)){ toast("Connect to the internet once to download the natural voices"); return; }
+    feed.prep = true; feed.bad = {};
+    wakeOn(); prepSync(); feedKick();
+  }
+  function dur(s){ var m = Math.max(1, Math.round(s / 60)); return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : ""); }
+  /* the Prepare book row: its button, "Audiobook: 34% ready · about 25 min left" and the progress bar */
+  function prepSync(){
+    if (typeof document === "undefined") return;
+    var btn = document.getElementById("kokoroPrep"), st = document.getElementById("kokoroPrepState"), pr = document.getElementById("kokoroPrepProgress");
+    if (!btn) return;
+    var lab = feed.prep ? "Stop preparing" : "Prepare book";
+    if (btn.textContent !== lab) btn.textContent = lab;
+    var doc = (Library && Library.currentId && Library.currentId()) || "", p = plan && plan.src === SRC.kokoro && plan.docId === doc && plan.clips ? plan : null;
+    var text = feed.msg, pct = -1, tot = 0, have = 0, ch = 0, chHave = 0, i, s, n;
+    if (!text && p && feed.have && feed.haveDoc === doc){
+      for (i = 0; i < p.clips.length && p.clips[i].key; i++){}
+      if (i < p.clips.length){
+        if (!feed.keying){ feed.keying = true; keyed(p).then(function(){ feed.keying = false; prepSync(); }, function(){ feed.keying = false; }); }
+      } else {
+        /* the percentage by characters (estimated seconds at one pace), so it only goes up as clips are made */
+        for (i = 0; i < p.clips.length; i++){ s = secsOf(p.clips[i]); n = p.clips[i].text.length || 1; tot += s; ch += n; if (got(p.clips[i])){ have += s; chHave += n; } }
+        pct = ch ? Math.min(100, Math.floor(chHave * 100 / ch)) : 100;
+        if (chHave >= ch) text = "Audiobook ready · plays with no pauses, offline";
+        else {
+          text = "Audiobook: " + pct + "% ready";
+          if (feed.full) text += " · the " + mb(AUDIO_CAP) + " kept for audio is full, the rest is made as you listen";
+          else if (feed.prep && rtf() > 0) text += " · about " + dur((tot - have) * rtf()) + " left";
+        }
+      }
+    }
+    if (st && st.textContent !== text) st.textContent = text;
+    if (pr){ pr.hidden = !feed.prep || pct < 0; if (pct >= 0) pr.value = pct; }
+  }
 
   /* ============================================================
      6. Settings (the rows in the Read-aloud voices panel) and the Cast panel
@@ -1265,7 +1575,7 @@
     var sel = document.getElementById("kokoroNarrator"), st = document.getElementById("kokoroState");
     var dl = document.getElementById("kokoroDl"), rm = document.getElementById("kokoroRm"), pr = document.getElementById("kokoroProgress");
     if (sel){ if (sel.options.length < KOKORO_VOICES.length) kokoroFillVoices(sel); else sel.value = kokoroNarrator(); }
-    audioSync();
+    audioSync(); prepSync(); feedKick();
     if (!st) return;
     function show(text, canDl, canRm, pct){
       st.textContent = text;
@@ -1294,6 +1604,19 @@
       var c = e.target && e.target.closest ? e.target.closest("#elevenModelChips .chip") : null;
       if (c && c.dataset.model) setModel(c.dataset.model);
     });
+    /* the play button while the smart start is counting down starts reading at once (and does not pause it) */
+    document.addEventListener("click", function(e){
+      if (!hold || hold.seq !== seq || !(e.target && e.target.closest && e.target.closest("#ttsPlay"))) return;
+      e.stopPropagation(); e.preventDefault();
+      holdRelease();
+    }, true);
+    /* the feeder rests while the page is hidden (a start waiting on it goes ahead) and carries on when it is back;
+       another document stops it */
+    document.addEventListener("visibilitychange", function(){
+      if (document.visibilityState === "visible"){ wakeOn(); feedKick(); }
+      else holdRelease();
+    });
+    document.addEventListener("ll:fileopened", feedStop);
   }
 
   /* ---- the Cast panel: every character found in the document, with a voice each ---- */
@@ -1458,7 +1781,7 @@
     prepare: function(units, ctx){
       if (!kReady) setStatus("Preparing…");
       var m = kokoroModel(); m.catch(function(){});
-      return planFor(SRC.kokoro, units, ctx).then(function(){ return m; });
+      return planFor(SRC.kokoro, units, ctx).then(function(){ feedKick(); return m; });
     },
     speak: speak, cancel: cancel, stop: stop, setRate: setRate,
     fillVoices: kokoroFillVoices, voiceChanged: kokoroVoiceChanged, narratorName: function(){ return kokoroName(kokoroNarrator()); }, syncSettings: kokoroSync
@@ -1469,6 +1792,9 @@
                          voices: voices, setModel: setModel, syncSettings: syncSettings, sent: function(){ return sent; }, plan: function(){ return plan; },
                          devicePlan: function(){ return devPlan; },
                          kokoro: kEngine, kokoroVoices: KOKORO_VOICES, kokoroPool: kokoroPool, downloadKokoro: downloadKokoro, removeKokoro: removeKokoro,
-                         kokoroOnDevice: kokoroOnDevice, kokoroState: function(){ return { ready: kReady, loading: !!kLoad, pct: kPct, threads: kThreads, worker: !!kw, jobs: Object.keys(kJobs).length }; },
+                         kokoroOnDevice: kokoroOnDevice,
+                         kokoroState: function(){ return { ready: kReady, loading: !!kLoad, pct: kPct, threads: kThreads, worker: !!kw, jobs: Object.keys(kJobs).length,
+                                                           rtf: rtf(), cps: cps(), feeding: feed.busy, preparing: feed.prep, holding: !!hold }; },
+                         holdFor: holdFor, feed: feedKick, prepareBook: prepareBook,
                          clearAudio: clearAudio, audioTotal: audioTotal, trimAudio: trimAudio, wavBlob: wavBlob, assignVoices: assignVoices };
 })();
