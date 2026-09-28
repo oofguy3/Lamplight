@@ -1,11 +1,12 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.25-29";
+const VERSION = "2026.09.28-30";
 const CACHE = "lamplight-" + VERSION;
-/* caches that outlive a release: shared files on their way in, and the natural voices (the Kokoro model
-   and its voice files, kept there by kokoro-js): a 95 MB download that must not go with every update */
-const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices"];
+/* caches that outlive a release: shared files on their way in, and the natural voices — Best (the Kokoro model
+   and its voice files, kept there by kokoro-js, 95 MB) and Fast (the Piper model and its config, kept there by
+   workers/piper-worker.js, 78 MB): downloads that must not go with every update */
+const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices"];
 /* cross-origin isolation for the pages this worker serves: GitHub Pages cannot send these headers, and
    without them WebAssembly threads (SharedArrayBuffer) are off, so the natural voices run single-threaded.
    "credentialless" keeps cross-origin fetches (the online dictionary, ElevenLabs, huggingface.co) working;
@@ -128,7 +129,7 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   /* only our own files: the online dictionary, MyMemory, api.elevenlabs.io and huggingface.co (the natural voices'
-     model, which kokoro-js caches itself) go straight to the network */
+     models, which kokoro-js and the Piper worker cache themselves) go straight to the network */
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   const isPage =
     e.request.mode === "navigate" ||
@@ -151,13 +152,13 @@ self.addEventListener("fetch", (e) => {
         return out;
       };
       /* the headers go on every same-origin response, not only the page: a cross-origin-isolated page may
-         only start a module worker (workers/kokoro-worker.js) and its nested pthread workers
-         (vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs) when those scripts carry COEP too */
+         only start a module worker (workers/kokoro-worker.js, workers/piper-worker.js) and its nested pthread
+         workers (vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs) when those scripts carry COEP too */
       const asPage = (r) => new Response(r.body, { status: r.status, statusText: r.statusText, headers: pageHeaders(r.headers) });
       if (hit) return asPage(hit);
       try {
         const res = await fetch(e.request);
-        /* same-origin files that are not precached (vendor/kokoro/*.mjs and *.wasm, the worker) land here on first use */
+        /* same-origin files that are not precached (vendor/kokoro/*, vendor/piper/*, the workers) land here on first use */
         if (res.ok && res.type === "basic") c.put(e.request, res.clone()).catch(() => null);
         /* a redirect (…/Lamplight → …/Lamplight/) must reach the browser as one, so it is passed on untouched */
         return res.redirected ? res : asPage(res);

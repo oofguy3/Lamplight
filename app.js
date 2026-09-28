@@ -20,7 +20,7 @@
     explain: ["./explain.js"],
     morph:   ["./morph.js"],
     translate: ["./translate.js"],
-    audiobook: ["./audiobook.js"]   /* who speaks each line, a voice per character, ElevenLabs and natural (Kokoro) narration (see Speak.registerEngine) */
+    audiobook: ["./audiobook.js"]   /* who speaks each line, a voice per character, ElevenLabs and natural (Piper, Kokoro) narration (see Speak.registerEngine) */
   };
   function need(names){
     var files = [];
@@ -3932,7 +3932,7 @@
      audiobook.js) and a little expression read off the text, through a
      pluggable engine: the device voice (Web Speech API, built in below)
      or one that registers itself, such as ElevenLabs narration or the
-     natural voices (Kokoro, run on the device) in audiobook.js.
+     natural voices (Piper or Kokoro, run on the device) in audiobook.js.
      Engine interface: label, supported(), prepare(units, ctx) → Promise
      (or nothing: the device path stays synchronous), speak(i, opts),
      cancel(); optionally ready() → Promise<bool> (may ask for a key),
@@ -3959,8 +3959,15 @@
     function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
 
     /* ---- engines ---- */
-    var ENGINE_LIB = { eleven: "audiobook", kokoro: "audiobook" };   /* which on-demand script provides an engine */
-    var engineName = /^(eleven|kokoro)$/.test(Store.get("ll_tts_engine") || "") ? Store.get("ll_tts_engine") : "device";
+    var ENGINE_LIB = { eleven: "audiobook", piper: "audiobook", kokoro: "audiobook" };   /* which on-demand script provides an engine */
+    var engineName = /^(eleven|piper|kokoro)$/.test(Store.get("ll_tts_engine") || "") ? Store.get("ll_tts_engine") : "device";
+    /* natural voices come in two qualities (ll_natural_quality): Fast, Piper ("piper"), keeps up with reading on a phone;
+       Best, Kokoro ("kokoro"), is slower than reading there. Once, a reader on Kokoro is moved to Fast; Best is a tap away */
+    if (Store.get("ll_natural_moved") !== "1"){
+      Store.set("ll_natural_moved", "1");
+      if (engineName === "kokoro"){ engineName = "piper"; Store.set("ll_tts_engine", "piper"); Store.set("ll_natural_quality", "fast"); }
+    }
+    function isNatural(name){ return name === "piper" || name === "kokoro"; }
     var castOn = Store.get("ll_tts_cast") !== "off";  /* a device voice per character (audiobook.js works out who speaks) */
     var engines = {}, runEngine = null, ctx = null, session = 0, devPlan = null;
     var planned = 0, replanT = null;                  /* units the engine has planned; a re-plan waiting while PDF pages load */
@@ -4036,7 +4043,7 @@
       lastPrefix = t;
       detectFrom(t, Library.currentId && Library.currentId());
       /* natural voices start making the audio ahead as soon as a document opens (audiobook.js, once the model is on the device) */
-      if (engineName === "kokoro") need(["audiobook"]).then(function(){ if (window.llAudiobook && window.llAudiobook.feed) window.llAudiobook.feed(3000); }).catch(function(){});
+      if (isNatural(engineName)) need(["audiobook"]).then(function(){ if (window.llAudiobook && window.llAudiobook.feed) window.llAudiobook.feed(3000); }).catch(function(){});
     }).observe($("#doc"), { childList: true });
 
     /* ---- voices ----
@@ -4899,12 +4906,30 @@
         return '<button class="chip' + (expr === c[0] ? ' on' : '') + '" role="radio" aria-checked="' + (expr === c[0] ? "true" : "false") + '" data-expr="' + c[0] + '">' + c[1] + '</button>';
       }).join("");
     }
+    /* the engine chips: the natural voices are one chip ("natural"), their quality a pair of chips under it */
+    function engineGroup(){ return isNatural(engineName) ? "natural" : engineName; }
     function engineChips(){
-      return [["device", "Device voice"], ["eleven", "ElevenLabs"], ["kokoro", "Natural voices"]].map(function(c){
-        var on = engineName === c[0];
+      return [["device", "Device voice"], ["eleven", "ElevenLabs"], ["natural", "Natural voices"]].map(function(c){
+        var on = engineGroup() === c[0];
         return '<button class="chip' + (on ? ' on' : '') + '" role="radio" aria-checked="' + (on ? "true" : "false") + '" data-engine="' + c[0] + '">' + c[1] + '</button>';
       }).join("");
     }
+    function qualityChips(){
+      return [["fast", "Fast · keeps up on phones"], ["best", "Best · slower, prepare first"]].map(function(c){
+        var on = (engineName === "kokoro" ? "best" : "fast") === c[0];
+        return '<button class="chip' + (on ? ' on' : '') + '" role="radio" aria-checked="' + (on ? "true" : "false") + '" data-quality="' + c[0] + '">' + c[1] + '</button>';
+      }).join("");
+    }
+    /* what the natural voices' rows say for each quality */
+    var NATURAL = {
+      piper: { dl: "Download natural voices (≈ 80 MB, once)", narr: ["493", "Grace"],
+               hint: "Runs on this device and keeps up with reading on most phones. Nothing is sent anywhere.",
+               prep: "Prepare book makes the whole book ahead, to listen offline. Keep Lamplight open; it carries on where it left off." },
+      kokoro: { dl: "Download natural voices (≈ 110 MB, once)", narr: ["af_heart", "Heart (woman)"],
+                hint: "Runs on this device. Nothing is sent anywhere. Slower than reading on most phones: press Prepare book first, then listen with no pauses.",
+                prep: "Keep Lamplight open (plugging in helps); it carries on where it left off." }
+    };
+    function naturalText(){ return NATURAL[engineName === "kokoro" ? "kokoro" : "piper"]; }
     function castChips(){
       return [["off", "One voice"], ["on", "A voice per character"]].map(function(c){
         var on = (castOn ? "on" : "off") === c[0];
@@ -4929,17 +4954,18 @@
           '<div class="rowline"><button type="button" class="link-btn" id="elevenKeyLink">ElevenLabs API key…</button></div>' +
           '<p class="hint">Each sentence is sent to ElevenLabs once and kept on this device, so replaying is free. Uses your ElevenLabs credits.</p>' +
         '</div>' +
-        '<div class="subgroup" id="kokoroRow" data-engine-only="kokoro">' +
-          '<div class="rowline"><label for="kokoroNarrator">Narrator</label><select id="kokoroNarrator" class="sel"><option value="af_heart">Heart (woman)</option></select></div>' +
+        '<div class="subgroup" id="kokoroRow" data-engine-only="piper kokoro">' +
+          '<div class="rowline"><label id="naturalQualityL">Quality</label><div class="chips" role="radiogroup" aria-labelledby="naturalQualityL" id="naturalQuality">' + qualityChips() + '</div></div>' +
+          '<div class="rowline"><label for="kokoroNarrator">Narrator</label><select id="kokoroNarrator" class="sel"><option value="' + naturalText().narr[0] + '">' + naturalText().narr[1] + '</option></select></div>' +
           '<div class="rowline" id="kokoroDlRow"><span class="k-state" id="kokoroState" aria-live="polite">Checking…</span>' +
-            '<button type="button" class="chip" id="kokoroDl" hidden>Download natural voices (≈ 110 MB, once)</button>' +
+            '<button type="button" class="chip" id="kokoroDl" hidden>' + naturalText().dl + '</button>' +
             '<button type="button" class="chip" id="kokoroRm" hidden>Remove</button></div>' +
           '<progress id="kokoroProgress" class="k-progress" max="100" value="0" aria-label="Downloading the natural voices" hidden></progress>' +
-          '<p class="hint">Runs on this device. Nothing is sent anywhere.</p>' +
+          '<p class="hint" id="naturalHint">' + naturalText().hint + '</p>' +
           '<div class="rowline" id="kokoroPrepRow"><span class="k-state" id="kokoroPrepState" aria-live="polite"></span>' +
             '<button type="button" class="chip" id="kokoroPrep">Prepare book</button></div>' +
           '<progress id="kokoroPrepProgress" class="k-progress" max="100" value="0" aria-label="Preparing the audiobook" hidden></progress>' +
-          '<p class="hint">Keep Lamplight open (plugging in helps); it carries on where it left off.</p>' +
+          '<p class="hint" id="naturalPrepHint">' + naturalText().prep + '</p>' +
         '</div>' +
         '<div class="rowline" id="audioKeptRow" hidden><span class="k-state" id="audioKept">Audio kept on this device</span><button type="button" class="chip" id="audioClear">Clear</button></div>';
     }
@@ -4949,8 +4975,16 @@
       if (!Side.is("voices")) return;
       var box = Side.body;
       Array.prototype.forEach.call(box.querySelectorAll("#engineChips .chip"), function(c){
-        var on = c.dataset.engine === engineName; c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+        var on = c.dataset.engine === engineGroup(); c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
       });
+      /* the natural voices' quality, and the rows' words for it (the rows themselves are filled by audiobook.js) */
+      Array.prototype.forEach.call(box.querySelectorAll("#naturalQuality .chip"), function(c){
+        var on = c.dataset.quality === (engineName === "kokoro" ? "best" : "fast"); c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+      });
+      var nt = naturalText(), nDl = box.querySelector("#kokoroDl"), nHint = box.querySelector("#naturalHint"), nPrep = box.querySelector("#naturalPrepHint");
+      if (nDl && nDl.textContent !== nt.dl) nDl.textContent = nt.dl;
+      if (nHint && nHint.textContent !== nt.hint) nHint.textContent = nt.hint;
+      if (nPrep && nPrep.textContent !== nt.prep) nPrep.textContent = nt.prep;
       Array.prototype.forEach.call(box.querySelectorAll("#castChips .chip"), function(c){
         var on = c.dataset.cast === (castOn ? "on" : "off"); c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
       });
@@ -4960,14 +4994,17 @@
       if (btn) btn.hidden = !(engineName !== "device" || castOn);
       var kept = box.querySelector("#audioKeptRow"); if (kept) kept.hidden = engineName === "device";
       Array.prototype.forEach.call(box.querySelectorAll("[data-engine-only]"), function(el){
-        el.hidden = el.dataset.engineOnly !== engineName;   /* only the chosen engine's rows show */
+        el.hidden = (" " + el.dataset.engineOnly + " ").indexOf(" " + engineName + " ") < 0;   /* only the chosen engine's rows show (a row may name several) */
       });
       if (engineName !== "device" && ENGINE_LIB[engineName]){
         need([ENGINE_LIB[engineName]]).then(function(){ var e = engines[engineName]; if (e && e.syncSettings && Side.is("voices")) e.syncSettings(asked); }).catch(function(){});
       }
     }
+    /* name: "device", "eleven", "piper" or "kokoro"; "natural" is the natural voices at the quality last chosen */
     function setEngine(name){
-      if (name !== "device" && name !== "eleven" && name !== "kokoro") return;
+      if (name === "natural") name = isNatural(engineName) ? engineName : Store.get("ll_natural_quality") === "best" ? "kokoro" : "piper";
+      if (name !== "device" && name !== "eleven" && !isNatural(name)) return;
+      if (isNatural(name)) Store.set("ll_natural_quality", name === "kokoro" ? "best" : "fast");
       if (name === engineName){ syncEngineUI(true); return; }
       engineName = name; Store.set("ll_tts_engine", name);
       syncEngineUI(true);
@@ -5227,11 +5264,12 @@
       if (b.id === "ttsSwap"){ swapPair(); return; }
       if (b.id === "ttsAuto"){ setVoice(""); setDialogue(""); return; }
       if (b.dataset.engine !== undefined){ setEngine(b.dataset.engine); return; }
+      if (b.dataset.quality !== undefined){ setEngine(b.dataset.quality === "best" ? "kokoro" : "piper"); return; }
       if (b.dataset.cast !== undefined){ setCast(b.dataset.cast === "on"); return; }
       if (b.id === "ttsCastBtn"){ withAudiobook(function(a){ a.openCast(); }); return; }
       if (b.id === "elevenKeyLink"){ withAudiobook(function(a){ a.askForKey(); }); return; }
-      if (b.id === "kokoroDl"){ withAudiobook(function(a){ a.downloadKokoro(); }); return; }
-      if (b.id === "kokoroRm"){ withAudiobook(function(a){ a.removeKokoro(); }); return; }
+      if (b.id === "kokoroDl"){ withAudiobook(function(a){ a.downloadNatural(); }); return; }
+      if (b.id === "kokoroRm"){ withAudiobook(function(a){ a.removeNatural(); }); return; }
       if (b.id === "kokoroPrep"){ withAudiobook(function(a){ a.prepareBook(); }); return; }
       if (b.id === "audioClear"){ withAudiobook(function(a){ a.clearAudio(); }); return; }
     });
