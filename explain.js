@@ -8,6 +8,12 @@
    ============================================================ */
 (function(){
   "use strict";
+  /* the interface's language (i18n.js), for the notes composed here (a figure's note, the register's): the English
+     is the key, and without LL_I18N (node, in the tests) they stay exactly English. Everything else this file
+     returns (clause and role labels, tense names, kinds, the simplifier's reasons) stays English and is put into
+     the interface's language where app.js draws it. */
+  var I18N = (typeof window !== "undefined" && window.LL_I18N) || null;
+  function _t(s, v){ return I18N ? I18N.t(s, v) : (v ? String(s).replace(/\{(\w+)\}/g, function(m, k){ return k in v ? v[k] : m; }) : s); }
 
   /* ---------- closed-class words ---------- */
   function set(s){ var o = {}; s.split(" ").forEach(function(w){ if (w) o[w] = 1; }); return o; }
@@ -1168,21 +1174,21 @@
         var ph = phraseAfter(toks, i);
         if (ph && nominal(toks, ph)){
           var x = headBefore(toks, i);
-          add("simile", i, ph[1], "compares " + (x ? x.w.toLowerCase() : subjectOf(clauses, i)) + " to " + slice(ph[0], ph[1]).toLowerCase());
+          add("simile", i, ph[1], _t("compares {a} to {b}", { a: x ? x.w.toLowerCase() : subjectOf(clauses, i), b: slice(ph[0], ph[1]).toLowerCase() }));
         }
       }
       /* simile: "as cold as ice" — not "as many as 400", not "as soon as" */
       if (t.l === "as" && toks[i+1] && /^(ADJ|NOUN|ADV)$/.test(toks[i+1].tag) && !NOT_SIMILE[toks[i+1].l] && toks[i+2] && toks[i+2].l === "as"){
         var ph2 = phraseAfter(toks, i + 2);
         if (ph2 && /^(DET|NOUN|ADJ|PROPER|POSS)$/.test(toks[ph2[0]].tag) && !(toks[ph2[0]].c && toks[ph2[0]].c.NUM)){
-          add("simile", i, ph2[1], "compares " + subjectOf(clauses, i) + " to " + slice(ph2[0], ph2[1]).toLowerCase());
+          add("simile", i, ph2[1], _t("compares {a} to {b}", { a: subjectOf(clauses, i), b: slice(ph2[0], ph2[1]).toLowerCase() }));
         }
       }
       /* simile: "as if / as though …" */
       if (t.l === "as" && toks[i+1] && /^(if|though)$/.test(toks[i+1].l) && toks[i+2] && !toks[i+2].punct){
         var b3 = i + 2;
         while (b3 + 1 < toks.length && !toks[b3 + 1].punct) b3++;
-        add("simile", i, b3, "compares " + subjectOf(clauses, i) + " to " + slice(i + 2, b3).toLowerCase());
+        add("simile", i, b3, _t("compares {a} to {b}", { a: subjectOf(clauses, i), b: slice(i + 2, b3).toLowerCase() }));
       }
       /* metaphor: "X is / was a Y", with Y a vivid everyday thing */
       if ((t.tag === "AUX" || t.tag === "VERB") && BE[t.l]){
@@ -1190,7 +1196,7 @@
         while (toks[j] && /^(DET|ADJ|POSS|ADV|NUM)$/.test(toks[j].tag)) j++;
         var y = toks[j];
         if (sj && y && y.tag === "NOUN" && VIVID[y.lemma || y.l] && (y.lemma || y.l) !== (sj.lemma || sj.l) && personish(toks, sj)){
-          add("metaphor", npStart(toks, sj), j, "says one thing is another to suggest a likeness");
+          add("metaphor", npStart(toks, sj), j, _t("says one thing is another to suggest a likeness"));
         }
       }
       /* metaphor: "a sea of troubles" — a vivid thing standing for an idea */
@@ -1199,7 +1205,7 @@
         while (toks[k] && /^(DET|ADJ|POSS|NUM)$/.test(toks[k].tag)) k++;
         var yh = toks[k];
         if (xh && yh && xh.tag === "NOUN" && yh.tag === "NOUN" && VIVID[xh.lemma || xh.l] && isAbstract(yh)){
-          add("metaphor", npStart(toks, xh), k, "says one thing is another to suggest a likeness");
+          add("metaphor", npStart(toks, xh), k, _t("says one thing is another to suggest a likeness"));
         }
       }
     });
@@ -1211,32 +1217,32 @@
       if (!head || !v || v.tag !== "VERB" || head.tag !== "NOUN") return;
       if (PERSON[head.lemma || head.l] || (head.c && head.c.PROPER)) return;
       if (!HUMAN_ACT[v.lemma || v.l]) return;
-      add("personification", c.pos.subj[0], v.i, "gives a human action to a thing");
+      add("personification", c.pos.subj[0], v.i, _t("gives a human action to a thing"));
     });
 
     /* hyperbole: the stock exaggerations */
     HYPER.forEach(function(re){
       var m;
       re.lastIndex = 0;
-      while ((m = re.exec(src))) push("hyperbole", m.index, m.index + m[0].length, "exaggerates for effect");
+      while ((m = re.exec(src))) push("hyperbole", m.index, m.index + m[0].length, _t("exaggerates for effect"));
     });
 
     /* the idioms the explainer already found, with their dictionary sense */
     exprs.forEach(function(e){
       if (e.kind !== "idiom" || e.split) return;
       var best = bestSense(e.entry, null, rank);
-      add("idiom", e.start, e.end, best && best.d ? "an idiom — it means " + best.d : "a set phrase with a meaning of its own");
+      add("idiom", e.start, e.end, best && best.d ? _t("an idiom — it means {meaning}", { meaning: best.d }) : _t("a set phrase with a meaning of its own"));
     });
 
     out.sort(function(a, b){ return a.start - b.start || a.end - b.end; });
     return out;
   }
 
-  /* "a, b and c" */
+  /* "a, b and c" (in Dutch "a, b en c") */
   function andList(a){
     if (!a.length) return "";
     if (a.length === 1) return a[0];
-    return a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+    return _t("{a} and {b}", { a: a.slice(0, -1).join(", "), b: a[a.length - 1] });
   }
   function registerOf(toks, clauses, figs, src){
     var words = toks.filter(function(t){ return !t.punct; }), low = src.toLowerCase(), found = [], i;
@@ -1244,11 +1250,11 @@
     var marks = [];
     words.forEach(function(t){
       if (ARCHAIC[t.l] && marks.indexOf("“" + t.l + "”") < 0) marks.push("“" + t.l + "”");
-      if (/^[a-z]{3,}eth$/.test(t.l) && !NOT_ETH[t.l] && marks.indexOf("-eth verbs") < 0) marks.push("-eth verbs");
+      if (/^[a-z]{3,}eth$/.test(t.l) && !NOT_ETH[t.l] && marks.indexOf(_t("-eth verbs")) < 0) marks.push(_t("-eth verbs"));
     });
     if (/['’]tis\b|\btwas\b/.test(low) && marks.indexOf("“’tis”") < 0) marks.push("“’tis”");
     if (words.some(function(t){ return t.l === "art"; }) && words.some(function(t){ return t.l === "thou"; })) marks.push("“art”");
-    if (marks.length) return { kind: "archaic", note: "Archaic — " + andList(marks.slice(0, 3)) };
+    if (marks.length) return { kind: "archaic", note: _t("Archaic — {list}", { list: andList(marks.slice(0, 3)) }) };
 
     /* spoken */
     var contractions = toks.filter(function(t){ return t.glued; }).length;
@@ -1256,31 +1262,31 @@
     var tag = TAG_Q.test(src);
     if (contractions && (fillers || tag)){
       found = [];
-      if (contractions) found.push("contractions");
-      if (fillers) found.push(fillers > 1 ? "everyday fillers" : "an everyday filler");
-      if (tag) found.push("a question tag");
-      return { kind: "spoken", note: "Spoken — " + andList(found) };
+      if (contractions) found.push(_t("contractions"));
+      if (fillers) found.push(fillers > 1 ? _t("everyday fillers") : _t("an everyday filler"));
+      if (tag) found.push(_t("a question tag"));
+      return { kind: "spoken", note: _t("Spoken — {list}", { list: andList(found) }) };
     }
-    if (fillers >= 2) return { kind: "spoken", note: "Spoken — everyday fillers" };
+    if (fillers >= 2) return { kind: "spoken", note: _t("Spoken — {list}", { list: _t("everyday fillers") }) };
 
     /* formal */
     if (!contractions){
       found = [];
-      if (clauses.some(function(c){ return c && c.passive; })) found.push("a passive");
+      if (clauses.some(function(c){ return c && c.passive; })) found.push(_t("a passive"));
       var noms = words.filter(function(t){ return /(tion|sion|ment|ance|ence)$/.test(t.l) && t.l.length > 5; }).length;
-      if (noms >= 2) found.push("nouns built from verbs");
+      if (noms >= 2) found.push(_t("nouns built from verbs"));
       var latin = words.filter(function(t){ return t.l.length >= 8 && rank(t.l) > 5000 && rank(t.lemma || t.l) > 5000; }).length;
-      if (latin >= 2) found.push("long Latin-based words");
-      if (/\bone must\b|\bit is\b[^.!?]{0,40}\bthat\b|\bshall\b/.test(low)) found.push("“shall” or “one must”");
-      if (found.length >= 2) return { kind: "formal", note: "Formal — " + andList(["no contractions"].concat(found)) };
+      if (latin >= 2) found.push(_t("long Latin-based words"));
+      if (/\bone must\b|\bit is\b[^.!?]{0,40}\bthat\b|\bshall\b/.test(low)) found.push(_t("“shall” or “one must”"));
+      if (found.length >= 2) return { kind: "formal", note: _t("Formal — {list}", { list: andList([_t("no contractions")].concat(found)) }) };
     }
 
     /* literary */
-    if (figs.length) return { kind: "literary", note: "Literary — " + figs[0].kind + " and a written turn of phrase" };
+    if (figs.length) return { kind: "literary", note: _t("Literary — {figure} and a written turn of phrase", { figure: _t(figs[0].kind) }) };
     var seps = toks.filter(function(t){ return t.punct && /^[;—–]$/.test(t.w); }).length;
-    if (seps && clauses.filter(function(c){ return c && !c.fragment; }).length > 1) return { kind: "literary", note: "Literary — clauses joined by a semicolon or a dash" };
+    if (seps && clauses.filter(function(c){ return c && !c.fragment; }).length > 1) return { kind: "literary", note: _t("Literary — clauses joined by a semicolon or a dash") };
 
-    return { kind: "neutral", note: "Neutral — everyday written English" };
+    return { kind: "neutral", note: _t("Neutral — everyday written English") };
   }
 
   /* ---------- simplify ----------

@@ -20,6 +20,11 @@
    ============================================================ */
 (function(){
   "use strict";
+  /* the interface's language (i18n.js): the English here is the key; without LL_I18N it stays English */
+  var I18N = (typeof window !== "undefined" && window.LL_I18N) || null;
+  function _t(s, v){ return I18N ? I18N.t(s, v) : (v ? String(s).replace(/\{(\w+)\}/g, function(m, k){ return k in v ? v[k] : m; }) : s); }
+  function _tn(n, one, other, v){ var o = { n: n }; for (var k in v || {}) o[k] = v[k]; return _t(Number(n) === 1 ? one : other, o); }
+  function _tc(ctx, s, v){ return I18N && I18N.tc ? I18N.tc(ctx, s, v) : _t(s, v); }
   var LL = window.__ll || {};
   var Store = LL.Store || { get: function(){ return null; }, set: function(){} };
   var state = LL.state || {}, Side = LL.Side, Marks = LL.Marks, Speak = LL.Speak;
@@ -433,37 +438,40 @@
       d.split(" | ").map(function(p){ return '<path d="' + p + '"/>'; }).join("") + '</svg>';
   }
   function nameOf(id){ for (var i = 0; i < SOUNDS.length; i++) if (SOUNDS[i].id === id) return SOUNDS[i].name; return id; }
+  /* the sounds named in a sentence ("Rain and Fire"; in Dutch "regen en haardvuur", lower case inside a sentence) */
   function listOf(ids){
-    var names = ids.map(nameOf);
-    return names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0];
+    var names = ids.map(function(id){ return _tc("sound", nameOf(id)); });
+    return names.length > 1 ? _t("{a} and {b}", { a: names.slice(0, -1).join(", "), b: names[names.length - 1] }) : names[0];
   }
+  function capFirst(s){ s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1); }
   function stateText(){
     var on = playingIds();
-    if (!cfg.on || !on.length) return on.length ? "Off \u2014 the switch plays " + listOf(on) + " again." : "Off \u2014 tap a sound to start it.";
-    var list = listOf(on);
-    if (!docOpen()) return list + " \u2014 plays while a book is open.";
-    if (playing && ctx && ctx.state !== "running") return list + " \u2014 tap anywhere to start the sound.";
-    return list + (on.length > 1 ? " are playing." : " is playing.");
+    if (!cfg.on || !on.length) return on.length ? _t("Off \u2014 the switch plays {list} again.", { list: listOf(on) }) : _t("Off \u2014 tap a sound to start it.");
+    /* a list that starts the line gets a capital (the English names have theirs; the Dutch ones are lower case) */
+    var list = capFirst(listOf(on));
+    if (!docOpen()) return _t("{list} \u2014 plays while a book is open.", { list: list });
+    if (playing && ctx && ctx.state !== "running") return _t("{list} \u2014 tap anywhere to start the sound.", { list: list });
+    return _tn(on.length, "{list} is playing.", "{list} are playing.", { list: list });
   }
   var mixOpen = false;
   function render(body){
     var tiles = SOUNDS.map(function(s){
-      return '<button type="button" class="chip snd-tile" data-snd="' + s.id + '" aria-pressed="false">' + icon(s.icon) + '<span>' + esc(s.name) + '</span></button>';
+      return '<button type="button" class="chip snd-tile" data-snd="' + s.id + '" aria-pressed="false">' + icon(s.icon) + '<span>' + esc(_t(s.name)) + '</span></button>';
     }).join("");
     var rows = SOUNDS.map(function(s){
-      return '<div class="rowline"><label for="snd-' + s.id + '">' + esc(s.name) + '</label><input type="range" id="snd-' + s.id + '" data-mix="' + s.id + '" min="0" max="100" step="1">' +
+      return '<div class="rowline"><label for="snd-' + s.id + '">' + esc(_t(s.name)) + '</label><input type="range" id="snd-' + s.id + '" data-mix="' + s.id + '" min="0" max="100" step="1">' +
         '<span class="val" id="snd-' + s.id + 'V"></span></div>';
     }).join("");
     /* one clear control: the switch says whether anything plays, the tiles say what, and the blend
        of the five (the same sliders as ever) waits under Mix for whoever wants it */
     body.innerHTML = '<div class="snd-panel">' +
-      '<div class="rowline snd-master"><label class="check"><input type="checkbox" role="switch" id="sndOn" aria-describedby="sndState">Play background sounds</label></div>' +
+      '<div class="rowline snd-master"><label class="check"><input type="checkbox" role="switch" id="sndOn" aria-describedby="sndState">' + esc(_t("Play background sounds")) + '</label></div>' +
       '<p class="hint cap snd-state" id="sndState" aria-live="polite"></p>' +
-      '<div class="snd-tiles" id="sndChips" role="group" aria-label="Sounds: tap to add or take out">' + tiles + '</div>' +
-      '<div class="rowline"><label for="sndMaster">Volume</label><input type="range" id="sndMaster" min="0" max="100" step="1"><span class="val" id="sndMasterV"></span></div>' +
-      '<details class="pop-more snd-mix" id="sndMix"' + (mixOpen ? " open" : "") + '><summary>Mix</summary><div class="snd-mix-rows" role="group" aria-label="How loud each sound is">' + rows + '</div></details>' +
-      '<p class="hint">Tap a sound to start it, or to add it to what is playing; tap it again to take it out. Mix sets how loud each one is.</p>' +
-      '<p class="hint">Made on this device as they play \u2014 no recordings, nothing to download. They play while a book is open, under read aloud too, and pause when you leave the page.</p>' +
+      '<div class="snd-tiles" id="sndChips" role="group" aria-label="' + esc(_t("Sounds: tap to add or take out")) + '">' + tiles + '</div>' +
+      '<div class="rowline"><label for="sndMaster">' + esc(_t("Volume")) + '</label><input type="range" id="sndMaster" min="0" max="100" step="1"><span class="val" id="sndMasterV"></span></div>' +
+      '<details class="pop-more snd-mix" id="sndMix"' + (mixOpen ? " open" : "") + '><summary>' + esc(_t("Mix")) + '</summary><div class="snd-mix-rows" role="group" aria-label="' + esc(_t("How loud each sound is")) + '">' + rows + '</div></details>' +
+      '<p class="hint">' + esc(_t("Tap a sound to start it, or to add it to what is playing; tap it again to take it out. Mix sets how loud each one is.")) + '</p>' +
+      '<p class="hint">' + esc(_t("Made on this device as they play \u2014 no recordings, nothing to download. They play while a book is open, under read aloud too, and pause when you leave the page.")) + '</p>' +
       '</div>';
     body.querySelector("#sndMix").addEventListener("toggle", function(e){ mixOpen = e.target.open; });
     paint(body);
@@ -479,8 +487,8 @@
     Array.prototype.forEach.call(body.querySelectorAll("input[data-mix]"), function(r){
       var v = cfg.mix[r.dataset.mix];
       if (document.activeElement !== r) r.value = v;
-      body.querySelector("#" + r.id + "V").textContent = v ? v + " %" : "off";
-      r.setAttribute("aria-valuetext", v ? v + " %" : "off");
+      body.querySelector("#" + r.id + "V").textContent = v ? v + " %" : _t("off");
+      r.setAttribute("aria-valuetext", v ? v + " %" : _t("off"));
     });
     var m = body.querySelector("#sndMaster");
     if (document.activeElement !== m) m.value = cfg.master;
@@ -532,8 +540,8 @@
   function setMaster(v){ cfg.master = clamp(v, 0, 100, 70); ensure(); changed(); }
   function openPanel(){
     if (!Side) return;
-    Side.open("sounds", "Background sounds", render);
-    if (!(window.AudioContext || window.webkitAudioContext) && Marks) Marks.toast("This browser can’t play sounds made on the device");
+    Side.open("sounds", _t("Background sounds"), render);
+    if (!(window.AudioContext || window.webkitAudioContext) && Marks) Marks.toast(_t("This browser can’t play sounds made on the device"));
   }
   if (Side && Side.body){
     Side.body.addEventListener("click", function(e){
@@ -569,7 +577,7 @@
   /* the menu's entry: while sounds play it stops them; else it plays the last blend again (the panel
      opens instead the very first time, when there is no blend to go back to) */
   function isOn(){ return cfg.on && playingIds().length > 0; }
-  function describe(){ return listOf(playingIds().length ? playingIds() : [cfg.last]); }
+  function describe(){ return capFirst(listOf(playingIds().length ? playingIds() : [cfg.last])); }
   window.llSounds = {
     openPanel: openPanel, sync: sync, solo: solo, toggle: toggle, setMix: setMix, setOn: setOn, setMaster: setMaster, sounds: ids.slice(),
     isOn: isOn, describe: describe,

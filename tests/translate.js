@@ -463,6 +463,9 @@ const DUTCH = ["The Project Gutenberg eBook of Eline Vere. This eBook is for the
   await guard("pack", async () => {
     const log = { mm: [] };
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: "nl-NL" });
+    /* a Dutch phone now gets a Dutch interface (Settings › Reading › App language); this part is about the
+       translator for a Dutch reader and reads the English labels, so the interface is set to English */
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_ui_lang", "en"); } catch(_){} });
     await ctx.addInitScript(STUB({ translator: false }));
     await ctx.addInitScript(SPEECH);
     await routes(ctx, log);

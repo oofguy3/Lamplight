@@ -18,6 +18,11 @@
    translation stands in, and a tap or a hold on it shows the original again. */
 (function(){
   "use strict";
+  /* the interface's language (i18n.js): the English here is the key; without LL_I18N it stays English */
+  var I18N = (typeof window !== "undefined" && window.LL_I18N) || null;
+  function _t(s, v){ return I18N ? I18N.t(s, v) : (v ? String(s).replace(/\{(\w+)\}/g, function(m, k){ return k in v ? v[k] : m; }) : s); }
+  function _tn(n, one, other, v){ var o = { n: n }; for (var k in v || {}) o[k] = v[k]; return _t(Number(n) === 1 ? one : other, o); }
+  function uiLang(){ return I18N ? I18N.lang() : "en"; }
   var L = window.__ll || {};
   var $ = function(s){ return document.querySelector(s); };
   var Store = {
@@ -31,7 +36,7 @@
   var MM_CODES = { zh: "zh-CN", "zh-Hant": "zh-TW" };   /* MyMemory's names for the two Chinese scripts */
   var SENTENCE_CAP = 2000;                                 /* cached word / sentence records kept */
   var PRIVACY = "The Dutch ↔ English pack and the built-in translator run on your device and send nothing anywhere; the pack is downloaded once from this site. " +
-                "MyMemory, a free web service, receives the word or sentence you tap when neither of them can translate it.";
+                "MyMemory, a free web service, receives the word or sentence you tap when neither of them can translate it.";   /* shown through _t */
 
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
   function norm(s){ return String(s || "").replace(/\s+/g, " ").trim(); }
@@ -53,9 +58,17 @@
   function unwrap(r){ return (r && typeof r === "object" && typeof IDBRequest !== "undefined" && r instanceof IDBRequest) ? null : (r || null); }
 
   /* ---------- languages: the table lives in the settings select that app.js built ---------- */
+  /* the select's names are in the interface's language already (app.js names them through Intl.DisplayNames in Dutch) */
   function nameOf(code){
     var o = document.querySelector('#trLang option[value="' + String(code).replace(/"/g, "") + '"]');
-    return o ? o.textContent.split(" · ")[0] : String(code);
+    if (o) return o.textContent.split(" · ")[0];
+    if (uiLang() === "nl" && typeof Intl !== "undefined" && Intl.DisplayNames){
+      try {
+        var n = new Intl.DisplayNames([I18N.locale()], { type: "language" }).of(code === "zh" ? "zh-Hans" : String(code));
+        if (n && n !== code) return n.charAt(0).toUpperCase() + n.slice(1);
+      } catch(_){}
+    }
+    return String(code);
   }
   function base(code){ return String(code || "").split("-")[0].toLowerCase(); }
   /* en-US and en are the same language; the two Chinese scripts are not */
@@ -199,7 +212,7 @@
       w.onmessage = onMsg;
       w.onerror = function(e){
         if (e && e.preventDefault) e.preventDefault();
-        fail("couldn’t start (" + ((e && e.message) || "worker error") + ")");
+        fail(_t("couldn’t start ({error})", { error: (e && e.message) || _t("worker error") }));
       };
     }
     function end(){
@@ -217,9 +230,17 @@
       if (document.visibilityState === "hidden" && w && !cur && !jobs.length && !dl) end();
     });
     function fatalErr(msg){ var e = new Error(msg); e.fatal = true; return e; }
+    /* the worker's own reasons (workers/mt-worker.js, in English) in the interface's language */
+    function workerMsg(msg){
+      var m;
+      if (!msg) return msg;
+      if ((m = /^couldn’t download (.+) \((\d+)\)$/.exec(msg))) return _t("couldn’t download {file} ({status})", { file: m[1], status: m[2] });
+      if ((m = /^the download of (.+) was cut short$/.exec(msg))) return _t("the download of {file} was cut short", { file: m[1] });
+      return _t(msg);
+    }
     /* the pack cannot run here: everything waiting goes back to the caller, which moves on to the next engine */
     function fail(msg){
-      st.broken = msg || "couldn’t run";
+      st.broken = msg || _t("couldn’t run");
       var all = (cur ? [cur] : []).concat(jobs);
       cur = null; jobs = [];
       end();
@@ -236,7 +257,7 @@
       var next = jobs.splice(k, 1)[0];
       /* one direction per worker: the other one's half a gigabyte goes with it */
       if (w && wPair && wPair !== next.pair && !dl) end();
-      if (!w){ try { spawn(); } catch(err){ jobs.unshift(next); fail("couldn’t start"); return; } }
+      if (!w){ try { spawn(); } catch(err){ jobs.unshift(next); fail(_t("couldn’t start")); return; } }
       cur = next; wPair = next.pair;
       w.postMessage({ type: "translate", id: cur.id, pair: cur.pair, text: cur.text });
     }
@@ -249,7 +270,7 @@
       if (m.type === "downloaded" || (m.type === "error" && m.op === "download")){
         var d = dl; dl = null; st.dl = null;
         if (m.type === "downloaded"){ st.have = true; st.err = ""; notify(); if (d) d.resolve(true); }
-        else { st.err = m.message || "the download failed"; notify(); if (d) d.reject(new Error(st.err)); }
+        else { st.err = workerMsg(m.message) || _t("the download failed"); notify(); if (d) d.reject(new Error(st.err)); }
         pump();
         return;
       }
@@ -257,9 +278,9 @@
       var j = cur; cur = null;
       if (m.type === "result"){ j.resolve(typeof m.text === "string" ? m.text : ""); pump(); return; }
       if (m.type === "error"){
-        if (m.fatal){ jobs.unshift(j); fail(m.message); return; }
+        if (m.fatal){ jobs.unshift(j); fail(workerMsg(m.message)); return; }
         if (/one direction/.test(m.message || "")){ jobs.unshift(j); end(); pump(); return; }
-        j.reject(new Error(m.message || "no translation")); pump();
+        j.reject(new Error(m.message || _t("no translation"))); pump();
       }
     }
     function request(pair, text, prio){
@@ -283,7 +304,7 @@
     }
     function download(){
       if (dl) return dl.promise;
-      if (!supported()) return Promise.reject(new Error("this browser can’t run the pack"));
+      if (!supported()) return Promise.reject(new Error(_t("this browser can’t run the pack")));
       var d = {};
       d.promise = new Promise(function(resolve, reject){ d.resolve = resolve; d.reject = reject; });
       dl = d; st.dl = 0; st.err = ""; st.broken = "";
@@ -292,7 +313,7 @@
       try {
         if (!w) spawn();
         w.postMessage({ type: "download" });
-      } catch(err){ dl = null; st.dl = null; st.err = "couldn’t start"; notify(); return Promise.reject(err); }
+      } catch(err){ dl = null; st.dl = null; st.err = _t("couldn’t start"); notify(); return Promise.reject(err); }
       return d.promise;
     }
     function remove(){
@@ -300,7 +321,7 @@
       var all = (cur ? [cur] : []).concat(jobs);
       cur = null; jobs = [];
       end();
-      all.forEach(function(j){ j.reject(fatalErr("the pack was removed")); });
+      all.forEach(function(j){ j.reject(fatalErr(_t("the pack was removed"))); });
       st.have = false; st.dl = null; st.err = ""; st.broken = "";
       return (window.caches ? caches.delete(CACHE).catch(noop) : Promise.resolve()).then(function(){ st.have = false; notify(); });
     }
@@ -369,8 +390,8 @@
     function code(c){ return MM_CODES[c] || c; }
     function one(text, src, t){
       var u = "https://api.mymemory.translated.net/get?q=" + encodeURIComponent(text) + "&langpair=" + encodeURIComponent(code(src) + "|" + code(t));
-      return fetch(u).then(function(r){ if (!r.ok) throw new Error("MyMemory replied " + r.status); return r.json(); }).then(function(j){
-        if (!j || String(j.responseStatus) !== "200" || !j.responseData || typeof j.responseData.translatedText !== "string") throw new Error((j && j.responseDetails) || "no translation");
+      return fetch(u).then(function(r){ if (!r.ok) throw new Error(_t("MyMemory replied {status}", { status: r.status })); return r.json(); }).then(function(j){
+        if (!j || String(j.responseStatus) !== "200" || !j.responseData || typeof j.responseData.translatedText !== "string") throw new Error((j && j.responseDetails) || _t("no translation"));
         return j.responseData.translatedText;
       });
     }
@@ -404,6 +425,13 @@
 
   var ENGINES = { pack: Pack, builtin: Builtin, mymemory: MyMemory };
   var LABEL = { pack: "on this device (Dutch ↔ English pack)", builtin: "on-device", mymemory: "by MyMemory (free web service)" };
+  /* the line under a translation: the language and the engine, as one sentence */
+  function engineLine(lang, engineId){
+    if (engineId === "pack") return _t("{lang} · translated on this device (Dutch ↔ English pack)", { lang: lang });
+    if (engineId === "builtin") return _t("{lang} · translated on-device", { lang: lang });
+    if (engineId === "mymemory") return _t("{lang} · translated by MyMemory (free web service)", { lang: lang });
+    return _t("{lang} · translated {how}", { lang: lang, how: LABEL[engineId] || engineId });
+  }
   /* which engine handles a job: the pack for Dutch ↔ English once it is here, then the built-in translator (for a
      book also after its download, which the menu press allows), then MyMemory for words and sentences */
   function pick(kind, src, t){
@@ -419,10 +447,10 @@
   }
   function packOffered(src, t){ return Pack.covers(src, t) && Pack.supported() && !Pack.state.broken; }
   function noEngineNote(src, t){
-    if (packOffered(src, t)) return online() ? "Couldn’t reach a translator — download Dutch ↔ English under Translation in the settings to translate on this device."
-                                             : "Offline — download Dutch ↔ English under Translation in the settings to translate without a connection.";
-    return online() ? "Nothing here can translate this — use Chrome or Edge for the built-in translator."
-                    : "Offline — only cached translations are available.";
+    if (packOffered(src, t)) return online() ? _t("Couldn’t reach a translator — download Dutch ↔ English under Translation in the settings to translate on this device.")
+                                             : _t("Offline — download Dutch ↔ English under Translation in the settings to translate without a connection.");
+    return online() ? _t("Nothing here can translate this — use Chrome or Edge for the built-in translator.")
+                    : _t("Offline — only cached translations are available.");
   }
 
   /* ---------- the settings: the status line, the pack's row, the two views ---------- */
@@ -433,13 +461,14 @@
       var s = open ? src : (same(t, "en") ? "nl" : "en");
       var name = nameOf(t);
       return Promise.all([Pack.available(s, t), Builtin.available(s, t)]).then(function(r){
-        if (r[0] === "ready") return name + " · Dutch ↔ English pack ready — instant and offline";
-        if (r[1] === "ready") return name + " · built-in translator ready";
-        if (packOffered(s, t)) return name + (online() ? " · words and sentences via MyMemory; download Dutch ↔ English below for whole books, offline"
-                                                         : " · offline — only cached translations; download Dutch ↔ English below once you are online");
-        if (r[1] === "download" && online()) return name + " · built-in translator needs a download (about 30 MB) — Translate book starts it; words meanwhile via MyMemory";
-        if (online()) return name + " · words and sentences via MyMemory; use Chrome / Edge for whole documents";
-        return name + " · offline — only cached translations";
+        var v = { lang: name };
+        if (r[0] === "ready") return _t("{lang} · Dutch ↔ English pack ready — instant and offline", v);
+        if (r[1] === "ready") return _t("{lang} · built-in translator ready", v);
+        if (packOffered(s, t)) return online() ? _t("{lang} · words and sentences via MyMemory; download Dutch ↔ English below for whole books, offline", v)
+                                               : _t("{lang} · offline — only cached translations; download Dutch ↔ English below once you are online", v);
+        if (r[1] === "download" && online()) return _t("{lang} · built-in translator needs a download (about 30 MB) — Translate book starts it; words meanwhile via MyMemory", v);
+        if (online()) return _t("{lang} · words and sentences via MyMemory; use Chrome / Edge for whole documents", v);
+        return _t("{lang} · offline — only cached translations", v);
       });
     });
   }
@@ -450,7 +479,7 @@
     return describe().then(function(s){
       h.textContent = "";
       var b = document.createElement("span"); b.className = "tr-status"; b.textContent = s;
-      h.appendChild(b); h.appendChild(document.createTextNode(" " + PRIVACY));
+      h.appendChild(b); h.appendChild(document.createTextNode(" " + _t(PRIVACY)));
     }).catch(function(){});
   }
   /* focus: "pack" lands on the pack's download button (Translate book on Dutch or English with nothing to do it) */
@@ -465,7 +494,7 @@
       else if (s) s.focus({ preventScroll: true });
     }, 80);
   }
-  function mb(n){ return Math.round(n) + " MB"; }
+  function mb(n){ return _t("{n} MB", { n: I18N ? I18N.num(Math.round(n)) : Math.round(n) }); }
   /* the pack's row under Translation (#mtState, #mtDl, #mtRm, #mtProgress, made by app.js) */
   function syncPack(){
     var st = $("#mtState"), dl = $("#mtDl"), rm = $("#mtRm"), pr = $("#mtProgress");
@@ -477,32 +506,32 @@
       if (pr){ pr.hidden = pct < 0; if (pct >= 0) pr.value = pct; }
     }
     var s = Pack.state;
-    if (!Pack.supported()){ show("Dutch ↔ English: this browser can’t run the pack (it needs WebAssembly SIMD — Chrome, Edge, Firefox or Safari 16.4 and newer)", false, false, -1); return; }
+    if (!Pack.supported()){ show(_t("Dutch ↔ English: this browser can’t run the pack (it needs WebAssembly SIMD — Chrome, Edge, Firefox or Safari 16.4 and newer)"), false, false, -1); return; }
     /* #mtState is a live region: its words change when the state does (downloading, then ready); how far the
        download has come is the bar's (#mtProgress), not a new line to read out at every percent */
-    if (s.dl !== null){ show("Downloading Dutch ↔ English (≈ " + Pack.mb + " MB)…", false, false, Math.round(s.dl * 100)); return; }
+    if (s.dl !== null){ show(_t("Downloading Dutch ↔ English (≈ {mb} MB)…", { mb: Pack.mb }), false, false, Math.round(s.dl * 100)); return; }
     Pack.check().then(function(have){
       if (Pack.state.dl !== null) return;
-      if (have && Pack.state.broken) show("Dutch ↔ English: on this device, but it couldn’t run here (" + Pack.state.broken + ") — the other translators stand in", false, true, -1);
-      else if (have) show("Dutch ↔ English · ready, works offline · " + mb(Pack.mb) + " on this device", false, true, -1);
-      else if (Pack.state.err) show("Dutch ↔ English: the download stopped (" + Pack.state.err + ") — try again", true, false, -1);
-      else show(online() ? "Dutch ↔ English: not on this device yet" : "Dutch ↔ English: not on this device yet — needs a connection once", true, false, -1);
+      if (have && Pack.state.broken) show(_t("Dutch ↔ English: on this device, but it couldn’t run here ({error}) — the other translators stand in", { error: Pack.state.broken }), false, true, -1);
+      else if (have) show(_t("Dutch ↔ English · ready, works offline · {size} on this device", { size: mb(Pack.mb) }), false, true, -1);
+      else if (Pack.state.err) show(_t("Dutch ↔ English: the download stopped ({error}) — try again", { error: Pack.state.err }), true, false, -1);
+      else show(online() ? _t("Dutch ↔ English: not on this device yet") : _t("Dutch ↔ English: not on this device yet — needs a connection once"), true, false, -1);
     });
   }
   var wantBook = null;          /* Translate book waits for the pack: the document it was asked for */
   function getPack(){
     return Pack.download().then(function(){
-      toast("Dutch ↔ English is on this device — translations are instant, and work offline");
+      toast(_t("Dutch ↔ English is on this device — translations are instant, and work offline"));
       refreshHint();
       if (wantBook && wantBook === docId() && L.state && L.state.mode === "doc" && !page.on){ wantBook = null; startPage(); }
     }, function(err){
-      if (!(err && /removed/.test(err.message || ""))) toast("Dutch ↔ English didn’t download — " + ((err && err.message) || "no connection"));
+      if (!(err && /removed/.test(err.message || ""))) toast(_t("Dutch ↔ English didn’t download — {error}", { error: (err && err.message) || _t("no connection") }));
       refreshHint();
     });
   }
   function removePack(){
     wantBook = null;
-    return Pack.remove().then(function(){ toast("Dutch ↔ English removed from this device"); refreshHint(); });
+    return Pack.remove().then(function(){ toast(_t("Dutch ↔ English removed from this device")); refreshHint(); });
   }
   Pack.on(function(){ syncPack(); syncOffers(); });
 
@@ -571,7 +600,7 @@
     function render(out, engineId, t){
       box.hidden = false;
       el.innerHTML = '<div class="tr-out" lang="' + esc(t) + '" dir="' + dirOf(t) + '"></div>' +
-        '<div class="tr-eng">' + esc(nameOf(t)) + ' · translated ' + esc(LABEL[engineId] || engineId) + '</div>';
+        '<div class="tr-eng">' + esc(engineLine(nameOf(t), engineId)) + '</div>';
       el.querySelector(".tr-out").textContent = out;
       if (opts.onResult) opts.onResult(out);
     }
@@ -583,7 +612,7 @@
         var hooks = { live: live, prio: 0, onItem: function(k, out){ result = out; } };
         return p.engine.translate([text], src, t, hooks).then(function(){
           if (!live()) return;
-          if (typeof result !== "string" || !result.trim()) throw new Error("no translation");
+          if (typeof result !== "string" || !result.trim()) throw new Error(_t("no translation"));
           memo[key] = { text: result, engine: p.engine.id };
           Cache.putSentence({ key: "s|" + key, text: result, engine: p.engine.id });
           render(result, p.engine.id, t);
@@ -592,10 +621,10 @@
         if (!live()) return;
         /* the pack could not run here: the next engine, once */
         if (err && err.fatal && !tries) return run(src, t, key, 1);
-        el.innerHTML = '<div class="note">Couldn’t translate (' + esc((err && err.message) || "no connection") + ').</div>';
+        el.innerHTML = '<div class="note">' + esc(_t("Couldn’t translate ({error}).", { error: (err && err.message) || _t("no connection") })) + '</div>';
         var b = document.createElement("div"); b.className = "acts";
-        b.innerHTML = '<button type="button" class="act tr-go">Try again</button>';
-        b.querySelector(".tr-go").addEventListener("click", function(){ el.innerHTML = '<div class="tr-wait">translating…</div>'; run(src, t, key, 0).then(function(){ offer(src, t); }); });
+        b.innerHTML = '<button type="button" class="act tr-go">' + esc(_t("Try again")) + '</button>';
+        b.querySelector(".tr-go").addEventListener("click", function(){ el.innerHTML = '<div class="tr-wait">' + esc(_t("translating…")) + '</div>'; run(src, t, key, 0).then(function(){ offer(src, t); }); });
         el.appendChild(b);
       });
     }
@@ -608,13 +637,13 @@
       var key = src + "|" + t + "|" + text;
       if (memo[key]){ render(memo[key].text, memo[key].engine, t); offer(src, t); return; }
       box.hidden = false;
-      el.innerHTML = '<div class="tr-wait">translating…</div>';
+      el.innerHTML = '<div class="tr-wait">' + esc(_t("translating…")) + '</div>';
       return Cache.get("s|" + key).then(function(rec){
         if (!live()) return;
         if (rec && typeof rec.text === "string"){ memo[key] = { text: rec.text, engine: rec.engine }; render(rec.text, rec.engine, t); offer(src, t); return; }
         return run(src, t, key, 0).then(function(){ offer(src, t); });
       });
-    }).catch(function(err){ if (live()) note("Couldn’t translate (" + ((err && err.message) || "no connection") + ")."); });
+    }).catch(function(err){ if (live()) note(_t("Couldn’t translate ({error}).", { error: (err && err.message) || _t("no connection") })); });
   }
   /* the pack is offered in the card once, the first time Dutch or English is translated without it */
   function offerPack(el, src, t){
@@ -623,9 +652,9 @@
       if (have || !el.isConnected || Store.get(KEY_OFFER) || el.querySelector(".tr-offer")) return;
       Store.set(KEY_OFFER, "1");
       var o = document.createElement("div");
-      o.className = "tr-offer"; o.setAttribute("role", "group"); o.setAttribute("aria-label", "Dutch ↔ English pack");
-      o.innerHTML = '<div class="note tr-offer-msg">Download Dutch ↔ English for instant offline translation (≈ ' + Pack.mb + ' MB, once).</div>' +
-        '<div class="acts"><button type="button" class="act go" data-mt="get">Download</button><button type="button" class="act" data-mt="later">Not now</button></div>';
+      o.className = "tr-offer"; o.setAttribute("role", "group"); o.setAttribute("aria-label", _t("Dutch ↔ English pack"));
+      o.innerHTML = '<div class="note tr-offer-msg">' + esc(_t("Download Dutch ↔ English for instant offline translation (≈ {mb} MB, once).", { mb: Pack.mb })) + '</div>' +
+        '<div class="acts"><button type="button" class="act go" data-mt="get">' + esc(_t("Download")) + '</button><button type="button" class="act" data-mt="later">' + esc(_t("Not now")) + '</button></div>';
       o.addEventListener("click", function(e){
         var b = e.target.closest && e.target.closest("button[data-mt]");
         if (!b) return;
@@ -642,17 +671,17 @@
     Array.prototype.forEach.call(document.querySelectorAll("#dictCard .tr-offer"), function(o){
       var msg = o.querySelector(".tr-offer-msg"), acts = o.querySelector(".acts"), bar = o.querySelector("progress"), s = Pack.state, text = null;
       if (s.dl !== null){
-        text = "Downloading Dutch ↔ English…";
+        text = _t("Downloading Dutch ↔ English…");
         if (!bar){
-          bar = document.createElement("progress"); bar.max = 100; bar.setAttribute("aria-label", "Downloading Dutch ↔ English");
+          bar = document.createElement("progress"); bar.max = 100; bar.setAttribute("aria-label", _t("Downloading Dutch ↔ English"));
           msg.parentNode.insertBefore(bar, msg.nextSibling);
         }
         bar.value = Math.round(s.dl * 100);
         if (acts) acts.hidden = true;
       } else {
         if (bar) bar.parentNode.removeChild(bar);
-        if (s.have){ text = "Dutch ↔ English is ready — instant, and offline."; if (acts) acts.hidden = true; }
-        else if (s.err){ text = "The download stopped (" + s.err + ")."; if (acts) acts.hidden = false; }
+        if (s.have){ text = _t("Dutch ↔ English is ready — instant, and offline."); if (acts) acts.hidden = true; }
+        else if (s.err){ text = _t("The download stopped ({error}).", { error: s.err }); if (acts) acts.hidden = false; }
       }
       if (text !== null && msg.textContent !== text) msg.textContent = text;
     });
@@ -811,9 +840,9 @@
     }
     b.ok = !miss;
     el.classList.toggle("miss", !!miss);
-    el.setAttribute("lang", miss ? "en" : lang);
+    el.setAttribute("lang", miss ? uiLang() : lang);            /* the "couldn’t translate" mark is in the interface's language */
     el.setAttribute("dir", miss ? "ltr" : dirOf(lang));
-    el.shadowRoot.querySelector(".t").textContent = miss ? "couldn’t translate" : text;
+    el.shadowRoot.querySelector(".t").textContent = miss ? _t("couldn’t translate") : text;
     shown(b, cur);
     if (cur && c0 && c0.node && !b.hidden) keep(cur, c0.div, c0.node, c0.sum);
     return el;
@@ -964,32 +993,32 @@
     var min = Math.round(page.leftChars / (r.chars / r.ms) / 60000), now = Date.now();
     if (page.etaMin === null || min < page.etaMin || now - page.etaAt > 30000){ page.etaMin = min; page.etaAt = now; }
     min = page.etaMin;
-    if (min < 1) return "less than a minute left";
-    if (min < 90) return "about " + min + " min left";
+    if (min < 1) return _t("less than a minute left");
+    if (min < 90) return _t("about {n} min left", { n: min });
     var h = Math.floor(min / 60), m = Math.round((min - h * 60) / 5) * 5;
-    return "about " + h + " h" + (m ? " " + m + " min" : "") + " left";
+    return m ? _t("about {h} h {m} min left", { h: h, m: m }) : _t("about {h} h left", { h: h });
   }
   /* not a live region: its text changes with every paragraph. The start, a pause and the end are toasts (which are
      read out), and a screen reader hears each quarter of the book as it is done (say) */
   function status(){
     if (!statusEl){
       statusEl = document.createElement("div");
-      statusEl.id = "trStatus"; statusEl.setAttribute("role", "group"); statusEl.setAttribute("aria-label", "Translation");
-      statusEl.innerHTML = '<span class="tr-msg"></span><button type="button" class="tr-x">Pause</button>';
+      statusEl.id = "trStatus"; statusEl.setAttribute("role", "group"); statusEl.setAttribute("aria-label", _t("Translation"));
+      statusEl.innerHTML = '<span class="tr-msg"></span><button type="button" class="tr-x">' + esc(_t("Pause")) + '</button>';
       statusEl.querySelector(".tr-x").addEventListener("click", cancel);
       document.body.appendChild(statusEl);
     }
     var msg;
-    if (page.download !== null && page.download !== undefined) msg = "Downloading the " + nameOf(page.pair.split("|")[1]) + " translator… " + Math.round(page.download * 100) + " %";
+    if (page.download !== null && page.download !== undefined) msg = _t("Downloading the {lang} translator… {pct} %", { lang: nameOf(page.pair.split("|")[1]), pct: Math.round(page.download * 100) });
     else {
       var left = eta(), pct = page.total ? Math.floor(page.done / page.total * 100) : 0, q = Math.floor(pct / 25);
-      msg = "Translating… " + pct + " %" + (left ? " · " + left : "");
+      msg = left ? _t("Translating… {pct} % · {left}", { pct: pct, left: left }) : _t("Translating… {pct} %", { pct: pct });
       if (page.said === null || page.said === undefined) page.said = q;
-      else if (q > page.said && q < 4){ page.said = q; say("Translation " + (q * 25) + " % done"); }
+      else if (q > page.said && q < 4){ page.said = q; say(_t("Translation {pct} % done", { pct: q * 25 })); }
     }
     var m = statusEl.querySelector(".tr-msg");
     if (m.textContent !== msg) m.textContent = msg;
-    statusEl.title = page.done + " of " + page.total + " paragraphs translated";
+    statusEl.title = _t("{done} of {total} paragraphs translated", { done: page.done, total: page.total });
     statusEl.classList.add("on");
   }
   function hideStatus(){ if (statusEl) statusEl.classList.remove("on"); }
@@ -1087,14 +1116,14 @@
     return resolveFrom(docSample()).then(function(src){
       if (gen !== page.gen) return;
       var t = bookTarget(src);
-      if (same(src, t)){ toast("This document is already in " + nameOf(t) + "."); return; }
+      if (same(src, t)){ toast(_t("This document is already in {lang}.", { lang: nameOf(t) })); return; }
       var pair = src + "|" + t;
-      if (!begin(docId(), pair)){ toast("Nothing to translate here."); return; }
+      if (!begin(docId(), pair)){ toast(_t("Nothing to translate here.")); return; }
       return Cache.get(page.key).then(function(rec){
         if (gen !== page.gen) return;
         applyRecord(rec, t);
         setOn(page.docKey, pair);
-        if (!page.missing.length){ toast("Translated into " + nameOf(t) + " — from the cache"); return; }
+        if (!page.missing.length){ toast(_t("Translated into {lang} — from the cache", { lang: nameOf(t) })); return; }
         return translateMissing(false);
       });
     });
@@ -1126,10 +1155,10 @@
       if (gen !== page.gen) return;
       if (!p || (auto && p.status !== "ready")){
         if (auto) return;
-        if (page.done) toast(online() ? "No translator for the rest — see Translation in the settings" : "Offline — showing the cached translation");
+        if (page.done) toast(online() ? _t("No translator for the rest — see Translation in the settings") : _t("Offline — showing the cached translation"));
         else {
           showOriginal();
-          if (packOffered(src, t)){ wantBook = docId(); toast("Download Dutch ↔ English to translate this book on this device"); openSettings("pack"); }
+          if (packOffered(src, t)){ wantBook = docId(); toast(_t("Download Dutch ↔ English to translate this book on this device")); openSettings("pack"); }
           else openSettings();
         }
         return;
@@ -1138,7 +1167,7 @@
       page.rate = { chars: 0, ms: 0 }; page.curAt = 0; page.etaMin = null; page.etaAt = 0; page.said = null;
       page.record.job = "on"; saveSoon();
       status();
-      if (!page.done) toast("Translating into " + nameOf(t) + "…");
+      if (!page.done) toast(_t("Translating into {lang}…", { lang: nameOf(t) }));
       return new Promise(function(resolve){
         page.job = { gen: gen, engine: p.engine, src: src, t: t, busy: false, resolve: resolve };
         step(page.job);
@@ -1181,7 +1210,7 @@
       var ms = Date.now() - t0;
       if (page.rate && ms < 60000){ page.rate.ms += ms; page.rate.chars += chars; }   /* a batch that sat out a sleep says nothing about speed */
       step(job);
-    }, function(err){ job.busy = false; finish(job, err || new Error("stopped")); });
+    }, function(err){ job.busy = false; finish(job, err || new Error(_t("stopped"))); });
   }
   function finish(job, err){
     if (page.job !== job) return;
@@ -1195,10 +1224,12 @@
     var name = nameOf(job.t);
     if (err){
       console.warn("translate: paused", err);
-      toast("Translation paused — " + (err.fatal ? "the Dutch ↔ English pack couldn’t run here (" + err.message + ")" : !online() ? "no connection" : (err.message || "something went wrong")));
-    } else if (cancelled) toast("Translation paused — what arrived stays; Translate the rest carries on");
-    else if (page.missing.length) toast("Translated into " + name + " · " + page.missing.length + (page.missing.length === 1 ? " block" : " blocks") + " couldn’t be translated");
-    else toast("Translated into " + name);
+      toast(err.fatal ? _t("Translation paused — the Dutch ↔ English pack couldn’t run here ({error})", { error: err.message })
+                      : !online() ? _t("Translation paused — no connection")
+                      : err.message ? _t("Translation paused — {error}", { error: err.message }) : _t("Translation paused — something went wrong"));
+    } else if (cancelled) toast(_t("Translation paused — what arrived stays; Translate the rest carries on"));
+    else if (page.missing.length) toast(_tn(page.missing.length, "Translated into {lang} · 1 block couldn’t be translated", "Translated into {lang} · {n} blocks couldn’t be translated", { lang: name }));
+    else toast(_t("Translated into {lang}", { lang: name }));
     job.resolve();
   }
   function cancel(){ if (page.running){ page.running = false; hideStatus(); if (page.job && !page.job.busy) step(page.job); } }
@@ -1227,7 +1258,7 @@
   }
   function togglePage(){
     if (!L.state || L.state.mode !== "doc"){
-      if (L.state && L.state.mode === "pdf") toast("Translate works on text documents; PDFs are not translated yet.");
+      if (L.state && L.state.mode === "pdf") toast(_t("Translate works on text documents; PDFs are not translated yet."));
       return Promise.resolve();
     }
     if (page.on){

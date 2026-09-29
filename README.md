@@ -99,6 +99,7 @@ Lamplight is a progressive web app made of plain static files: no server, no acc
 - Screen wake lock while reading; keyboard shortcuts (`?` shows them all); works with reduced-motion and forced-colour settings.
 
 **As an app**
+- **In Dutch or in English**: the whole interface — menus, panels, settings, messages, keyboard help, units, dates and relative times ("3 uur geleden") — is in natural Dutch on a device set to Dutch and in English everywhere else. *Settings › Reading › App language* (Automatisch / Nederlands / English) overrides the device; switching reloads Lamplight at the same place in the book. The book's text, file names, dictionary definitions and voice names are never translated.
 - Installs as a PWA, works fully offline (a versioned service worker precaches everything — fonts and word-part tables included — and offers a one-tap reload when a new version is ready).
 - "Open with" from the file manager, share files or text to Lamplight from other apps, app shortcuts (Continue reading, Library).
 
@@ -118,6 +119,7 @@ Lamplight is plain static files. Copy the repository to any static host (GitHub 
 
 ```
 index.html              the shell
+i18n.js                 the interface's language: English (the source) and the Dutch table, with its glossary
 app.js  app.css         the reader
 explain.js              the offline sentence explainer
 morph.js                word parts: prefixes, roots and suffixes with meanings
@@ -179,7 +181,7 @@ NODE_PATH=$(npm root -g) node tests/themes.js       # contrast audit of every bu
 NODE_PATH=$(npm root -g) node tests/wordparts.js    # 300 word decompositions (node only)
 ```
 
-plus `themes-browser.js`, `fonts.js`, `type2.js`, `speak.js` (with a stubbed speech engine and media session), `wordparts-browser.js`, `about.js`, `stats.js` and `stats2.js` (with Playwright's fake clock), `library2.js`, `notes2.js`, `journal.js` (the reading journal and its *Finished* card, against a fake clock), `reading.js` (speed reading and focus reading), `zen.js`, `print.js` (print media emulation), `translate.js` (stubbed translator and MyMemory routes, and the real Dutch ↔ English pack), `simplify.js`, `explain2.js`, `pace.js` (a simulated reader driven against a fake clock), `ui-a/b/c.js` for the interface itself and `qol.js` for a phone in one hand (the reading row at the foot, long presses, swiping sheets down, the bars in Pages flow, Undo, one-tap sounds and themes). Each script starts its own server on a free port and exits non-zero on failure.
+plus `themes-browser.js`, `fonts.js`, `type2.js`, `speak.js` (with a stubbed speech engine and media session), `wordparts-browser.js`, `about.js`, `stats.js` and `stats2.js` (with Playwright's fake clock), `library2.js`, `notes2.js`, `journal.js` (the reading journal and its *Finished* card, against a fake clock), `reading.js` (speed reading and focus reading), `zen.js`, `print.js` (print media emulation), `translate.js` (stubbed translator and MyMemory routes, and the real Dutch ↔ English pack), `simplify.js`, `explain2.js`, `pace.js` (a simulated reader driven against a fake clock), `i18n.js` (the Dutch interface: the table, the main screens with no English left, switching the language at the same place), `ui-a/b/c.js` for the interface itself and `qol.js` for a phone in one hand (the reading row at the foot, long presses, swiping sheets down, the bars in Pages flow, Undo, one-tap sounds and themes). Each script starts its own server on a free port and exits non-zero on failure.
 
 `tests/screenshots.js` remakes the pictures at the top of this file from the running app, so they never drift from it (`node tests/screenshots.js` for all of them, or name the ones you want). It writes into `docs/screenshots/`, so `tests/all.js` leaves it out: run it on its own when the pictures should change.
 

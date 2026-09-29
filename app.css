@@ -311,6 +311,8 @@
     .sheet-tabs-row button{flex-direction:column; height:auto; min-height:52px; width:100%; min-width:0; padding:5px 4px; gap:2px; border:1px solid var(--ctl-line); border-radius:var(--r-md); font-size:var(--fs-small); line-height:1.2;}
     .sheet-tabs-row button span{max-width:100%; overflow:hidden; text-overflow:ellipsis;}
     .sheet-tabs-row button.on{border:var(--bw-sel) solid var(--accent);}
+    /* "Woordenboek", the longest Dutch section name, needs the button's whole width on a 360px phone */
+    html[lang="nl"] .sheet-tabs-row button{padding-left:0; padding-right:0;}
   }
   /* the groups: 24px apart with a hairline between; each opens with its heading */
   .group{display:grid; gap:var(--sp-2);}
@@ -638,6 +640,8 @@
   .pop-head .label{font-family:var(--title-font); font-size:var(--fs-title); font-weight:600; line-height:1.3; letter-spacing:0; text-transform:none; color:var(--ink);}
   .prow{display:flex; align-items:center; gap:var(--sp-3); min-height:44px; min-width:0;}
   .prow > label, .prow > .plabel{font-size:var(--fs-body); color:var(--ink); width:72px; flex:none;}
+  /* Dutch labels run longer ("Regelafstand", "Lettertype", "Automatisch"): the column widens for them (i18n.js sets <html lang>) */
+  html[lang="nl"] .prow > label, html[lang="nl"] .prow > .plabel{width:100px;}
   .prow .prow-in{flex:1; min-width:0; display:flex; align-items:center; gap:var(--sp-2);}
   .prow input[type=range]{flex:1; min-width:60px;}
   .prow .val{min-width:52px;}
@@ -809,7 +813,7 @@
     border:2px dashed var(--accent); border-radius:var(--r-lg); background:var(--accent-soft);
   }
   body.dragging::before{
-    content:"Drop to open"; position:fixed; left:50%; top:50%; transform:translate(-50%, -50%); z-index:91; pointer-events:none;
+    content:var(--ll-drop, "Drop to open"); position:fixed; left:50%; top:50%; transform:translate(-50%, -50%); z-index:91; pointer-events:none;
     padding:12px 20px; border-radius:var(--r-pill); background:var(--raise); color:var(--ink); border:var(--bw-sel) solid var(--accent);
     box-shadow:var(--shadow-2); font-family:var(--ui-font); font-size:1rem; font-weight:600; white-space:nowrap;
   }
@@ -1793,6 +1797,8 @@
     .v-role{width:72px;}
     :root[data-tone="contrast"] .v-role{width:100px;}
   }
+  /* "VERTELLER" needs a little more room than "NARRATOR" */
+  html[lang="nl"] .v-role{width:88px;}
   @media (pointer: coarse){
     .v-play, .v-card .v-play{width:48px; height:48px;}
     .v-acts .chip, .v-card-top .v-sex{min-height:44px;}
@@ -2027,6 +2033,10 @@
     background:var(--raise); border:var(--bw) solid var(--line); box-shadow:var(--shadow-2);
   }
   #markPop.on{display:flex;}
+  /* never wider than the screen: on a phone the longer labels ("Notitie bewerken", "Verwijderen", "Edit note")
+     would push it past the left edge; then the last button goes to a second row */
+  #markPop{max-width:calc(100vw - 16px); flex-wrap:wrap; justify-content:center; align-items:center;}
+  #markPop.wrapped{border-radius:var(--r-lg);}
   #markPop .dot{position:relative; width:32px; height:32px; min-height:0; margin:2px; border-radius:50%; border:1px solid var(--line); padding:0; cursor:pointer;}
   @media (pointer: coarse){ #markPop .dot{width:38px; height:38px;} #markPop .dot::after{content:""; position:absolute; inset:-5px;} }
   #markPop .dot.accent{background:var(--accent);} #markPop .dot.sun{background:#E8C547;} #markPop .dot.leaf{background:#7FB069;} #markPop .dot.rose{background:#E07A9A;}

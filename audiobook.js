@@ -19,6 +19,12 @@
    ============================================================ */
 (function(){
   "use strict";
+  /* the interface's language (i18n.js): _t("Prepare book") is the Dutch while the interface is Dutch, else the English */
+  var I18N = (typeof window !== "undefined" && window.LL_I18N) || null;
+  function _t(s, v){ return I18N ? I18N.t(s, v) : (v ? String(s).replace(/\{(\w+)\}/g, function(m, k){ return k in v ? v[k] : m; }) : s); }
+  function _tn(n, one, other, v){ var o = { n: n }; for (var k in v || {}) o[k] = v[k]; return _t(Number(n) === 1 ? one : other, o); }
+  /* numbers in Dutch through Intl (1.234, 1,05); English keeps the forms it always had */
+  function isNl(){ return !!(I18N && I18N.lang && I18N.lang() === "nl"); }
   var LL = window.__ll || {};
   var Store = LL.Store || { get: function(){ return null; }, set: function(){}, remove: function(){} };
   var Library = LL.Library, Marks = LL.Marks, Speak = LL.Speak, Side = LL.Side, state = LL.state;
@@ -1045,7 +1051,9 @@
      ============================================================ */
   function toast(msg){ if (Marks && Marks.toast) Marks.toast(msg); }
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
-  function fmt(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+  function fmt(n){ return isNl() ? I18N.num(n) : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+  /* a pitch as "1.05" (Dutch "1,05") */
+  function fix2(x){ return isNl() ? I18N.num(x, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : x.toFixed(2); }
   function delay(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
   function apiKey(){ return Store.get(K_KEY) || ""; }
   function model(){ var m = Store.get(K_MODEL); return MODELS.indexOf(m) >= 0 ? m : MODELS[0]; }
@@ -1053,7 +1061,7 @@
     return !!(window.fetch && window.Promise && window.Audio && window.indexedDB && window.URL && URL.createObjectURL && window.atob);
   }
   function askForKey(){
-    var k = prompt("Paste an ElevenLabs API key to read aloud with ElevenLabs voices.\n\nIt is stored only on this device and is sent only to api.elevenlabs.io while reading. Leave blank to remove it.", apiKey());
+    var k = prompt(_t("Paste an ElevenLabs API key to read aloud with ElevenLabs voices.\n\nIt is stored only on this device and is sent only to api.elevenlabs.io while reading. Leave blank to remove it."), apiKey());
     if (k === null) return !!apiKey();          /* cancelled: nothing changes */
     k = k.trim();
     if (k) Store.set(K_KEY, k); else Store.remove(K_KEY);
@@ -1071,10 +1079,10 @@
     else if (d){ msg = d.message || ""; code = d.status || ""; }
     var text;
     /* the free tier reports used-up credits as 401 + quota_exceeded, so the code is read before the status */
-    if (/quota_exceeded|payment/i.test(code) || status === 402) text = "ElevenLabs credits are used up";
-    else if (status === 401 || /invalid_api_key|missing_permissions|unauthori[sz]ed/i.test(code)) text = "ElevenLabs rejected the key";
-    else if (status === 429) text = "ElevenLabs is busy — try again in a moment";
-    else text = "ElevenLabs: " + (msg || code || "error " + status).slice(0, 90);
+    if (/quota_exceeded|payment/i.test(code) || status === 402) text = _t("ElevenLabs credits are used up");
+    else if (status === 401 || /invalid_api_key|missing_permissions|unauthori[sz]ed/i.test(code)) text = _t("ElevenLabs rejected the key");
+    else if (status === 429) text = _t("ElevenLabs is busy — try again in a moment");
+    else text = _t("ElevenLabs: {error}", { error: (msg || code || _t("error {n}", { n: status })).slice(0, 90) });
     var err = new Error(text);
     err.status = status; err.code = code; err.retryAfter = retryAfter ? parseFloat(retryAfter) || 0 : 0;
     return err;
@@ -1097,7 +1105,7 @@
     var st = storedVoices();
     if (st){ voiceCache = st; return Promise.resolve(st); }
     if (voicesPromise) return voicesPromise;
-    if (!apiKey()) return Promise.reject(new Error("Add an ElevenLabs API key first"));
+    if (!apiKey()) return Promise.reject(new Error(_t("Add an ElevenLabs API key first")));
     voicesPromise = fetch(API + "/v2/voices?page_size=100", { headers: { "xi-api-key": apiKey() } }).then(function(r){
       if (r.ok) return r.json();
       return r.text().then(function(t){ throw apiError(r.status, parse(t), r.headers.get("Retry-After")); });
@@ -1108,7 +1116,7 @@
                  narr: /narrat|audiobook/i.test([lb.use_case, lb.description, v.description].join(" ")) };
       });
       voicesPromise = null;
-      if (!list.length) throw new Error("No ElevenLabs voices found");
+      if (!list.length) throw new Error(_t("No ElevenLabs voices found"));
       voiceCache = list; Store.set(K_VOICES, JSON.stringify({ t: Date.now(), voices: list }));
       return list;
     }, function(err){
@@ -1116,7 +1124,7 @@
       /* an old list still names the narrator and the cast, so clips already on the device play offline */
       var old = storedVoices(true);
       if (old){ voiceCache = old; voicesStale = true; return old; }
-      if (!(err && err.status)) err = new Error(navigator.onLine ? "Couldn’t reach ElevenLabs" : "ElevenLabs needs a connection");
+      if (!(err && err.status)) err = new Error(navigator.onLine ? _t("Couldn’t reach ElevenLabs") : _t("ElevenLabs needs a connection"));
       throw err;
     });
     return voicesPromise;
@@ -1142,7 +1150,7 @@
     var groups = { female: [], male: [], unknown: [] };
     list.forEach(function(v){ groups[v.gender].push('<option value="' + esc(v.id) + '"' + (v.id === selected ? ' selected' : '') + '>' + esc(v.name) + '</option>'); });
     return [["Female voices", groups.female], ["Male voices", groups.male], ["Other voices", groups.unknown]].map(function(g){
-      return g[1].length ? '<optgroup label="' + g[0] + '">' + g[1].join("") + '</optgroup>' : "";
+      return g[1].length ? '<optgroup label="' + esc(_t(g[0])) + '">' + g[1].join("") + '</optgroup>' : "";
     }).join("");
   }
 
@@ -1369,17 +1377,17 @@
     }).then(audioSync).catch(function(){});
   }
   /* the row in the voices panel: "Audio kept on this device: 123 MB" */
-  function mb(n){ return Math.round(n / 1048576) + " MB"; }
+  function mb(n){ var v = Math.round(n / 1048576); return _t("{n} MB", { n: isNl() ? I18N.num(v) : v }); }
   function audioSync(){
     if (typeof document === "undefined" || !document.getElementById("audioKept")) return;
-    audioTotal().then(function(n){ var el = document.getElementById("audioKept"); if (el) el.textContent = "Audio kept on this device: " + mb(n); });
+    audioTotal().then(function(n){ var el = document.getElementById("audioKept"); if (el) el.textContent = _t("Audio kept on this device: {size}", { size: mb(n) }); });
   }
   /* the audio store only: every clip of every document, from either source; the model stays */
   function clearAudio(){
     if (!Library) return;
     cancelQueued();
     feed.have = null; feed.haveDoc = null; feed.haveP = null;
-    Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ audioBytes = 0; loadedKey = null; toast("Cached audio cleared"); audioSync(); prepSync(); }, function(){ toast("Couldn’t clear the audio"); });
+    Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ audioBytes = 0; loadedKey = null; toast(_t("Cached audio cleared")); audioSync(); prepSync(); }, function(){ toast(_t("Couldn’t clear the audio")); });
   }
   function b64blob(b64){
     var bin = atob(b64), n = bin.length, bytes = new Uint8Array(n), i;
@@ -1412,7 +1420,7 @@
       if (r.ok) return r.json();
       return r.text().then(function(t){ throw apiError(r.status, parse(t), r.headers.get("Retry-After")); });
     }).then(function(j){
-      if (!j || !j.audio_base64) throw new Error("ElevenLabs sent no audio");
+      if (!j || !j.audio_base64) throw new Error(_t("ElevenLabs sent no audio"));
       sent += clip.text.length; setStatus();
       return { blob: b64blob(j.audio_base64), times: timesFrom(j.alignment, clip) };
     }).catch(function(err){
@@ -1420,8 +1428,8 @@
       if (err && err.status === 429 && !attempt && !task.cancelled){
         return delay(Math.max(2000, (err.retryAfter || 0) * 1000)).then(function(){ if (task.cancelled) throw err; return fetchClip(task, 1); });
       }
-      if (!(err && err.status) && !navigator.onLine){ err = new Error("ElevenLabs needs a connection"); err.offline = true; }
-      else if (!(err && err.status) && err && !/ElevenLabs/.test(err.message || "")) err = new Error("ElevenLabs request failed");
+      if (!(err && err.status) && !navigator.onLine){ err = new Error(_t("ElevenLabs needs a connection")); err.offline = true; }
+      else if (!(err && err.status) && err && !/ElevenLabs/.test(err.message || "")) err = new Error(_t("ElevenLabs request failed"));
       throw err;
     });
   }
@@ -1458,7 +1466,7 @@
   }
   function settle(task){ running--; delete inflight[task.key]; pump(); }
   function runTask(task){
-    if (task.src === SRC.eleven && !navigator.onLine){ var o = new Error("Offline — no ElevenLabs audio cached from here"); o.offline = true; return Promise.reject(o); }
+    if (task.src === SRC.eleven && !navigator.onLine){ var o = new Error(_t("Offline — no ElevenLabs audio cached from here")); o.offline = true; return Promise.reject(o); }
     return task.src.run(task).then(function(r){
       var out = { key: task.key, docId: task.docId, voice_id: task.clip.voice, model_id: task.clip.model, chars: task.clip.text.length,
                   blob: r.blob, size: r.blob.size, times: r.times, created: Date.now() };
@@ -1502,7 +1510,7 @@
   var KOKORO_LANGS = { en: "ab", es: "e", fr: "f", hi: "h", it: "i", ja: "j", pt: "p", zh: "z" };
   var natWarned = false;
   function natWarn(lang){
-    if (lang !== "en" && !natWarned){ natWarned = true; toast("Natural voices speak English only; a text in another language is read by the device voice"); }
+    if (lang !== "en" && !natWarned){ natWarned = true; toast(_t("Natural voices speak English only; a text in another language is read by the device voice")); }
   }
   function kokoroPool(lang){
     lang = String(lang || "en").slice(0, 2).toLowerCase();
@@ -1515,8 +1523,8 @@
     var groups = [], by = {};
     (list || KOKORO_VOICES).forEach(function(v){ if (!by[v.group]){ by[v.group] = []; groups.push(v.group); } by[v.group].push(v); });
     return groups.map(function(g){
-      return '<optgroup label="' + esc(g) + '">' + by[g].map(function(v){
-        return '<option value="' + esc(v.id) + '"' + (v.id === selected ? ' selected' : '') + '>' + esc(v.name) + ' (' + (v.gender === "female" ? "woman" : "man") + ')</option>';
+      return '<optgroup label="' + esc(_t(g)) + '">' + by[g].map(function(v){
+        return '<option value="' + esc(v.id) + '"' + (v.id === selected ? ' selected' : '') + '>' + esc(_t(v.gender === "female" ? "{name} (woman)" : "{name} (man)", { name: v.name })) + '</option>';
       }).join("") + '</optgroup>';
     }).join("");
   }
@@ -1560,7 +1568,7 @@
   function natOther(m){ return m === NAT.piper ? NAT.kokoro : NAT.piper; }
   function natVoice(m, id){ for (var i = 0; i < m.voices.length; i++) if (m.voices[i].id === id) return m.voices[i]; return null; }
   function natNarrator(m){ var id = Store.get(m.kNarr); return natVoice(m, id) ? id : m.def; }
-  function natName(m, id){ var v = natVoice(m, id); return v ? v.name : "Natural voice"; }
+  function natName(m, id){ var v = natVoice(m, id); return v ? v.name : _t("Natural voice"); }
   /* the natural voices the reader chose: the engine picked in settings when it is one of them, else the quality last picked */
   function natCur(){
     var e = speakEngine();
@@ -1590,7 +1598,7 @@
       m.load = null; m.ready = false; m.dl = {}; m.pct = -1;
       try { if (m.w) m.w.terminate(); } catch(_){}
       m.w = null;
-      l.rej(new Error(navigator.onLine ? "Natural voices couldn’t start (no response from the voice engine)" : "Natural voices need a connection to download"));
+      l.rej(new Error(navigator.onLine ? _t("Natural voices couldn’t start (no response from the voice engine)") : _t("Natural voices need a connection to download")));
       liveReset(); natSync();
     }, K_STALL);
   }
@@ -1623,9 +1631,9 @@
         if (msg.id === null || msg.id === undefined){
           clearTimeout(m.timer);
           var ld = m.load; m.load = null; m.dl = {}; m.pct = -1;
-          if (ld) ld.rej(new Error(msg.message ? "Natural voices: " + String(msg.message).slice(0, 80) : "Couldn’t load the natural voices"));
+          if (ld) ld.rej(new Error(msg.message ? _t("Natural voices: {error}", { error: String(msg.message).slice(0, 80) }) : _t("Couldn’t load the natural voices")));
           liveReset(); natSync();
-        } else { j = m.jobs[msg.id]; if (j){ delete m.jobs[msg.id]; j.rej(new Error(msg.message || "error")); } }
+        } else { j = m.jobs[msg.id]; if (j){ delete m.jobs[msg.id]; j.rej(new Error(msg.message || _t("error"))); } }
       }
     };
     /* the script itself failed (offline before the runtime was ever cached, a browser without module workers):
@@ -1636,7 +1644,7 @@
       m.load = null; m.ready = false; m.jobs = {}; m.dl = {}; m.pct = -1; m.warming = false;
       try { w.terminate(); } catch(_){}
       if (m.w === w) m.w = null;
-      var err = new Error(navigator.onLine ? "Natural voices couldn’t start in this browser" : "Natural voices need a connection to download");
+      var err = new Error(navigator.onLine ? _t("Natural voices couldn’t start in this browser") : _t("Natural voices need a connection to download"));
       if (l) l.rej(err);
       Object.keys(jobs).forEach(function(id){ jobs[id].rej(err); });
       liveReset(); natSync();
@@ -1691,9 +1699,9 @@
     pct = total && loaded < total ? Math.min(99, Math.round(loaded * 100 / total)) : -1;
     if (pct < 0 && m.pct >= 0 && total < 5e6) pct = m.pct;
     m.pct = pct;
-    if (natRunning(m)){ liveStep(document.getElementById("ttsStatus"), m.pct); setStatus(m.pct >= 0 ? "Downloading voices " + m.pct + "%…" : "Preparing…"); }
+    if (natRunning(m)){ liveStep(document.getElementById("ttsStatus"), m.pct); setStatus(m.pct >= 0 ? _t("Downloading voices {pct}%…", { pct: m.pct }) : _t("Preparing…")); }
     if (m !== natCur()) return;      /* the rows show the other quality */
-    var st = document.getElementById("kokoroState"), pr = document.getElementById("kokoroProgress"), text = m.pct >= 0 ? "Downloading… " + m.pct + "%" : "Preparing…";
+    var st = document.getElementById("kokoroState"), pr = document.getElementById("kokoroProgress"), text = m.pct >= 0 ? _t("Downloading… {pct}%", { pct: m.pct }) : _t("Preparing…");
     if (st && st.textContent !== text){ liveStep(st, m.pct); st.textContent = text; }
     if (pr){ pr.hidden = m.pct < 0; if (m.pct >= 0) pr.value = m.pct; }
   }
@@ -1747,7 +1755,7 @@
       return { blob: wavBlob(r.samples, r.sampleRate), times: clip.parts.map(function(p){ return { a: p.s / len * secs, b: p.e / len * secs }; }) };
     }).catch(function(err){
       if (err && err.cancelled) throw err;
-      var e = new Error(!navigator.onLine && m.ready ? "Offline — this natural voice isn’t on the device yet" : (err && err.message) || "Natural voices couldn’t make the audio");
+      var e = new Error(!navigator.onLine && m.ready ? _t("Offline — this natural voice isn’t on the device yet") : (err && err.message) || _t("Natural voices couldn’t make the audio"));
       e.offline = !navigator.onLine;
       throw e;
     });
@@ -1788,21 +1796,21 @@
   /* the Download button */
   function natDownload(m){
     if (m.load) return;
-    if (!navigator.onLine && !(m.have && m.have.ready)){ toast("Connect to the internet once to download the natural voices"); return; }
-    natLoad(m).then(function(){ toast("Natural voices are ready"); }, function(err){ toast((err && err.message) || "Couldn’t download the natural voices"); });
+    if (!navigator.onLine && !(m.have && m.have.ready)){ toast(_t("Connect to the internet once to download the natural voices")); return; }
+    natLoad(m).then(function(){ toast(_t("Natural voices are ready")); }, function(err){ toast((err && err.message) || _t("Couldn’t download the natural voices")); });
   }
   /* the Remove button: the model's caches, its runtime files (not the ONNX runtime the other model still uses, when that
      one is on the device), and the worker holding the model */
   /* resolves to whether they were removed (the Storage panel measures again then) */
   function natRemove(m){
-    if (!confirm("Remove the " + m.label + " natural voices from this device (≈ " + m.mb + " MB)? They can be downloaded again.")) return Promise.resolve(false);
+    if (!confirm(_t("Remove the {label} natural voices from this device (≈ {mb} MB)? They can be downloaded again.", { label: _t(m.label), mb: m.mb }))) return Promise.resolve(false);
     if (natRunning(m) && Speak && Speak.stop) Speak.stop();
     feedStop();
     var l = m.load, jobs = m.jobs, other = natOther(m);
     clearTimeout(m.timer);
     m.load = null; m.ready = false; m.jobs = {}; m.dl = {}; m.pct = -1; m.warming = false; m.warmed = false; m.have = { ready: false, model: false, bytes: 0 };
     if (m.w){ try { m.w.terminate(); } catch(_){} m.w = null; }
-    var gone = new Error("Natural voices were removed");
+    var gone = new Error(_t("Natural voices were removed"));
     if (l) l.rej(gone);
     Object.keys(jobs).forEach(function(id){ jobs[id].rej(gone); });
     function has(list, u){ for (var i = 0; i < list.length; i++) if (u.indexOf(list[i]) >= 0) return true; return false; }
@@ -1820,7 +1828,7 @@
         });
       }).catch(function(){}));
     }
-    return Promise.all(work).then(function(){ m.have = { ready: false, model: false, bytes: 0 }; toast("Natural voices removed"); natSync(); return true; });
+    return Promise.all(work).then(function(){ m.have = { ready: false, model: false, bytes: 0 }; toast(_t("Natural voices removed")); natSync(); return true; });
   }
   /* the document's language, where it is not English ("nl"), and its name ("Dutch") */
   function natLang(){
@@ -1828,7 +1836,7 @@
     return l && l !== "en" ? l : "";
   }
   function langName(l){
-    try { if (typeof Intl !== "undefined" && Intl.DisplayNames) return new Intl.DisplayNames(["en"], { type: "language" }).of(l) || l; } catch(_){}
+    try { if (typeof Intl !== "undefined" && Intl.DisplayNames) return new Intl.DisplayNames([I18N ? I18N.locale() : "en"], { type: "language" }).of(l) || l; } catch(_){}
     return l;
   }
   /* before reading starts: the natural voices speak English only, so another language is read by the device voice
@@ -1836,14 +1844,14 @@
      offline, a model not on the device means the device voice reads this time */
   function natReady(m){
     var lang = natLang();
-    if (lang){ toast("Natural voices speak English only — the device voice reads this " + langName(lang) + " text"); return Promise.resolve(null); }
+    if (lang){ toast(_t("Natural voices speak English only — the device voice reads this {lang} text", { lang: langName(lang) })); return Promise.resolve(null); }
     if (m.ready && m.w){ natTold(m); return Promise.resolve(true); }
     if (m.load) return Promise.resolve(true);      /* on its way already (Download was pressed) */
     return natOnDevice(m).then(function(h){
       if (h.ready || (h.model && navigator.onLine)){ natTold(m); return true; }
-      if (!navigator.onLine){ toast("Natural voices aren’t downloaded yet — the device voice reads until you’re online"); return null; }
-      if (!confirm("Download the " + m.label + " natural voices to this device (≈ " + m.mb + " MB, once)? Use Wi-Fi if you can. Until then the device voice reads.")){
-        toast("The device voice reads. The natural voices can be downloaded in the Voices panel.");
+      if (!navigator.onLine){ toast(_t("Natural voices aren’t downloaded yet — the device voice reads until you’re online")); return null; }
+      if (!confirm(_t("Download the {label} natural voices to this device (≈ {mb} MB, once)? Use Wi-Fi if you can. Until then the device voice reads.", { label: _t(m.label), mb: m.mb }))){
+        toast(_t("The device voice reads. The natural voices can be downloaded in the Voices panel."));
         return null;     /* Speak falls back without a second toast */
       }
       return true;
@@ -1851,7 +1859,7 @@
   }
   /* once, when the model is on the device: how the first sentence behaves */
   function natTold(m){
-    if (Store && Store.get(m.kTold) !== "1"){ Store.set(m.kTold, "1"); toast(m.told); }
+    if (Store && Store.get(m.kTold) !== "1"){ Store.set(m.kTold, "1"); toast(_t(m.told)); }
   }
 
   /* ============================================================
@@ -1873,7 +1881,7 @@
   function setStatus(text, idle){
     var el = document.getElementById("ttsStatus"), cnt = document.getElementById("ttsSent"), bar = document.getElementById("tts"), play = document.getElementById("ttsPlay");
     if (!el) return;
-    var live = text || "", counter = (text || !(plan && plan.src === SRC.eleven)) ? "" : (sent ? "≈" + fmt(sent) + " chars sent" : ""), busy = !!live && !idle;
+    var live = text || "", counter = (text || !(plan && plan.src === SRC.eleven)) ? "" : (sent ? _t("≈{n} chars sent", { n: fmt(sent) }) : ""), busy = !!live && !idle;
     if (el.textContent !== live) el.textContent = live;
     if (cnt && cnt.textContent !== counter) cnt.textContent = counter;
     if (bar) bar.classList.toggle("fetching", busy);
@@ -1916,7 +1924,7 @@
       setTimeout(function(){ if (mySeq === seq) speak(i, opts, (tries || 0) + 1); }, 200);
       return;
     }
-    if (!plan || !plan.clips){ opts.onerror("not ready"); return; }
+    if (!plan || !plan.clips){ opts.onerror(_t("not ready")); return; }
     /* straight on from the clip that just ended, rather than a start (play, a skip, a new reading) */
     var cont = endedAt > 0 && Date.now() - endedAt < 1500;
     endedAt = 0;
@@ -1927,7 +1935,7 @@
     var clip = plan.clips[ci];
     current = { clip: clip, index: ci, opts: opts, seq: mySeq, unit: -1, rec: null };
     if (!cont) dropBefore(ci);
-    if (!(loadedKey && clip.key === loadedKey) && !got(clip)) setStatus(plan.src.busy);     /* a clip already made: no "Generating…" flash */
+    if (!(loadedKey && clip.key === loadedKey) && !got(clip)) setStatus(_t(plan.src.busy));     /* a clip already made: no "Generating…" flash */
     /* natural voices: a start may wait until enough is made ahead (5b); flowing on to a clip already made never does, and
        nor does a resume or a skip to one once this reading has started (a pause, Prev / Next) */
     var gate = plan.src.nat && !(got(clip) && (cont || started)) ? smartStart(ci, cont, mySeq) : null;
@@ -1947,7 +1955,7 @@
     }, function(err){
       if (mySeq !== seq || (err && err.cancelled)) return;
       setStatus();
-      toast(err && err.message ? err.message : (plan.src === SRC.eleven ? "ElevenLabs request failed" : "Natural voices couldn’t make the audio"));
+      toast(err && err.message ? err.message : (plan.src === SRC.eleven ? _t("ElevenLabs request failed") : _t("Natural voices couldn’t make the audio")));
       opts.onerror(null);
     });
     if (plan.src.nat) feedKick();
@@ -1961,7 +1969,7 @@
       try { a.currentTime = at > 0.05 ? at : 0; } catch(_){}
       a.playbackRate = opts.rate;
       var p = a.play();
-      if (p && p.catch) p.catch(function(err){ if (mySeq !== seq) return; toast("Couldn’t play the audio (" + ((err && err.name) || "error") + ")"); opts.onerror(null); });
+      if (p && p.catch) p.catch(function(err){ if (mySeq !== seq) return; toast(_t("Couldn’t play the audio ({error})", { error: (err && err.name) || _t("error") })); opts.onerror(null); });
       startTicker(); tick();
     }
     a.onended = function(){
@@ -1972,7 +1980,7 @@
       expectNext = nx ? k + 1 : null;
       opts.onend({ advanceTo: nx ? nx.first : clip.last + 1 });
     };
-    a.onerror = function(){ if (mySeq !== seq) return; stopTicker(); loadedKey = null; toast("Couldn’t play the audio"); opts.onerror(null); };
+    a.onerror = function(){ if (mySeq !== seq) return; stopTicker(); loadedKey = null; toast(_t("Couldn’t play the audio")); opts.onerror(null); };
     if (loadedKey === rec.key && a.src){ begin(); return; }
     loadedKey = rec.key;
     if (url){ try { URL.revokeObjectURL(url); } catch(_){} }
@@ -2109,7 +2117,7 @@
     if (state && state.mode === "doc" && Speak && Speak.buildDocUnits){
       return castPlan(src).then(function(){ var p = mine(); if (!p) throw new Error("replanned"); return p; });
     }
-    var e = new Error("Start reading this PDF aloud, then prepare it (the pages loaded so far)"); e.noplan = true;
+    var e = new Error(_t("Start reading this PDF aloud, then prepare it (the pages loaded so far)")); e.noplan = true;
     return Promise.reject(e);
   }
   /* the next clip to make: the first neither on the device nor on its way, from the reading position on, within half
@@ -2181,7 +2189,7 @@
       if (err && err.cancelled){ feedKick(500); return; }
       if (err && err.noplan){ if (feed.prep) prepEnd(err.message); return; }
       if (c && m.ready){ feed.bad[c.key] = true; feedKick(1000); return; }     /* the model works, not on this text: skipped */
-      if (feed.prep) prepEnd((err && err.message) || "Natural voices couldn’t make the audio");
+      if (feed.prep) prepEnd((err && err.message) || _t("Natural voices couldn’t make the audio"));
     });
   }
 
@@ -2222,7 +2230,7 @@
     if (!x.hold){
       if (x.slow && Store.get(K_SLOWTIP) !== "1"){
         Store.set(K_SLOWTIP, "1");
-        toast("This phone makes speech slower than it reads. Tap Prepare book in the Voices panel for no pauses.");
+        toast(_t("This phone makes speech slower than it reads. Tap Prepare book in the Voices panel for no pauses."));
       }
       holdRelease(); return;
     }
@@ -2237,8 +2245,9 @@
     var el = document.getElementById("ttsStatus"), play = document.getElementById("ttsPlay");
     if (el && h.shown) el.setAttribute("aria-live", "off");     /* the first line is announced, not every second after it */
     h.shown = true;
-    setStatus("Starts in " + Math.floor(left / 60) + ":" + (sec < 10 ? "0" : "") + sec + ", then no pauses", true);
-    if (play && play.getAttribute("aria-label") !== "Start now") play.setAttribute("aria-label", "Start now");
+    setStatus(_t("Starts in {time}, then no pauses", { time: Math.floor(left / 60) + ":" + (sec < 10 ? "0" : "") + sec }), true);
+    var now = _t("Start now");
+    if (play && play.getAttribute("aria-label") !== now) play.setAttribute("aria-label", now);
   }
   function holdEnd(){
     var h = hold;
@@ -2247,14 +2256,14 @@
     if (h.shown && typeof document !== "undefined"){
       var el = document.getElementById("ttsStatus"), play = document.getElementById("ttsPlay");
       if (el) el.setAttribute("aria-live", "polite");
-      if (play) play.setAttribute("aria-label", Speak && Speak.isPlaying && Speak.isPlaying() ? "Pause" : "Play");
+      if (play) play.setAttribute("aria-label", Speak && Speak.isPlaying && Speak.isPlaying() ? _t("Pause") : _t("Play"));
     }
     return h;
   }
   function holdRelease(){
     var h = holdEnd();
     if (!h || h.seq !== seq) return;
-    if (h.shown) setStatus(h.plan.src.busy);     /* until the clip itself is ready */
+    if (h.shown) setStatus(_t(h.plan.src.busy));     /* until the clip itself is ready */
     h.res();
   }
 
@@ -2274,20 +2283,20 @@
   function prepareBook(){
     feed.msg = ""; feed.full = false;
     if (feed.prep){ prepEnd(); return; }
-    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ feed.msg = "Open a book first"; prepSync(); return; }
-    if (natLang()){ feed.msg = "Natural voices speak English only, and this text is in " + langName(natLang()); prepSync(); return; }
+    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ feed.msg = _t("Open a book first"); prepSync(); return; }
+    if (natLang()){ feed.msg = _t("Natural voices speak English only, and this text is in {lang}", { lang: langName(natLang()) }); prepSync(); return; }
     var m = natCur();
-    if (!navigator.onLine && !m.ready && !(m.have && m.have.ready)){ toast("Connect to the internet once to download the natural voices"); return; }
+    if (!navigator.onLine && !m.ready && !(m.have && m.have.ready)){ toast(_t("Connect to the internet once to download the natural voices")); return; }
     feed.prep = true; feed.bad = {};
     wakeOn(); prepSync(); feedKick();
   }
-  function dur(s){ var m = Math.max(1, Math.round(s / 60)); return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : ""); }
+  function dur(s){ var m = Math.max(1, Math.round(s / 60)); return m < 60 ? _t("{n} min", { n: m }) : m % 60 ? _t("{h} h {m} min", { h: Math.floor(m / 60), m: m % 60 }) : _t("{h} h", { h: Math.floor(m / 60) }); }
   /* the Prepare book row: its button, "Audiobook: 34% ready · about 25 min left" and the progress bar */
   function prepSync(){
     if (typeof document === "undefined") return;
     var btn = document.getElementById("kokoroPrep"), st = document.getElementById("kokoroPrepState"), pr = document.getElementById("kokoroPrepProgress");
     if (!btn) return;
-    var lab = feed.prep ? "Stop preparing" : "Prepare book";
+    var lab = feed.prep ? _t("Stop preparing") : _t("Prepare book");
     if (btn.textContent !== lab) btn.textContent = lab;
     var doc = (Library && Library.currentId && Library.currentId()) || "", p = plan && plan.src === natSrc() && plan.docId === doc && plan.clips ? plan : null;
     var m = p ? p.src.nat : null, text = feed.msg, pct = -1, tot = 0, have = 0, ch = 0, chHave = 0, bytes = 0, run = false, i, s, n;
@@ -2301,13 +2310,14 @@
         pct = ch ? Math.min(100, Math.floor(chHave * 100 / ch)) : 100;
         /* the audio is kept uncompressed, and the device keeps AUDIO_CAP of it: a long book does not fit whole */
         var fits = bytes > AUDIO_CAP ? tot * AUDIO_CAP / bytes : tot;
-        if (chHave >= ch) text = "Audiobook ready · plays with no pauses, offline";
+        /* the line's parts, each a phrase of its own, are joined by " · " */
+        if (chHave >= ch) text = _t("Audiobook ready · plays with no pauses, offline");
         else {
-          text = "Audiobook: " + pct + "% ready";
-          if (feed.full) text += " · the " + mb(AUDIO_CAP) + " kept for audio is full, the rest is made as you listen";
+          text = _t("Audiobook: {pct}% ready", { pct: pct });
+          if (feed.full) text += " · " + _t("the {size} kept for audio is full, the rest is made as you listen", { size: mb(AUDIO_CAP) });
           else {
-            if (fits < tot) text += " · about " + dur(fits) + " of its " + dur(tot) + " fits on this device";
-            if (feed.prep && rtf(m) > 0) text += " · about " + dur(Math.max(0, fits - have) * rtf(m)) + " left";
+            if (fits < tot) text += " · " + _t("about {part} of its {whole} fits on this device", { part: dur(fits), whole: dur(tot) });
+            if (feed.prep && rtf(m) > 0) text += " · " + _t("about {time} left", { time: dur(Math.max(0, fits - have) * rtf(m)) });
             run = true;
           }
         }
@@ -2330,12 +2340,12 @@
   /* a narrator select; lazy = the list already on the device only, so nothing is sent to ElevenLabs while the app starts up */
   function fillVoices(sel, lazy){
     var have = voiceCache || storedVoices(true);
-    sel.innerHTML = have ? voiceOptions(have, narratorId(have)) : '<option value="">Loading voices…</option>';
+    sel.innerHTML = have ? voiceOptions(have, narratorId(have)) : '<option value="">' + esc(_t("Loading voices…")) + '</option>';
     if (lazy || (have && voiceCache)) return;
     voices().then(function(list){
-      sel.innerHTML = voiceOptions(list, narratorId(list)) || '<option value="">No voices</option>';
+      sel.innerHTML = voiceOptions(list, narratorId(list)) || '<option value="">' + esc(_t("No voices")) + '</option>';
       syncName();
-    }, function(){ if (!have) sel.innerHTML = '<option value="">Voices unavailable</option>'; });
+    }, function(){ if (!have) sel.innerHTML = '<option value="">' + esc(_t("Voices unavailable")) + '</option>'; });
   }
   /* the bar names the narrator once the voice list is in */
   function syncName(){ if (isRunning() && Speak.syncBar) Speak.syncBar(); }
@@ -2381,10 +2391,10 @@
       var on = c.dataset.model === model(); c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
     });
     if (sel){
-      if (!apiKey()){ sel.disabled = true; sel.innerHTML = '<option value="">Add a key first</option>'; }
+      if (!apiKey()){ sel.disabled = true; sel.innerHTML = '<option value="">' + esc(_t("Add a key first")) + '</option>'; }
       else { sel.disabled = false; fillVoices(sel, !asked); }
     }
-    if (link) link.textContent = apiKey() ? "Change the ElevenLabs API key…" : "ElevenLabs API key…";
+    if (link) link.textContent = apiKey() ? _t("Change the ElevenLabs API key…") : _t("ElevenLabs API key…");
     audioSync();
   }
   /* ---- the natural voices' rows (they follow the chosen quality, natCur): narrator, and the model's
@@ -2428,18 +2438,19 @@
       if (rm) rm.hidden = !canRm;
       if (pr){ pr.hidden = pct < 0; if (pct >= 0) pr.value = pct; }
     }
-    if (m.load){ show(m.pct >= 0 ? "Downloading… " + m.pct + "%" : "Preparing…", false, false, m.pct); return; }
+    if (m.load){ show(m.pct >= 0 ? _t("Downloading… {pct}%", { pct: m.pct }) : _t("Preparing…"), false, false, m.pct); return; }
     var other = natOther(m), also = "";
     function have(h){
-      if (h.ready) show("Ready · " + mb(h.bytes || m.mb * 1048576) + " on this device" + also, false, true, -1);
-      else if (h.model) show(navigator.onLine ? "Almost ready — the voice engine still needs a connection once" : "Not ready — the voice engine needs a connection once", true, true, -1);
-      else show((navigator.onLine ? "Not on this device yet" : "Not on this device yet — needs a connection once") + also, true, false, -1);
+      /* also: " · " and a phrase of its own, the other quality's voices */
+      if (h.ready) show(_t("Ready · {size} on this device", { size: mb(h.bytes || m.mb * 1048576) }) + also, false, true, -1);
+      else if (h.model) show(navigator.onLine ? _t("Almost ready — the voice engine still needs a connection once") : _t("Not ready — the voice engine needs a connection once"), true, true, -1);
+      else show((navigator.onLine ? _t("Not on this device yet") : _t("Not on this device yet — needs a connection once")) + also, true, false, -1);
     }
     /* what was last seen, while the cache is asked again (a model that has just loaded keeps its line until then) */
-    if (m.have) have(m.have); else if (!m.ready) show("Checking…", false, false, -1);
+    if (m.have) have(m.have); else if (!m.ready) show(_t("Checking…"), false, false, -1);
     /* the other quality's model, still on the device, is named, so its space is not forgotten (choose it to remove it) */
     natOnDevice(other).then(function(o){
-      also = o.model ? " · the " + other.label + " voices are here too (" + mb(o.bytes || other.mb * 1048576) + ")" : "";
+      also = o.model ? " · " + _t("the {label} voices are here too ({size})", { label: _t(other.label), size: mb(o.bytes || other.mb * 1048576) }) : "";
       return natOnDevice(m);
     }).then(function(h){ if (!m.load && natCur() === m && document.getElementById("kokoroState") === st) have(h); });
   }
@@ -2482,7 +2493,7 @@
       var units = Speak.buildDocUnits();
       return planFor(src, units, { docId: docId, mode: "doc", title: document.title, lang: Speak.docLang ? Speak.docLang() : "" }).then(function(){ return plan; });
     }
-    return Promise.reject(new Error("Start reading aloud first to find who speaks on these pages."));
+    return Promise.reject(new Error(_t("Start reading aloud first to find who speaks on these pages.")));
   }
   /* the device plan: the one Speak is reading with, or worked out now for a text document */
   function devicePlan(){
@@ -2494,9 +2505,9 @@
       return deviceCast(Speak.buildDocUnits(), { docId: docId, mode: "doc" },
         { lang: S.lang(), narrator: S.currentVoice(), voices: S.sortedVoices, gender: S.voiceGender, id: S.voiceId, find: S.findVoice });
     }
-    return Promise.reject(new Error("Start reading aloud first to find who speaks on these pages."));
+    return Promise.reject(new Error(_t("Start reading aloud first to find who speaks on these pages.")));
   }
-  function openCast(){ if (Side && Side.open) Side.open("cast", "Voices for characters", renderCast); }
+  function openCast(){ if (Side && Side.open) Side.open("cast", _t("Voices for characters"), renderCast); }
   var castFocus = null;
   function refreshCast(){
     if (!(Side && Side.is && Side.is("cast") && Side.refresh)) return;
@@ -2504,7 +2515,14 @@
     castFocus = act && act.dataset && act.dataset.key && Side.body && Side.body.contains(act) ? act.dataset.key : null;
     Side.refresh("cast", renderCast);
   }
-  function who(c){ return (c.gender === "unknown" ? "" : c.gender + " · ") + c.lines + (c.lines === 1 ? " line" : " lines"); }
+  /* a character's name as shown: the unnamed voices attribute() makes ("He", "Another voice") in the interface's words;
+     a name from the book as the book has it */
+  function shownName(c){ return SYNTH.hasOwnProperty(c.key) ? _t(c.name) : c.name; }
+  function linesOf(n){ return _tn(n, "{n} line", "{n} lines"); }
+  /* "male · 12 lines": a list of two phrases, joined by " · " */
+  function who(c){ return (c.gender === "unknown" ? "" : _t(c.gender) + " · ") + linesOf(c.lines); }
+  /* the document's language, for the book's own words (a quote) in the interface's */
+  function bookLang(){ var l = Speak && Speak.docLang ? String(Speak.docLang() || "") : ""; return /^[a-z]{2,3}$/i.test(l) ? l : "en"; }
   function focusBack(wrap){
     if (!castFocus) return;
     /* the panel was redrawn under the reader: focus goes back to the row they were on */
@@ -2514,28 +2532,28 @@
     if (back) back.focus({ preventScroll: true });
   }
   function renderCast(body, foot){
-    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ body.innerHTML = '<div class="empty-note">Open a book first.</div>'; return; }
+    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ body.innerHTML = '<div class="empty-note">' + esc(_t("Open a book first.")) + '</div>'; return; }
     if (speakEngine() === "device"){ renderDeviceCast(body, foot); return; }
     var e = speakEngine(), src = e === "kokoro" || e === "piper" ? SRC[e] : SRC.eleven;
     if (src === SRC.eleven && !apiKey()){
-      body.innerHTML = '<div class="empty-note">Add an ElevenLabs API key first.</div>';
-      var b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = "ElevenLabs API key…";
+      body.innerHTML = '<div class="empty-note">' + esc(_t("Add an ElevenLabs API key first.")) + '</div>';
+      var b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = _t("ElevenLabs API key…");
       b.addEventListener("click", function(){ askForKey(); });
       foot.appendChild(b);
       return;
     }
-    body.innerHTML = '<div class="empty-note">Finding who speaks…</div>';
+    body.innerHTML = '<div class="empty-note">' + esc(_t("Finding who speaks…")) + '</div>';
     whoButton(foot);
     castPlan(src).then(function(pl){
       if (!Side.is("cast")) return;
       var vp = { kind: "plan", pl: pl };
-      var h = '<div class="cast-row"><div class="cast-who"><b>Narrator</b><span>everything outside the quotes</span></div>' +
-              '<select class="sel" data-key="narrator" aria-label="Voice for the narrator">' + pl.src.options(pl.list, pl.narrator) + '</select></div>';
+      var h = '<div class="cast-row"><div class="cast-who"><b>' + esc(_t("Narrator")) + '</b><span>' + esc(_t("everything outside the quotes")) + '</span></div>' +
+              '<select class="sel" data-key="narrator" aria-label="' + esc(_t("Voice for the narrator")) + '">' + pl.src.options(pl.list, pl.narrator) + '</select></div>';
       pl.cast.forEach(function(c){
-        h += '<div class="cast-row"><div class="cast-who"><b>' + esc(c.name) + '</b><span>' + esc(who(c)) + '</span></div>' + voiceSelect(vp, c) + '</div>';
+        h += '<div class="cast-row"><div class="cast-who"><b>' + esc(shownName(c)) + '</b><span>' + esc(who(c)) + '</span></div>' + voiceSelect(vp, c) + '</div>';
       });
-      if (!pl.cast.length) h += '<div class="empty-note">No dialogue found — the narrator reads everything.</div>';
-      else h += '<div class="cast-note">Speakers are worked out on this device from the quoted lines, speech tags (“said Anna”, “he whispered”), who acts beside a line and who takes turns; the unnamed ones get voices of their own too. A change applies from the next sentence.</div>';
+      if (!pl.cast.length) h += '<div class="empty-note">' + esc(_t("No dialogue found — the narrator reads everything.")) + '</div>';
+      else h += '<div class="cast-note">' + esc(_t("Speakers are worked out on this device from the quoted lines, speech tags (“said Anna”, “he whispered”), who acts beside a line and who takes turns; the unnamed ones get voices of their own too. A change applies from the next sentence.")) + '</div>';
       var wrap = document.createElement("div");
       wrap.innerHTML = h;
       body.innerHTML = ""; body.appendChild(wrap);
@@ -2550,7 +2568,7 @@
         } else voicePicked(vp, sel.dataset.key, sel.value);
       });
     }, function(err){
-      if (Side.is("cast")) body.innerHTML = '<div class="empty-note">' + esc((err && err.message) || "Couldn’t load the voices") + '</div>';
+      if (Side.is("cast")) body.innerHTML = '<div class="empty-note">' + esc((err && err.message) || _t("Couldn’t load the voices")) + '</div>';
     });
   }
   /* the device section: per character a device voice (or the dialogue voice) and a pitch; changes persist
@@ -2558,10 +2576,10 @@
   function deviceOptions(S, selected){
     var groups = { f: [], m: [], "": [] };
     S.sortedVoices().forEach(function(v){ groups[S.voiceGender(v)].push(v); });
-    return '<option value=""' + (selected ? '' : ' selected') + '>Dialogue voice</option>' +
+    return '<option value=""' + (selected ? '' : ' selected') + '>' + esc(_t("Dialogue voice")) + '</option>' +
       [["f", "Women"], ["m", "Men"], ["", "Other"]].map(function(g){
         if (!groups[g[0]].length) return "";
-        return '<optgroup label="' + g[1] + '">' + groups[g[0]].map(function(v){
+        return '<optgroup label="' + esc(_t(g[1])) + '">' + groups[g[0]].map(function(v){
           var id = S.voiceId(v);
           return '<option value="' + esc(id) + '"' + (id === selected ? ' selected' : '') + '>' + esc(S.shortName(v)) + (v.lang ? " · " + esc(v.lang) : "") + '</option>';
         }).join("") + '</optgroup>';
@@ -2569,25 +2587,25 @@
   }
   function renderDeviceCast(body, foot){
     var S = window.llSpeak;
-    if (!S){ body.innerHTML = '<div class="empty-note">Read aloud isn’t available in this browser.</div>'; return; }
+    if (!S){ body.innerHTML = '<div class="empty-note">' + esc(_t("Read aloud isn’t available in this browser.")) + '</div>'; return; }
     if (Speak && Speak.cast && !Speak.cast()){
-      body.innerHTML = '<div class="empty-note">Turn on “A voice per character” in Read-aloud voices first.</div>';
+      body.innerHTML = '<div class="empty-note">' + esc(_t("Turn on “A voice per character” in Read-aloud voices first.")) + '</div>';
       return;
     }
-    body.innerHTML = '<div class="empty-note">Finding who speaks…</div>';
+    body.innerHTML = '<div class="empty-note">' + esc(_t("Finding who speaks…")) + '</div>';
     whoButton(foot);
     devicePlan().then(function(pl){
       if (!Side.is("cast")) return;
       var narr = S.currentVoice(), vp = { kind: "device", pl: pl, S: S };
-      var h = '<div class="cast-row"><div class="cast-who"><b>Narrator</b><span>everything outside the quotes</span></div>' +
-              '<span class="cast-name">' + esc(narr ? S.shortName(narr) : "Default voice") + '</span></div>';
+      var h = '<div class="cast-row"><div class="cast-who"><b>' + esc(_t("Narrator")) + '</b><span>' + esc(_t("everything outside the quotes")) + '</span></div>' +
+              '<span class="cast-name">' + esc(narr ? S.shortName(narr) : _t("Default voice")) + '</span></div>';
       pl.cast.forEach(function(c){
         var d = pl.rec.device[c.key] || null, vid = d ? d.voice : "", pitch = d && d.voice ? (+d.pitch || 1) : 1;
-        h += '<div class="cast-row cast-dev"><div class="cast-who"><b>' + esc(c.name) + '</b><span>' + esc(who(c)) + '</span></div>' + voiceSelect(vp, c) +
-             '<label class="cast-pitch"><span>Pitch</span><input type="range" min="0.7" max="1.3" step="0.05" value="' + pitch + '" data-pitch="' + esc(c.key) + '" aria-label="Pitch for ' + esc(c.name) + '"' + (vid ? '' : ' disabled') + '><span class="val">' + pitch.toFixed(2) + '</span></label></div>';
+        h += '<div class="cast-row cast-dev"><div class="cast-who"><b>' + esc(shownName(c)) + '</b><span>' + esc(who(c)) + '</span></div>' + voiceSelect(vp, c) +
+             '<label class="cast-pitch"><span>' + esc(_t("Pitch")) + '</span><input type="range" min="0.7" max="1.3" step="0.05" value="' + pitch + '" data-pitch="' + esc(c.key) + '" aria-label="' + esc(_t("Pitch for {name}", { name: shownName(c) })) + '"' + (vid ? '' : ' disabled') + '><span class="val">' + fix2(pitch) + '</span></label></div>';
       });
-      if (!pl.cast.length) h += '<div class="empty-note">No dialogue found — the narrator reads everything.</div>';
-      else h += '<div class="cast-note">Speakers are worked out on this device from the quoted lines, speech tags (“said Anna”, “he whispered”), who acts beside a line and who takes turns; the unnamed ones get voices of their own too. A change applies from the next sentence.</div>';
+      if (!pl.cast.length) h += '<div class="empty-note">' + esc(_t("No dialogue found — the narrator reads everything.")) + '</div>';
+      else h += '<div class="cast-note">' + esc(_t("Speakers are worked out on this device from the quoted lines, speech tags (“said Anna”, “he whispered”), who acts beside a line and who takes turns; the unnamed ones get voices of their own too. A change applies from the next sentence.")) + '</div>';
       var wrap = document.createElement("div");
       wrap.innerHTML = h;
       body.innerHTML = ""; body.appendChild(wrap);
@@ -2598,17 +2616,17 @@
         var row = sel.closest(".cast-row"), range = row.querySelector("input[data-pitch]"), v = sel.value;
         range.disabled = !v;
         if (!v) range.value = "1";
-        row.querySelector(".val").textContent = (+range.value).toFixed(2);
+        row.querySelector(".val").textContent = fix2(+range.value);
         saveRow(sel.dataset.key, v, +range.value || 1);
       });
       wrap.addEventListener("input", function(e){
         var range = e.target.closest("input[data-pitch]"); if (!range) return;
         var row = range.closest(".cast-row"), sel = row.querySelector("select[data-key]");
-        row.querySelector(".val").textContent = (+range.value).toFixed(2);
+        row.querySelector(".val").textContent = fix2(+range.value);
         saveRow(range.dataset.pitch, sel.value, +range.value || 1);
       });
     }, function(err){
-      if (Side.is("cast")) body.innerHTML = '<div class="empty-note">' + esc((err && err.message) || "Couldn’t work out who speaks") + '</div>';
+      if (Side.is("cast")) body.innerHTML = '<div class="empty-note">' + esc((err && err.message) || _t("Couldn’t work out who speaks")) + '</div>';
     });
   }
   /* ---- a character's voice select, the same in the Cast panel and in Who's who. vp: { kind: "plan", pl } (ElevenLabs,
@@ -2617,7 +2635,7 @@
     var pl = vp.pl, cur;
     if (vp.kind === "device"){ var d = pl.rec.device[c.key] || null; cur = d ? d.voice : ""; }
     else cur = pl.rec[pl.src.castKey][c.key] || "";
-    return '<select class="sel" data-key="' + esc(c.key) + '" aria-label="Voice for ' + esc(c.name) + '">' +
+    return '<select class="sel" data-key="' + esc(c.key) + '" aria-label="' + esc(_t("Voice for {name}", { name: shownName(c) })) + '">' +
            (vp.kind === "device" ? deviceOptions(vp.S, cur) : pl.src.options(pl.list, cur || pl.narrator)) + '</select>';
   }
   /* the reader chose a voice (and, on the device, a pitch) for a character: kept for this document, and never
@@ -2637,7 +2655,7 @@
   function whoButton(foot){
     if (!foot) return;
     var b = document.createElement("button");
-    b.type = "button"; b.className = "chip"; b.id = "castWhoBtn"; b.textContent = "Who’s who…";
+    b.type = "button"; b.className = "chip"; b.id = "castWhoBtn"; b.textContent = _t("Who’s who…");
     b.addEventListener("click", openWho);
     foot.appendChild(b);
   }
@@ -2655,8 +2673,8 @@
       var lo = 0, hi = secs.length - 1, best = -1, mid;
       while (lo <= hi){ mid = (lo + hi) >> 1; if (secs[mid].unit <= ui){ best = mid; lo = mid + 1; } else hi = mid - 1; }
       var u = units[ui] || {};
-      if (best >= 0) return secs[best].title + (u.page ? " · page " + u.page : "");
-      return u.page ? "Page " + u.page : "";
+      if (best >= 0) return u.page ? _t("{section} · page {n}", { section: secs[best].title, n: u.page }) : secs[best].title;
+      return u.page ? _t("Page {n}", { n: u.page }) : "";
     }
     ((a && a.cast) || []).forEach(function(c){
       if (c.anon) return;
@@ -2677,7 +2695,7 @@
     return out;
   }
   function trimLine(t){ t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > 42 ? t.slice(0, 40).replace(/\s+\S*$/, "") + "…" : t; }
-  function genderWord(g){ return g === "male" ? "man" : g === "female" ? "woman" : ""; }
+  function genderWord(g){ return g === "male" ? _t("man") : g === "female" ? _t("woman") : ""; }
   var whoCache = null, whoOpen = {}, whoSeq = 0, whoFocus = null;
   var MAX_WHO_PAGES = 600;
   /* the units to look at: a text document's all; a PDF's pages loaded so far (up to the page being read, and
@@ -2685,11 +2703,11 @@
   function whoUnits(live){
     var docId = (Library && Library.currentId && Library.currentId()) || "";
     if (state && state.mode === "doc"){
-      if (!(Speak && Speak.buildDocUnits)) return Promise.reject(new Error("Couldn’t read this document"));
+      if (!(Speak && Speak.buildDocUnits)) return Promise.reject(new Error(_t("Couldn’t read this document")));
       return Promise.resolve({ docId: docId, key: docId + ":doc", units: Speak.buildDocUnits(), pdf: false });
     }
     var PdfText = LL.PdfText, S = window.llSpeak;
-    if (!(state && state.mode === "pdf" && state.pdfDoc && PdfText && S && S.plan)) return Promise.reject(new Error("Open a book first."));
+    if (!(state && state.mode === "pdf" && state.pdfDoc && PdfText && S && S.plan)) return Promise.reject(new Error(_t("Open a book first.")));
     var doc = state.pdfDoc, upto = (Library.currentPdfPage && Library.currentPdfPage()) || 1, read = Speak && Speak.units ? Speak.units() : [];
     if (Speak && Speak.isActive && Speak.isActive() && Speak.context && Speak.context() && Speak.context().docId === docId){
       for (var r = 0; r < read.length; r++) if ((read[r].page || 0) > upto) upto = read[r].page;
@@ -2702,7 +2720,7 @@
       (function next(){
         if (!live() || state.pdfDoc !== doc){ rej(new Error("gone")); return; }
         if (pg > upto){ res({ docId: docId, key: key, units: units, pdf: true, upto: upto, of: doc.numPages }); return; }
-        whoStatus("Reading page " + pg + " of " + upto + "…");
+        whoStatus(_t("Reading page {n} of {total}…", { n: pg, total: upto }));
         PdfText.get(pg).then(function(t){
           var add = S.plan(t), p0 = pg;
           add.forEach(function(u){ u.page = p0; });
@@ -2728,7 +2746,7 @@
                            : castPlan(e === "kokoro" || e === "piper" ? SRC[e] : SRC.eleven).then(function(pl){ return { kind: "plan", pl: pl }; });
     return p.catch(function(){ return null; });
   }
-  function openWho(){ if (Side && Side.open) Side.open("who", "Who’s who", renderWho, function(){ whoSeq++; }); }
+  function openWho(){ if (Side && Side.open) Side.open("who", _t("Who’s who"), renderWho, function(){ whoSeq++; }); }
   function refreshWho(){
     if (!(Side && Side.is && Side.is("who") && Side.refresh)) return;
     var act = document.activeElement;
@@ -2741,13 +2759,13 @@
     if (window.innerWidth <= 560 && Side && Side.close) Side.close();
   }
   function renderWho(body, foot){
-    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ body.innerHTML = '<div class="empty-note">Open a book first.</div>'; return; }
+    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ body.innerHTML = '<div class="empty-note">' + esc(_t("Open a book first.")) + '</div>'; return; }
     var my = ++whoSeq;
     function live(){ return my === whoSeq && Side.is("who"); }
-    body.innerHTML = '<div class="find-status" id="whoStatus" aria-live="polite">Finding who speaks…</div><div id="whoList"></div>';
+    body.innerHTML = '<div class="find-status" id="whoStatus" aria-live="polite">' + esc(_t("Finding who speaks…")) + '</div><div id="whoList"></div>';
     if (voicesOn()){
       var cb = document.createElement("button");
-      cb.type = "button"; cb.className = "chip"; cb.id = "whoCastBtn"; cb.textContent = "Voices for characters…";
+      cb.type = "button"; cb.className = "chip"; cb.id = "whoCastBtn"; cb.textContent = _t("Voices for characters…");
       cb.addEventListener("click", openCast);
       foot.appendChild(cb);
     }
@@ -2775,7 +2793,7 @@
       if (!live() || (err && err.message === "gone")) return;
       whoStatus("");
       var l = document.getElementById("whoList");
-      if (l) l.innerHTML = '<div class="empty-note">' + esc((err && err.message) || "Couldn’t read this document") + '</div>';
+      if (l) l.innerHTML = '<div class="empty-note">' + esc((err && err.message) || _t("Couldn’t read this document")) + '</div>';
     });
   }
   function drawWho(src, list, vp){
@@ -2785,28 +2803,30 @@
       whoStatus("");
       /* an empty state (app.css .empty-state): the people icon, a title, one sentence */
       box.innerHTML = '<div class="empty-note empty-state"><span class="es-icon" aria-hidden="true"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.3a3 3 0 0 1 0 5.4"/><path d="M17 14.3a5.5 5.5 0 0 1 3.5 5.7"/></svg></span>' +
-        '<div class="es-title">No characters yet</div><p class="es-text">No speaking characters found in this document.</p></div>';
+        '<div class="es-title">' + esc(_t("No characters yet")) + '</div><p class="es-text">' + esc(_t("No speaking characters found in this document.")) + '</p></div>';
       return;
     }
-    whoStatus(list.length + (list.length === 1 ? " character" : " characters") +
-              (src.pdf ? " · pages 1–" + src.upto + (src.of > src.upto ? " of " + src.of + " (the pages loaded so far)" : "") : ""));
-    var h = "";
+    var chars = _tn(list.length, "{n} character", "{n} characters");
+    whoStatus(!src.pdf ? chars : src.of > src.upto ? _t("{chars} · pages 1–{upto} of {of} (the pages loaded so far)", { chars: chars, upto: src.upto, of: src.of })
+                                                    : _t("{chars} · pages 1–{upto}", { chars: chars, upto: src.upto }));
+    var h = "", ql = bookLang();
     list.forEach(function(x, n){
-      var meta = [genderWord(x.gender), x.lines + (x.lines === 1 ? " line" : " lines"), "mentioned " + x.mentions + (x.mentions === 1 ? " time" : " times")].filter(Boolean).join(" · ");
+      /* "woman · 12 lines · mentioned 30 times": phrases of their own, joined by " · " */
+      var meta = [genderWord(x.gender), linesOf(x.lines), _tn(x.mentions, "mentioned {n} time", "mentioned {n} times")].filter(Boolean).join(" · ");
       var id = "who-lines-" + n, open = !!whoOpen[x.key];
       h += '<div class="who-item cast-row" data-who="' + esc(x.key) + '">' +
              '<button type="button" class="who-head" aria-expanded="' + open + '" aria-controls="' + id + '">' +
                '<b>' + esc(x.name) + '</b>' +
                '<span>' + esc(meta) + '</span>' +
-               (x.firstAt && x.firstAt.where ? '<span>First appears: ' + esc(x.firstAt.where) + '</span>' : '') +
-               (x.aka.length ? '<span>Also: ' + esc(x.aka.slice(0, 3).join(", ")) + '</span>' : '') +
+               (x.firstAt && x.firstAt.where ? '<span>' + esc(_t("First appears: {where}", { where: x.firstAt.where })) + '</span>' : '') +
+               (x.aka.length ? '<span>' + esc(_t("Also: {names}", { names: x.aka.slice(0, 3).join(", ") })) + '</span>' : '') +
              '</button>' +
              (vp ? voiceSelect(vp, x) : '') +
-             '<div class="who-lines" id="' + id + '"' + (open ? '' : ' hidden') + '>' + (open ? whoLines(x) : '') + '</div>' +
+             '<div class="who-lines" id="' + id + '"' + (open ? '' : ' hidden') + '>' + (open ? whoLines(x, false, ql) : '') + '</div>' +
            '</div>';
     });
-    if (!vp && voicesOn()) h += '<div class="cast-note">Start reading aloud to choose a voice for each character.</div>';
-    h += '<div class="cast-note">Worked out on this device from the quoted lines, speech tags, who acts beside a line and who takes turns; it can be wrong now and then.</div>';
+    if (!vp && voicesOn()) h += '<div class="cast-note">' + esc(_t("Start reading aloud to choose a voice for each character.")) + '</div>';
+    h += '<div class="cast-note">' + esc(_t("Worked out on this device from the quoted lines, speech tags, who acts beside a line and who takes turns; it can be wrong now and then.")) + '</div>';
     box.innerHTML = h;
     box.onclick = function(e){
       var head = e.target.closest(".who-head"), jump = e.target.closest("[data-start]");
@@ -2815,14 +2835,14 @@
         for (var i = 0; i < list.length; i++) if (list[i].key === key) x = list[i];
         whoOpen[key] = on;
         head.setAttribute("aria-expanded", on ? "true" : "false");
-        if (on && !panel.innerHTML && x) panel.innerHTML = whoLines(x);
+        if (on && !panel.innerHTML && x) panel.innerHTML = whoLines(x, false, ql);
         panel.hidden = !on;
         return;
       }
       if (jump){
         if (jump.hasAttribute("data-more")){
           var it = jump.closest(".who-item"), k2 = it.getAttribute("data-who");
-          for (var j = 0; j < list.length; j++) if (list[j].key === k2){ it.querySelector(".who-lines").innerHTML = whoLines(list[j], true); break; }
+          for (var j = 0; j < list.length; j++) if (list[j].key === k2){ it.querySelector(".who-lines").innerHTML = whoLines(list[j], true, ql); break; }
           var nextBtn = it.querySelectorAll(".who-line")[100]; if (nextBtn) nextBtn.focus();
           return;
         }
@@ -2841,16 +2861,16 @@
       if (back) back.focus({ preventScroll: true });
     }
   }
-  /* a character's lines to jump to (the first hundred, or all) and where they first appear */
-  function whoLines(x, all){
+  /* a character's lines to jump to (the first hundred, or all) and where they first appear; lang: the book's, for the quotes */
+  function whoLines(x, all, lang){
     var n = all ? x.quotes.length : Math.min(100, x.quotes.length), h = "";
-    if (x.firstAt) h += '<button type="button" class="chip who-first" data-start="' + x.firstAt.start + '" data-page="' + x.firstAt.page + '">First appearance' + (x.firstAt.where ? ' · ' + esc(x.firstAt.where) : '') + '</button>';
+    if (x.firstAt) h += '<button type="button" class="chip who-first" data-start="' + x.firstAt.start + '" data-page="' + x.firstAt.page + '">' + esc(x.firstAt.where ? _t("First appearance · {where}", { where: x.firstAt.where }) : _t("First appearance")) + '</button>';
     for (var i = 0; i < n; i++){
       var q = x.quotes[i];
       h += '<button type="button" class="find-item who-line" data-start="' + q.start + '" data-page="' + q.page + '">' +
-           (q.where ? '<span class="find-where">' + esc(q.where) + '</span>' : '') + '“' + esc(trimLine(q.text)) + '”</button>';
+           (q.where ? '<span class="find-where">' + esc(q.where) + '</span>' : '') + '<span lang="' + esc(lang || "en") + '">“' + esc(trimLine(q.text)) + '”</span></button>';
     }
-    if (n < x.quotes.length) h += '<button type="button" class="chip who-more" data-start="0" data-more="1">Show all ' + x.quotes.length + ' lines</button>';
+    if (n < x.quotes.length) h += '<button type="button" class="chip who-more" data-start="0" data-more="1">' + esc(_t("Show all {n} lines", { n: x.quotes.length })) + '</button>';
     return h;
   }
   if (typeof document !== "undefined") document.addEventListener("ll:fileopened", function(){ whoCache = null; whoOpen = {}; if (Side && Side.is && Side.is("who")) Side.close(); });
@@ -2859,7 +2879,7 @@
      7. The engines, registered with Speak
      ============================================================ */
   var engine = {
-    label: "ElevenLabs narration",
+    label: _t("ElevenLabs narration"),
     supported: supported, ready: ready, prepare: prepare, speak: speak, cancel: cancel, stop: stop,
     setRate: setRate, fillVoices: fillVoices, voiceChanged: voiceChanged, narratorName: narratorName, syncSettings: syncSettings
   };
@@ -2869,11 +2889,11 @@
   function natEngine(m){
     var src = SRC[m.key];
     m.engine = {
-      label: "Natural voices",
+      label: _t("Natural voices"),
       supported: function(){ return supported() && !!(window.Worker && window.WebAssembly && window.caches); },
       ready: function(){ return natReady(m); },
       prepare: function(units, ctx){
-        if (!m.ready) setStatus("Preparing…");
+        if (!m.ready) setStatus(_t("Preparing…"));
         var l = natLoad(m); l.catch(function(){});
         return planFor(src, units, ctx).then(function(){ feedKick(); return l; });
       },
