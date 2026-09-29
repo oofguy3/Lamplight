@@ -183,7 +183,8 @@ async function openSimpler(page){
     await page.evaluate(() => window.llSimplify.render("Nobody could have predicted the extraordinary consequences of that small, deliberate decision."));
     await cardOpen(page);
     info = await cardInfo(page);
-    R.check("offline: still simplified, with a note", /unusual/.test(info.simple) && info.offline && info.acts.join("|") === "Read aloud", JSON.stringify({ acts: info.acts, offline: info.offline }));
+    /* the simplifier only ever uses the built-in dictionary: offline changes nothing, and nothing says it does */
+    R.check("offline: still simplified, the same as online (no offline note)", /unusual/.test(info.simple) && !info.offline && info.acts.join("|") === "Read aloud", JSON.stringify({ acts: info.acts, offline: info.offline }));
     await ctx.setOffline(false);
     await page.keyboard.press("Escape");
     R.check("no page errors (desktop)", !(page._errors || []).length, (page._errors || []).join(" | "));

@@ -5,8 +5,9 @@ const path = require("path"), os = require("os"), fs = require("fs");
 const { serve, browser, openFixture, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-library2");
 
-/* a reader with a fortnight behind them, so the forecast can say how many evenings are left */
-const T0 = new Date("2026-09-16T10:00:00");
+/* a reader with a fortnight behind them, so the forecast can say how many evenings are left: the ten days before
+   today (the app looks at the last fourteen days of the real clock, so a fixed date would fall out of it) */
+const T0 = new Date(); T0.setHours(10, 0, 0, 0);
 function dayKey(d){ return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function shift(n){ const d = new Date(T0.getTime()); d.setDate(d.getDate() + n); return dayKey(d); }
 function history(){
@@ -164,7 +165,7 @@ async function home(page){ await page.keyboard.press("h"); await page.waitForTim
   R.check("the menu opens the Storage panel", (await panelTitle(page)) === "Storage");
   let text = await panelText(page);
   R.check("rows for every kind of thing kept", /Books/.test(text) && /Reading positions/.test(text) && /Highlights and notes/.test(text) &&
-    /Cached translations/.test(text) && /Reading stats/.test(text) && /Reading journal/.test(text) && /Saved themes/.test(text) && /App files and dictionary/.test(text), text.replace(/\n/g, " | ").slice(0, 320));
+    /Cached translations/.test(text) && /Read-aloud audio/.test(text) && /Reading stats/.test(text) && /Reading journal/.test(text) && /Saved themes/.test(text) && /App files and dictionary/.test(text), text.replace(/\n/g, " | ").slice(0, 320));
   R.check("books are counted and sized", /Books\n3 files\n[\d.]+ (KB|MB)/.test(text), text.replace(/\n/g, " | ").slice(0, 120));
   R.check("translations are counted as documents and single words", /Cached translations\n1 document · 2 words and sentences/.test(text), text.replace(/\n/g, " | "));
   const statDays = Object.keys(await page.evaluate(() => window.llStats.snapshot().days)).length;
@@ -195,6 +196,14 @@ async function home(page){ await page.keyboard.press("h"); await page.waitForTim
   await page.waitForFunction(() => document.querySelectorAll("#sideBody .so-row").length > 0, null, { timeout: 5000 });
   text = await panelText(page);
   R.check("the Books row counts the finished one", /Books\n3 files · 1 finished/.test(text), text.replace(/\n/g, " | ").slice(0, 120));
+  /* it asks first, naming the count and that the notes go too */
+  let finAsk = "";
+  page.once("dialog", (d) => { finAsk = d.message(); d.dismiss(); });
+  await page.click('#sideBody [data-so="finished"]');
+  await page.waitForTimeout(400);
+  R.check("Remove finished books asks first, and cancelling keeps the book", /1 finished book/.test(finAsk) && /highlights/.test(finAsk) &&
+    (await page.$$eval("#libList .lib-item", (e) => e.length)) === 3, finAsk);
+  page.once("dialog", (d) => d.accept());
   await page.click('#sideBody [data-so="finished"]');
   await page.waitForTimeout(600);
   R.check("Remove finished books takes it out of the library", (await page.$$eval("#libList .lib-item", (e) => e.length)) === 2 &&
@@ -280,7 +289,7 @@ async function home(page){ await page.keyboard.press("h"); await page.waitForTim
     await p2.screenshot({ path: path.join(SHOTS, "storage-" + name + ".png") });
     const shot = await p2.evaluate(() => ({ rows: document.querySelectorAll("#sideBody .so-row").length,
       over: document.documentElement.scrollWidth > window.innerWidth + 1 }));
-    R.check("screenshots " + name, shot.rows === 8 && !shot.over, JSON.stringify(shot));   /* seven kinds of thing kept (the reading journal among them), and the app files */
+    R.check("screenshots " + name, shot.rows === 9 && !shot.over, JSON.stringify(shot));   /* eight kinds of thing kept (the reading journal and the read-aloud audio among them), and the app files; no voices or pack here */
     note(p2, name);
     await c2.close();
   }

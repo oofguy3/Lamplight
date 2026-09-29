@@ -710,10 +710,17 @@
       $("#cDimNight").checked = !!state.dimNight; $("#qDimNight").checked = !!state.dimNight;
       $("#rDim").value = state.dimLevel; $("#qDimLevel").value = state.dimLevel;
       $("#vDim").textContent = state.dimLevel + " %"; $("#qDimV").textContent = state.dimLevel + " %";
-      var h = $("#dimNightHint");
-      h.hidden = !state.dimNight;
-      h.textContent = "Night is " + state.nightFrom + "\u2013" + state.nightTo + " (Auto \u203a By time sets the hours). " +
-        (isNight() ? "It\u2019s night now." : "Off until " + state.nightFrom + ".");
+      var h = $("#dimNightHint"), q = $("#qDimHint"), byTime = state.auto === "time", eink = state.eink === true;
+      var hours = state.nightFrom + "\u2013" + state.nightTo, now = isNight() ? "It\u2019s night now." : "Off until " + state.nightFrom + ".";
+      /* e-ink mode leaves the film out (app.css): said here, so a switch that is on but does nothing is not a mystery */
+      $("#dimHint").textContent = "Darker than your phone's lowest brightness, for reading in bed." + (eink ? " Not used in E-ink mode." : "");
+      h.hidden = !state.dimNight || eink;
+      h.textContent = "Night is " + hours + (byTime ? " (the hours of Auto \u203a By time). " : ". ") + now;
+      /* the hours can be set right here (the same ones By time uses), unless By time's own fields are showing above */
+      $("#dimTimes").hidden = !state.dimNight || byTime || eink;
+      $("#dimFrom").value = state.nightFrom; $("#dimTo").value = state.nightTo;
+      q.hidden = !(eink && state.dim) && !state.dimNight;
+      q.textContent = eink ? "Not used in E-ink mode." : "Night: " + hours + " \u00b7 Settings \u203a Theme sets the hours.";
     }
     function set(v){ state.dimLevel = Math.max(0, Math.min(MAX, Math.round(v))); Prefs.save(); apply(); }
     function setOn(v){ state.dim = !!v; Prefs.save(); apply(); }
@@ -724,10 +731,13 @@
     $("#qDimLevel").addEventListener("input", function(e){ set(+e.target.value); });
     $("#cDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
     $("#qDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
+    /* the same hours as Auto's Night from … until */
+    $("#dimFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); AutoTheme.apply(); });
+    $("#dimTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); AutoTheme.apply(); });
     /* the night window is checked every minute, and again whenever the page comes back */
     setInterval(function(){ if (state.dim && state.dimNight) apply(); }, 60000);
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && state.dim && state.dimNight) apply(); });
-    return { apply: apply, level: level, isNight: isNight, set: set, setOn: setOn, setNight: setNight };
+    return { apply: apply, syncUI: syncUI, level: level, isNight: isNight, set: set, setOn: setOn, setNight: setNight };
   })();
 
   /* ---------- e-ink mode: black on white, nothing that moves, whole-page turns ----------
@@ -745,6 +755,7 @@
     function apply(){
       document.body.classList.toggle("eink", on());
       syncUI();
+      Dim.syncUI();     /* its controls say that the film is left out */
     }
     function syncUI(){
       $("#cEink").checked = on(); $("#qEink").checked = on();
@@ -799,16 +810,23 @@
   })();
   /* ---------- keep the screen on while a document is open ---------- */
   var Wake = (function(){
-    var lock = null, wanted = false;
+    var lock = null, wanted = false, held = false;
+    /* held: something plays on its own (speed reading) and keeps the screen on whatever the setting, as a video would */
+    function want(){ return held || (wanted && state.wake); }
     function request(){
-      if (!wanted || !state.wake || !("wakeLock" in navigator) || document.visibilityState !== "visible" || lock) return;
-      navigator.wakeLock.request("screen").then(function(l){ lock = l; l.addEventListener("release", function(){ lock = null; }); }).catch(function(){});
+      if (!want() || !("wakeLock" in navigator) || document.visibilityState !== "visible" || lock) return;
+      navigator.wakeLock.request("screen").then(function(l){
+        if (!want()){ l.release().catch(function(){}); return; }
+        lock = l; l.addEventListener("release", function(){ if (lock === l) lock = null; });
+      }).catch(function(){});
     }
     function release(){ if (lock){ var l = lock; lock = null; l.release().catch(function(){}); } }
-    function set(v){ wanted = v; if (v) request(); else release(); }
+    function sync(){ if (want()) request(); else release(); }
+    function set(v){ wanted = v; sync(); }
+    function hold(v){ held = !!v; sync(); }
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") request(); });
-    $("#cWake").addEventListener("change", function(e){ state.wake = e.target.checked; Prefs.save(); if (state.wake) request(); else release(); });
-    return { set: set, active: function(){ return !!lock; } };
+    $("#cWake").addEventListener("change", function(e){ state.wake = e.target.checked; Prefs.save(); sync(); });
+    return { set: set, hold: hold, active: function(){ return !!lock; } };
   })();
 
   /* ---------- text weight: what the chosen family can actually do ----------
@@ -1405,11 +1423,20 @@
   }
   /* the first character on the current page, read off the layout itself (hit testing
      fails when the settings sheet or the read-aloud bar covers the page) */
-  function pageTopOffset(){
+  function pageTopOffset(){ return colStartOffset(state.page * (state.perPage || 1)); }
+  /* the character just past the current page (a spread's second column included): the next page's first,
+     or the end of the text on the last page */
+  function pageEndOffset(){
+    if (state.mode !== "doc" || state.flow !== "pages" || !state.stride) return null;
+    if (state.page >= state.totalPages - 1) return Anchor.textLength();
+    return colStartOffset((state.page + 1) * (state.perPage || 1));
+  }
+  /* the first character in column `want` (0-based) or after it */
+  function colStartOffset(want){
     if (state.mode !== "doc" || state.flow !== "pages" || !state.stride) return null;
     var nodes = Anchor.textNodes();
     if (!nodes.length) return null;
-    var left = $("#doc").getBoundingClientRect().left, want = state.page * (state.perPage || 1), r = document.createRange();
+    var left = $("#doc").getBoundingClientRect().left, r = document.createRange();
     function col(x){ return Math.floor((x - left + 0.5) / state.stride); }
     function endCol(i){ r.selectNodeContents(nodes[i]); var b = r.getBoundingClientRect(); return (b.width || b.height) ? col(b.right - 1) : -1; }
     var ni = firstAtLeast(0, nodes.length - 1, endCol, want);
@@ -1488,6 +1515,8 @@
   }
   function turn(dir){
     if (!pagedActive()) return;
+    /* on from the last page: the reader is done with it (the "Finished" card need not wait) */
+    if (dir > 0 && Journal && (state.mode === "doc" ? state.page >= state.totalPages - 1 : state.pdfPageNum + (state.perPage || 1) - 1 >= state.pdfDoc.numPages)) Journal.pastEnd();
     if (state.mode === "doc"){ gotoPage(state.page + dir, true); }
     else {
       var step = state.perPage || 1;
@@ -1735,7 +1764,7 @@
     e.preventDefault();
     var id = decodeURIComponent(href.slice(1));
     var el = document.getElementById(id) || $("#doc").querySelector('[name="' + CSS.escape(id) + '"]');
-    if (el) revealElement(el);
+    if (el){ if (Journal) Journal.jumped(); revealElement(el); }
   });
   /* scroll / page to a character offset in the text (see Anchor) */
   function revealOffset(off, opts){
@@ -2536,6 +2565,28 @@
       }
       return null;
     }
+    /* the last character on screen: the page's end in Pages flow, the text at the foot of the window in Scroll flow
+       (what the read-aloud bar or the pager covers is skipped, from the bottom up); null when none is found */
+    function bottomCharOffset(){
+      if (state.mode !== "doc") return null;
+      if (state.flow === "pages") return pageEndOffset();
+      if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
+      var view = $("#doc").getBoundingClientRect(), y0 = Math.min(window.innerHeight, view.bottom) - 6;
+      var xs = [view.left + view.width - 10, view.left + view.width / 2, view.left + 10];
+      for (var dy = 0; dy < 240 && y0 - dy > headerHeight(); dy += 16){
+        for (var k = 0; k < xs.length; k++){
+          var r = null;
+          if (document.caretRangeFromPoint) r = document.caretRangeFromPoint(xs[k], y0 - dy);
+          else { var pp = document.caretPositionFromPoint(xs[k], y0 - dy); if (pp){ r = document.createRange(); r.setStart(pp.offsetNode, pp.offset); } }
+          if (!r) continue;
+          var n = r.startContainer;
+          if (n.nodeType !== 3 || !n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) continue;
+          var off = charOffsetOf(n, r.startOffset);
+          if (off !== null) return off;
+        }
+      }
+      return null;
+    }
     function currentPdfPage(){
       if (state.flow === "pages") return state.pdfPageNum;
       /* the page that fills the upper part of the screen (a sliver of the previous one doesn't count) */
@@ -2549,8 +2600,13 @@
       if (!current || (state.mode !== "doc" && state.mode !== "pdf")) return null;
       var pos = { id: current, mode: state.mode, flow: state.flow, frac: readFrac(), updated: Date.now() };
       if (state.mode === "doc"){
-        pos.off = topCharOffset();
+        /* speed reading: the word it is at is the place (the page behind the overlay is where it started, and the
+           overlay would be hit-tested instead of the text) — kept when the app is left or killed with it open */
+        var rs = Rsvp && Rsvp.offset ? Rsvp.offset() : null;
+        pos.off = rs !== null ? rs : topCharOffset();
+        pos.offEnd = rs !== null ? null : bottomCharOffset();     /* the recap's sessions reach to what was on screen, not only its top line */
         pos.total = $("#doc").textContent.length;
+        if (rs !== null && pos.total > 0) pos.frac = Math.max(0, Math.min(1, rs / pos.total));
       } else {
         pos.pdfPage = currentPdfPage();
         pos.pdfPages = state.pdfDoc ? state.pdfDoc.numPages : 1;
@@ -3104,6 +3160,7 @@
     function setColor(m, color){ m.color = color; save(m); restyle(m); refreshPanel(); }
     function reveal(m){
       Side.close();
+      if (Journal) Journal.jumped();
       if (m.pdfPage && state.mode === "pdf"){
         if (state.flow === "pages"){ state.pdfPageNum = m.pdfPage; renderPdfSingle(); }
         else { var c = $("#pdf").querySelector('.pdf-page[data-page="' + m.pdfPage + '"]'); if (c) window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 6)); }
@@ -3112,10 +3169,11 @@
 
     /* ---- small toast ---- */
     var toastEl = null, toastTimer = null;
-    function toast(msg){
+    /* ms: how long it stays (a longer message needs longer than the usual 1.8 s) */
+    function toast(msg, ms){
       if (!toastEl){ toastEl = document.createElement("div"); toastEl.id = "toast"; toastEl.setAttribute("role", "status"); document.body.appendChild(toastEl); }
       toastEl.textContent = msg; toastEl.classList.add("on");
-      clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove("on"); }, 1800);
+      clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove("on"); }, ms || 1800);
     }
 
     /* ---- popover on a highlight ---- */
@@ -3528,6 +3586,7 @@
       var it = ev.target.closest(".toc-item"); if (!it) return;
       var e = shown[+it.dataset.i]; if (!e) return;
       Side.close();
+      if (Journal) Journal.jumped();
       if (e.el) revealElement(e.el); else if (e.page) goPdfPage(e.page);
     });
     Side.body.addEventListener("keydown", function(ev){
@@ -3538,8 +3597,8 @@
       if (state.mode === "pdf"){
         body.innerHTML = '<div class="empty-note">Reading the outline\u2026</div>';
         foot.innerHTML = '<label class="toc-goto">Go to page <input type="number" id="tocGoto" min="1" max="' + state.pdfDoc.numPages + '" value="' + Library.currentPdfPage() + '"> of ' + state.pdfDoc.numPages + '</label>';
-        foot.querySelector("#tocGoto").addEventListener("keydown", function(e){ if (e.key === "Enter"){ Side.close(); goPdfPage(+e.target.value); } });
-        foot.querySelector("#tocGoto").addEventListener("change", function(e){ goPdfPage(+e.target.value); });
+        foot.querySelector("#tocGoto").addEventListener("keydown", function(e){ if (e.key === "Enter"){ Side.close(); if (Journal) Journal.jumped(); goPdfPage(+e.target.value); } });
+        foot.querySelector("#tocGoto").addEventListener("change", function(e){ if (Journal) Journal.jumped(); goPdfPage(+e.target.value); });
         var doc = state.pdfDoc;
         pdfEntries().then(function(entries){ if (Side.is("toc") && state.pdfDoc === doc) renderList(body, entries); });
       } else {
@@ -3602,20 +3661,39 @@
       while (lo < hi){ var mid = (lo + hi + 1) >> 1; if (heads[mid].off <= off) lo = mid; else hi = mid - 1; }
       return heads[lo].title;
     }
+    var painted = [];      /* { r: range, i: result, n: its text's length } as last painted */
     function paint(){
       if (!hasHL) return;
       CSS.highlights.delete("ll-find"); CSS.highlights.delete("ll-find-cur");
+      painted = [];
       if (state.mode !== "doc" || !results.length) return;
-      var all = [], curR = null;
       results.forEach(function(r, i){
         var range = Anchor.rangeBetween(r.start, r.end);
-        if (!range) return;
-        if (i === cur) curR = range; else all.push(range);
+        if (range) painted.push({ r: range, i: i, n: range.toString().length });
       });
+      setHL();
+    }
+    function setHL(){
+      var all = [], curR = null;
+      painted.forEach(function(p){ if (p.i === cur) curR = p.r; else all.push(p.r); });
       CSS.highlights.set("ll-find", new (Function.prototype.bind.apply(Highlight, [null].concat(all))));
-      if (curR) CSS.highlights.set("ll-find-cur", new Highlight(curR));
+      if (curR) CSS.highlights.set("ll-find-cur", new Highlight(curR)); else CSS.highlights.delete("ll-find-cur");
+    }
+    /* the text under some hits was moved (focus reading bolds a word's start by moving it into a <b>, which collapses a
+       live range in it): those hits are drawn again from their offsets and the rest kept (every live range costs a
+       little at each change to the page, so none are made that are not needed) */
+    function repair(){
+      if (!hasHL || !painted.length || state.mode !== "doc") return;
+      var any = false;
+      painted.forEach(function(p){
+        if (p.r.toString().length === p.n) return;
+        var res = results[p.i], r = res && Anchor.rangeBetween(res.start, res.end);
+        if (r){ p.r = r; p.n = r.toString().length; any = true; }
+      });
+      if (any) setHL();
     }
     function clearPaint(){
+      painted = [];
       if (hasHL){ CSS.highlights.delete("ll-find"); CSS.highlights.delete("ll-find-cur"); }
     }
     function runDoc(q){
@@ -3675,6 +3753,7 @@
       if (!results.length) return;
       cur = (i + results.length) % results.length;
       var r = results[cur];
+      if (Journal) Journal.jumped();
       if (state.mode === "pdf") Toc.goPdfPage(r.page);
       else {
         revealOffset(r.start, { center: true });
@@ -3718,7 +3797,7 @@
       }
     });
     Menu.add({ order: 20, group: "navigate", icon: ICONS.search, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
-    return { openPanel: openPanel, reset: reset, refresh: refresh, clearPaint: clearPaint, go: go, results: function(){ return results; } };
+    return { openPanel: openPanel, reset: reset, refresh: refresh, repair: repair, clearPaint: clearPaint, go: go, results: function(){ return results; } };
   })();
 
   /* ============================================================
@@ -4195,22 +4274,42 @@
       if (!l) return;
       declaredLang = l; applyDocLang();
     }
+    /* without a detector (most browsers): Dutch is told from English by its commonest words, so a Dutch book gets
+       Dutch voices (and the English-only natural voices step aside). Only Dutch is guessed, and only when its words
+       clearly outnumber English ones; anything else is left to what the book declares */
+    function wordSet(s){ var o = {}; s.split(" ").forEach(function(w){ o[w] = 1; }); return o; }
+    var NL_WORDS = wordSet("de het een en van ik je niet dat zijn op te met voor maar ze hij zij er wat naar ook als bij nog uit wel mijn geen door heeft " +
+                           "werd heb kan zou wordt deze dit hun ons jij wij toen nu hoe waar zich hebben worden omdat want dus nooit iets niets zei tot aan zo haar");
+    var EN_WORDS = wordSet("the and of to that it he for on with as his they at be this have from or by but not what all were when your can said there " +
+                           "which she do their if will would been has her him my you them then could into its our who did very just than more about after");
+    function guessLang(text){
+      var ws = String(text).toLowerCase().match(/[a-zà-ÿ]+/g) || [], nl = 0, en = 0, i;
+      for (i = 0; i < ws.length; i++){ if (NL_WORDS[ws[i]] === 1) nl++; else if (EN_WORDS[ws[i]] === 1) en++; }
+      return nl >= 12 && nl > en * 3 ? "nl" : "";
+    }
+    function guessed(text, key){
+      var l = guessLang(text);
+      if (!l) return false;
+      detectedLang = l;
+      if (key) langSeen[key] = l;
+      return true;
+    }
     /* the browser's on-device detector, where it exists; anything it can't place is left alone */
     function detectFrom(text, key){
       text = String(text || "").slice(0, 2000);
       if (!/\S{20}|\S+\s+\S+\s+\S+/.test(text)) return;
       if (key && langSeen[key]){ detectedLang = langSeen[key]; applyDocLang(); return; }
       var LD = window.LanguageDetector || (window.ai && window.ai.languageDetector) || null;
-      if (!LD || typeof LD.create !== "function"){ applyDocLang(); return; }
+      if (!LD || typeof LD.create !== "function"){ guessed(text, key); applyDocLang(); return; }
       var my = ++langGen;
       Promise.resolve(LD.create()).then(function(det){ return det.detect(text); }).then(function(rs){
         if (my !== langGen) return;
         var top = rs && rs[0], l = top && (top.detectedLanguage || top.language) || "";
-        if (!l || l === "und") return;
+        if (!l || l === "und"){ if (guessed(text, key)) applyDocLang(); return; }
         detectedLang = l;
         if (key) langSeen[key] = l;
         applyDocLang();
-      }).catch(function(){});
+      }).catch(function(){ if (my === langGen && guessed(text, key)) applyDocLang(); });
     }
     /* a new file wipes the last answer; the text itself arrives later, when #doc is rebuilt */
     document.addEventListener("ll:fileopened", function(){
@@ -4221,7 +4320,8 @@
       if (t === lastPrefix) return;
       lastPrefix = t;
       detectFrom(t, Library.currentId && Library.currentId());
-      /* natural voices start making the audio ahead as soon as a document opens (audiobook.js, once the model is on the device) */
+      /* natural voices make the document's first minute of audio as soon as it opens (audiobook.js, once the model is on the
+         device), so a first play starts at once; more is made only once read aloud is on */
       if (isNatural(engineName)) need(["audiobook"]).then(function(){ if (window.llAudiobook && window.llAudiobook.feed) window.llAudiobook.feed(3000); }).catch(function(){});
     }).observe($("#doc"), { childList: true });
 
@@ -4473,7 +4573,8 @@
 
     /* ---- sentence units ---- */
     var SENT = /[^.!?…]+[.!?…]*["”’)»]?\s*/g;
-    var CLOSER = { "“": "”", "«": "»", "\"": "\"", "‘": "’" };
+    /* „ opens Dutch quotes („Kom je?”) and German ones („Kommst du?“): either mark closes it */
+    var CLOSER = { "“": "”", "«": "»", "\"": "\"", "‘": "’", "„": "”“" };
     function splitLong(text, base, out, meta){
       /* keep utterances short: some engines cut off after ~15 seconds. Offsets stay in the
          document's raw coordinates; only the spoken text has its whitespace runs collapsed */
@@ -4490,7 +4591,7 @@
       }
     }
     /* where quoted speech runs in a paragraph, as [open, close] index pairs; a quote left open
-       stays speech to the end of the paragraph. Curly and straight doubles, guillemets, and
+       stays speech to the end of the paragraph. Curly and straight doubles, „…” and „…“, guillemets, and
        single curly quotes only when the opener follows a space and the closer precedes space or
        punctuation, so apostrophes are left alone. A quoted scrap under two characters isn't speech. */
     function quoteSpans(seg){
@@ -4498,9 +4599,9 @@
       for (i = 0; i < seg.length; i++){
         c = seg.charAt(i);
         if (open < 0){
-          if (c === "“" || c === "«" || (c === "\"" && /\S/.test(seg.charAt(i + 1))) ||
+          if (c === "“" || c === "«" || c === "„" || (c === "\"" && /\S/.test(seg.charAt(i + 1))) ||
               (c === "‘" && (i === 0 || /[\s(\[—–-]/.test(seg.charAt(i - 1))))){ open = i; closer = CLOSER[c]; }
-        } else if (c === closer){
+        } else if (closer.indexOf(c) >= 0){
           if (c === "’" && i < seg.length - 1 && /[^\s.,;:!?…)\]—–-]/.test(seg.charAt(i + 1))) continue;
           spans.push([open, i]); open = -1;
         }
@@ -4712,20 +4813,22 @@
 
     /* ---- lock-screen, notification and headphone controls. Browsers only surface media
        controls while an <audio> or <video> element plays, and speech alone doesn't count, so a
-       silent half-second loop plays alongside the reading (started from the same gesture, at a
+       silent eight-second loop plays alongside the reading (started from the same gesture, at a
        whisper of volume: a fully muted element is dropped from the controls on some platforms).
        The handlers drive the same play / pause / step code as the bar. ---- */
     var media = "mediaSession" in navigator ? navigator.mediaSession : null;
     var silence = null, album = null, sections = [];
     function silentWav(){
-      /* half a second of 16-bit mono silence at 8 kHz as a WAV data: URL, so no file is needed */
-      var n = 4000, b = new Uint8Array(44 + n * 2), i, s = "";
+      /* eight seconds of 8-bit mono silence at 8 kHz (64 kB) as a WAV data: URL, so no file is needed. Longer than five
+         seconds: Chrome on Android treats shorter media as a one-off sound and shows no media controls for it */
+      var n = 64000, b = new Uint8Array(44 + n), i, s = "";
       function str(o, t){ for (var k = 0; k < t.length; k++) b[o + k] = t.charCodeAt(k); }
       function u32(o, v){ b[o] = v & 255; b[o + 1] = (v >> 8) & 255; b[o + 2] = (v >> 16) & 255; b[o + 3] = (v >>> 24) & 255; }
-      str(0, "RIFF"); u32(4, 36 + n * 2); str(8, "WAVE");
-      str(12, "fmt "); u32(16, 16); u32(20, 1 | (1 << 16)); u32(24, 8000); u32(28, 16000); u32(32, 2 | (16 << 16));
-      str(36, "data"); u32(40, n * 2);
-      for (i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      str(0, "RIFF"); u32(4, 36 + n); str(8, "WAVE");
+      str(12, "fmt "); u32(16, 16); u32(20, 1 | (1 << 16)); u32(24, 8000); u32(28, 8000); u32(32, 1 | (8 << 16));
+      str(36, "data"); u32(40, n);
+      for (i = 44; i < b.length; i++) b[i] = 128;       /* unsigned 8-bit: 128 is silence */
+      for (i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, Math.min(b.length, i + 8192)));
       return "data:audio/wav;base64," + btoa(s);
     }
     function silentAudio(){
@@ -4883,6 +4986,8 @@
         onboundary: function(start, end, i){
           if (myGen !== gen || !playing) return;
           if (typeof i === "number" && units[i]){
+            /* a clip of several sentences (ElevenLabs) moves on inside itself: the sleep timer is checked there too */
+            if (i > idx && units[i - 1] && sleepDue(units[i - 1], units[i])){ stop(); Marks.toast("Stopped by the sleep timer"); return; }
             idx = i;
             if (state.mode === "pdf" && units[i].page && Library.currentPdfPage() !== units[i].page) Toc.goPdfPage(units[i].page);
           }
@@ -4953,6 +5058,15 @@
         stop();
       });
     }
+    /* a translated book shown as "Translation only" (translate.js) keeps its original in the text, hidden: that is what
+       is read, and what the highlight follows. Said once per document, so the voice in another language is not a surprise */
+    var trToldFor = null;
+    function trOnlyNote(){
+      var T = window.llTranslate, id = Library.currentId();
+      if (!T || !T.isOn() || T.view() !== "only" || trToldFor === id) return;
+      trToldFor = id;
+      Marks.toast("Read aloud reads the original, not the translation — “Show both languages” in the menu lets you follow it", 5000);
+    }
     function startFrom(offset){
       if (engineName === "device" && !supported){ Marks.toast("Read aloud isn’t available in this browser"); return; }
       if (state.mode !== "doc" && state.mode !== "pdf") return;
@@ -4978,6 +5092,7 @@
           for (var i = 0; i < units.length; i++){ if (units[i].end > off){ idx = i; break; } }
           if (!units.length){ Marks.toast("Nothing to read"); stop(); return; }
           paint(units[idx]); ensureVisible(units[idx]);
+          trOnlyNote();
           prepared(play);
         } else {
           var page = Library.currentPdfPage();
@@ -5104,7 +5219,7 @@
       piper: { dl: "Download natural voices (≈ 80 MB, once)", narr: ["493", "Grace"],
                hint: "Runs on this device and keeps up with reading on most phones. Nothing is sent anywhere.",
                prep: "Prepare book makes the whole book ahead, to listen offline. Keep Lamplight open; it carries on where it left off." },
-      kokoro: { dl: "Download natural voices (≈ 110 MB, once)", narr: ["af_heart", "Heart (woman)"],
+      kokoro: { dl: "Download natural voices (≈ 105 MB, once)", narr: ["af_heart", "Heart (woman)"],
                 hint: "Runs on this device. Nothing is sent anywhere. Slower than reading on most phones: press Prepare book first, then listen with no pauses.",
                 prep: "Keep Lamplight open (plugging in helps); it carries on where it left off." }
     };
@@ -5119,12 +5234,14 @@
     function modelChips(){
       return MODELS.map(function(c){ return '<button class="chip" role="radio" aria-checked="false" data-model="' + c[0] + '">' + c[1] + '</button>'; }).join("");
     }
-    /* the rows under the pair: which engine reads, whether characters get voices of their own,
-       the ElevenLabs rows and the natural voices' rows (both filled by audiobook.js once it has loaded),
-       and how much read-aloud audio the device keeps */
+    /* which engine reads: the panel's first row, since everything under it follows the choice */
+    function engineChipRow(){
+      return '<div class="rowline"><label id="ttsEngineL">Voices from</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsEngineL" id="engineChips">' + engineChips() + '</div></div>';
+    }
+    /* the rows under the pair: whether characters get voices of their own, the ElevenLabs rows and the natural
+       voices' rows (both filled by audiobook.js once it has loaded), and how much read-aloud audio the device keeps */
     function engineRows(){
-      return '<div class="rowline"><label id="ttsEngineL">Voices from</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsEngineL" id="engineChips">' + engineChips() + '</div></div>' +
-        '<div class="rowline" id="castRow"><label id="ttsCastL">Characters</label><div class="chips" role="radiogroup" aria-labelledby="ttsCastL" id="castChips">' + castChips() + '</div></div>' +
+      return '<div class="rowline" id="castRow"><label id="ttsCastL">Characters</label><div class="chips" role="radiogroup" aria-labelledby="ttsCastL" id="castChips">' + castChips() + '</div></div>' +
         '<p class="hint" id="ttsCastHint">Every character gets a device voice of their own, the unnamed ones too, worked out from the text on this device (“said Anna”, “he whispered”, who acts beside a line, who takes turns).</p>' +
         '<div class="rowline" id="castBtnRow"><button type="button" class="chip" id="ttsCastBtn">Voices for characters…</button></div>' +
         '<div class="subgroup" id="elevenRow" data-engine-only="eleven">' +
@@ -5175,6 +5292,8 @@
       Array.prototype.forEach.call(box.querySelectorAll("[data-engine-only]"), function(el){
         el.hidden = (" " + el.dataset.engineOnly + " ").indexOf(" " + engineName + " ") < 0;   /* only the chosen engine's rows show (a row may name several) */
       });
+      /* "Hear the pair" plays the device voices, so it shows only when they are the ones reading */
+      var smp = document.getElementById("ttsSample"); if (smp) smp.hidden = engineName !== "device";
       if (engineName !== "device" && ENGINE_LIB[engineName]){
         need([ENGINE_LIB[engineName]]).then(function(){ var e = engines[engineName]; if (e && e.syncSettings && Side.is("voices")) e.syncSettings(asked); }).catch(function(){});
       }
@@ -5189,6 +5308,8 @@
       syncEngineUI(true);
       /* a reading under way starts again from its sentence with the new engine */
       if (active){ var at = units[idx] ? units[idx].start : undefined; stop(); startFrom(at); }
+      /* a natural-voices model no longer chosen gives its memory back */
+      if (window.llAudiobook && window.llAudiobook.engineChanged) window.llAudiobook.engineChanged();
     }
     function setCast(on){
       castOn = !!on; Store.set("ll_tts_cast", castOn ? "on" : "off");
@@ -5324,27 +5445,32 @@
       var lang = docLang(), narr = currentVoice(), d = dialogueVoice(narr).voice;
       var nId = narr ? voiceId(narr) : "", dId = d ? voiceId(d) : "";
       var list = listHtml(lang, nId, dId);
+      /* "Voices from" comes first; the device voices' own parts (the pair, the cards, the list, expression and pitch,
+         which the other engines do not use) show only while the device voice is the one chosen (syncEngineUI) */
       body.innerHTML = '<div class="tts-panel">' +
         '<section class="group">' +
           '<div class="label">' + V_ICONS.pair + '<span>Reading to you</span></div>' +
-          '<div class="card v-pair"><div id="ttsPair">' + pairRows(narr, d) + '</div>' +
-            '<div class="v-pair-acts"><button type="button" class="chip" id="ttsSwap">Swap the two</button>' +
-            '<button type="button" class="chip" id="ttsAuto">Choose for me</button></div></div>' +
-          '<p class="hint" id="ttsDlgHint">' + esc(hintText()) + '</p>' +
-          '<p class="hint" id="ttsNoGender"' + (anyGenderKnown() ? ' hidden' : '') + '>Your device doesn’t say which voices are women’s and which are men’s — mark them below and Lamplight will remember.</p>' +
+          engineChipRow() +
+          '<div class="subgroup" id="devicePair" data-engine-only="device">' +
+            '<div class="card v-pair"><div id="ttsPair">' + pairRows(narr, d) + '</div>' +
+              '<div class="v-pair-acts"><button type="button" class="chip" id="ttsSwap">Swap the two</button>' +
+              '<button type="button" class="chip" id="ttsAuto">Choose for me</button></div></div>' +
+            '<p class="hint" id="ttsDlgHint">' + esc(hintText()) + '</p>' +
+            '<p class="hint" id="ttsNoGender"' + (anyGenderKnown() ? ' hidden' : '') + '>Your device doesn’t say which voices are women’s and which are men’s — mark them below and Lamplight will remember.</p>' +
+          '</div>' +
           engineRows() +
         '</section>' +
-        '<section class="group">' +
+        '<section class="group" data-engine-only="device">' +
           '<div class="label">' + V_ICONS.cards + '<span>Good for this text</span></div>' +
           cardsHtml(lang, nId, dId) +
         '</section>' +
-        '<section class="group">' +
+        '<section class="group" data-engine-only="device">' +
           '<details class="v-all" id="ttsAll"' + (allOpen ? ' open' : '') + '><summary>All voices (' + list.count + ')</summary>' +
             '<input type="search" id="ttsFilter" class="v-filter" placeholder="Filter by name or language" aria-label="Filter voices" value="' + esc(filterText) + '">' +
             '<p class="hint" id="ttsFilterNone" hidden>No voice matches that.</p>' +
             '<div class="v-list" id="ttsList">' + list.html + '</div></details>' +
         '</section>' +
-        '<section class="group">' +
+        '<section class="group" data-engine-only="device">' +
           '<div class="label">' + V_ICONS.expr + '<span>Expression</span></div>' +
           '<div class="rowline"><label id="ttsExprL">Expression</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
           '<div class="hint">Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.</div>' +
@@ -7195,8 +7321,14 @@
                        forecast: forecast, reset: reset, setYearGoal: setYearGoal };
     /* a book's reading so far (active time, words and pages read forward), for the "Finished" card */
     function bookRead(id){ var b = data.books[id]; return b ? { ms: b.ms, words: b.words, pages: b.pages } : { ms: 0, words: 0, pages: 0 }; }
+    /* the first day (of the days kept) the book was open, "YYYY-MM-DD", or "" */
+    function firstDay(id){
+      var first = "";
+      Object.keys(data.days).forEach(function(k){ var d = data.days[k]; if (d && d.docs && d.docs.indexOf(id) >= 0 && (!first || k < first)) first = k; });
+      return first;
+    }
     return { noteWords: noteWords, notePages: notePages, noteSkimmed: noteSkimmed, noteListened: noteListened, unnote: unnote,
-             onMode: onMode, openPanel: openPanel, snapshot: snapshot, forecast: forecast, reset: reset, book: bookRead,
+             onMode: onMode, openPanel: openPanel, snapshot: snapshot, forecast: forecast, reset: reset, book: bookRead, firstDay: firstDay,
              refresh: function(){ renderWidget(); refreshPanel(); } };
   })();
 
@@ -7206,6 +7338,16 @@
      ============================================================ */
   var Storage = (function(){
     var measured = null, cache = null, cacheState = "idle";
+    /* the downloads kept in caches of their own, which outlive a release (KEEP in sw.js): the natural voices (their
+       models, as audiobook.js and the workers keep them, and the engine both run on) and the Dutch ↔ English pack
+       (translate.js). Measured with the app's own files; a cache that is not there is not made by asking */
+    var MODELS = [
+      { key: "piper", name: "Natural voices · Fast", sub: "the Piper voice model, for reading aloud offline", caches: ["piper-voices"], label: "Remove Fast voices" },
+      { key: "kokoro", name: "Natural voices · Best", sub: "the Kokoro model and its voices, for reading aloud offline", caches: ["transformers-cache", "kokoro-voices"], label: "Remove Best voices" },
+      { key: "runtime", name: "Natural voices’ engine", sub: "shared by Fast and Best; removed with the last of them", prefix: "natural-runtime" },
+      { key: "pack", name: "Dutch ↔ English pack", sub: "translation on this device, offline", caches: ["bergamot-models"], label: "Remove the pack" }
+    ];
+    var models = null;
 
     function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     function size(n){
@@ -7222,7 +7364,7 @@
     function measure(){
       var list = Library.books();
       var o = { books: list.length, bookBytes: 0, finished: 0, positions: 0, marks: 0, journal: 0,
-                trDocs: 0, trWords: 0, trBytes: 0,
+                trDocs: 0, trWords: 0, trBytes: 0, audio: 0, audioBytes: 0,
                 stats: (Store.get("ll_stats") || "").length, statDays: 0,
                 themes: (state.customs || []).length, usage: null, quota: null, persisted: null };
       list.forEach(function(b){
@@ -7241,6 +7383,16 @@
             if (String(r.key || "").indexOf("s|") === 0) o.trWords++; else o.trDocs++;
             try { o.trBytes += JSON.stringify(r).length; } catch(_){}
           });
+        }).catch(function(){}),
+        /* read-aloud clips (natural voices, ElevenLabs): a cursor, so only one record is in memory at a time */
+        Library.tx("audio", "readonly", function(st){
+          var req = st.openCursor();
+          req.onsuccess = function(){
+            var c = req.result; if (!c) return;
+            var v = c.value || {};
+            o.audio++; o.audioBytes += v.size || (v.blob && v.blob.size) || 0;
+            c.continue();
+          };
         }).catch(function(){})
       ];
       if (navigator.storage && navigator.storage.estimate)
@@ -7248,6 +7400,32 @@
       if (navigator.storage && navigator.storage.persisted)
         jobs.push(navigator.storage.persisted().then(function(p){ o.persisted = !!p; }).catch(function(){}));
       return Promise.all(jobs).then(function(){ return o; });
+    }
+    /* a cached response's size: its Content-Length, else its body's (a blob handle, not a read of the data) */
+    function entrySize(c, req){
+      return c.match(req).then(function(r){
+        if (!r) return 0;
+        var n = +r.headers.get("content-length") || 0;
+        return n || r.blob().then(function(b){ return b.size; }, function(){ return 0; });
+      }).catch(function(){ return 0; });
+    }
+    function measureModels(){
+      if (!(window.caches && caches.keys)) return Promise.resolve();
+      return caches.keys().then(function(keys){ return Promise.all(MODELS.map(function(m){
+        var names = keys.filter(function(k){ return m.prefix ? k.indexOf(m.prefix) === 0 : m.caches.indexOf(k) >= 0; });
+        return Promise.all(names.map(function(k){
+          return caches.open(k).then(function(c){
+            return c.keys().then(function(reqs){ return Promise.all(reqs.map(function(q){ return entrySize(c, q); })); });
+          }).catch(function(){ return []; });
+        })).then(function(parts){
+          var sizes = [].concat.apply([], parts);
+          return { n: sizes.length, bytes: sizes.reduce(function(a, x){ return a + x; }, 0) };
+        });
+      })); }).then(function(list){
+        var out = {};
+        MODELS.forEach(function(m, i){ out[m.key] = list[i]; });
+        models = out;
+      }).catch(function(){}).then(refresh);
     }
     /* the service worker's cache holds the app itself and the dictionary; reading every
        response back is slow, so it is measured on its own and the row says so meanwhile */
@@ -7270,6 +7448,8 @@
         cacheState = "done";
       }).catch(function(){ cacheState = "unknown"; }).then(refresh);
     }
+    /* measured again after something was taken off the device */
+    function remeasure(){ measureModels(); reload(); }
 
     /* ---- the panel ---- */
     function row(name, sub, val, act, label){
@@ -7278,6 +7458,15 @@
         '<div class="so-val">' + esc(val || "") + '</div>' +
         (act ? '<button type="button" class="chip so-act" data-so="' + act + '">' + esc(label) + '</button>' : '') +
         '</div>';
+    }
+    /* a row for each download that is on this device (the engine without a remove of its own: it goes with the last voices) */
+    function modelRows(){
+      if (!models) return "";
+      return MODELS.map(function(m){
+        var x = models[m.key];
+        if (!x || !x.n) return "";
+        return row(m.name, m.sub, size(x.bytes), m.label ? "rm-" + m.key : "", m.label || "");
+      }).join("");
     }
     function cacheRow(){
       if (cacheState === "done") return row("App files and dictionary", plural(cache.n, "file", "files"), size(cache.bytes), "", "");
@@ -7302,10 +7491,12 @@
         row("Highlights and notes", plural(o.marks, "mark", "marks"), "", o.marks ? "marks" : "", "Delete all highlights and notes") +
         row("Cached translations", plural(o.trDocs, "document", "documents") + " · " + plural(o.trWords, "word or sentence", "words and sentences"),
             o.trBytes ? size(o.trBytes) : "", (o.trDocs + o.trWords) ? "translations" : "", "Clear cached translations") +
+        row("Read-aloud audio", plural(o.audio, "clip", "clips") + " made by the natural voices or ElevenLabs, kept for replays (up to 400 MB)",
+            o.audioBytes ? size(o.audioBytes) : "", o.audio ? "audio" : "", "Clear read-aloud audio") +
         row("Reading stats", plural(o.statDays, "day", "days"), size(o.stats), o.statDays ? "stats" : "", "Reset reading stats") +
         row("Reading journal", plural(o.journal, "book finished", "books finished") + " · kept when the library is cleared", "", o.journal ? "journal" : "", "Clear reading journal") +
         row("Saved themes", plural(o.themes, "theme", "themes"), "", "", "") +
-        cacheRow() + '</section>';
+        modelRows() + cacheRow() + '</section>';
       h += '<section class="so-sec"><div class="label sec">Keeping it</div><div class="so-line">' +
         (o.persisted === null ? "This browser doesn’t say whether it keeps storage."
          : o.persisted ? "Storage is persistent — the browser won’t clear it on its own."
@@ -7329,18 +7520,40 @@
     function openPanel(){
       measured = null;
       Side.open("storage", "Storage", renderPanel);
-      reload(); measureCache();
+      reload(); measureCache(); measureModels();
     }
 
     /* ---- letting things go ---- */
     function act(what){
       if (what === "finished"){
+        /* a book counts as finished at 98 %: one only jumped to the end counts too, and its notes would go with it */
+        var fin = measured ? measured.finished : 0;
+        if (fin && !confirm("Remove " + plural(fin, "finished book", "finished books") + " from this device, with " + (fin === 1 ? "its reading position" : "their reading positions") +
+                            ", highlights, bookmarks and notes? This can’t be undone. Your reading journal is kept.")) return;
         var n = Library.removeFinished();
         Marks.toast(n ? "Removed " + plural(n, "finished book", "finished books") : "Nothing is finished yet");
         reload();
       } else if (what === "marks"){
         if (!confirm("Delete every highlight, bookmark and note on this device? This can’t be undone.")) return;
         Marks.clearAll().then(function(){ Marks.toast("Highlights and notes deleted"); reload(); });
+      } else if (what === "audio"){
+        if (!confirm("Delete the read-aloud audio kept on this device" + (measured && measured.audioBytes ? " (" + size(measured.audioBytes) + ")" : "") +
+                     "? The natural voices make it again as you listen; ElevenLabs audio is made (and paid for) again.")) return;
+        /* through audiobook.js when it is running, so what it holds in memory about the store goes too */
+        if (window.llAudiobook && window.llAudiobook.clearAudio) window.llAudiobook.clearAudio();
+        else Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ Marks.toast("Read-aloud audio cleared"); }, function(){});
+        reload();
+      } else if (what === "rm-piper" || what === "rm-kokoro"){
+        /* audiobook.js asks, stops what uses the model and takes it (and the engine, when the other one is not here) */
+        need(["audiobook"]).then(function(){
+          var A = window.llAudiobook;
+          return A ? (what === "rm-piper" ? A.removePiper() : A.removeKokoro()) : null;
+        }).then(remeasure, function(){ Marks.toast("Couldn’t load the voices"); });
+      } else if (what === "rm-pack"){
+        var pk = models && models.pack;
+        if (!confirm("Remove the Dutch ↔ English pack from this device" + (pk && pk.bytes ? " (" + size(pk.bytes) + ")" : "") + "? It can be downloaded again.")) return;
+        need(["translate"]).then(function(){ return window.llTranslate ? window.llTranslate.pack.remove() : null; })
+          .then(remeasure, function(){ Marks.toast("Couldn’t load the translator"); });
       } else if (what === "translations"){
         Library.tx("translations", "readwrite", function(st){ st.clear(); })
           .then(function(){ Marks.toast("Cached translations cleared"); reload(); }, function(){});
@@ -7356,11 +7569,22 @@
           reload();
         }, function(){});
       } else if (what === "wipe"){
-        if (!confirm("Clear everything Lamplight keeps on this device — books, positions, notes, translations, stats, reading journal, themes and settings?")) return;
+        if (!confirm("Clear everything Lamplight keeps on this device — books, positions, notes, translations, stats, reading journal, themes and settings " +
+                     "(an ElevenLabs key too), the read-aloud audio, the natural voices and the Dutch ↔ English pack?")) return;
         if (!confirm("This can’t be undone. Clear everything?")) return;
         Stats.reset(true);
-        ["ll_stats", "ll_prefs", "ll_tabs", "ll_wpm", "ll_ppm", "ll_mark_legend", "ll_recap", "ll_sounds", "ll_rsvp_wpm", "ll_finish"].forEach(function(k){ Store.remove(k); });
-        Promise.all([Library.wipe(true), Journal.clear(true)]).then(function(){ location.reload(); }, function(){ location.reload(); });
+        /* every setting, whichever feature wrote it (an ElevenLabs key among them); only the note that storage was
+           made persistent stays, since the browser keeps that */
+        var keys = [];
+        try { for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf("ll_") === 0 && k !== "ll_persist") keys.push(k); } } catch(_){}
+        keys.forEach(function(k){ Store.remove(k); });
+        /* the downloads in caches of their own; the app's own files stay, so it still opens offline */
+        var gone = window.caches ? caches.keys().then(function(names){
+          return Promise.all(names.filter(function(k){
+            return k.indexOf("natural-runtime") === 0 || MODELS.some(function(m){ return m.caches && m.caches.indexOf(k) >= 0; });
+          }).map(function(k){ return caches.delete(k).catch(function(){}); }));
+        }).catch(function(){}) : Promise.resolve();
+        Promise.all([Library.wipe(true), Journal.clear(true), gone]).then(function(){ location.reload(); }, function(){ location.reload(); });
       }
     }
     Side.body.addEventListener("click", function(e){
@@ -7421,6 +7645,7 @@
         var x = o[id];
         if (!x || typeof x !== "object") return;
         out[id] = { ms: num(x.ms), words: num(x.words), pages: num(x.pages), at: num(x.at), entry: typeof x.entry === "string" ? x.entry : null, away: x.away === true, t: num(x.t) };
+        if (isDay(x.from)) out[id].from = x.from;     /* the day this reading began (back at the start, or Read again) */
       });
       return out;
     }
@@ -7431,6 +7656,15 @@
         ids.slice(0, ids.length - KEEP).forEach(function(id){ delete seen[id]; });
       }
       Store.set(KEY, JSON.stringify(seen));
+    }
+    /* the day this reading began: a re-read's, noted when the reader went back to the start (or chose Read again); a first
+       reading's, the first day the stats saw the book open; else the day it came into the library. A re-read from before
+       those days were noted has none. */
+    function startedOn(id, s, b){
+      if (s && s.away) return s.from || "";
+      var d = Stats.firstDay ? Stats.firstDay(id) : "";
+      if (isDay(d)) return d;
+      return b && b.added ? isoDay(new Date(b.added)) : "";
     }
     /* this reading has had its card: what the stats say now is where the next reading is counted from */
     function markSeen(id, entry){
@@ -7551,29 +7785,75 @@
     /* Library: a book was opened (pos: where it was restored to; fresh: "Read again", a new reading) */
     function opened(id, pos, fresh){
       close(true);
-      sess = { id: id, fromEnd: posAtEnd(pos) };
+      sess = { id: id, fromEnd: posAtEnd(pos), jumpT: 0, endKey: null, endT: 0, pushed: false };
       var s = seen[id];
-      if (fresh && s && !s.away){ s.away = true; saveSeen(); }
+      if (fresh && s && !s.away){ s.away = true; s.from = today(); saveSeen(); }
     }
     /* a scroll or page turn settles; the stats' 15-second tick checks too */
     function poke(){ clearTimeout(pokeT); pokeT = setTimeout(check, 700); }
+    /* a jump (a footnote or other link, the contents, a search hit, a note, the End key) is about to move the page:
+       landing at the end that way is not reading to it */
+    function jumped(){ if (sess) sess.jumpT = Date.now(); }
+    /* where on the last pages the reader is: the card waits while it changes */
+    function where(){
+      if (state.mode === "pdf") return "p" + state.pdfPageNum + ":" + (state.flow === "pages" ? 0 : Math.round(window.scrollY / 40));
+      return state.flow === "pages" ? "d" + state.page : "s" + Math.round(window.scrollY / 40);
+    }
+    /* time to read what is on the screen at the end before the card covers its foot: its words at the reader's pace
+       (within 150–500 words a minute), most of it in Scroll flow, where the top of the screen has been read on the way */
+    function dwell(){
+      var ms;
+      if (state.mode === "pdf") ms = 60000 / Math.max(0.5, Math.min(4, Progress.ppm() || 1));
+      else {
+        var top = Library.topCharOffset(), len = Anchor.textLength();
+        var words = typeof top === "number" && len > top ? (len - top) / 6 : 150;
+        ms = words / Math.max(150, Math.min(500, Progress.wpm() || 250)) * 60000 * (state.flow === "pages" ? 1 : 0.7);
+      }
+      return Math.max(3000, Math.min(90000, ms));
+    }
+    /* anything open over the page (the settings sheet, the theme popover, the menu, the dictionary card, the recap, speed
+       reading, a panel) holds the card back until it closes, as does read aloud still reading the last lines */
+    function covered(){
+      return isOpen() || Side.current() || Menu.isOpen() || $("#pop").classList.contains("open") || $("#sheet").classList.contains("open") ||
+        !!document.querySelector("#dictCard.open, #rsvp.on, #recap.on") || Speak.isPlaying();
+    }
     function check(){
       clearTimeout(pokeT); pokeT = null;
       var id = Library.currentId();
       if (!id || !sess || sess.id !== id || (state.mode !== "doc" && state.mode !== "pdf")) return;
       if (document.visibilityState !== "visible" || state.opening || Library.restoring()) return;
-      var s = seen[id];
+      var s = seen[id], now = Date.now();
       if (!atEnd()){
         /* reading, not at the end: arriving there later is reaching it; back at the start after a card is a new reading */
-        sess.fromEnd = false;
-        if (s && !s.away && readFrac() <= AGAIN){ s.away = true; saveSeen(); }
+        sess.fromEnd = false; sess.endKey = null; sess.pushed = false;
+        if (s && !s.away && readFrac() <= AGAIN){ s.away = true; s.from = today(); saveSeen(); }
         return;
       }
-      if (sess.fromEnd || isOpen() || Side.current() || document.body.classList.contains("rsvp-on")) return;
+      if (sess.jumpT && now - sess.jumpT < 5000) sess.fromEnd = true;     /* jumped there */
+      sess.jumpT = 0;
+      if (sess.fromEnd || covered()) return;
       if (s && !s.away) return;          /* this reading has had its card */
       if (!enough(id, s)) return;        /* opened at the end, or jumped there */
+      /* the card waits until the last screen has had time to be read, or the reader tries to go on past the end */
+      var key = where();
+      if (sess.endKey !== key){ sess.endKey = key; sess.endT = now; }
+      var left = sess.pushed ? 0 : sess.endT + dwell() - now;
+      if (left > 0){ pokeT = setTimeout(check, Math.min(left, 15000) + 50); return; }
       openCard(false);
     }
+    /* a page turn, a wheel or a swipe on past the end, a moment after arriving there: done reading */
+    function pastEnd(){
+      if (!sess || !sess.endT || !atEnd() || Date.now() - sess.endT < 1500) return;
+      sess.pushed = true; check();
+    }
+    (function(){
+      function bottom(){ var h = document.documentElement; return !pagedActive() && h.scrollHeight - h.clientHeight - h.scrollTop <= 2; }
+      var y0 = null;
+      window.addEventListener("wheel", function(e){ if (e.deltaY > 0 && sess && bottom()) pastEnd(); }, { passive: true });
+      window.addEventListener("touchstart", function(e){ y0 = e.touches.length === 1 ? e.touches[0].clientY : null; }, { passive: true });
+      window.addEventListener("touchmove", function(e){ if (y0 !== null && e.touches.length === 1 && y0 - e.touches[0].clientY > 40 && sess && bottom()){ y0 = null; pastEnd(); } }, { passive: true });
+      window.addEventListener("keydown", function(e){ if (/^(ArrowDown|PageDown| |End)$/.test(e.key) && sess && bottom() && !(e.target && e.target.closest && e.target.closest("input, textarea, select, [contenteditable]"))) pastEnd(); });
+    })();
 
     /* ---- the card: at the foot of the page, over the text (never inside #doc) ---- */
     function isOpen(){ return !!(card && card.classList.contains("on")); }
@@ -7612,10 +7892,11 @@
       var id = Library.currentId();
       if (!id){ if (asked) Marks.toast("Open a book first"); return; }
       var s = seen[id], edit = s && !s.away && s.entry ? byId(s.entry) : null;
-      if (!asked) markSeen(id, null);     /* once per reading */
       var n = edit ? { title: edit.title, author: edit.author } : nameOf(bookRec(id));
       if (!card) build();
-      cur = { book: id, edit: edit ? edit.id : null, stars: edit ? edit.stars : 0 };
+      /* auto: it came up by itself; the reading is marked seen (once per reading) when the reader answers it, so one that
+         is closed by a new file or the library comes back */
+      cur = { book: id, edit: edit ? edit.id : null, stars: edit ? edit.stars : 0, auto: !asked };
       card.innerHTML =
         '<div class="recap-head">' + ICONS.finished + '<h2 class="recap-title" id="finTitle">Finished</h2>' +
           '<button type="button" class="recap-x" id="finX" title="Close" aria-label="Close">' + ICONS.close + '</button></div>' +
@@ -7626,6 +7907,8 @@
         '<div class="recap-acts"><button type="button" class="chip" id="finLater">' + (edit ? "Cancel" : "Not now") + '</button>' +
           '<button type="button" class="ctl primary" id="finSave">Save</button></div>';
       card.classList.add("on");
+      /* the translation pill and the toasts sit above the card while it is up (it takes their row at the foot) */
+      document.body.classList.add("fin-on"); document.body.style.setProperty("--finishH", card.offsetHeight + "px");
       if (!live){ live = document.createElement("p"); live.className = "recap-live"; live.setAttribute("aria-live", "polite"); document.body.appendChild(live); }
       live.textContent = "";
       if (asked){
@@ -7639,11 +7922,14 @@
     }
     function close(quiet){
       if (!isOpen()) return;
-      var inside = card.contains(document.activeElement);
+      var inside = card.contains(document.activeElement), was = cur;
       card.classList.remove("on"); card.innerHTML = ""; cur = null;
+      document.body.classList.remove("fin-on"); document.body.style.removeProperty("--finishH");
       if (live) live.textContent = "";
       if (!quiet && inside){ var to = opener && document.contains(opener) && opener.getClientRects().length ? opener : $("#main"); if (to) to.focus({ preventScroll: true }); }
       opener = null;
+      /* Not now (or ✕, Escape) on the card that came up by itself: not again this reading, and where to find it */
+      if (!quiet && was && was.auto && !was.saved){ markSeen(was.book, null); Marks.toast("You can add it later: ⋯ › Mark as finished"); }
     }
     function save(){
       if (!cur) return;
@@ -7652,22 +7938,23 @@
       var note = noteEl ? noteEl.value.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX) : "";
       var e = cur.edit ? byId(cur.edit) : null, fresh = !e;
       if (fresh){
-        var b = bookRec(cur.book), n = nameOf(b);
+        var b = bookRec(cur.book), n = nameOf(b), s = seen[cur.book];
         e = { id: newId(), book: cur.book, title: n.title, author: n.author, stars: 0, note: "", finished: day,
-              started: b && b.added ? isoDay(new Date(b.added)) : "", created: Date.now() };
+              started: startedOn(cur.book, s, b), created: Date.now() };
         list.push(e);
-        var s = seen[cur.book];
         if (s && !s.away){ s.entry = e.id; s.t = Date.now(); saveSeen(); } else markSeen(cur.book, e.id);
       }
       e.stars = cur.stars; e.note = note; e.finished = day;
       sort();
       put(e);
+      cur.saved = true;
       close();
       Marks.toast(fresh ? "Added to your reading journal" : "Journal entry saved");
       changed();
     }
     /* the card belongs to the book: a new file, the library or a status page closes it */
     document.addEventListener("ll:fileopened", function(){ close(true); sess = null; });
+    window.addEventListener("resize", function(){ if (isOpen()) document.body.style.setProperty("--finishH", card.offsetHeight + "px"); });
     if (window.MutationObserver) new MutationObserver(function(){ if (state.mode !== "doc" && state.mode !== "pdf") close(true); })
       .observe(document.body, { attributes: true, attributeFilter: ["data-mode"] });
     /* Escape closes the card when nothing else is open over the page */
@@ -7760,6 +8047,8 @@
       if (v !== e.note){ update(e, { note: v }); patchRow(e); }
     }
     function remove(e){
+      /* a mistap would lose the stars and the note for good: asked first, as Clear journal is */
+      if (!confirm("Delete “" + e.title + "” from your reading journal? This can’t be undone.")) return;
       var rows = Array.prototype.slice.call(Side.body.querySelectorAll(".jr-row")), i = -1;
       rows.forEach(function(r, k){ if (r.dataset.id === e.id) i = k; });
       var next = rows[i + 1] || rows[i - 1];
@@ -7861,7 +8150,7 @@
     window.llJournal = { entries: function(){ return list.map(function(e){ return Object.assign({}, e); }); }, ready: ready, openPanel: openPanel,
                          openCard: function(){ openCard(true); }, closeCard: close, isOpen: isOpen, check: check, count: count,
                          toMarkdown: toMarkdown, seen: function(){ return JSON.parse(JSON.stringify(seen)); }, clear: clear };
-    return { opened: opened, poke: poke, check: check, count: count, latestFor: latestFor, badge: function(id){
+    return { opened: opened, poke: poke, check: check, jumped: jumped, pastEnd: pastEnd, count: count, latestFor: latestFor, badge: function(id){
                var e = latestFor(id);
                if (!e) return "";
                var words = "Finished" + (e.stars ? ", " + starWords(e.stars) : "");
@@ -8125,8 +8414,9 @@
      the blocks near the screen (an IntersectionObserver), by splitting
      the text nodes in place: the concatenated text of #doc stays
      exactly what it was, so every character offset (positions,
-     highlights, notes, search, read aloud) is untouched, and live
-     ranges on the text follow the split. Code and preformatted text
+     highlights, notes, search, read aloud) is untouched; the painted
+     ranges (the sentence read aloud, search hits), which a moved node
+     loses, are drawn again from those offsets. Code and preformatted text
      are left alone; only #doc is touched (never the dictionary card).
      Turning it off puts the text nodes back together.
      ============================================================ */
@@ -8172,8 +8462,8 @@
       WORD.lastIndex = 0;
       while ((m = WORD.exec(t))) list.push(m.index, m[0].split(/['’]/)[0].length);
       if (list.length && list[0] === 0 && letterBefore(n, u)) list.splice(0, 2);
-      /* from the last word back: n keeps the text before each word, so the offsets still hold; splitText
-         carries live ranges (read aloud, search) into the new nodes */
+      /* from the last word back: n keeps the text before each word, so the offsets still hold (moving the bold start
+         into its <b> collapses any live range in it: the callers paint read aloud and search again) */
       for (var i = list.length - 2; i >= 0; i -= 2){
         var a = list[i], len = list[i + 1], k = Math.min(len, Math.max(1, Math.round(len * frac)));
         if (a + k < n.length) n.splitText(a + k);
@@ -8209,14 +8499,17 @@
       fresh();
       kids.forEach(function(k){
         if (k.nodeType !== 3){ span.appendChild(k); pos += (k.textContent || "").length; while (ci < cuts.length && cuts[ci] <= pos) ci++; return; }
-        var start = pos, end = pos + k.length, node = k;
+        var start = pos, end = pos + k.length, at = [];
         while (ci < cuts.length && cuts[ci] <= start) ci++;
-        while (ci < cuts.length && cuts[ci] < end){
-          var rest = node.splitText(cuts[ci] - start);
-          span.appendChild(node); fresh();
-          start = cuts[ci]; node = rest; ci++;
-        }
-        span.appendChild(node);
+        while (ci < cuts.length && cuts[ci] < end){ at.push(cuts[ci] - start); ci++; }
+        /* the pieces are slices of the text, each a new node, and the node itself keeps the first: splitText from the
+           front would copy the rest of the book at every cut (minutes for a novel) */
+        if (at.length){
+          var t = k.data;
+          k.deleteData(at[0], t.length - at[0]);
+          span.appendChild(k);
+          for (var j = 0; j < at.length; j++){ fresh(); span.appendChild(document.createTextNode(t.slice(at[j], j + 1 < at.length ? at[j + 1] : t.length))); }
+        } else span.appendChild(k);
         pos = end;
         if (ci < cuts.length && cuts[ci] === end){ fresh(); ci++; }
       });
@@ -8225,13 +8518,15 @@
 
     /* ---- the queue: what came near the screen, and the units around it, a slice at a time ---- */
     function onSeen(entries){
-      var any = false;
+      var any = false, ahead = state.flow === "pages" ? 160 : 40;
       entries.forEach(function(en){
         if (!en.isIntersecting) return;
         var i = at.get(en.target);
         if (i === undefined) return;
-        /* a little behind and well ahead, so a page turn seldom waits for the next batch */
-        for (var j = Math.max(0, i - 4); j < Math.min(units.length, i + 40); j++) if (done.get(units[j]) !== applied){ queue.push(units[j]); any = true; }
+        /* a little behind and well ahead, so a page turn seldom waits for the next batch; in Pages flow much further
+           ahead: every batch that changes the text makes the browser lay the whole column strip out again (100–200 ms
+           for a long book), so fewer, larger batches are cheaper */
+        for (var j = Math.max(0, i - 4); j < Math.min(units.length, i + ahead); j++) if (done.get(units[j]) !== applied){ queue.push(units[j]); any = true; }
       });
       if (any) pump();
     }
@@ -8241,13 +8536,17 @@
       setTimeout(function(){
         pumping = false;
         if (!applied || !queue.length){ queue = []; return; }
-        var t0 = Date.now(), changed = false, paged = state.flow === "pages";
+        /* a slice of 12 ms at a time in Scroll flow; in Pages flow up to 60 ms, since each slice costs a relayout of the
+           whole column strip after it */
+        var t0 = Date.now(), changed = false, paged = state.flow === "pages", budget = paged ? 60 : 12;
         /* Scroll flow in a browser without scroll anchoring: text above the screen that grows must not push the
            page, so the block at the top of the screen is held where it is */
         var ref = !paged && !anchors ? topUnit() : null, top0 = ref ? ref.getBoundingClientRect().top : 0;
-        while (queue.length && Date.now() - t0 < 12) if (bold(queue.shift())) changed = true;
+        /* a word's bold start is moved into its <b>, and a moved node loses the live ranges in it: the sentence read
+           aloud and the search hits are painted again from their character offsets */
+        keepSpeak(function(){ while (queue.length && Date.now() - t0 < budget) if (bold(queue.shift())) changed = true; });
         if (changed){
-          Anchor.invalidate();
+          if (window.Search && Search.repair) Search.repair();
           if (ref){ var d = ref.getBoundingClientRect().top - top0; if (Math.abs(d) > 0.5) window.scrollBy(0, d); }
           if (paged) relayout();
         }
@@ -8274,7 +8573,8 @@
         if (h) h.forEach(function(r){ var a = at(r.startContainer, r.startOffset), b = at(r.endContainer, r.endOffset); if (a !== null && b !== null) saved.push([name, a, b]); });
       });
       fn();
-      saved.forEach(function(x){ Anchor.invalidate(); var r = Anchor.rangeBetween(x[1], x[2]); if (r) hl.set(x[0], new Highlight(r)); });
+      Anchor.invalidate();
+      saved.forEach(function(x){ var r = Anchor.rangeBetween(x[1], x[2]); if (r) hl.set(x[0], new Highlight(r)); });
     }
     /* ---- on, off, a new strength, a new document or flow ---- */
     function attach(){
@@ -8282,7 +8582,11 @@
       queue = [];
       if (!applied || state.mode !== "doc" || !window.IntersectionObserver) return;
       var doc = $("#doc");
-      if (doc.querySelector("div.plain")) keepSpeak(function(){ Array.prototype.forEach.call(doc.querySelectorAll("div.plain"), chunkPlain); Anchor.invalidate(); });
+      var fresh = Array.prototype.filter.call(doc.querySelectorAll("div.plain"), function(d){ return !d.querySelector("span.ll-fchunk"); });
+      if (fresh.length){
+        keepSpeak(function(){ fresh.forEach(chunkPlain); });
+        if (window.Search && Search.refresh) Search.refresh();     /* search paints its own hits again (moved nodes lose them) */
+      }
       units = Array.prototype.filter.call(doc.querySelectorAll(UNITS), function(u){ return !u.closest(NOPE); });
       at = new WeakMap();
       units.forEach(function(u, i){ at.set(u, i); });
@@ -8297,18 +8601,36 @@
       if (io){ io.disconnect(); io = null; }
       queue = []; done = new WeakMap();
       var doc = $("#doc"), parents = [], seen = new WeakMap();
-      function unwrap(el){
-        var p = el.parentNode;
-        if (!p) return;
-        while (el.firstChild) p.insertBefore(el.firstChild, el);
-        p.removeChild(el);
-        if (!seen.get(p)){ seen.set(p, true); parents.push(p); }
-      }
-      Array.prototype.slice.call(doc.querySelectorAll("b.ll-focus")).forEach(unwrap);
-      Array.prototype.slice.call(doc.querySelectorAll("span.ll-fchunk")).forEach(unwrap);
-      parents.forEach(function(p){ if (p.isConnected) p.normalize(); });
+      Array.prototype.forEach.call(doc.querySelectorAll("b.ll-focus"), function(b){
+        var p = b.parentNode;
+        if (p && !seen.get(p)){ seen.set(p, true); parents.push(p); }
+      });
+      parents.forEach(flatten);
+      /* a plain-text file's div: its chunks go the same way, once their bold starts are gone */
+      Array.prototype.forEach.call(doc.querySelectorAll("div.plain"), function(d){ if (d.querySelector("span.ll-fchunk")) flatten(d); });
       Anchor.invalidate();
       if (window.Search && Search.refresh) Search.refresh();
+    }
+    /* a parent's bold starts (and a plain-text div's chunks) taken apart in one go: its children listed with those
+       wrappers' contents in their place, each run of text made its first node (one append), the parent emptied at once
+       and filled again. One node at a time cost a walk over a big parent's children, and an update of every live range
+       on the page (500 search hits), at every step: seconds for a novel; normalize() on top copied the growing text. */
+    function flatten(p){
+      var out = [], run = null, rest = [], c, k;
+      function end(){ if (run && rest.length) run.appendData(rest.join("")); run = null; rest = []; }
+      function add(n){
+        if (n.nodeType === 3){ if (run) rest.push(n.data); else { run = n; out.push(n); } }
+        else { end(); out.push(n); }
+      }
+      for (c = p.firstChild; c; c = c.nextSibling){
+        if (isFocus(c) || (c.nodeType === 1 && c.tagName === "SPAN" && c.classList.contains("ll-fchunk"))){ for (k = c.firstChild; k; k = k.nextSibling) add(k); }
+        else add(c);
+      }
+      end();
+      p.textContent = "";
+      var f = document.createDocumentFragment();
+      out.forEach(function(n){ if (n.nodeType !== 3 || n.length) f.appendChild(n); });
+      p.appendChild(f);
     }
     /* called by applyType (and so by every text setting); cheap when nothing changed */
     function sync(){
@@ -8346,7 +8668,9 @@
       var u = el.closest(UNITS);
       if (!u || !$("#doc").contains(u)) return;
       done.delete(u);
-      if (bold(u)){ Anchor.invalidate(); if (state.flow === "pages") relayout(); }
+      var did = false;
+      keepSpeak(function(){ did = bold(u); });
+      if (did){ if (window.Search && Search.repair) Search.repair(); if (state.flow === "pages") relayout(); }
     }
     window.llFocus = { sync: sync, level: function(){ return applied; }, count: function(){ return $("#doc").querySelectorAll("b.ll-focus").length; }, unsplit: unsplit };
     return { sync: sync, unsplit: unsplit, again: again, on: function(){ return !!applied; } };
@@ -8381,7 +8705,8 @@
     });
     return out;
   }
-  var ABBREV = /(?:^|[\s(“"])(?:Mr|Mrs|Ms|Mx|Dr|St|Sr|Jr|Prof|Rev|Gen|Col|Capt|Lt|Sgt|Mt|Messrs|Mme|Mlle|vs|etc|viz|cf|ca|approx|No|Nos|Vol|pp?|ch|fig|e\.g|i\.e|[A-Z])\.$/;
+  /* English, and the common Dutch ones (dhr. Jansen, mevr., mr., blz., o.a., d.w.z.): not a sentence's end */
+  var ABBREV = /(?:^|[\s(“"„])(?:Mr|Mrs|Ms|Mx|Dr|St|Sr|Jr|Prof|Rev|Gen|Col|Capt|Lt|Sgt|Mt|Messrs|Mme|Mlle|vs|etc|viz|cf|ca|approx|No|Nos|Vol|pp?|ch|fig|e\.g|i\.e|[A-Z]|[Dd]hr|[Mm]evr|mr|dr|[Dd]rs|[Ii]r|[Ii]ng|prof|[Bb]lz|[Bb]ijv|[Ee]nz|[Nn]r|[Oo]\.a|[Dd]\.w\.z|[Mm]\.a\.w|[Ii]\.p\.v|[Tt]\.o\.v|[Zz]\.g\.a\.n|resp|jl)\.$/;
   function sentenceSpans(text){
     var out = [], start = 0, re = /[.!?…]+["'”’»)\]]*(?=\s|$)/g, m;
     function push(a, b){
@@ -8417,7 +8742,8 @@
     var data = load(), cur = null, sitting = -1, checked = null, saveT = null;
     var card = null, cardSess = null, speakGen = 0, opener = null, live = null;
 
-    /* ---- sessions: { a, b, t0, t1 } per book — character offsets (a PDF: page numbers) and times ---- */
+    /* ---- sessions: { a, b, e, t0, t1 } per book — character offsets (a PDF: page numbers) and times: a and b where the top
+       of the screen started and got to (how far the reader moved), e the end of the furthest screen (what was read) ---- */
     function load(){
       var o = null, out = { v: 1, books: {} };
       try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
@@ -8426,7 +8752,7 @@
         var b = o.books[id];
         if (!b || !Array.isArray(b.s) || (b.m !== "doc" && b.m !== "pdf")) return;
         var s = b.s.filter(function(x){ return x && isFinite(x.a) && isFinite(x.b) && isFinite(x.t0) && isFinite(x.t1); })
-          .map(function(x){ return { a: +x.a, b: +x.b, t0: +x.t0, t1: +x.t1 }; });
+          .map(function(x){ var o = { a: +x.a, b: +x.b, t0: +x.t0, t1: +x.t1 }; if (isFinite(x.e) && +x.e > o.b) o.e = +x.e; return o; });
         if (s.length) out.books[id] = { m: b.m, s: s.slice(-KEEP) };
       });
       return out;
@@ -8463,15 +8789,17 @@
       if (!pos || !pos.id || checked !== pos.id) return;
       var at = pos.mode === "pdf" ? pos.pdfPage : pos.off, now = pos.updated || Date.now();
       if (typeof at !== "number" || !isFinite(at)) return;
+      /* what was on screen below its top line was read too: the latest screen is where the reader stopped */
+      var end = pos.mode !== "pdf" && typeof pos.offEnd === "number" && isFinite(pos.offEnd) && pos.offEnd > at ? pos.offEnd : at;
       var s = list(pos.id, pos.mode), x = cur && cur.id === pos.id ? cur.x : null;
       /* a jump (contents, search, a long way back) starts a new session */
       if (x && (pos.mode === "pdf" ? at < x.a - 2 || at > x.b + 25 : at < x.a - 3000 || at > x.b + 40000)) x = null;
       if (!x){
-        x = { a: at, b: at, t0: now, t1: now };
+        x = { a: at, b: at, e: end, t0: now, t1: now };
         s.push(x);
         while (s.length > KEEP){ s.shift(); if (sitting > 0) sitting--; }
         cur = { id: pos.id, x: x };
-      } else { x.b = Math.max(x.b, at); x.t1 = now; }
+      } else { x.b = Math.max(x.b, at); x.e = Math.max(x.e || x.b, end); x.t1 = now; }
       later();
     }
     /* a book is open and its text (or its PDF) is in: two hours or more since it was last read shows the card */
@@ -8522,6 +8850,22 @@
      "to together too took toward towards turn turned two under until up upon us very want wanted was way we well went were what whatever when where whether " +
      "which while who whom whose why will with within without would yes yet you your yours yourself yourselves asked answered replied told tell cried " +
      "mr mrs miss sir lady").split(" ").forEach(function(w){ STOP[w] = 1; });
+    var STOP_EN = STOP;
+    /* a Dutch book's function words too (old spellings included): the English list and these, for text that is Dutch */
+    var STOP_NL = Object.assign({}, STOP);
+    ("aan achter al alle alles als alsof altijd ander andere anders ben bij bijna binnen daar daarom daarna dan dat de den der des deze die dien dit " +
+     "doch doen door dus een eene eens eer eigen en ene enige er ge geen geweest gij haar had heb hebben heeft hem hen het hier hij hoe hun hunne iemand " +
+     "iets ik in is ja je jij jou jullie kan kon konden kunnen later maar me meer men met mij mijn moest moet mogen na naar niet niets nog nooit nu of " +
+     "om omdat ondat onder ons onze ook op over reeds sinds te tegen toch toe toen tot u uit uw van veel voor vooral waar waarom wanneer want waren was " +
+     "wat we weer wel werd werden wezen wie wij wil wilde worden wordt zal zeer zei zeide zeg zegt zelf zich zij zijn zijne zo zoals zoo zonder zou " +
+     "zouden zullen zien zag riep vroeg antwoordde sprak mevrouw meneer mijnheer juffrouw heer nee neen nou even wat eerst").split(" ").forEach(function(w){ STOP_NL[w] = 1; });
+    /* Dutch when its commonest words outnumber English ones in the span */
+    function dutch(cands){
+      var nl = 0, en = 0, NL = { de: 1, het: 1, een: 1, en: 1, van: 1, niet: 1, dat: 1, zijn: 1, met: 1, zich: 1, haar: 1, hij: 1 },
+          EN = { the: 1, and: 1, of: 1, to: 1, was: 1, that: 1, with: 1, his: 1, her: 1, not: 1, he: 1, she: 1 };
+      for (var i = 0; i < cands.length && nl + en < 4000; i++) cands[i].toks.forEach(function(w){ if (NL[w]) nl++; else if (EN[w]) en++; });
+      return nl > en;
+    }
     function stem(w){
       w = w.replace(/’/g, "'").replace(/'s$/, "");
       if (w.length > 4 && /ies$/.test(w)) return w.slice(0, -3) + "y";
@@ -8537,7 +8881,7 @@
       return out;
     }
     function gatherDoc(x){
-      var lo = Math.max(0, Math.min(x.a, x.b)), hi = Math.max(x.a, x.b), wins = windows(lo, hi), blocks = [], count = 0;
+      var lo = Math.max(0, Math.min(x.a, x.b)), hi = Math.max(x.a, x.b, x.e || 0), wins = windows(lo, hi), blocks = [], count = 0;
       wins.forEach(function(w){
         textBlocks(w[0], w[1]).forEach(function(bk){
           var end = bk.start + bk.text.length, s0 = Math.max(bk.start, w[0]), s1 = Math.min(end, w[1]);
@@ -8612,21 +8956,24 @@
       g.blocks.forEach(function(bk){
         if (bk.heading) return;
         sentenceSpans(bk.text).forEach(function(sp, k){
-          var raw = bk.text.slice(sp.a, sp.b), text = raw.replace(/\s+/g, " ").trim();
+          /* a line of dialogue after a dash ("— Kom binnen!") is shown and read without the dash */
+          var raw = bk.text.slice(sp.a, sp.b), text = raw.replace(/\s+/g, " ").trim().replace(/^[—–]\s*/, "");
           var toks = (text.toLowerCase().match(/[a-zà-ɏ][a-zà-ɏ'’-]*/g) || []).map(stem);
-          var s = { start: bk.start + sp.a, text: text, first: k === 0, n: words(text), toks: toks };
-          var seen = {};
-          toks.forEach(function(w){ if (w.length < 3 || STOP[w]) return; freq[w] = (freq[w] || 0) + 1; if (!seen[w]){ seen[w] = 1; df[w] = (df[w] || 0) + 1; } });
-          total++;
-          cands.push(s);
+          cands.push({ start: bk.start + sp.a, text: text, first: k === 0, n: words(text), toks: toks });
         });
       });
       if (!cands.length) return [];
+      var STOP = dutch(cands) ? STOP_NL : STOP_EN;
+      cands.forEach(function(s){
+        var seen = {};
+        s.toks.forEach(function(w){ if (w.length < 3 || STOP[w]) return; freq[w] = (freq[w] || 0) + 1; if (!seen[w]){ seen[w] = 1; df[w] = (df[w] || 0) + 1; } });
+        total++;
+      });
       /* names: the characters found, and capitalised words that recur away from a sentence's start */
       var names = {}, caps = {};
       cast.forEach(function(c){ String(c.name).split(/\s+/).concat(c.aka || []).forEach(function(w){ w = String(w).replace(/[^\wÀ-ɏ'-]/g, ""); if (w.length > 1 && !STOP[w.toLowerCase()]) names[w] = c.key; }); });
       cands.forEach(function(s){
-        var m, re = /[\s“"‘(]([A-Z][a-zà-ɏ]{2,})\b/g;
+        var m, re = /[\s“"‘„‚«(]([A-Z][a-zà-ɏ]{2,})\b/g;
         while ((m = re.exec(" " + s.text.slice(1)))) caps[m[1]] = (caps[m[1]] || 0) + 1;
       });
       Object.keys(caps).forEach(function(w){ if (caps[w] >= 3 && !STOP[w.toLowerCase()] && !names[w]) names[w] = w; });
@@ -8641,8 +8988,9 @@
         score += 0.35 * Math.min(2, Object.keys(who).length);
         score += 0.25 * Math.max(0, Math.min(1, (s.start - g.lo) / span)) + (s.first ? 0.12 : 0);
         if (s.n < 7) score *= 0.5; else if (s.n > 45) score *= 0.7;
-        if (!/^[“"‘'(]?[A-Z0-9À-ɏ]/.test(s.text) || !/[.!?…]["'”’»)\]]*$/.test(s.text)) score *= 0.4;   /* a fragment */
-        if (/^(chapter|part|book|section)\b/i.test(s.text) || s.text.length > 320 || s.text.length < 25) score = -1;
+        /* a fragment: not a sentence's start (a capital, after an opening quote of any kind; Dutch 's and 't) or end */
+        if (!/^(?:[“"‘'„‚«»(]?[A-Z0-9À-ɏ]|['’‘][st]\s)/.test(s.text) || !/[.!?…]["'”’»)\]]*$/.test(s.text)) score *= 0.4;
+        if (/^(chapter|part|book|section|hoofdstuk)\b/i.test(s.text) || s.text.length > 320 || s.text.length < 25) score = -1;
         var key = s.text.toLowerCase();
         if (seenText[key]) score = -1;
         seenText[key] = 1;
@@ -8675,7 +9023,8 @@
       if (days === 0 || h < 12) return h === 1 ? "an hour ago" : h + " hours ago";
       if (days === 1) return "yesterday";
       if (days < 31) return days + " days ago";
-      return "on " + a.toLocaleDateString(undefined, { day: "numeric", month: "long", year: a.getFullYear() === b.getFullYear() ? undefined : "numeric" });
+      /* the words around it are English: so is the month (a Dutch phone would say "on 20 augustus") */
+      return "on " + a.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: a.getFullYear() === b.getFullYear() ? undefined : "numeric" });
     }
     function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     var gen = 0;
@@ -8692,7 +9041,10 @@
       if (!card){
         card = document.createElement("section");
         card.id = "recap"; card.setAttribute("aria-labelledby", "recapTitle");
-        document.body.appendChild(card);
+        /* fixed at the top of the screen, and before the book in reading order too, so a screen reader's next swipe after
+           the bar reaches it ("at the top of the page") rather than after the whole text */
+        var main = $("#main");
+        if (main && main.parentNode === document.body) document.body.insertBefore(card, main); else document.body.appendChild(card);
         card.addEventListener("click", function(e){
           var b = e.target.closest("button");
           if (!b) return;
@@ -8752,19 +9104,24 @@
       try { speechSynthesis.cancel(); } catch(_){}
       speechBtn(false);
     }
+    /* the words around the sentences, in the book's language (they are said in its voice); none for other languages */
+    var FRAME = { en: ["Previously.", "Characters: "], nl: ["Vorige keer.", "Personages: "] };
     function toggleSpeech(){
       if (speakGen){ stopSpeech(); return; }
       if (!cardSess || !Speak.supported) return;
+      /* the book's own read aloud pauses for the recap (its bar stays, to play on from) */
       if (Speak.isPlaying()) Speak.pause();
       var r = cardSess.r, S = window.llSpeak, v = S && S.currentVoice ? S.currentVoice() : null, rate = Speak.rate ? Speak.rate() : 1;
-      var lines = ["Previously."].concat(r.sentences.map(function(s){ return s.text; }));
-      if (r.cast.length) lines.push("Characters: " + r.cast.map(function(c){ return c.name; }).join(", ") + ".");
+      var fr = FRAME[Speak.docLang()] || ["", ""];
+      var lines = (fr[0] ? [fr[0]] : []).concat(r.sentences.map(function(s){ return s.text; }));
+      if (r.cast.length && fr[1]) lines.push(fr[1] + r.cast.map(function(c){ return c.name; }).join(", ") + ".");
       var my = speakGen = Date.now(), i = 0;
       try { speechSynthesis.cancel(); } catch(_){}
       speechBtn(true);
       (function next(){
         if (speakGen !== my) return;
-        if (i >= lines.length || Speak.isActive()){ speakGen = 0; speechBtn(false); return; }
+        /* read aloud started again (its Play) takes over; paused, it waits */
+        if (i >= lines.length || Speak.isPlaying()){ speakGen = 0; speechBtn(false); return; }
         var u = new SpeechSynthesisUtterance(lines[i++].replace(/[“”"]/g, ""));
         if (v){ u.voice = v; u.lang = v.lang; } else u.lang = Speak.docLang();
         u.rate = Math.max(0.5, Math.min(2, rate));
@@ -8776,7 +9133,7 @@
 
     Menu.add({ order: 42, group: "reading", icon: ICONS.recap, label: "Previously…", run: onDemand, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     window.llRecap = { summarize: summarize, sentences: sentenceSpans, blocks: textBlocks, sessions: function(id){ var b = data.books[id || Library.currentId()]; return b ? b.s.slice() : []; },
-                       show: onDemand, close: close, ago: ago, isOpen: function(){ return !!(card && card.classList.contains("on")); },
+                       show: onDemand, close: close, ago: ago, isOpen: function(){ return !!(card && card.classList.contains("on")); }, speaking: function(){ return !!speakGen; },
                        build: function(x){ return build(x, state.mode); }, GAP: GAP };
     return { note: note, check: check, forget: forget, show: onDemand, close: close };
   })();
@@ -8792,9 +9149,10 @@
      ============================================================ */
   var Rsvp = (function(){
     var KEY = "ll_rsvp_wpm", MIN = 150, MAX = 900, STEP = 25;
-    var F_SENT = 1, F_PARA = 2, F_HEAD = 4, F_PAUSE = 8;
+    var F_SENT = 1, F_PARA = 2, F_HEAD = 4, F_PAUSE = 8, F_CONT = 16;     /* F_CONT: a long word goes on in the next frame */
+    var LET = "0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ", LETTER = new RegExp("[" + LET + "]"), LETTERS = new RegExp("[" + LET + "]", "g");
     var wpm = clampWpm(parseInt(Store.get(KEY) || "300", 10));
-    var toks = null, i = 0, playing = false, timer = null, ramp = 0, open = false, opener = null, held = [], shown = 0;
+    var toks = null, i = 0, playing = false, timer = null, ramp = 0, open = false, opener = null, held = [], shown = 0, hist = false, backing = false, srWas = null;
     var el = null, wordEl = null, lEl = null, oEl = null, rEl = null, barEl = null, playBtn = null, wpmEl = null, wpmV = null, ctxEl = null, whereEl = null;
     function clampWpm(v){ v = isFinite(v) ? v : 300; return Math.max(MIN, Math.min(MAX, Math.round(v / STEP) * STEP)); }
 
@@ -8802,7 +9160,7 @@
     function build(){
       var key = (Library.currentId() || "") + ":" + Anchor.textLength();
       if (toks && toks.key === key) return toks;
-      var t = { key: key, w: [], s: [], f: [], sent: [] };
+      var t = { key: key, w: [], s: [], f: [], sent: [], cum: [0] };
       textBlocks().forEach(function(bk){
         var spans = sentenceSpans(bk.text), si = 0, re = /\S+/g, m, fresh = true, last = -1;
         while ((m = re.exec(bk.text))){
@@ -8810,14 +9168,46 @@
           if (fresh){ t.sent.push(t.w.length); fresh = false; }
           while (si < spans.length && spans[si].b < e) si++;
           if (si < spans.length && spans[si].b === e){ f |= F_SENT; fresh = true; }
-          else if (/[,;:]["'”’)\]]*$|[—–]$|^[—–]$/.test(m[0])) f |= F_PAUSE;
+          /* a comma, a dash, and a question or an exclamation that the sentence carries on after ("„Waarom?” vroeg zij") */
+          else if (/[,;:?!…]["'”’»)\]]*$|[—–]$|^[—–]$/.test(m[0])) f |= F_PAUSE;
+          /* a long word (a Dutch compound) in two or three frames, each ending in a hyphen but the last */
+          var cut = parts(m[0]);
+          for (var k = 0; k < cut.length - 1; k++){
+            var piece = m[0].slice(cut[k], cut[k + 1]);
+            t.w.push(/-$/.test(piece) ? piece : piece + "-"); t.s.push(bk.start + a + cut[k]); t.f.push(F_CONT);
+          }
           last = t.w.length;
-          t.w.push(m[0]); t.s.push(bk.start + a); t.f.push(f);
+          t.w.push(m[0].slice(cut[cut.length - 1])); t.s.push(bk.start + a + cut[cut.length - 1]); t.f.push(f);
         }
         if (last >= 0) t.f[last] |= F_SENT | F_PARA | (bk.heading ? F_HEAD : 0);
       });
+      /* the beats up to each word, for the time left */
+      for (var k = 0; k < t.w.length; k++) t.cum.push(t.cum[k] + beats(t.w[k], t.f[k]));
       toks = t;
       return t;
+    }
+    /* where a word of more than 16 letters is cut (one that long no longer fits its half of a phone's stage and was set
+       at half size): [0, cuts…] — into pieces of about 12 letters or fewer, after a hyphen it has, else between two
+       consonants before a vowel (arbeidson|geschiktheids|verzekering), else near the middle; words with digits or other
+       signs inside (numbers, addresses) stay whole */
+    function parts(w){
+      var a = w.search(LETTER), b = w.length;
+      while (b > a && !LETTER.test(w.charAt(b - 1))) b--;
+      var core = a < 0 ? "" : w.slice(a, b), L = core.replace(/-/g, "").length;
+      if (L <= 16 || !/^[A-Za-zÀ-ɏͰ-ϿЀ-ӿ]+(?:-[A-Za-zÀ-ɏͰ-ϿЀ-ӿ]+)*$/.test(core)) return [0];
+      var n = Math.ceil(L / 12), out = [0], V = /[aeiouyàáâäèéêëìíîïòóôöùúûü]/i, prev = 0;
+      for (var k = 1; k < n; k++){
+        var want = Math.round(core.length * k / n), best = -1, score = -1;
+        for (var i = Math.max(prev + 4, want - 3); i <= Math.min(core.length - 4, want + 3); i++){
+          var x = core.charAt(i - 1), y = core.charAt(i), z = core.charAt(i + 1);
+          var sc = x === "-" ? 3 : (!V.test(x) && x !== "-" && !V.test(y) && y !== "-" && V.test(z)) ? 2 : 0;
+          sc -= Math.abs(i - want) * 0.1;
+          if (sc > score){ score = sc; best = i; }
+        }
+        if (best < 0) continue;
+        out.push(a + best); prev = best;
+      }
+      return out;
     }
     function wordAt(off){
       var s = toks.s, lo = 0, hi = s.length - 1, best = 0;
@@ -8835,9 +9225,11 @@
        word's letters (Spritz's table), and the stage centres that letter ---- */
     function orp(n){ return n <= 1 ? 0 : n <= 5 ? 1 : n <= 9 ? 2 : n <= 13 ? 3 : 4; }
     function paint(){
-      var w = toks.w[i] || "", first = w.search(/[0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/);
-      if (first < 0) first = 0;
-      var core = w.slice(first).replace(/[^0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]+$/, ""), o = Math.min(w.length - 1, first + orp(core.length || 1));
+      /* the recognition letter is counted among the letters only (o.a. puts it on the a, not on a dot) */
+      var w = toks.w[i] || "", at = [], mm;
+      LETTERS.lastIndex = 0;
+      while ((mm = LETTERS.exec(w))) at.push(mm.index);
+      var o = at.length ? at[orp(at.length)] : 0;
       lEl.textContent = w.slice(0, o); oEl.textContent = w.charAt(o); rEl.textContent = w.slice(o + 1);
       /* a word too long for its half of the stage is set smaller, so it never runs off the screen */
       wordEl.style.removeProperty("--k");
@@ -8847,28 +9239,40 @@
       if (k < 1) wordEl.style.setProperty("--k", (k * 0.94).toFixed(3));
       var n = toks.w.length, pct = n > 1 ? i / (n - 1) * 100 : 100;
       barEl.style.width = pct.toFixed(2) + "%";
-      var left = Math.max(0, n - i), mins = Math.ceil(left / wpm);
-      whereEl.textContent = Math.round(pct) + "% · " + (mins < 60 ? mins + " min" : Math.floor(mins / 60) + " h " + (mins % 60) + " min") + " left at this speed";
+      /* the time left at this speed, with the pauses (sentences, commas, long words) it will take */
+      var mins = Math.ceil(Math.max(0, toks.cum[n] - toks.cum[Math.min(i, n)]) / wpm);
+      whereEl.textContent = Math.round(pct) + "% · " + (mins < 60 ? mins + " min" : Math.floor(mins / 60) + " h " + (mins % 60) + " min") + " left";
+      whereEl.title = "Time left at " + wpm + " words a minute";
     }
     /* paused: the sentence around the word, for bearings */
     function context(){
       if (playing){ ctxEl.hidden = true; ctxEl.innerHTML = ""; return; }
       var si = sentOf(i), a = toks.sent[si], b = si + 1 < toks.sent.length ? toks.sent[si + 1] : toks.w.length, h = [];
       a = Math.max(a, i - 40); b = Math.min(b, i + 40);
-      for (var k = a; k < b; k++) h.push(k === i ? '<mark>' + escapeHtml(toks.w[k]) + '</mark>' : escapeHtml(toks.w[k]));
-      ctxEl.innerHTML = h.join(" ");
+      /* a long word's frames are one word again, the frame shown marked inside it */
+      while (a > 0 && (toks.f[a - 1] & F_CONT)) a--;
+      while (b < toks.w.length && b > 0 && (toks.f[b - 1] & F_CONT)) b++;
+      for (var k = a; k < b; k++){
+        var w = toks.f[k] & F_CONT ? toks.w[k].replace(/-$/, "") : toks.w[k], x = k === i ? '<mark>' + escapeHtml(w) + '</mark>' : escapeHtml(w);
+        h.push(x + (toks.f[k] & F_CONT ? "" : " "));
+      }
+      ctxEl.innerHTML = h.join("").trim();
       ctxEl.hidden = false;
     }
     /* how long a word stays: the speed's beat, longer after a comma, a sentence, a paragraph or a heading, and
        for a long word or a number; the first words after Play come in a little slower */
-    function delay(k){
-      var w = toks.w[k], f = toks.f[k], m = 1, n = w.replace(/[^0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/g, "").length;
+    function beats(w, f){
+      var m = 1, n = w.replace(/[^0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/g, "").length;
       if (n > 7) m += Math.min(0.9, (n - 7) * 0.12);
       if (f & F_HEAD) m += 2.2;
       else if (f & F_PARA) m += 1.9;
       else if (f & F_SENT) m += 1.3;
       else if (f & F_PAUSE) m += 0.6;
       if (/\d/.test(w)) m += 0.3;
+      return m;
+    }
+    function delay(k){
+      var m = beats(toks.w[k], toks.f[k]);
       if (ramp < 4){ m *= [1.8, 1.45, 1.2, 1.08][ramp]; ramp++; }
       return 60000 / wpm * m;
     }
@@ -8879,7 +9283,8 @@
       timer = setTimeout(function(){
         if (!playing) return;
         if (i >= toks.w.length - 1){ pause(); Marks.toast("End of the document"); return; }
-        i++; shown++;
+        if (!(toks.f[i] & F_CONT)) shown++;     /* words, not frames, count as read */
+        i++;
         if (shown >= 25) credit();
         tick();
       }, delay(i));
@@ -8890,8 +9295,8 @@
       playBtn.title = (playing ? "Pause" : "Play") + " (Space)";
       el.classList.toggle("playing", playing);
     }
-    function play(){ if (playing || !toks.w.length) return; if (i >= toks.w.length - 1) i = 0; playing = true; ramp = 0; syncPlay(); context(); tick(); }
-    function pause(){ playing = false; clearTimeout(timer); credit(); syncPlay(); paint(); context(); }
+    function play(){ if (playing || !toks.w.length) return; if (i >= toks.w.length - 1) i = 0; playing = true; ramp = 0; Wake.hold(true); syncPlay(); context(); tick(); }
+    function pause(){ playing = false; clearTimeout(timer); Wake.hold(false); credit(); syncPlay(); paint(); context(); }
     /* the words read this way count in the reading stats, like words read on the page */
     function credit(){ if (shown > 0){ Stats.noteWords(shown); shown = 0; } }
     function toggle(){ if (playing) pause(); else play(); }
@@ -8977,30 +9382,46 @@
       open = true; playing = false;
       el.hidden = false; el.classList.add("on");
       document.body.classList.add("rsvp-on");
+      /* a history entry of its own: Android's Back closes speed reading instead of leaving the app. Going back to the
+         entry below must not scroll the page to where it was when this one was added (the book moves on to the word
+         instead), so that entry's scroll restoration is manual until then (a new entry takes it over) */
+      if (!hist){
+        try { if (srWas === null) srWas = history.scrollRestoration || "auto"; history.scrollRestoration = "manual"; history.pushState({ llRsvp: true }, ""); hist = true; } catch(_){}
+      }
       wpmEl.value = wpm; wpmV.textContent = wpm + " wpm";
       syncPlay(); paint(); context();
       playBtn.focus({ preventScroll: true });
     }
     /* closing moves the book to the word it stopped at */
-    function close(){
+    function close(fromBack){
       if (!open) return;
       pause();
       open = false;
       el.hidden = true; el.classList.remove("on");
       document.body.classList.remove("rsvp-on");
       held.forEach(function(n){ n.inert = false; }); held = [];
+      /* closed any other way: its history entry goes (the popstate that follows is expected) */
+      if (hist && fromBack !== true){ hist = false; backing = true; try { history.back(); } catch(_){ backing = false; } }
       if (state.mode === "doc" && toks && typeof toks.s[i] === "number"){ revealOffset(toks.s[i]); Library.notePosition(); }
       var to = opener && document.contains(opener) && opener.getClientRects().length ? opener : $("#main");
       if (to) to.focus({ preventScroll: true });
       opener = null;
     }
     document.addEventListener("ll:fileopened", function(){ if (open) close(); toks = null; });
+    window.addEventListener("popstate", function(){
+      /* our own history.back(); if speed reading was opened again before it landed, that took the new entry: put it back */
+      if (backing){ backing = false; if (open && hist){ try { history.pushState({ llRsvp: true }, ""); } catch(_){ hist = false; } } else scrollBack(); return; }
+      if (open && hist){ hist = false; close(true); scrollBack(); }
+    });
+    function scrollBack(){ if (srWas !== null){ try { history.scrollRestoration = srWas; } catch(_){} srWas = null; } }
 
     Menu.add({ order: 53, group: "reading", icon: ICONS.bolt, label: "Speed reading", key: "W", run: start, show: function(){ return state.mode === "doc"; } });
     window.llRsvp = { open: start, close: close, play: play, pause: pause, back: back, fwd: fwd, setWpm: setWpm, isOpen: function(){ return open; },
                       state: function(){ return { i: i, word: toks && toks.w[i], offset: toks && toks.s[i], playing: playing, wpm: wpm, words: toks ? toks.w.length : 0 }; },
-                      delay: function(k){ var r = ramp; ramp = 9; var d = delay(k === undefined ? i : k); ramp = r; return d; }, orp: orp };
-    return { open: start, close: close, isOpen: function(){ return open; }, isPlaying: function(){ return playing; } };
+                      delay: function(k){ var r = ramp; ramp = 9; var d = delay(k === undefined ? i : k); ramp = r; return d; }, orp: orp,
+                      seek: function(k){ if (open && toks && k >= 0 && k < toks.w.length){ i = k; moved(); } } };
+    return { open: start, close: close, isOpen: function(){ return open; }, isPlaying: function(){ return playing; },
+             offset: function(){ return open && toks && typeof toks.s[i] === "number" ? toks.s[i] : null; } };
   })();
 
   /* ============================================================
@@ -9669,7 +10090,7 @@
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " "){ e.preventDefault(); turn(1); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp"){ e.preventDefault(); turn(-1); }
     else if (e.key === "Home"){ e.preventDefault(); if (state.mode === "doc") gotoPage(0); else { state.pdfPageNum = 1; renderPdfSingle(); } }
-    else if (e.key === "End"){ e.preventDefault(); if (state.mode === "doc") gotoPage(state.totalPages - 1); else { state.pdfPageNum = state.pdfDoc.numPages; renderPdfSingle(); } }
+    else if (e.key === "End"){ e.preventDefault(); if (Journal) Journal.jumped(); if (state.mode === "doc") gotoPage(state.totalPages - 1); else { state.pdfPageNum = state.pdfDoc.numPages; renderPdfSingle(); } }
   });
 
   /* ---------- keyboard shortcuts (single keys, when nothing is being typed) ---------- */
@@ -9945,6 +10366,7 @@
       "#dictCard .trline .acts{margin:6px 0 0;}",
       "#dictCard .tr-offer{margin:8px 0 2px; padding:8px 10px; border:1px solid var(--line); border-radius:10px;}",
       "#dictCard .tr-offer .acts[hidden]{display:none;}",
+      "#dictCard .tr-offer progress{display:block; width:100%; height:6px; margin:6px 0 0; accent-color:var(--accent);}",
       /* simpler: how plain to make it, then the plainer text with each change dotted in the
          accent colour and a tap-to-show note */
       "#dictCard .lvl{margin:0 0 12px;}",
@@ -10701,8 +11123,8 @@
       Promise.all([withWords(words.concat(extra)), need(["explain"])]).then(function(){
         if (!cur || cur.gen !== my) return;
         var r = window.llExplain.explain(sentence, find, window.llExplain.rank);
-        box.innerHTML = renderExplain(r, sentence) + renderKeywords(r) +
-          (navigator.onLine ? '' : '<div class="note">Offline — explained with the built-in dictionary only.</div>');
+        /* no word about being offline: the explainer only ever uses the built-in dictionary */
+        box.innerHTML = renderExplain(r, sentence) + renderKeywords(r);
         wireStyle(r, sentence);
       }).catch(function(err){
         console.error(err);
@@ -10846,8 +11268,7 @@
       h += esc(out.slice(pos)) + '</div>' +
            '<div class="note" id="simpSum">' + esc(simpleSummary(r.changes, r.level || simpLevel())) + '</div>' +
            '<div class="acts" id="simpActs">' +
-           ("speechSynthesis" in window ? '<button type="button" class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') + '</div>' +
-           (navigator.onLine ? '' : '<div class="note">Offline — simplified with the built-in dictionary only.</div>');
+           ("speechSynthesis" in window ? '<button type="button" class="act" data-s="read" id="simpRead" aria-pressed="false">Read aloud</button>' : '') + '</div>';
       body.innerHTML = h;
       cur.simple = out;
       body.addEventListener("click", function(e){
@@ -11221,7 +11642,7 @@
         '<div class="rowline"><label id="trViewL">Translated book</label><div class="chips seg" role="radiogroup" aria-labelledby="trViewL" id="trViewChips">' +
           '<button type="button" class="chip" role="radio" aria-checked="false" data-trview="only">Translation only</button>' +
           '<button type="button" class="chip" role="radio" aria-checked="false" data-trview="both">Both</button></div></div>' +
-        '<p class="hint" id="trViewHint">Translate book (in the menu) translates the whole book. Translation only shows the translation in place of the original — tap or hold a paragraph to see its original; Both shows the translation under each paragraph.</p>' +
+        '<p class="hint" id="trViewHint">Translate book (in the menu) translates the whole book. Translation only shows the translation in place of the original — tap or hold a paragraph to see its original; Both shows the translation under each paragraph. Read aloud reads the original, so choose Both to follow it.</p>' +
         '<div class="hint" id="trHint">Tap a word or select a sentence and its translation is in the card.</div>';
       sheet.appendChild(tg);
       var trTo = tg.querySelector("#trLang"), trFrom = tg.querySelector("#trFrom");
@@ -11291,7 +11712,9 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, Dim: Dim, Eink: Eink, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
+  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, Dim: Dim, Eink: Eink, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset,
+                 /* Pages flow: lay the columns out again after the text changed, landing on the same text (translate.js) */
+                 relayoutPages: function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); } };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;

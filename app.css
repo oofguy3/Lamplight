@@ -352,6 +352,7 @@
   #weightNote{flex:0 0 100%; margin-left:100px;}
   #weightNote[hidden]{display:none;}
   .phint{font-size:0.75rem; color:var(--muted); margin:-4px 0 2px;}
+  #dimTimes[hidden], #qDimHint[hidden]{display:none;}
   /* touch: 44px rows and 40px chips (44 inside a 3px-padded segment would make the pill 52px) */
   @media (pointer: coarse){
     .rowline{min-height:44px;}
@@ -1173,7 +1174,7 @@
   /* the engine rows under the pair: the ElevenLabs rows grey out while the device voice is chosen */
   .tts-panel .subgroup{display:grid; gap:12px;}
   .tts-panel .subgroup.dim{opacity:.45; pointer-events:none;}
-  .tts-panel .rowline[hidden], .tts-panel .subgroup[hidden], .tts-panel .hint[hidden]{display:none;}
+  .tts-panel .rowline[hidden], .tts-panel .subgroup[hidden], .tts-panel .hint[hidden], .tts-panel .group[hidden], #side .side-foot #ttsSample[hidden]{display:none;}
   .tts-panel .rowline .sel{flex:1 1 140px; min-width:0; max-width:100%;}
   /* natural voices: the download / ready row, its progress bar, and the audio kept on the device */
   .tts-panel .k-state{font-size:0.8125rem; color:var(--muted); flex:1 1 auto; min-width:0; line-height:1.4;}
@@ -1431,6 +1432,10 @@
   /* the one-time offer of e-ink mode (Eink in app.js): the update offer's shape, over it if both show */
   #einkToast{z-index:72; padding:8px 8px 8px 14px; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
   #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 52px + var(--updateH, 0px)); padding:8px 8px 8px 14px; font-variant-numeric:tabular-nums;}
+  /* the "Finished" card (Journal in app.js) takes the foot of the page: the pill and the toasts sit above it meanwhile,
+     so its date, Not now and Save stay in reach (--finishH: the card's height, set while it is up) */
+  body.fin-on #trStatus{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
+  body.fin-on #toast, body.fin-on #einkToast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
   #trStatus.on{display:flex;}
   #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   /* their buttons are chips */
@@ -1569,6 +1574,8 @@
     background-image:none !important; -webkit-mask:none !important; mask:none !important; border-width:1px !important;
   }
   body.eink #warmth, body.eink #dim{display:none !important;}
+  /* a chosen star keeps no hover tile (a touch leaves :hover on the last thing tapped) */
+  body.eink .jr-star:hover{background:transparent !important;}
   /* the scrims let the page show as it is */
   body.eink #popScrim, body.eink #moreScrim, body.eink #sideScrim, body.eink #dictScrim, body.eink #ruler .rt, body.eink #ruler .rb,
   body.eink.dragging::after{background:transparent !important;}
@@ -1657,13 +1664,17 @@
   /* ---------- focus reading: the first letters of each word in bold (Focus in app.js); the
      bold is #doc b's weight, and a printout is plain text again ---------- */
   #doc b.ll-focus{font-weight:var(--fwb);}
+  /* a plain-text file's paragraphs, cut into chunks to be bolded one at a time, are blocks: they already end at a line
+     break, so nothing moves, but thousands of inline spans (and their bold starts) in the file's one big paragraph made
+     every relayout take the whole book at once — in Pages flow over a minute for a novel */
+  #doc span.ll-fchunk{display:block;}
   .rowline.dim-row .seg{opacity:.62;}
   @media print{ #doc b.ll-focus{font-weight:inherit;} }
 
   /* ---------- "Previously…": the recap card over the top of the text (Recap in app.js). It is never
      part of #doc, so the text and its offsets stay as they are ---------- */
   #recap{
-    display:none; position:fixed; z-index:26; left:0; right:0; margin:0 auto; top:calc(var(--headH, 56px) + 10px);
+    display:none; position:fixed; z-index:27; left:0; right:0; margin:0 auto; top:calc(var(--headH, 56px) + 10px);
     width:min(560px, calc(100% - 24px)); max-height:min(64vh, 540px); overflow-y:auto; overscroll-behavior:contain;
     background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.22);
     padding:10px 14px 14px 16px; font-family:var(--ui-font);
@@ -1698,6 +1709,8 @@
   .rsvp-top{width:100%; max-width:920px; display:flex; align-items:center; gap:12px; min-height:48px;}
   .rsvp-title{font-family:var(--reader-font); font-size:1.0625rem;}
   .rsvp-where{flex:1; min-width:0; text-align:right; font-size:0.75rem; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  /* a phone: the time left may take two lines rather than lose its end */
+  @media (max-width: 420px){ .rsvp-where{white-space:normal; line-height:1.3;} }
   .rsvp-x{flex:none; width:44px; height:44px; display:flex; align-items:center; justify-content:center; padding:0; border:0; border-radius:10px; background:transparent; color:var(--muted); cursor:pointer;}
   .rsvp-x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}
   .rsvp-x svg{width:20px; height:20px;}

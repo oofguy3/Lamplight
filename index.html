@@ -107,6 +107,7 @@
       <svg class="ricon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
       <label for="qDimLevel">Dim</label><input type="range" id="qDimLevel" min="0" max="85" step="1" value="40"><span class="val" id="qDimV">40 %</span>
     </div>
+    <div class="phint" id="qDimHint" hidden></div>
     <div class="prow"><label class="check"><input type="checkbox" role="switch" id="qEink" aria-describedby="einkHint">E-ink mode</label></div>
     <button type="button" class="pop-link" id="themeMore">All themes and the editor…<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   </div>
@@ -163,6 +164,8 @@
       </div>
       <div class="hint" id="dimHint">Darker than your phone's lowest brightness, for reading in bed.</div>
       <div class="hint" id="dimNightHint" hidden></div>
+      <!-- the night window's hours (the same as Auto › By time's), here while "Only at night" is on and By time is not -->
+      <div class="rowline" id="dimTimes" hidden><label for="dimFrom">Night from</label><input type="time" id="dimFrom" class="sel" value="21:00"><label for="dimTo">until</label><input type="time" id="dimTo" class="sel" value="07:00"></div>
       <div id="customRow" class="card">
         <div class="cst-head">
           <div class="cst-name" id="cName">Custom</div>

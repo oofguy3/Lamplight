@@ -85,7 +85,10 @@ const goalToasts = (page) => page.evaluate(() => window.__toasts.filter((t) => /
   await page.clock.runFor(15000);
   s = await snap(page); t = s.days[today];
   R.check("reaching the end marks the book finished", s.books[id].finished === true, JSON.stringify(s.books[id]));
-  /* books finished are counted from the reading journal: the "Finished" card is up (eleven minutes read), and saved */
+  /* books finished are counted from the reading journal: the "Finished" card (eleven minutes read) comes up once the reader
+     has had time for the last screen, or goes on past the end (a wheel down there), and is saved */
+  await page.evaluate(() => window.dispatchEvent(new WheelEvent("wheel", { deltaY: 120 })));
+  await page.waitForTimeout(50);
   R.check("the Finished card comes up at the end", !!(await page.$("#finish.on")));
   await page.click("#finSave");
   R.check("saving puts the book in the reading journal", (await page.evaluate(() => window.llJournal.entries())).length === 1);

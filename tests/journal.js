@@ -53,7 +53,20 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await scrollTo(page, 0, 1000);
   await read(page, 14);
   R.check("no card while reading in the middle", !(await cardOn(page)));
+  /* a jump to the end (here a search hit in the last paragraph) is not reading to it */
+  await page.keyboard.press("/");
+  await page.fill("#findInput", "puddles glitter");
+  await page.clock.runFor(400); await page.waitForTimeout(100);
+  await page.click("#findPrev");                   /* from the first match back round to the last */
+  await page.clock.runFor(100);
+  await page.keyboard.press("Escape");
+  await page.clock.runFor(95000); await page.waitForTimeout(100);
+  st = await page.evaluate(() => ({ frac: window.scrollY / (document.documentElement.scrollHeight - innerHeight), card: !!document.querySelector("#finish.on") }));
+  R.check("a search hit at the end is a jump: no card there", st.frac > 0.98 && !st.card, JSON.stringify(st));
+  await scrollTo(page, 200, 1000);
   await scrollTo(page, 1e6);
+  R.check("reaching the end, the card waits while the last screen is read", !(await cardOn(page)));
+  await page.clock.runFor(95000); await page.waitForTimeout(100);
   R.check("reaching the end after a few minutes of reading shows the card", await cardOn(page));
   st = await page.evaluate(() => ({ focusIn: document.getElementById("finish").contains(document.activeElement),
     live: document.querySelector(".recap-live") ? Array.from(document.querySelectorAll(".recap-live")).map((x) => x.textContent).join("") : "",
@@ -169,8 +182,16 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   R.check("a book opened at its end shows no card", !(await cardOn(page)));
   await page.evaluate(() => { window.scrollBy(0, -400); window.dispatchEvent(new Event("scroll")); });
   await page.clock.runFor(1000);
-  await scrollTo(page, 1e6, 1000);
-  R.check("leaving the end and coming back to it shows the card", await cardOn(page));
+  await scrollTo(page, 1e6, 2500);
+  R.check("coming back to the end: no card at once", !(await cardOn(page)));
+  /* a swipe on past the end, a moment later: done reading, the card now */
+  await page.evaluate(() => {
+    const t = (y) => new Touch({ identifier: 1, target: document.body, clientX: 200, clientY: y });
+    window.dispatchEvent(new TouchEvent("touchstart", { touches: [t(500)] }));
+    window.dispatchEvent(new TouchEvent("touchmove", { touches: [t(400)] }));
+  });
+  await page.clock.runFor(100); await page.waitForTimeout(100);
+  R.check("leaving the end and coming back to it shows the card (a swipe on past the end)", await cardOn(page));
   R.check("an EPUB's title and author", await page.$eval("#finBook", (e) => e.textContent) === "The Lamp · A. Reader");
   await page.click("#finish .jr-star[data-star='3']");
   await page.click("#finish .jr-star[data-star='3']");
@@ -185,9 +206,11 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await scrollTo(page, 0, 1000);
   await read(page, 14);
   await scrollTo(page, 1e6);
+  await page.clock.runFor(95000); await page.waitForTimeout(100);
   R.check("a re-read brings the card back", await cardOn(page));
   await page.click("#finLater");
-  R.check("Not now saves nothing", (await entries(page)).length === 1 && !(await cardOn(page)));
+  st = await page.evaluate(() => (document.getElementById("toast") || {}).textContent || "");
+  R.check("Not now saves nothing, and says where to add it later", (await entries(page)).length === 1 && !(await cardOn(page)) && /Mark as finished/.test(st), st);
   await page.evaluate(() => window.llJournal.openCard());
   await page.click("#finSave");
   es = await entries(page);
@@ -215,8 +238,13 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await page.keyboard.press("p"); await page.waitForTimeout(500);
   for (let i = 0; i < 14; i++){ await page.mouse.move(100 + i, 100); await page.clock.runFor(15000); }
   R.check("PDF: not on the first page", !(await cardOn(page)));
-  await page.keyboard.press("End"); await page.waitForTimeout(600); await page.clock.runFor(1500); await page.waitForTimeout(100);
-  R.check("PDF in Pages flow: the last page shows the card", await cardOn(page));
+  await page.keyboard.press("End"); await page.waitForTimeout(600); await page.clock.runFor(95000); await page.waitForTimeout(100);
+  R.check("PDF: End is a jump, and the last page reached that way shows no card", !(await cardOn(page)));
+  await page.keyboard.press("ArrowLeft"); await page.waitForTimeout(400); await page.clock.runFor(1500);
+  await page.keyboard.press("ArrowRight"); await page.waitForTimeout(400); await page.clock.runFor(2500); await page.waitForTimeout(100);
+  R.check("PDF in Pages flow: turning to the last page, the card waits over it", !(await cardOn(page)));
+  await page.keyboard.press("ArrowRight"); await page.waitForTimeout(300); await page.clock.runFor(100); await page.waitForTimeout(100);
+  R.check("PDF in Pages flow: the last page shows the card (a turn on past it)", await cardOn(page));
   noteErrors(page, "C");
   await C.close();
 

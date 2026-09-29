@@ -294,8 +294,9 @@ const V = {
     R.check("express: headings are slower, lower, 700 ms after", near(ex.heading.rate, 0.9) && near(ex.heading.pitch, 0.95) && ex.heading.pauseAfter === 700, JSON.stringify(ex.heading));
     R.check("express: paragraph end adds 350 ms; ellipsis 500 ms and slower", ex.para.pauseAfter === 610 && ex.dots.pauseAfter === 500 && near(ex.dots.rate, 0.92), JSON.stringify([ex.para, ex.dots]));
     R.check("express: parenthetical, capitals, a cut-off dash", near(ex.paren.pitch, 0.94) && near(ex.paren.volume, 0.9) && near(ex.paren.rate, 1.05) && near(ex.caps.rate, 0.95) && ex.dash.pauseAfter === 0, JSON.stringify([ex.paren, ex.caps, ex.dash]));
-    const wav = await page.evaluate(() => { const d = window.llSpeak.silentWav(), bin = atob(d.split(",")[1]); return { head: d.slice(0, 22), riff: bin.slice(0, 4) + bin.slice(8, 16), len: bin.length, rate: bin.charCodeAt(24) | (bin.charCodeAt(25) << 8), bits: bin.charCodeAt(34), quiet: !/[^\u0000]/.test(bin.slice(44)) }; });
-    R.check("silent loop: a well-formed 8 kHz 16-bit mono WAV of zeros, half a second long", wav.head === "data:audio/wav;base64," && wav.riff === "RIFFWAVEfmt " && wav.len === 8044 && wav.rate === 8000 && wav.bits === 16 && wav.quiet, JSON.stringify(wav));
+    const wav = await page.evaluate(() => { const d = window.llSpeak.silentWav(), bin = atob(d.split(",")[1]); return { head: d.slice(0, 22), riff: bin.slice(0, 4) + bin.slice(8, 16), len: bin.length, rate: bin.charCodeAt(24) | (bin.charCodeAt(25) << 8), bits: bin.charCodeAt(34), quiet: !/[^\u0080]/.test(bin.slice(44)) }; });
+    /* longer than 5 s: Chrome on Android shows no media controls for shorter media */
+    R.check("silent loop: a well-formed 8 kHz 8-bit mono WAV of silence, eight seconds long", wav.head === "data:audio/wav;base64," && wav.riff === "RIFFWAVEfmt " && wav.len === 64044 && wav.rate === 8000 && wav.bits === 8 && wav.quiet, JSON.stringify(wav));
     R.check("pure pieces: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
 

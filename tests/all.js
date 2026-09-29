@@ -5,7 +5,8 @@ const { spawnSync, execSync } = require("child_process");
 const fs = require("fs"), path = require("path");
 
 const DIR = __dirname;
-const SKIP = { "lib.js": 1, "all.js": 1, "make-fixtures.py": 1 };
+/* screenshots.js is a generator, not a test: it rewrites docs/screenshots/*.png (run it on its own when the pictures should change) */
+const SKIP = { "lib.js": 1, "all.js": 1, "make-fixtures.py": 1, "screenshots.js": 1 };
 const files = fs.readdirSync(DIR).filter((f) => /\.js$/.test(f) && !SKIP[f]).sort();
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
 const suites = files.filter((f) => !only || only.test(f));

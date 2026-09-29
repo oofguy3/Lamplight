@@ -36,6 +36,17 @@
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
   function norm(s){ return String(s || "").replace(/\s+/g, " ").trim(); }
   function toast(msg){ if (L.Marks && L.Marks.toast) L.Marks.toast(msg); }
+  /* for screen readers only, and only now and then (a download starting, a quarter of a book done): the lines that
+     change all the time (the pill, the pack's row, the card's offer) are not live regions */
+  var liveEl = null;
+  function say(msg){
+    if (!liveEl){
+      liveEl = document.createElement("div");
+      liveEl.className = "ll-sr"; liveEl.id = "trLive"; liveEl.setAttribute("aria-live", "polite");
+      document.body.appendChild(liveEl);
+    }
+    liveEl.textContent = msg;
+  }
   function online(){ return navigator.onLine !== false; }
   function noop(){}
   /* Library.tx hands back the request itself when a get() found nothing */
@@ -143,9 +154,12 @@
 
   /* ---------- engine 1: the Dutch ↔ English pack (workers/mt-worker.js) ----------
      One worker, one direction at a time; one paragraph per message, a tapped word or sentence ahead of the
-     book's paragraphs. The worker is ended after a while idle, and when the other direction is wanted. */
+     book's paragraphs. The worker holds about half a gigabyte once it has translated anything, so it is ended
+     after half a minute idle, at once when the page is hidden with nothing to do (a phone kills the background
+     tab that holds the most memory first), and when the other direction is wanted. Starting it again takes
+     about a second. */
   var Pack = (function(){
-    var CACHE = "bergamot-models", IDLE_MS = 120000, MB = 50;
+    var CACHE = "bergamot-models", IDLE_MS = 30000, MB = 50;
     var FILES = ["vendor/bergamot/bergamot-translator-worker.js", "vendor/bergamot/bergamot-translator-worker.wasm",
                  "models/bergamot/vocab.nlen.spm.gz", "models/bergamot/nlen/model.nlen.intgemm.alphas.bin.gz",
                  "models/bergamot/ennl/model.ennl.intgemm.alphas.bin.gz"];
@@ -195,8 +209,13 @@
     }
     function sleepSoon(){
       clearTimeout(idle);
-      idle = setTimeout(function(){ if (!cur && !jobs.length && !dl) end(); }, IDLE_MS);
+      idle = setTimeout(function(){ if (!cur && !jobs.length && !dl) end(); }, document.visibilityState === "hidden" ? 0 : IDLE_MS);
     }
+    /* the reader switched away: nothing waits (a book's run rests while the page is hidden), so the memory goes now;
+       a paragraph still under way ends it when it is done (sleepSoon above) */
+    document.addEventListener("visibilitychange", function(){
+      if (document.visibilityState === "hidden" && w && !cur && !jobs.length && !dl) end();
+    });
     function fatalErr(msg){ var e = new Error(msg); e.fatal = true; return e; }
     /* the pack cannot run here: everything waiting goes back to the caller, which moves on to the next engine */
     function fail(msg){
@@ -459,7 +478,9 @@
     }
     var s = Pack.state;
     if (!Pack.supported()){ show("Dutch ↔ English: this browser can’t run the pack (it needs WebAssembly SIMD — Chrome, Edge, Firefox or Safari 16.4 and newer)", false, false, -1); return; }
-    if (s.dl !== null){ var pct = Math.round(s.dl * 100); show("Downloading Dutch ↔ English… " + pct + " %", false, false, pct); return; }
+    /* #mtState is a live region: its words change when the state does (downloading, then ready); how far the
+       download has come is the bar's (#mtProgress), not a new line to read out at every percent */
+    if (s.dl !== null){ show("Downloading Dutch ↔ English (≈ " + Pack.mb + " MB)…", false, false, Math.round(s.dl * 100)); return; }
     Pack.check().then(function(have){
       if (Pack.state.dl !== null) return;
       if (have && Pack.state.broken) show("Dutch ↔ English: on this device, but it couldn’t run here (" + Pack.state.broken + ") — the other translators stand in", false, true, -1);
@@ -615,12 +636,25 @@
       el.appendChild(o);
     });
   }
+  /* the card's translation line is a live region: the offer's words change with the state, and how far the download
+     has come is shown by a bar, which is not read out at every percent */
   function syncOffers(){
     Array.prototype.forEach.call(document.querySelectorAll("#dictCard .tr-offer"), function(o){
-      var msg = o.querySelector(".tr-offer-msg"), acts = o.querySelector(".acts"), s = Pack.state;
-      if (s.dl !== null){ msg.textContent = "Downloading Dutch ↔ English… " + Math.round(s.dl * 100) + " %"; if (acts) acts.hidden = true; }
-      else if (s.have){ msg.textContent = "Dutch ↔ English is ready — instant, and offline."; if (acts) acts.hidden = true; }
-      else if (s.err){ msg.textContent = "The download stopped (" + s.err + ")."; if (acts) acts.hidden = false; }
+      var msg = o.querySelector(".tr-offer-msg"), acts = o.querySelector(".acts"), bar = o.querySelector("progress"), s = Pack.state, text = null;
+      if (s.dl !== null){
+        text = "Downloading Dutch ↔ English…";
+        if (!bar){
+          bar = document.createElement("progress"); bar.max = 100; bar.setAttribute("aria-label", "Downloading Dutch ↔ English");
+          msg.parentNode.insertBefore(bar, msg.nextSibling);
+        }
+        bar.value = Math.round(s.dl * 100);
+        if (acts) acts.hidden = true;
+      } else {
+        if (bar) bar.parentNode.removeChild(bar);
+        if (s.have){ text = "Dutch ↔ English is ready — instant, and offline."; if (acts) acts.hidden = true; }
+        else if (s.err){ text = "The download stopped (" + s.err + ")."; if (acts) acts.hidden = false; }
+      }
+      if (text !== null && msg.textContent !== text) msg.textContent = text;
     });
   }
 
@@ -912,7 +946,7 @@
 
   var page = { on: false, running: false, gen: 0, key: null, docKey: null, pair: null, blocks: null, hosts: [], missing: [],
                done: 0, total: 0, engine: null, record: null, download: null, job: null, held: false, failed: {},
-               rate: null, leftChars: 0, cur: 0, curAt: 0 };
+               rate: null, leftChars: 0, cur: 0, curAt: 0, etaMin: null, etaAt: 0, said: null };
   function docId(){
     var id = L.Library && L.Library.currentId ? L.Library.currentId() : null;
     return id || ("t-" + (($("#fname") || {}).textContent || "") + "-" + (L.Anchor ? L.Anchor.textLength() : 0));
@@ -922,19 +956,25 @@
 
   /* ---- the status pill: how far, and how long is left ---- */
   var statusEl = null;
+  /* the minutes left, worked out again after every paragraph, swing back and forth by one: the number shown only goes
+     down, and up again only after half a minute */
   function eta(){
     var r = page.rate;
     if (!r || r.ms < 2500 || r.chars < 300 || !page.leftChars) return "";
-    var min = Math.round(page.leftChars / (r.chars / r.ms) / 60000);
+    var min = Math.round(page.leftChars / (r.chars / r.ms) / 60000), now = Date.now();
+    if (page.etaMin === null || min < page.etaMin || now - page.etaAt > 30000){ page.etaMin = min; page.etaAt = now; }
+    min = page.etaMin;
     if (min < 1) return "less than a minute left";
     if (min < 90) return "about " + min + " min left";
     var h = Math.floor(min / 60), m = Math.round((min - h * 60) / 5) * 5;
     return "about " + h + " h" + (m ? " " + m + " min" : "") + " left";
   }
+  /* not a live region: its text changes with every paragraph. The start, a pause and the end are toasts (which are
+     read out), and a screen reader hears each quarter of the book as it is done (say) */
   function status(){
     if (!statusEl){
       statusEl = document.createElement("div");
-      statusEl.id = "trStatus"; statusEl.setAttribute("role", "status"); statusEl.setAttribute("aria-live", "polite");
+      statusEl.id = "trStatus"; statusEl.setAttribute("role", "group"); statusEl.setAttribute("aria-label", "Translation");
       statusEl.innerHTML = '<span class="tr-msg"></span><button type="button" class="tr-x">Pause</button>';
       statusEl.querySelector(".tr-x").addEventListener("click", cancel);
       document.body.appendChild(statusEl);
@@ -942,8 +982,10 @@
     var msg;
     if (page.download !== null && page.download !== undefined) msg = "Downloading the " + nameOf(page.pair.split("|")[1]) + " translator… " + Math.round(page.download * 100) + " %";
     else {
-      var left = eta();
-      msg = "Translating… " + (page.total ? Math.floor(page.done / page.total * 100) : 0) + " %" + (left ? " · " + left : "");
+      var left = eta(), pct = page.total ? Math.floor(page.done / page.total * 100) : 0, q = Math.floor(pct / 25);
+      msg = "Translating… " + pct + " %" + (left ? " · " + left : "");
+      if (page.said === null || page.said === undefined) page.said = q;
+      else if (q > page.said && q < 4){ page.said = q; say("Translation " + (q * 25) + " % done"); }
     }
     var m = statusEl.querySelector(".tr-msg");
     if (m.textContent !== msg) m.textContent = msg;
@@ -956,10 +998,61 @@
   var layoutTimer = null, saveTimer = null;
   function relayout(){
     if (L.Anchor) L.Anchor.invalidate();
-    /* Pages flow lays the columns out again on a resize; Scroll flow just grows */
-    if (L.state && L.state.mode === "doc" && L.state.flow === "pages"){ try { window.dispatchEvent(new Event("resize")); } catch(_){} }
+    /* Pages flow lays the columns out again (app.js, landing on the same text); Scroll flow just grows. Not through
+       a made-up resize: the other resize handlers (the selection's pill, the bars) have nothing to do then */
+    if (L.state && L.state.mode === "doc" && L.state.flow === "pages"){
+      if (typeof L.relayoutPages === "function"){ try { L.relayoutPages(); } catch(_){} }
+      else { try { window.dispatchEvent(new Event("resize")); } catch(_){} }
+    }
   }
   function relayoutSoon(){ clearTimeout(layoutTimer); layoutTimer = setTimeout(relayout, 250); }
+
+  /* ---- what the engine sends back goes onto the page a few paragraphs at a time ----
+     Putting a translation in costs a layout of what follows it: in Pages flow of the rest of the book (its columns
+     are laid out again), and in a plain-text file of the rest of its one big text node, in either flow — a tenth of
+     a second or more each on a long book, several times that on a phone. So arrivals wait and go in together, in one
+     pass with one layout (the plain-text cuts made at once by presplit, as for a book reopened translated): soon when
+     one is on the screen (the paragraph being read and the next few) or nothing is shown yet, else about nine
+     times the last pass's cost after it, so that this work takes a tenth of the main thread at most (a few tenths of
+     a second apart for an HTML book on a computer, up to eight seconds for a long plain-text book in Pages flow on
+     a phone). What arrived is in the saved record at once; only its place on the page waits. */
+  var arrived = [], flushTimer = null, flushDue = 0, flushAt = 0, flushCost = 0, flushSeq = 0;
+  function onScreen(i){ var c = page.cur || 0; return i >= c && i <= c + 4; }
+  function schedule(ms){
+    var due = Date.now() + ms;
+    if (flushTimer && flushDue <= due) return;
+    clearTimeout(flushTimer); flushDue = due; flushTimer = setTimeout(flush, ms);
+  }
+  function arrive(i, text, lang){
+    arrived.push({ i: i, text: text, lang: lang, gen: page.gen });
+    var soon = !page.hosts.length || arrived.some(function(a){ return onScreen(a.i); });
+    /* on the screen: at once, unless the last pass is not long over (what arrives meanwhile goes in with it) */
+    schedule(Math.max(soon ? 120 : 250, flushAt + (soon ? flushCost * 2 : Math.min(8000, Math.max(400, flushCost * 9))) - Date.now()));
+  }
+  function dropArrived(){ arrived = []; clearTimeout(flushTimer); flushTimer = null; flushCost = 0; flushAt = 0; flushSeq++; }
+  function flush(){
+    clearTimeout(flushTimer); flushTimer = null;
+    var list = arrived; arrived = [];
+    if (!page.on || !page.blocks) return;
+    var by = {};
+    list.forEach(function(a){ if (a.gen === page.gen && page.blocks[a.i]) by[a.i] = a; });   /* the last word on a block wins */
+    list = Object.keys(by).map(function(k){ return by[k]; }).sort(function(a, b){ return a.i - b.i; });
+    if (!list.length) return;
+    var t0 = Date.now(), fresh = list.filter(function(a){ var b = page.blocks[a.i]; return !(b.host && b.host.isConnected); });
+    function blockOf(a){ return page.blocks[a.i]; }
+    presplit(fresh.filter(function(a){ return a.text !== null; }).map(blockOf), view() === "only");
+    presplit(fresh.filter(function(a){ return a.text === null; }).map(blockOf), false);
+    var cur = {};
+    list.forEach(function(a){ host(page.blocks[a.i], a.text || "", a.lang, a.text === null, cur); });
+    relayout();
+    var seq = ++flushSeq;
+    flushAt = Date.now(); flushCost = Math.max(flushCost, flushAt - t0);      /* until the frame has said */
+    /* the frame that follows counts too: the layout, and in Pages flow the paint properties of every column, which
+       cost more than the pass itself */
+    if (window.requestAnimationFrame) requestAnimationFrame(function(){
+      setTimeout(function(){ if (seq === flushSeq) flushCost = Date.now() - t0; }, 0);
+    });
+  }
   function save(){
     clearTimeout(saveTimer); saveTimer = null;
     if (!page.record || !page.key) return Promise.resolve();
@@ -1042,7 +1135,7 @@
         return;
       }
       page.running = true; page.held = false; page.failed = {}; page.engine = p.engine.id; page.download = p.status === "download" ? 0 : null;
-      page.rate = { chars: 0, ms: 0 }; page.curAt = 0;
+      page.rate = { chars: 0, ms: 0 }; page.curAt = 0; page.etaMin = null; page.etaAt = 0; page.said = null;
       page.record.job = "on"; saveSoon();
       status();
       if (!page.done) toast("Translating into " + nameOf(t) + "…");
@@ -1073,13 +1166,13 @@
         page.download = null;
         if (typeof text === "string" && text.trim()){
           page.record.blocks[String(i)] = text;
-          host(b, text, job.t);
+          arrive(i, text, job.t);
           page.done++;
           page.leftChars = Math.max(0, page.leftChars - b.text.length);
           page.missing = page.missing.filter(function(x){ return x !== i; });
-        } else { host(b, "", job.t, true); page.failed[i] = true; }
+        } else { arrive(i, null, job.t); page.failed[i] = true; }
         if (page.running) status();
-        relayoutSoon(); saveSoon();
+        saveSoon();
       }
     };
     job.busy = true;
@@ -1095,6 +1188,7 @@
     page.job = null;
     if (job.gen !== page.gen){ job.resolve(); return; }
     var cancelled = !page.running;
+    flush();                                            /* what arrived goes onto the page now */
     page.running = false; page.held = false; page.download = null;
     if (page.record) page.record.job = page.missing.length ? "paused" : "done";
     hideStatus(); save();
@@ -1109,6 +1203,7 @@
   }
   function cancel(){ if (page.running){ page.running = false; hideStatus(); if (page.job && !page.job.busy) step(page.job); } }
   function removeHosts(){
+    dropArrived();
     var parents = [];
     (page.blocks || []).forEach(function(b){ if (showSrc(b) && parents.indexOf(b.el) < 0) parents.push(b.el); });
     page.hosts.forEach(function(h){

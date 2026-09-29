@@ -32,9 +32,10 @@
     { id: "waves",  name: "Waves",        icon: "M3 9c2 0 2-2 4.5-2S10 9 12 9s2-2 4.5-2S19 9 21 9 | M3 15c2 0 2-2 4.5-2S10 15 12 15s2-2 4.5-2 2.5 2 4.5 2" }
   ];
   /* each sound's trim, so that equal sliders sound about equally loud: measured with an OfflineAudioContext (measure()
-     below) and set a little higher for the low, brown-noise ones (fire, waves) than for the bright ones (crickets, café),
-     which the ear hears as louder at the same level */
-  var TRIM = { rain: 2.05, fire: 1.45, cafe: 3.2, forest: 2.2, waves: 1.45 };
+     below) and set a little higher for the low, brown-noise ones (fire, waves) than for the bright ones (café), which the
+     ear hears as louder at the same level; forest night checked again by perceived loudness (K-weighted, as BS.1770),
+     which put it about 3.5 dB under rain at 2.2 */
+  var TRIM = { rain: 2.05, fire: 1.45, cafe: 3.2, forest: 3.3, waves: 1.45 };
   var ids = SOUNDS.map(function(s){ return s.id; });
   function clamp(v, lo, hi, d){ v = typeof v === "number" && isFinite(v) ? v : d; return Math.max(lo, Math.min(hi, Math.round(v))); }
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
@@ -164,6 +165,9 @@
     return m;
   }
   function filter(c, type, freq, q, dest){ var f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; if (q) f.Q.value = q; f.connect(dest); return f; }
+  /* a filter whose frequency a slow signal moves: its coefficients once per 128 samples, not every sample (an audio-rate
+     input makes the parameter a-rate, and the sweep is far too slow to hear the difference); older browsers throw */
+  function krate(f){ try { f.frequency.automationRate = "k-rate"; } catch(_){} return f; }
   function gain(c, v, dest){ var g = c.createGain(); g.gain.value = v; if (dest) g.connect(dest); return g; }
   /* a slow sine that moves a parameter up and down around the value it has */
   function lfo(c, hz, depth, param, srcs){
@@ -263,7 +267,7 @@
       });
       var cg = gain(c, 0.2, out);
       srcs.push(loop(c, crick, 1, 0, cg), loop(c, crick, 0.93, 2.3, gain(c, 0.45, cg)));
-      var wind = gain(c, 0.3, out), bp = filter(c, "bandpass", 480, 0.6, wind);
+      var wind = gain(c, 0.3, out), bp = krate(filter(c, "bandpass", 480, 0.6, wind));
       wide(c, noise(c, "pink"), bp, 1, srcs);
       lfo(c, 0.061, 0.14, wind.gain, srcs); lfo(c, 0.137, 0.08, wind.gain, srcs); lfo(c, 0.05, 160, bp.frequency, srcs);
       wide(c, noise(c, "brown"), filter(c, "lowpass", 180, 0.5, gain(c, 0.1, out)), 1, srcs);
@@ -284,7 +288,7 @@
           t += p;
         });
       });
-      var body = gain(c, 0.12, out), lp = filter(c, "lowpass", 320, 0.7, body);
+      var body = gain(c, 0.12, out), lp = krate(filter(c, "lowpass", 320, 0.7, body));
       wide(c, noise(c, "brown"), lp, 1, srcs);
       drive(c, swell, body.gain, 0.8, 1, 0, srcs);
       drive(c, swell, lp.frequency, 1500, 1, 0, srcs);
@@ -300,15 +304,22 @@
      ============================================================ */
   var ctx = null, bus = null, fadeG = null, masterG = null, layers = {}, playing = false, downT = null, ticker = null, armed = false;
   function vol(v){ return Math.pow(v / 100, 2); }
+  /* the last stage: a limiter (a fast, hard compressor: at the chips' levels nothing reaches it, a loud blend is held
+     well under full scale), then a fixed step down. A compressor adds make-up gain of its own (about 6 dB here); the
+     step takes most of it back, so a sound plays about as loud as it did through the old, gentler stage, whose make-up
+     gain let two sounds at 100 % clip */
+  function limiter(c, dest){
+    var comp = c.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.knee.value = 8; comp.ratio.value = 20; comp.attack.value = 0.003; comp.release.value = 0.25;
+    comp.connect(gain(c, 0.67, dest));
+    return comp;
+  }
   function ensure(){
     if (ctx) return ctx;
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     try { ctx = new AC({ latencyHint: "playback" }); } catch(_){ try { ctx = new AC(); } catch(__){ return null; } }
-    var comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -12; comp.knee.value = 8; comp.ratio.value = 6; comp.attack.value = 0.02; comp.release.value = 0.4;
-    comp.connect(ctx.destination);
-    masterG = gain(ctx, vol(cfg.master), comp);
+    masterG = gain(ctx, vol(cfg.master), limiter(ctx, ctx.destination));
     fadeG = gain(ctx, 0, masterG);
     bus = gain(ctx, 1, fadeG);
     return ctx;
@@ -347,10 +358,10 @@
       }
     });
     masterG.gain.setTargetAtTime(vol(cfg.master), ctx.currentTime, 0.05);
-    /* read aloud speaking: the sounds step back a little */
+    /* read aloud (or the recap read out) speaking: the sounds step back a little */
     bus.gain.setTargetAtTime(speaking() ? 0.65 : 1, ctx.currentTime, 0.3);
   }
-  function speaking(){ return !!(Speak && Speak.isPlaying && Speak.isPlaying()); }
+  function speaking(){ return !!((Speak && Speak.isPlaying && Speak.isPlaying()) || (window.llRecap && window.llRecap.speaking && window.llRecap.speaking())); }
   function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
   function wanted(){ return cfg.on && playingIds().length > 0 && docOpen() && (document.visibilityState !== "hidden" || speaking()); }
   /* the one place that starts and stops: called on every change of setting, page, book or read aloud */
@@ -436,13 +447,15 @@
       return '<div class="rowline"><label for="snd-' + s.id + '">' + esc(s.name) + '</label><input type="range" id="snd-' + s.id + '" data-mix="' + s.id + '" min="0" max="100" step="1">' +
         '<span class="val" id="snd-' + s.id + 'V"></span></div>';
     }).join("");
+    /* on a phone the sheet shows about its first 580 px: the switch, the chips, the volume and what is playing (or waiting
+       for a tap) come first, the blend and the notes after */
     body.innerHTML = '<div class="snd-panel">' +
       '<div class="rowline"><label class="check"><input type="checkbox" id="sndOn">Play background sounds</label></div>' +
       '<div class="chips snd-chips" id="sndChips" role="group" aria-label="Play one sound on its own">' + chips + '</div>' +
-      '<p class="hint">Tap a sound to play it on its own, and again to stop it. The sliders blend several; 0 turns one off.</p>' +
-      '<div class="snd-mix" role="group" aria-labelledby="sndMixL"><div class="label sec" id="sndMixL">Mix</div>' + rows + '</div>' +
       '<div class="rowline"><label for="sndMaster">Volume</label><input type="range" id="sndMaster" min="0" max="100" step="1"><span class="val" id="sndMasterV"></span></div>' +
       '<p class="hint snd-state" id="sndState" aria-live="polite"></p>' +
+      '<div class="snd-mix" role="group" aria-labelledby="sndMixL"><div class="label sec" id="sndMixL">Mix</div>' + rows + '</div>' +
+      '<p class="hint">Tap a sound to play it on its own, and again to stop it. The sliders blend several; 0 turns one off.</p>' +
       '<p class="hint">Made on this device as they play — no recordings, nothing to download. They play while a book is open, under read aloud too, and pause when you leave the page.</p>' +
       '</div>';
     paint(body);
@@ -459,10 +472,12 @@
       var v = cfg.mix[r.dataset.mix];
       if (document.activeElement !== r) r.value = v;
       body.querySelector("#" + r.id + "V").textContent = v ? v + " %" : "off";
+      r.setAttribute("aria-valuetext", v ? v + " %" : "off");
     });
     var m = body.querySelector("#sndMaster");
     if (document.activeElement !== m) m.value = cfg.master;
     body.querySelector("#sndMasterV").textContent = cfg.master + " %";
+    m.setAttribute("aria-valuetext", cfg.master + " %");
     status(body);
   }
   function status(body){

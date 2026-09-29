@@ -32,7 +32,7 @@
   var VOICES_TTL = 24 * 60 * 60 * 1000;
   /* natural voices: each model in its worker, where the browser keeps it, and the clips kept on the device —
      Kokoro ("Best") and Piper ("Fast", about 11 times quicker, so it keeps up with reading on a phone) */
-  var K_KNARR = "ll_kokoro_narrator", KOKORO_MODEL = "kokoro-82m-q8", KOKORO_MB = 95;
+  var K_KNARR = "ll_kokoro_narrator", KOKORO_MODEL = "kokoro-82m-q8", KOKORO_MB = 105;       /* the model and its 28 voice files */
   var KOKORO_CACHES = ["transformers-cache", "kokoro-voices"];    /* Cache Storage: the model files, the voice files */
   var P_NARR = "ll_piper_narrator", PIPER_MODEL = "piper-libritts_r-medium", PIPER_MB = 80;
   var PIPER_CACHES = ["piper-voices"];                              /* Cache Storage: the model and its config */
@@ -42,6 +42,11 @@
   var K_RTF = "ll_kokoro_rtf", K_CPS = "ll_kokoro_cps", K_SLOWTIP = "ll_kokoro_slowtip";
   var P_RTF = "ll_piper_rtf", P_CPS = "ll_piper_cps";
   var FEED_AHEAD = 30 * 60, HOLD_WINDOW = 10 * 60, HOLD_CAP = 90;   /* seconds */
+  /* before read-aloud has been started in a document, only its first minute is made ahead (so the first play starts at
+     once); once it has, half an hour, until reading has been stopped for three minutes */
+  var FEED_LEAD = 60, FEED_LINGER = 3 * 60 * 1000;
+  /* a model's worker (and the few hundred MB it holds) is let go after three minutes with nothing to do */
+  var NAT_IDLE = 3 * 60 * 1000;
 
   /* ============================================================
      1. Who speaks — offline heuristics (no network, no DOM)
@@ -70,28 +75,37 @@
     "roar roars roared chuckle chuckles chuckled giggle giggles giggled snort snorts snorted sneer sneers sneered drawl drawls drawled " +
     "bellow bellows bellowed whine whines whined wail wails wailed beg begs begged boast boasts boasted scoff scoffs scoffed " +
     "croak croaks croaked squeal squeals squealed stutter stutters stuttered persist persists persisted advise advises advised " +
-    "sing sings sang coax coaxes coaxed scold scolds scolded soothe soothes soothed")
+    "sing sings sang coax coaxes coaxed scold scolds scolded soothe soothes soothed " +
+    /* Dutch ("zei Pieter", "vroeg ze", "antwoordde ik"): words English text never has, so English books are not touched */
+    "zei zegt zeiden vroeg vraagt vroegen riep roept riepen antwoordde antwoordt fluisterde fluistert mompelde mompelt zuchtte zucht " +
+    "lachte lacht schreeuwde schreeuwt snauwde snauwt stamelde stamelt herhaalde herhaalt vervolgde vervolgt sprak spreekt bromde bromt " +
+    "gilde snikte grinnikte hijgde smeekte beval beveelt protesteerde protesteert kreunde kreunt jammerde jammert")
     .split(" ").concat(["go on", "goes on", "went on", "cut in", "cuts in", "put in", "puts in", "chime in", "chimes in", "chimed in",
-                        "blurt out", "blurts out", "blurted out", "call out", "calls out", "called out", "cry out", "cries out", "cried out"]);
+                        "blurt out", "blurts out", "blurted out", "call out", "calls out", "called out", "cry out", "cries out", "cried out",
+                        "ging verder", "gaat verder"]);
   VERB_FORMS.sort(function(a, b){ return b.length - a.length; });
   var VERB = "(?:" + VERB_FORMS.join("|") + ")";
   /* “she added”, “he went on”: the same speaker as the line before */
-  var CONT = /^(?:continue|continues|continued|go on|goes on|went on|add|adds|added|resume|resumes|resumed|pursue|pursues|pursued|persist|persists|persisted)$/;
+  var CONT = /^(?:continue|continues|continued|go on|goes on|went on|add|adds|added|resume|resumes|resumed|pursue|pursues|pursued|persist|persists|persisted|vervolgde|vervolgt|ging verder|gaat verder)$/;
   /* titles: the ones that say a man or a woman, and the ones that say neither */
   var TGEN = {};
-  ("mr sir lord uncle father brother king prince duke count baron master messrs").split(" ").forEach(function(t){ TGEN[t] = "male"; });
-  ("mrs miss ms mme mlle lady aunt madam madame dame mother sister queen princess duchess countess baroness mistress").split(" ").forEach(function(t){ TGEN[t] = "female"; });
+  ("mr sir lord uncle father brother king prince duke count baron master messrs meneer oom opa").split(" ").forEach(function(t){ TGEN[t] = "male"; });
+  ("mrs miss ms mme mlle lady aunt madam madame dame mother sister queen princess duchess countess baroness mistress mevrouw juffrouw tante oma").split(" ").forEach(function(t){ TGEN[t] = "female"; });
   /* title words that are also ordinary words ("General Terms", "Master Bedroom"): not enough on their own */
   var TWEAK = { general: 1, major: 1, count: 1, master: 1, judge: 1, king: 1, queen: 1, prince: 1, princess: 1, duke: 1, duchess: 1, countess: 1,
                 baron: 1, baroness: 1, father: 1, mother: 1, sister: 1, brother: 1, mistress: 1, admiral: 1 };
-  var TNORM = { capt: "captain", col: "colonel", lt: "lieutenant", sgt: "sergeant", prof: "professor", rev: "reverend", doctor: "dr" };
+  var TNORM = { capt: "captain", col: "colonel", lt: "lieutenant", sgt: "sergeant", prof: "professor", rev: "reverend", doctor: "dr", dokter: "dr", mijnheer: "meneer" };
+  /* the Dutch ones also in lower case (TITLE_NL), as Dutch writes them in a sentence ("zei mevrouw Jansen") */
   var TITLE_W = "Mr|Mrs|Ms|Mx|Dr|Miss|Mme|Mlle|Messrs|Aunt|Uncle|Captain|Capt|Colonel|Col|Major|General|Admiral|Lieutenant|Lt|Sergeant|Sgt|Inspector|" +
                 "Professor|Prof|Judge|Reverend|Rev|Father|Sister|Brother|Mother|Lord|Lady|Sir|Dame|Madam|Madame|King|Queen|Prince|Princess|Duke|Duchess|" +
-                "Count|Countess|Baron|Baroness|Master|Mistress";
-  var TITLE = "(?:" + TITLE_W + ")\\.?\\s+";
+                "Count|Countess|Baron|Baroness|Master|Mistress|Meneer|Mijnheer|Mevrouw|Juffrouw|Dokter|Tante|Oom|Opa|Oma";
+  var TITLE_NL = "meneer|mijnheer|mevrouw|juffrouw|dokter|tante|oom|opa|oma";      /* never with a full stop: "oom. Straks" is two sentences */
+  var TITLE = "(?:(?:" + TITLE_W + ")\\.?|(?:" + TITLE_NL + "))\\s+";
   /* a capitalised word (McKay, O’Brien, Anne-Marie), ending on a letter */
   var WORD = "[A-Z](?:[a-z\\u00C0-\\u024F'\\u2019-]|[A-Z](?=[a-z]))*[a-z\\u00C0-\\u024F]";
-  var NAME = "((?:" + TITLE + ")?" + WORD + "(?:\\s+" + WORD + "){0,2})";
+  /* "St." belongs to the name it is in ("Lord St. Simon", "Neville St. Clair") */
+  var SAINT = "(?:Ste?\\.\\s+)?";
+  var NAME = "((?:" + TITLE + ")?" + SAINT + WORD + "(?:\\s+" + SAINT + WORD + "){0,2})";
   var ADV = "(?:[a-z]+ly\\s+)?";
   /* who a quote can be said by without a name: “said his wife”, “the old man said”, “said the captain” */
   var NOUNS = {}, NOUN_LIST = [];
@@ -106,6 +120,7 @@
     .forEach(function(w){ NOUNS[w].title = w; });
   NOUNS.doctor.title = "dr";
   ["stranger", "visitor", "newcomer", "voice", "figure"].forEach(function(w){ NOUNS[w].anon = true; });
+  ["friend", "companion"].forEach(function(w){ NOUNS[w].mate = true; });      /* "my companion": in a first-person book, someone in the scene */
   NOUN_LIST.sort(function(a, b){ return b.length - a.length; });
   var ADJS = "old|young|little|elder|eldest|younger|youngest|other|poor|tall|short|big|small|stout|thin|pale|fat|grey|gray|first|second|third|dear|good|kind|" +
              "bearded|elderly|strange|unknown|mysterious|new|same|masked|handsome";
@@ -120,14 +135,20 @@
     "thought|began|held|kept|left|put|set|let|brought|caught|drew|fell|found|told|threw|wore|wrote|shook|spoke|broke|chose|hung|lay|led|meant|met|paid|read|" +
     "rode|rose|sang|slept|struck|swung|taught|tore|woke|bit|blew|built|bought|dug|fled|flung|forgot|froze|grew|heard|hid|hit|hurt|knelt|leant|leapt|lost|rang|" +
     "sank|shut|slid|sprang|stole|stuck|strode|swam|swept|swore|understood|wept|won|drank|ate|fought|sought|spun|crept|dealt|fed|lit|sent|spent|bent|lent|shone|" +
-    "shot|sped|spat|spread|strove|thrust|trod|wound|said|smiled|laughed|nodded|shrugged|frowned|sighed|grinned|glanced|turned|looked|walked|waited)";
-  var PRON_SUBJ = "[Hh]e|[Ss]he|I";
+    "shot|sped|spat|spread|strove|thrust|trod|wound|said|smiled|laughed|nodded|shrugged|frowned|sighed|grinned|glanced|turned|looked|walked|waited|" +
+    /* Dutch, the past tense of the verbs an action beat uses ("Anna fronste.", "Hij schudde zijn hoofd.") */
+    "stond|zat|liep|keek|ging|kwam|zag|nam|gaf|bleef|werd|trok|pakte|sloot|hield|dacht|schudde|fronste|knikte|glimlachte|lachte|zuchtte|legde|" +
+    "vouwde|haalde|draaide|opende|wachtte|zette|stapte|greep|leunde|staarde|zei|vroeg|riep|antwoordde)";
+  var PRON_SUBJ = "[Hh]e|[Ss]he|I|[Hh]ij|[Hh]y|[Zz]ij|[Zz]y|[Zz]e|[Ii]k";
+  /* a subject or tag pronoun as he / she / they / i (Dutch: hij, zij and ze, ik; hy and zy in older spelling) */
+  var PRON_NORM = { hij: "he", hy: "he", zij: "she", zy: "she", ze: "she", ik: "i" };
+  function pronOf(w){ var l = w === "I" ? "i" : String(w).toLowerCase(); return PRON_NORM[l] || l; }
   var RX = {
     nameVerb: new RegExp(NAME + "\\s+" + ADV + "\\b(" + VERB + ")\\b", "g"),
     /* "said Anna", "added little Amy" */
     verbName: new RegExp("\\b(" + VERB + ")\\s+" + ADV + "(?:(?:little|old|young|poor|dear|good|big|small|kind|elder|eldest)\\s+)?" + NAME, "g"),
-    pronVerb: new RegExp("\\b(he|she|they|He|She|They|I)\\s+" + ADV + "\\b(" + VERB + ")\\b", "g"),
-    verbPron: new RegExp("\\b(" + VERB + ")\\s+(he|she|they|I)\\b", "g"),
+    pronVerb: new RegExp("\\b(he|she|they|He|She|They|I|hij|Hij|hy|Hy|zij|Zij|zy|Zy|ze|Ze|ik|Ik)\\s+" + ADV + "\\b(" + VERB + ")\\b", "g"),
+    verbPron: new RegExp("\\b(" + VERB + ")\\s+(he|she|they|I|hij|hy|zij|zy|ze|ik)\\b", "g"),
     descVerb: new RegExp("\\b" + DESC + "\\s+" + ADV + "\\b(" + VERB + ")\\b", "g"),
     verbDesc: new RegExp("\\b(" + VERB + ")\\s+" + ADV + "\\b" + DESC, "g"),
     /* narration that ends by introducing the quote: `Anna said, “` */
@@ -137,16 +158,16 @@
     /* a quote that ends in a full stop (its closing mark may be there or, in a dialogue unit, left out) */
     fullStop: /[.…]["”’»]?$/,
     capital: /^\s*[A-Z]/,
-    title: new RegExp("^(" + TITLE_W + ")(\\.?)\\s+"),
-    male: /\b(he|him|his|himself)\b/gi,
-    female: /\b(she|her|hers|herself)\b/gi,
+    title: new RegExp("^(" + TITLE_W + "|" + TITLE_NL + ")(\\.?)\\s+"),
+    male: /\b(he|him|his|himself|hij|hy|hem)\b/gi,
+    female: /\b(she|her|hers|herself|zij|zy|haar)\b/gi,
     sentenceEnd: /[.!?…]+["”’)]*(?:\s+|$)/g,
     letter: /[A-Za-zÀ-ɏ]/,
     abbrev: /(?:^|[\s"“(])(?:Mr|Mrs|Ms|Mx|Dr|St|Jr|Sr|Prof|Capt|Col|Lt|Sgt|Rev|Mme|Mlle|Messrs)$/,
     /* every name in a stretch of narration */
     names: new RegExp(NAME, "g"),
     /* a sentence's subject and its verb: a description, a pronoun or a name */
-    subject: new RegExp("(?:^|[\\s,;:(\\u2014\\u2013-])(" + DESC + "|" + PRON_SUBJ + "|(?:" + TITLE + ")?" + WORD + "(?:\\s+" + WORD + "){0,2})\\s+" +
+    subject: new RegExp("(?:^|[\\s,;:(\\u2014\\u2013-])(" + DESC + "|" + PRON_SUBJ + "|(?:" + TITLE + ")?" + SAINT + WORD + "(?:\\s+" + SAINT + WORD + "){0,2})\\s+" +
                         "(?:(?:[a-z]+ly|not|never|only|just|still|then|also|now|always|already|again|at once)\\s+)?" + VERBISH + "\\b", "g"),
     /* names addressed in a quote: at a sentence's start (“Tom, wait!”, “Oh, Anna!”) or after a comma (“…, Anna?”) */
     vocStart: new RegExp("(?:^|[.!?\\u2026]\\s+)[^A-Za-z]*(?:(?:[Oo]h|O|[Aa]h|[Ww]ell|[Nn]ow|[Cc]ome|[Yy]es|[Nn]o|[Nn]ay|[Ww]hy|[Ll]ook|[Ll]isten|[Pp]lease|[Hh]ello|[Hh]i|[Hh]ey|" +
@@ -158,9 +179,10 @@
     /* "at Hunsford", "in Gracechurch Street": a place, not a person */
     place: /\b(?:at|in|near|into|towards|toward|from|through|across|inside|outside)\s+(?:the\s+)?$/i,
     /* a chapter or section line (EPUB and DOCX headings come flagged; plain text and PDFs have these) */
-    chapter: new RegExp("^\\s*(?:(?:chapter|book|part|volume|section|act|scene|canto|stave)\\s+(?:[0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|" +
-                        "eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|the\\s+[a-z]+)\\b[^\u201C\u201D\"]{0,70}|" +
-                        "prologue|epilogue|interlude|afterword|foreword)\\s*$", "i"),
+    chapter: new RegExp("^\\s*(?:(?:chapter|book|part|volume|section|act|scene|canto|stave|hoofdstuk|boek|deel)\\s+(?:[0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|" +
+                        "eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|the\\s+[a-z]+|" +
+                        "een|twee|drie|vier|vijf|zes|zeven|acht|negen|tien|elf|twaalf|dertien|veertien|vijftien|twintig|het\\s+[a-z]+)\\b[^\u201C\u201D\"]{0,70}|" +
+                        "prologue|epilogue|interlude|afterword|foreword|proloog|epiloog|nawoord|voorwoord)\\s*$", "i"),
     /* a heading that is only a number: "IV.", "12" */
     numeral: /^\s*(?:[IVXLC]{1,7}|\d{1,3})\.?\s*$/
   };
@@ -181,7 +203,10 @@
    "You We Me Us Him Them Mine Yours Ours Theirs Except Excepting Whilst Till Unto Towards Pray Lo Hark Behold Certainly Surely Really Truly Of Course " +
    "Presently Instantly Directly Immediately Accordingly Evidently Apparently Probably Possibly Naturally Fortunately Unfortunately Luckily Happily Sadly " +
    "Clearly Obviously Merely Simply Nearly Hardly Scarcely Shortly Lately Afterwards Having Being Seeing Hearing Knowing Taking Getting Looking Turning " +
-   "Children People Nor Yes")
+   "Children People Nor Yes " +
+   /* Dutch sentence starters, pronouns and words of address, which would otherwise pass for names in a Dutch book */
+   "En Maar Ja Nee Doch Zie Ziet Hoe Wat Wie Waar Toen Nu Als Want Omdat Hij Zij Ze Ik Je Jij Wij Het De Een Die Dat Dit Er Daar Hier " +
+   "Zo Ook Nog Niet Geen Wel Och Ach Kom Mijnheer Meneer Mevrouw Juffrouw Hy Zy")
     .split(" ").forEach(function(w){ STOP[w] = 1; });
   /* about 460 common English first names, for the gender of a character no he or she has marked yet */
   var FIRST = {};
@@ -209,6 +234,10 @@
    "oswald otto owen patrick paul percy peter philip phillip ralph randolph raymond reginald rex richard robert roderick rodney roger roland ronald " +
    "rowland rufus rupert samuel sam sebastian septimus seth sidney silas simon solomon stanley stephen steven stuart ted teddy terence theodore thomas " +
    "timothy tobias toby tom tommy tony tristram uriah victor vincent walter wilfred will william willie willy wyatt zachary").split(" ").forEach(function(w){ FIRST[w] = "male"; });
+  /* and common Dutch ones */
+  ("anouk anneke betje els femke fleur geertruida ilse inge jacoba lieke lotte maaike marieke mathilde saskia sanne truus wilhelmina").split(" ").forEach(function(w){ FIRST[w] = "female"; });
+  ("bas bram cornelis daan floris frits gerrit gijs hendrik henk jan jelle jeroen johan joost joris kees klaas lodewijk maarten niels pieter " +
+   "ruben sjoerd stijn thijs willem wim").split(" ").forEach(function(w){ FIRST[w] = "male"; });
   /* pet names, merged with the full name when a document has both (Lizzy and Elizabeth) */
   var NICK = {};
   [["elizabeth", "lizzy lizzie liz eliza beth betsy bess bessie betty"], ["catherine", "kitty kate katie cathy kit"], ["katherine", "kitty kate katie kathy"],
@@ -224,15 +253,16 @@
     { open: "“", close: "”", rx: /“/g },
     { open: '"', close: '"', rx: /"/g },
     { open: "‘", close: "’", rx: /‘/g },
-    { open: "«", close: "»", rx: /«/g }
+    { open: "«", close: "»", rx: /«/g },
+    { open: "„", close: "”", rx: /„/g }      /* Dutch */
   ];
   /* the document's quote style: the most frequent kind of opening mark */
   function pickStyle(texts){
-    var counts = [0, 0, 0, 0], i, j;
-    for (i = 0; i < texts.length; i++) for (j = 0; j < 4; j++) counts[j] += (texts[i].match(STYLES[j].rx) || []).length;
+    var counts = STYLES.map(function(){ return 0; }), i, j;
+    for (i = 0; i < texts.length; i++) for (j = 0; j < STYLES.length; j++) counts[j] += (texts[i].match(STYLES[j].rx) || []).length;
     counts[1] = counts[1] / 2;
     var best = 0;
-    for (j = 1; j < 4; j++) if (counts[j] > counts[best]) best = j;
+    for (j = 1; j < STYLES.length; j++) if (counts[j] > counts[best]) best = j;
     return counts[best] > 0 ? STYLES[best] : null;
   }
   /* quoted spans in a paragraph's text (units that came without dialogue flags); an unbalanced quote runs to the end */
@@ -285,7 +315,7 @@
   /* "Mr. Darcy" → { key: "mr darcy", name: "Mr. Darcy", title: "mr", toks: ["darcy"] }; words that are not names are dropped */
   function cleanName(raw){
     var t = String(raw).replace(/\s+/g, " ").trim(), title = "", shown = "", m = RX.title.exec(t);
-    if (m){ title = m[1].toLowerCase(); shown = m[1] + m[2]; t = t.slice(m[0].length); }
+    if (m){ title = m[1].toLowerCase(); shown = m[1].charAt(0).toUpperCase() + m[1].slice(1) + m[2]; t = t.slice(m[0].length); }     /* "mevrouw" shows as "Mevrouw" */
     /* "Jane’s" is Jane; "I’ll" is no one */
     var toks = t.split(" ").map(function(w){ return /^I['’]/.test(w) ? "" : w.replace(/['’]s$/, "").replace(/[-'’]+$/, ""); });
     while (toks.length && (STOP[toks[0]] || !toks[0])) toks.shift();
@@ -312,9 +342,9 @@
     RX.verbName.lastIndex = 0;
     while ((m = RX.verbName.exec(text))){ nm = cleanName(m[2]); if (nm) add(1, m, nm, m.index, m[1]); }
     RX.pronVerb.lastIndex = 0;
-    while ((m = RX.pronVerb.exec(text))) add(2, m, { pronoun: m[1] === "I" ? "i" : m[1].toLowerCase() }, m.index + m[0].length - m[2].length, m[2]);
+    while ((m = RX.pronVerb.exec(text))) add(2, m, { pronoun: pronOf(m[1]) }, m.index + m[0].length - m[2].length, m[2]);
     RX.verbPron.lastIndex = 0;
-    while ((m = RX.verbPron.exec(text))) add(3, m, { pronoun: m[2] === "I" ? "i" : m[2].toLowerCase() }, m.index, m[1]);
+    while ((m = RX.verbPron.exec(text))) add(3, m, { pronoun: pronOf(m[2]) }, m.index, m[1]);
     RX.descVerb.lastIndex = 0;
     while ((m = RX.descVerb.exec(text))) add(4, m, desc(m[1]), m.index + m[0].length - m[2].length, m[2]);
     RX.verbDesc.lastIndex = 0;
@@ -340,7 +370,7 @@
       RX.subject.lastIndex = 0;
       while ((m = RX.subject.exec(s)) && m.index < 90){
         var np = m[1], w0 = np.split(/\s+/)[0], x = null;
-        if (/^(?:[Hh]e|[Ss]he|I)$/.test(np)) x = { kind: "pron", pron: np === "I" ? "i" : np.toLowerCase() };
+        if (/^(?:[Hh]e|[Ss]he|I|[Hh]ij|[Hh]y|[Zz]ij|[Zz]y|[Zz]e|[Ii]k)$/.test(np)) x = { kind: "pron", pron: pronOf(np) };
         else if (/^(?:the|his|her|their|my|our)$/i.test(w0) && NOUNS[np.split(/\s+/).pop().toLowerCase()]){
           var w = np.split(/\s+/);
           x = { kind: "desc", d: { desc: np.toLowerCase(), poss: w0.toLowerCase(), noun: w[w.length - 1].toLowerCase(), adj: w.length > 2 ? w.slice(1, -1).join(" ").toLowerCase() : "" } };
@@ -482,25 +512,56 @@
     /* a first-person narrator: "I" is the subject of the narration now and then */
     var firstPerson = iSubj >= 3 && iSubj * 25 >= narrSents;
 
+    /* a word the text mostly writes in lower case is a word, not a name, whatever its capital at a sentence's start
+       ("En", "Maar" in a Dutch book; "Will" and "Grace" are kept by the first-name list). Counted only for the one-word
+       names that would otherwise become characters, in one pass over the text */
+    function keeps(c){
+      var strongTitle = c.title && !TWEAK[c.title];
+      if (!(c.tag || strongTitle || (c.list && (c.mid || c.subj || c.voc)) || (!c.place && c.voc && c.subj) ||
+            (c.title && TWEAK[c.title] && (c.voc || c.subj || c.list)))) return false;
+      return !(!(c.tag || strongTitle) && c.place && !c.list);
+    }
+    function oneWord(c){ return !c.title && c.toks.length === 1 && !FIRST[c.toks[0]] && !NICK[c.toks[0]] && /^[a-z\u00C0-\u024F]+$/.test(c.toks[0]); }
+    var caseN = {}, caseW = Object.keys(cands).filter(function(key){ return oneWord(cands[key]) && keeps(cands[key]); }).map(function(key){ return cands[key].toks[0]; });
+    if (caseW.length){
+      caseW.sort(function(a, b){ return b.length - a.length; });
+      var caseRx = new RegExp("(?:^|[^A-Za-z\u00C0-\u024F])(" + caseW.join("|") + ")(?![A-Za-z\u00C0-\u024F])", "gi"), cm, ck;
+      for (k = 0; k < paras.length; k++){
+        caseRx.lastIndex = 0;
+        while ((cm = caseRx.exec(paras[k].text))){
+          ck = cm[1].toLowerCase();
+          if (!caseN[ck]) caseN[ck] = [0, 0];
+          caseN[ck][cm[1] === ck ? 0 : 1]++;
+          caseRx.lastIndex = cm.index + cm[0].length;
+        }
+      }
+    }
+    function mostlyLower(w){ var x = caseN[w]; return !!x && x[0] >= x[1]; }
     /* the characters, their gender, and one character for "Mr. Darcy" and "Darcy", "Elizabeth Bennet" and "Lizzy" */
     Object.keys(cands).forEach(function(key){
       var c = cands[key];
-      var strongTitle = c.title && !TWEAK[c.title];
-      if (!(c.tag || strongTitle || (c.list && (c.mid || c.subj || c.voc)) || (!c.place && c.voc && c.subj) ||
-            (c.title && TWEAK[c.title] && (c.voc || c.subj || c.list)))) return;
-      if (!(c.tag || strongTitle) && c.place && !c.list) return;
+      if (!keeps(c) || (oneWord(c) && mostlyLower(c.toks[0]))) return;
       var ch = character(key, c.name);
       ch.title = c.title; ch.toks = c.toks; ch.m = c.m; ch.f = c.f; ch.n = c.n; ch.shownN = c.n;
     });
     var alias = {}, bySur = {};
     function root(key){ for (var g = 0; alias[key] && g < 10; g++) key = alias[key]; return key; }
+    /* the untitled full names by first name: "John Clay" and "John Openshaw" are two people, and the bare "John" is
+       only the one of them the text names far more often than the others (Jane Bennet, not Jane Fairfax) */
+    var fullByFirst = {};
+    order.forEach(function(key){ var c = chars[key]; if (!c.title && c.toks.length >= 2) (fullByFirst[c.toks[0]] = fullByFirst[c.toks[0]] || []).push(key); });
+    function firstOwns(key, first){
+      var others = 0;
+      (fullByFirst[first] || []).forEach(function(k2){ if (k2 !== key) others += chars[k2].n; });
+      return chars[key].n >= 2 * others;
+    }
     order.forEach(function(key){
       var c = chars[key], t = c.title ? c.title + " " : "", first = c.toks[0], lastT = c.toks[c.toks.length - 1];
       if (c.toks.length < 2) return;
       /* "Sir William Lucas" → "Sir William", "Mr. Fitzwilliam Darcy" → "Mr. Darcy", "Elizabeth Bennet" → "Elizabeth" */
       if (t && chars[t + first]) alias[key] = t + first;
       else if (t && chars[t + lastT]) alias[key] = t + lastT;
-      else if (!t && chars[first] && !chars[first].title) alias[key] = first;
+      else if (!t && chars[first] && !chars[first].title && firstOwns(key, first)) alias[key] = first;
     });
     order.forEach(function(key){
       var c = chars[key], r = root(key);
@@ -516,14 +577,18 @@
       var men = strong.filter(function(k2){ return TGEN[chars[k2].title] === "male"; });
       return men.length === 1 ? men[0] : strong.length === 1 ? strong[0] : list.length === 1 ? list[0] : null;
     }
-    order.forEach(function(key){
-      var c = chars[key], first = c.toks[0], o;
-      if (c.title || c.toks.length !== 1 || alias[key] || FIRST[first]) return;
-      if ((o = surnameOwner(first, key))) alias[key] = o;
-    });
-    /* "Sherlock Holmes" → Holmes, when no one else in the book has that surname ("Charlotte Lucas" and "Maria Lucas" stay two) */
     var fullBySur = {};
     order.forEach(function(key){ var c = chars[key]; if (!c.title && c.toks.length >= 2) (fullBySur[c.toks[c.toks.length - 1]] = fullBySur[c.toks[c.toks.length - 1]] || []).push(key); });
+    order.forEach(function(key){
+      var c = chars[key], first = c.toks[0], o, full = fullBySur[first] || [];
+      if (c.title || c.toks.length !== 1 || alias[key] || FIRST[first]) return;
+      if (!(o = surnameOwner(first, key))) return;
+      /* "Havelaar" is Max Havelaar, not mevrouw Havelaar: a woman's title does not take the bare surname from the one
+         man the text names in full with it */
+      if (TGEN[chars[o].title] === "female" && full.length === 1 && FIRST[chars[full[0]].toks[0]] === "male") o = full[0];
+      alias[key] = o;
+    });
+    /* "Sherlock Holmes" → Holmes, when no one else in the book has that surname ("Charlotte Lucas" and "Maria Lucas" stay two) */
     order.forEach(function(key){
       var c = chars[key], sur = c.toks[c.toks.length - 1];
       if (alias[key] || c.title || c.toks.length < 2 || (fullBySur[sur] || []).length > 1) return;
@@ -533,7 +598,8 @@
     order.forEach(function(key){
       var c = chars[key];
       if (alias[key] || c.title || c.toks.length !== 1 || !NICK[c.toks[0]]) return;
-      var full = NICK[c.toks[0]].filter(function(f){ return chars[f] && !chars[f].title && root(f) !== key; });
+      /* "Jack" is John only where "John" is one person */
+      var full = NICK[c.toks[0]].filter(function(f){ return chars[f] && !chars[f].title && root(f) !== key && (fullByFirst[f] || []).filter(function(k2){ return !alias[k2]; }).length === 0; });
       if (full.length) alias[key] = root(full[0]);
     });
     order.slice().forEach(function(key){
@@ -665,6 +731,14 @@
         var r2 = recentOf(g, skip2, 40);
         if (r2 && scene[r2] !== undefined) return r2;
       }
+      /* "answered my companion" in a first-person book: the narrator's companion, the one of this scene the book has named
+         most so far (Holmes, not the client of the day), rather than a new character */
+      if ((d.poss === "my" || d.poss === "our") && info.mate && firstPerson){
+        var mate = null;
+        for (var sk in scene) if (scene.hasOwnProperty(sk) && sk !== "narrator" && chars[sk] && !chars[sk].synthetic && !excl[sk] &&
+                                   (!mate || chars[sk].mentions > chars[mate].mentions)) mate = sk;
+        if (mate) return mate;
+      }
       return quiet ? null : descChar(d, g);
     }
     /* who speaks an untagged paragraph: the one addressed last (if in the scene), the one the narration just before was
@@ -747,6 +821,7 @@
         q = p.quotes[i]; q.key = null;
         var tg = q.tag;
         if (!tg) continue;
+        if (tg.key && !canon(tg) && oneWord(tg) && mostlyLower(tg.toks[0])) tg = {};     /* "Hy zei": a word, not a name */
         if (tg.key){ q.key = canon(tg) || tg.key; if (!chars[q.key]) character(q.key, tg.name); }
         else if (tg.pronoun) q.key = resolvePron(tg.pronoun, soft, CONT.test(tg.verb || ""), false);
         else if (tg.desc) q.key = resolveDesc(tg, soft, false);
@@ -1244,8 +1319,17 @@
     return Library.tx("audio", "readonly", function(st){ return st.get(k); })
       .then(function(r){ return r && r.key === k && r.blob ? r : null; }).catch(function(){ return null; });
   }
-  function save(rec){ if (Library) Library.tx("audio", "readwrite", function(st){ st.put(rec); }).then(scheduleTrim, function(){}); }
-  /* the clips kept on the device stay under AUDIO_CAP: after a put, once things are quiet, the oldest go first */
+  /* the clips kept on the device stay under AUDIO_CAP: after a put, once things are quiet, the oldest go first. The store
+     is walked only when it may be over: its size is known from the last walk plus what was saved since (an over-estimate,
+     as a clip saved again replaces itself), and the first save of a session walks it once */
+  var audioBytes = -1;
+  function save(rec){
+    if (!Library) return;
+    Library.tx("audio", "readwrite", function(st){ st.put(rec); }).then(function(){
+      if (audioBytes >= 0) audioBytes += rec.size || 0;
+      if (audioBytes < 0 || audioBytes > AUDIO_CAP) scheduleTrim();
+    }, function(){});
+  }
   var trimT = null;
   function scheduleTrim(){ clearTimeout(trimT); trimT = setTimeout(trimAudio, 2500); }
   function scanAudio(){
@@ -1270,6 +1354,7 @@
     var from = p ? readPos(p) : 0;
     var ready = p ? keyed(p, from).then(function(){ keep = {}; for (var k = from; k < p.clips.length; k++) keep[p.clips[k].key] = 1; }) : Promise.resolve();
     return ready.then(scanAudio).then(function(r){
+      audioBytes = r.total;
       if (r.total <= AUDIO_CAP) return;
       r.recs.sort(function(a, b){ return ((a.docId === doc) - (b.docId === doc)) || a.created - b.created; });
       var drop = [], total = r.total, i, x;
@@ -1279,6 +1364,7 @@
         total -= x.size; drop.push(x.key);
       }
       if (feed.have) drop.forEach(function(k){ delete feed.have[k]; });
+      audioBytes = total;
       return Library.tx("audio", "readwrite", function(st){ drop.forEach(function(k){ st.delete(k); }); });
     }).then(audioSync).catch(function(){});
   }
@@ -1293,7 +1379,7 @@
     if (!Library) return;
     cancelQueued();
     feed.have = null; feed.haveDoc = null; feed.haveP = null;
-    Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ loadedKey = null; toast("Cached audio cleared"); audioSync(); prepSync(); }, function(){ toast("Couldn’t clear the audio"); });
+    Library.tx("audio", "readwrite", function(st){ st.clear(); }).then(function(){ audioBytes = 0; loadedKey = null; toast("Cached audio cleared"); audioSync(); prepSync(); }, function(){ toast("Couldn’t clear the audio"); });
   }
   function b64blob(b64){
     var bin = atob(b64), n = bin.length, bytes = new Uint8Array(n), i;
@@ -1416,7 +1502,7 @@
   var KOKORO_LANGS = { en: "ab", es: "e", fr: "f", hi: "h", it: "i", ja: "j", pt: "p", zh: "z" };
   var natWarned = false;
   function natWarn(lang){
-    if (lang !== "en" && !natWarned){ natWarned = true; toast("Natural voices speak English; other languages may sound odd"); }
+    if (lang !== "en" && !natWarned){ natWarned = true; toast("Natural voices speak English only; a text in another language is read by the device voice"); }
   }
   function kokoroPool(lang){
     lang = String(lang || "en").slice(0, 2).toLowerCase();
@@ -1452,20 +1538,23 @@
 
   /* the two models — what differs between them — and each one's worker state (natState) */
   var NAT = {
-    kokoro: natState({ key: "kokoro", model: KOKORO_MODEL, mb: KOKORO_MB, voices: KOKORO_VOICES, def: "af_heart", pool: kokoroPool, options: kokoroOptions,
+    kokoro: natState({ key: "kokoro", label: "Best", model: KOKORO_MODEL, mb: KOKORO_MB, voices: KOKORO_VOICES, def: "af_heart", pool: kokoroPool, options: kokoroOptions,
                        script: "./workers/kokoro-worker.js", caches: KOKORO_CACHES, urls: /Kokoro-82M/, main: /model_quantized\.onnx/,
                        runtime: ["/vendor/kokoro/"], rate: 24000, warm: true,
+                       need: ["workers/kokoro-worker.js", "vendor/kokoro/kokoro.web.js", "vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs", "vendor/kokoro/ort-wasm-simd-threaded.jsep.wasm"],
                        kNarr: K_KNARR, kRtf: K_RTF, kCps: K_CPS, kTold: "ll_kokoro_told",
                        told: "Natural voices are made on this device: the first sentence can take a minute on a phone, then it keeps reading" }),
-    piper: natState({ key: "piper", model: PIPER_MODEL, mb: PIPER_MB, voices: PIPER_VOICES, def: PIPER_DEFAULT, pool: piperPool, options: voiceOptions,
+    piper: natState({ key: "piper", label: "Fast", model: PIPER_MODEL, mb: PIPER_MB, voices: PIPER_VOICES, def: PIPER_DEFAULT, pool: piperPool, options: voiceOptions,
                       script: "./workers/piper-worker.js", caches: PIPER_CACHES, urls: /libritts_r-medium/, main: /\.onnx$/,
                       runtime: ["/vendor/piper/", "/vendor/kokoro/ort-wasm"], rate: 22050, warm: false,
+                      need: ["workers/piper-worker.js", "vendor/piper/ort.min.mjs", "vendor/piper/phonemizer.js", "vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs", "vendor/kokoro/ort-wasm-simd-threaded.jsep.wasm"],
                       kNarr: P_NARR, kRtf: P_RTF, kCps: P_CPS, kTold: "ll_piper_told",
                       told: "Natural voices are made on this device; the first sentence takes a few seconds." })
   };
   function natState(m){
-    m.w = null; m.load = null; m.ready = false; m.jobs = {}; m.seq = 0; m.dl = {}; m.pct = -1; m.threads = 0; m.timer = null; m.warming = false;
-    m.have = null;     /* { ready, bytes } — what Cache Storage held when last looked */
+    m.w = null; m.load = null; m.ready = false; m.jobs = {}; m.seq = 0; m.dl = {}; m.pct = -1; m.threads = 0; m.timer = null; m.warming = false; m.warmed = false;
+    m.used = 0;        /* when the worker last had something to do */
+    m.have = null;     /* { ready, model, bytes } — what Cache Storage held when last looked */
     return m;
   }
   function natOther(m){ return m === NAT.piper ? NAT.kokoro : NAT.piper; }
@@ -1502,7 +1591,7 @@
       try { if (m.w) m.w.terminate(); } catch(_){}
       m.w = null;
       l.rej(new Error(navigator.onLine ? "Natural voices couldn’t start (no response from the voice engine)" : "Natural voices need a connection to download"));
-      natSync();
+      liveReset(); natSync();
     }, K_STALL);
   }
   function natWorker(m){
@@ -1513,21 +1602,29 @@
       if (msg.type === "progress"){ natProgress(m, msg); natWatch(m); }
       else if (msg.type === "ready"){
         clearTimeout(m.timer);
-        m.ready = true; m.threads = msg.threads || 0; m.dl = {}; m.pct = -1;
+        m.ready = true; m.threads = msg.threads || 0; m.dl = {}; m.pct = -1; m.used = Date.now();
         var l = m.load; m.load = null; if (l) l.res();
-        m.have = null; natSync();
+        /* Kokoro: the English voices (28 × 0.5 MB) come down right after the model, however it came (Download, or
+           reading), so every character's voice works offline; the ones already here are skipped */
+        if (m.warm && !m.warmed && navigator.onLine){
+          m.warming = true;
+          try { w.postMessage({ type: "warm", voices: m.voices.map(function(v){ return v.id; }) }); } catch(_){ m.warming = false; }
+        }
+        m.have = null; liveReset(); natSync(); natIdle();
       } else if (msg.type === "audio"){
         j = m.jobs[msg.id]; if (!j) return;         /* dropped meanwhile */
-        delete m.jobs[msg.id]; natMeasure(m, msg, j.n);
+        delete m.jobs[msg.id]; natMeasure(m, msg, j.n); m.used = Date.now();
         j.res({ samples: msg.samples, sampleRate: msg.sampleRate || m.rate, ms: msg.ms || 0 });
       } else if (msg.type === "warmed"){
         m.warming = false;
+        if (msg.n >= m.voices.length) m.warmed = true;
+        m.have = null;
       } else if (msg.type === "error"){
         if (msg.id === null || msg.id === undefined){
           clearTimeout(m.timer);
           var ld = m.load; m.load = null; m.dl = {}; m.pct = -1;
           if (ld) ld.rej(new Error(msg.message ? "Natural voices: " + String(msg.message).slice(0, 80) : "Couldn’t load the natural voices"));
-          natSync();
+          liveReset(); natSync();
         } else { j = m.jobs[msg.id]; if (j){ delete m.jobs[msg.id]; j.rej(new Error(msg.message || "error")); } }
       }
     };
@@ -1542,7 +1639,7 @@
       var err = new Error(navigator.onLine ? "Natural voices couldn’t start in this browser" : "Natural voices need a connection to download");
       if (l) l.rej(err);
       Object.keys(jobs).forEach(function(id){ jobs[id].rej(err); });
-      natSync();
+      liveReset(); natSync();
     };
     return w;
   }
@@ -1566,20 +1663,58 @@
     try { o.w.terminate(); } catch(_){}
     o.w = null; o.ready = false;
   }
-  /* files come from the browser's cache in a flash (loaded = total at once); only a real download shows a percentage */
+  /* a worker with nothing to do is let go: at once when its engine is no longer the one chosen, else after NAT_IDLE with
+     no job, no feeding or preparing for it and nothing playing (paused counts as nothing); used again, it loads the
+     model from the device in a few seconds */
+  var natIdleT = null;
+  function natIdle(ms){ clearTimeout(natIdleT); natIdleT = setTimeout(natIdleCheck, ms >= 0 ? ms : NAT_IDLE); }
+  function natIdleCheck(){
+    var next = -1;
+    natIdleT = null;
+    [NAT.piper, NAT.kokoro].forEach(function(m){
+      if (!m.w) return;
+      var chosen = speakEngine() === m.key, wait = -1;
+      if (m.load || m.warming || Object.keys(m.jobs).length) wait = chosen ? NAT_IDLE : 5000;
+      else if (chosen && ((natCur() === m && (feed.busy || feed.prep)) || (natRunning(m) && Speak.isPlaying && Speak.isPlaying()))) wait = NAT_IDLE;
+      else if (chosen && Date.now() - m.used < NAT_IDLE) wait = NAT_IDLE - (Date.now() - m.used) + 500;
+      if (wait < 0) natRelease(m);
+      else if (next < 0 || wait < next) next = wait;
+    });
+    if (next >= 0) natIdle(next);
+  }
+  /* files come from the browser's cache in a flash (loaded = total at once); only a real download shows a percentage.
+     The small files around the model (its config, the tokenizer) finishing do not flip the line back to "Preparing…" */
   function natProgress(m, msg){
     m.dl[msg.file] = { loaded: msg.loaded || 0, total: msg.total || 0 };
-    var loaded = 0, total = 0;
+    var loaded = 0, total = 0, pct;
     Object.keys(m.dl).forEach(function(f){ loaded += m.dl[f].loaded; total += m.dl[f].total; });
-    m.pct = total && loaded < total ? Math.min(99, Math.round(loaded * 100 / total)) : -1;
-    if (natRunning(m)) setStatus(m.pct >= 0 ? "Downloading voices " + m.pct + "%…" : "Preparing…");
+    pct = total && loaded < total ? Math.min(99, Math.round(loaded * 100 / total)) : -1;
+    if (pct < 0 && m.pct >= 0 && total < 5e6) pct = m.pct;
+    m.pct = pct;
+    if (natRunning(m)){ liveStep(document.getElementById("ttsStatus"), m.pct); setStatus(m.pct >= 0 ? "Downloading voices " + m.pct + "%…" : "Preparing…"); }
     if (m !== natCur()) return;      /* the rows show the other quality */
-    var st = document.getElementById("kokoroState"), pr = document.getElementById("kokoroProgress");
-    if (st) st.textContent = m.pct >= 0 ? "Downloading… " + m.pct + "%" : "Preparing…";
+    var st = document.getElementById("kokoroState"), pr = document.getElementById("kokoroProgress"), text = m.pct >= 0 ? "Downloading… " + m.pct + "%" : "Preparing…";
+    if (st && st.textContent !== text){ liveStep(st, m.pct); st.textContent = text; }
     if (pr){ pr.hidden = m.pct < 0; if (m.pct >= 0) pr.value = m.pct; }
+  }
+  /* a download's progress in a live region: said when it starts, at each quarter and when it ends; the percentages
+     between are shown (and the progress bar carries them), not read out, so a screen reader is not flooded */
+  function liveStep(el, pct){
+    if (!el) return;
+    var step = String(pct >= 0 ? Math.floor(pct / 25) : -1), live = el.getAttribute("data-step") === step ? "off" : "polite";
+    if (el.getAttribute("aria-live") !== live) el.setAttribute("aria-live", live);
+    el.setAttribute("data-step", step);
+  }
+  /* the download is over (ready, failed): the bar's line is a live region again */
+  function liveReset(){
+    var el = typeof document !== "undefined" ? document.getElementById("ttsStatus") : null;
+    if (!el || !el.hasAttribute("data-step")) return;
+    el.removeAttribute("data-step");
+    if (!hold) el.setAttribute("aria-live", "polite");
   }
   function natGenerate(m, text, voice){
     var id = ++m.seq;
+    m.used = Date.now();
     return new Promise(function(res, rej){
       m.jobs[id] = { res: res, rej: rej, n: String(text || "").length };
       try { natWorker(m).postMessage({ type: "generate", id: id, text: text, voice: voice, speed: 1 }); }
@@ -1617,51 +1752,55 @@
       throw e;
     });
   }
-  /* is the model in Cache Storage (kept under its huggingface.co URLs), and how big is it; asking does not make an
-     empty cache (after Remove, the cache stays gone) */
+  /* is the model in Cache Storage (kept under its huggingface.co URLs, in every cache it uses: Kokoro's voice files
+     too), and how big is it; asking does not make an empty cache (after Remove, the cache stays gone). Ready also
+     needs the runtime the model runs on (the worker and vendor/ files the service worker keeps in its own cache),
+     or it could not start offline; without a service worker that cannot be seen, and the model alone counts */
   function natOnDevice(m){
-    if (!(window.caches && caches.open)) return Promise.resolve({ ready: false, bytes: 0 });
-    var cache;
-    return caches.has(m.caches[0]).then(function(yes){ return yes ? caches.open(m.caches[0]) : null; }).then(function(c){ cache = c; return c ? c.keys() : []; }).then(function(keys){
-      var model = false, jobs = [];
-      keys.forEach(function(req){
-        var u = req.url || "";
-        if (!m.urls.test(u)) return;
-        if (m.main.test(u)) model = true;
-        jobs.push(cache.match(req).then(function(r){
-          if (!r) return 0;
-          var n = +r.headers.get("content-length") || 0;
-          return n || r.blob().then(function(b){ return b.size; });
-        }).catch(function(){ return 0; }));
-      });
-      return Promise.all(jobs).then(function(sizes){
-        var bytes = 0; sizes.forEach(function(n){ bytes += n; });
-        m.have = { ready: model, bytes: bytes };
-        return m.have;
-      });
-    }).catch(function(){ return { ready: false, bytes: 0 }; });
+    if (!(window.caches && caches.open)) return Promise.resolve({ ready: false, model: false, bytes: 0 });
+    var model = false, bytes = 0;
+    return Promise.all(m.caches.map(function(name){
+      var cache;
+      return caches.has(name).then(function(yes){ return yes ? caches.open(name) : null; }).then(function(c){ cache = c; return c ? c.keys() : []; }).then(function(keys){
+        return Promise.all(keys.map(function(req){
+          var u = req.url || "";
+          if (!m.urls.test(u)) return 0;
+          if (m.main.test(u)) model = true;
+          return cache.match(req).then(function(r){
+            if (!r) return 0;
+            var n = +r.headers.get("content-length") || 0;
+            return n || r.blob().then(function(b){ return b.size; });
+          }).catch(function(){ return 0; });
+        }));
+      }).then(function(sizes){ sizes.forEach(function(n){ bytes += n; }); });
+    })).then(function(){ return model ? natRuntime(m) : false; }).then(function(rt){
+      m.have = { ready: model && rt, model: model, bytes: bytes };
+      return m.have;
+    }).catch(function(){ return { ready: false, model: false, bytes: 0 }; });
+  }
+  function natRuntime(m){
+    var sw = navigator.serviceWorker;
+    if (!(sw && sw.controller) || typeof document === "undefined") return Promise.resolve(true);
+    return Promise.all(m.need.map(function(f){
+      return caches.match(new URL(f, document.baseURI).href).then(function(r){ return !!r; }, function(){ return false; });
+    })).then(function(all){ return all.every(Boolean); });
   }
   /* the Download button */
   function natDownload(m){
     if (m.load) return;
     if (!navigator.onLine && !(m.have && m.have.ready)){ toast("Connect to the internet once to download the natural voices"); return; }
-    natLoad(m).then(function(){
-      toast("Natural voices are ready");
-      /* Kokoro: the English voices (28 × 0.5 MB) come down right after the model so they all work offline */
-      if (!m.warm) return;
-      m.warming = true;
-      try { natWorker(m).postMessage({ type: "warm", voices: m.voices.map(function(v){ return v.id; }) }); } catch(_){ m.warming = false; }
-    }, function(err){ toast((err && err.message) || "Couldn’t download the natural voices"); });
+    natLoad(m).then(function(){ toast("Natural voices are ready"); }, function(err){ toast((err && err.message) || "Couldn’t download the natural voices"); });
   }
-  /* the Remove button: the model's caches, its runtime files in the app's cache (not the ONNX runtime the other
-     model still uses, when that one is on the device), and the worker holding the model */
+  /* the Remove button: the model's caches, its runtime files (not the ONNX runtime the other model still uses, when that
+     one is on the device), and the worker holding the model */
+  /* resolves to whether they were removed (the Storage panel measures again then) */
   function natRemove(m){
-    if (!confirm("Remove the natural voices from this device (" + m.mb + " MB)? They can be downloaded again.")) return;
+    if (!confirm("Remove the " + m.label + " natural voices from this device (≈ " + m.mb + " MB)? They can be downloaded again.")) return Promise.resolve(false);
     if (natRunning(m) && Speak && Speak.stop) Speak.stop();
     feedStop();
     var l = m.load, jobs = m.jobs, other = natOther(m);
     clearTimeout(m.timer);
-    m.load = null; m.ready = false; m.jobs = {}; m.dl = {}; m.pct = -1; m.warming = false; m.have = { ready: false, bytes: 0 };
+    m.load = null; m.ready = false; m.jobs = {}; m.dl = {}; m.pct = -1; m.warming = false; m.warmed = false; m.have = { ready: false, model: false, bytes: 0 };
     if (m.w){ try { m.w.terminate(); } catch(_){} m.w = null; }
     var gone = new Error("Natural voices were removed");
     if (l) l.rej(gone);
@@ -1671,9 +1810,9 @@
     if (window.caches){
       m.caches.forEach(function(n){ work.push(caches.delete(n).catch(function(){})); });
       work.push(natOnDevice(other).then(function(h){
-        var keep = h.ready ? other.runtime : [];
+        var keep = h.model ? other.runtime : [];
         return caches.keys().then(function(keys){
-          return Promise.all(keys.filter(function(k){ return k.indexOf("lamplight-") === 0 && k !== "lamplight-share"; }).map(function(k){
+          return Promise.all(keys.filter(function(k){ return (k.indexOf("lamplight-") === 0 && k !== "lamplight-share") || k.indexOf("natural-runtime") === 0; }).map(function(k){
             return caches.open(k).then(function(c){
               return c.keys().then(function(reqs){ return Promise.all(reqs.filter(function(r){ return has(m.runtime, r.url) && !has(keep, r.url); }).map(function(r){ return c.delete(r); })); });
             });
@@ -1681,26 +1820,45 @@
         });
       }).catch(function(){}));
     }
-    Promise.all(work).then(function(){ m.have = { ready: false, bytes: 0 }; toast("Natural voices removed"); natSync(); });
+    return Promise.all(work).then(function(){ m.have = { ready: false, model: false, bytes: 0 }; toast("Natural voices removed"); natSync(); return true; });
   }
-  /* before reading starts: the download needs a connection; without one the device voice reads this time */
+  /* the document's language, where it is not English ("nl"), and its name ("Dutch") */
+  function natLang(){
+    var l = Speak && Speak.docLang ? String(Speak.docLang() || "en").slice(0, 2).toLowerCase() : "en";
+    return l && l !== "en" ? l : "";
+  }
+  function langName(l){
+    try { if (typeof Intl !== "undefined" && Intl.DisplayNames) return new Intl.DisplayNames(["en"], { type: "language" }).of(l) || l; } catch(_){}
+    return l;
+  }
+  /* before reading starts: the natural voices speak English only, so another language is read by the device voice
+     (every time, since it is the book that decides); the download is asked for, with its size, never started unasked;
+     offline, a model not on the device means the device voice reads this time */
   function natReady(m){
-    if (!m.ready && Store && Store.get(m.kTold) !== "1"){
-      Store.set(m.kTold, "1");
-      toast(m.told);
-    }
-    if (m.ready || navigator.onLine) return Promise.resolve(true);
+    var lang = natLang();
+    if (lang){ toast("Natural voices speak English only — the device voice reads this " + langName(lang) + " text"); return Promise.resolve(null); }
+    if (m.ready && m.w){ natTold(m); return Promise.resolve(true); }
+    if (m.load) return Promise.resolve(true);      /* on its way already (Download was pressed) */
     return natOnDevice(m).then(function(h){
-      if (h.ready) return true;
-      toast("Natural voices aren’t downloaded yet — the device voice reads until you’re online");
-      return null;     /* Speak falls back without a second toast */
+      if (h.ready || (h.model && navigator.onLine)){ natTold(m); return true; }
+      if (!navigator.onLine){ toast("Natural voices aren’t downloaded yet — the device voice reads until you’re online"); return null; }
+      if (!confirm("Download the " + m.label + " natural voices to this device (≈ " + m.mb + " MB, once)? Use Wi-Fi if you can. Until then the device voice reads.")){
+        toast("The device voice reads. The natural voices can be downloaded in the Voices panel.");
+        return null;     /* Speak falls back without a second toast */
+      }
+      return true;
     });
+  }
+  /* once, when the model is on the device: how the first sentence behaves */
+  function natTold(m){
+    if (Store && Store.get(m.kTold) !== "1"){ Store.set(m.kTold, "1"); toast(m.told); }
   }
 
   /* ============================================================
      5. Playback — one audio element, sentence boundaries from the alignment
      ============================================================ */
   var audioEl = null, url = null, loadedKey = null, seq = 0, ticker = null, current = null, expectNext = null;
+  var started = false;     /* this reading (from play to stop) has played a clip: a pause or a skip no longer waits on the smart start */
   function audio(){
     if (!audioEl){
       /* Speak makes the element inside the user gesture that starts reading, so iOS Safari lets it play afterwards */
@@ -1768,14 +1926,18 @@
     if (ci === undefined || !plan.clips[ci]){ opts.onend(); return; }
     var clip = plan.clips[ci];
     current = { clip: clip, index: ci, opts: opts, seq: mySeq, unit: -1, rec: null };
+    if (!cont) dropBefore(ci);
     if (!(loadedKey && clip.key === loadedKey) && !got(clip)) setStatus(plan.src.busy);     /* a clip already made: no "Generating…" flash */
-    /* natural voices: a start may wait until enough is made ahead (5b); flowing on to a clip already made never does */
-    var gate = plan.src.nat && !(cont && got(clip)) ? smartStart(ci, cont, mySeq) : null;
+    /* natural voices: a start may wait until enough is made ahead (5b); flowing on to a clip already made never does, and
+       nor does a resume or a skip to one once this reading has started (a pause, Prev / Next) */
+    var gate = plan.src.nat && !(got(clip) && (cont || started)) ? smartStart(ci, cont, mySeq) : null;
+    if (plan.src.nat){ feed.goDoc = plan.docId; feed.liveAt = Date.now(); }
     getClip(clip, true).then(function(rec){
       if (mySeq !== seq) return;
       current.rec = rec;
       function go(){
         if (mySeq !== seq) return;
+        started = true;
         setStatus();
         playClip(rec, clip, i, opts, mySeq);
         var k = clipIndex(clip);
@@ -1819,12 +1981,24 @@
     a.src = url;
     a.load();
   }
+  /* a start somewhere new (a skip, a jump): the clips before it that are still waiting their turn are not made (the one
+     being made finishes and is kept) */
+  function dropBefore(ci){
+    for (var q = queue.length - 1; q >= 0; q--){
+      var t = queue[q], k = plan && t.src === plan.src && t.docId === plan.docId ? clipIndex(t.clip) : -1;
+      if (k < 0 || k >= ci) continue;
+      queue.splice(q, 1); t.cancelled = true; delete inflight[t.key];
+      var e = new Error("cancelled"); e.cancelled = true; t.rej(e);
+    }
+  }
   function cancel(){
     seq++; stopTicker(); current = null; holdEnd();
     if (audioEl){ try { audioEl.pause(); } catch(_){} }
     setStatus();
   }
   function stop(){
+    if (plan && plan.src.nat && started){ feed.liveAt = Date.now(); natIdle(); }
+    started = false;
     cancel(); expectNext = null; cancelQueued();
     if (audioEl){ try { audioEl.removeAttribute("src"); audioEl.load(); } catch(_){} }
     loadedKey = null;
@@ -1838,7 +2012,8 @@
          reads, listens or pauses; the worker's measured speed says how long a start must wait so that reading
          never catches up with it; the clips on the device are known by key, so none is made twice
      ============================================================ */
-  var feed = { busy: false, prep: false, t: null, have: null, haveDoc: null, haveP: null, bad: {}, msg: "", full: false, keying: false };
+  var feed = { busy: false, prep: false, t: null, have: null, haveDoc: null, haveP: null, bad: {}, msg: "", full: false, keying: false,
+               goDoc: null, liveAt: 0, leadDoc: null };     /* read aloud in this document (when last), its first minute made */
   var hold = null, endedAt = 0, wake = null, wakeAsk = false;
   /* measured per model (m: NAT.kokoro or NAT.piper) */
   function rtf(m){ var v = m ? parseFloat(Store.get(m.kRtf)) : 0; return v > 0 ? v : 0; }
@@ -1913,7 +2088,18 @@
   function feedOn(){
     var e = speakEngine();
     return !!((e === "kokoro" || e === "piper") && state && (state.mode === "doc" || state.mode === "pdf") &&
-              !elevenRunning() && NAT[e].engine && NAT[e].engine.supported());
+              !elevenRunning() && NAT[e].engine && NAT[e].engine.supported() && !natLang());     /* English only: see natReady */
+  }
+  /* how far ahead to make, in seconds of audio: the whole document when preparing; half an hour while read aloud is on in
+     this document (reading or paused) and for three minutes after it stops; else its first minute, once */
+  function feedAhead(docId){
+    if (feed.prep) return Infinity;
+    if (natRunning(natCur())){ feed.goDoc = docId; feed.liveAt = Date.now(); }
+    if (feed.goDoc === docId){
+      feed.leadDoc = docId;
+      if (Date.now() - feed.liveAt < FEED_LINGER) return FEED_AHEAD;
+    }
+    return feed.leadDoc === docId ? 0 : FEED_LEAD;
   }
   /* the open document's natural-voices plan (the chosen model's): the one being read, else worked out now for a text document */
   function feedPlan(){
@@ -1929,11 +2115,11 @@
   /* the next clip to make: the first neither on the device nor on its way, from the reading position on, within half
      an hour of audio (preparing: the whole document, from the reading position, then from its start), and within
      the audio the device keeps */
-  function feedPick(p){
+  function feedPick(p, ahead){
     var n = p.clips.length, start = readPos(p), all = feed.prep, acc = 0, bytes = 0, flying = 0, m = p.src.nat, j, c, s;
     for (j = 0; j < (all ? n : n - start); j++){
       c = p.clips[(start + j) % n]; s = secsOf(c, m);
-      if (!all && acc >= FEED_AHEAD) break;
+      if (!all && acc >= ahead) break;
       bytes += s * m.rate * 2 + 44;       /* 16-bit mono WAV */
       if (bytes > AUDIO_CAP) return { full: true, flying: flying };
       acc += s;
@@ -1967,7 +2153,9 @@
       if (!m.have) natOnDevice(m).then(function(h){ if (h.ready) feedKick(); });
       return;
     }
-    var p = null, c = null;
+    var doc = (Library && Library.currentId && Library.currentId()) || "";
+    if (!feedAhead(doc)) return;       /* the first minute is made, and read aloud is not on: nothing more until it is */
+    var p = null, c = null, ahead = 0;
     feed.busy = true;
     feedPlan().then(function(pl){
       p = pl;
@@ -1975,14 +2163,18 @@
     }).then(function(){
       if (plan !== p || !feedOn()) return "again";
       prepSync();
-      var x = feedPick(p);
+      ahead = feedAhead(p.docId);
+      var x = ahead ? feedPick(p, ahead) : {};
       if (x.clip){ c = x.clip; return getClip(c, false).then(function(){ return "next"; }); }
       feed.full = !!x.full;
       if (feed.prep && !x.flying) prepEnd();
+      if (!x.flying && ahead <= FEED_LEAD) feed.leadDoc = p.docId;
       return x.flying ? "again" : "idle";
     }).then(function(how){
       feed.busy = false;
-      /* idle: everything within reach is made; the reading position moves on, so it looks again now and then */
+      /* idle: everything within reach is made; while read aloud is on the reading position moves on, so it looks again
+         now and then (not for the first minute alone: a reader reading with their eyes is not followed) */
+      if (how === "idle" && ahead <= FEED_LEAD) return;
       feedKick(how === "next" ? 0 : how === "again" ? 1000 : 20000);
     }, function(err){
       feed.busy = false;
@@ -2083,6 +2275,7 @@
     feed.msg = ""; feed.full = false;
     if (feed.prep){ prepEnd(); return; }
     if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ feed.msg = "Open a book first"; prepSync(); return; }
+    if (natLang()){ feed.msg = "Natural voices speak English only, and this text is in " + langName(natLang()); prepSync(); return; }
     var m = natCur();
     if (!navigator.onLine && !m.ready && !(m.have && m.have.ready)){ toast("Connect to the internet once to download the natural voices"); return; }
     feed.prep = true; feed.bad = {};
@@ -2097,24 +2290,37 @@
     var lab = feed.prep ? "Stop preparing" : "Prepare book";
     if (btn.textContent !== lab) btn.textContent = lab;
     var doc = (Library && Library.currentId && Library.currentId()) || "", p = plan && plan.src === natSrc() && plan.docId === doc && plan.clips ? plan : null;
-    var m = p ? p.src.nat : null, text = feed.msg, pct = -1, tot = 0, have = 0, ch = 0, chHave = 0, i, s, n;
+    var m = p ? p.src.nat : null, text = feed.msg, pct = -1, tot = 0, have = 0, ch = 0, chHave = 0, bytes = 0, run = false, i, s, n;
     if (!text && p && feed.have && feed.haveDoc === doc){
       for (i = 0; i < p.clips.length && p.clips[i].key; i++){}
       if (i < p.clips.length){
         if (!feed.keying){ feed.keying = true; keyed(p).then(function(){ feed.keying = false; prepSync(); }, function(){ feed.keying = false; }); }
       } else {
         /* the percentage by characters (estimated seconds at one pace), so it only goes up as clips are made */
-        for (i = 0; i < p.clips.length; i++){ s = secsOf(p.clips[i], m); n = p.clips[i].text.length || 1; tot += s; ch += n; if (got(p.clips[i])){ have += s; chHave += n; } }
+        for (i = 0; i < p.clips.length; i++){ s = secsOf(p.clips[i], m); n = p.clips[i].text.length || 1; tot += s; ch += n; bytes += s * m.rate * 2 + 44; if (got(p.clips[i])){ have += s; chHave += n; } }
         pct = ch ? Math.min(100, Math.floor(chHave * 100 / ch)) : 100;
+        /* the audio is kept uncompressed, and the device keeps AUDIO_CAP of it: a long book does not fit whole */
+        var fits = bytes > AUDIO_CAP ? tot * AUDIO_CAP / bytes : tot;
         if (chHave >= ch) text = "Audiobook ready · plays with no pauses, offline";
         else {
           text = "Audiobook: " + pct + "% ready";
           if (feed.full) text += " · the " + mb(AUDIO_CAP) + " kept for audio is full, the rest is made as you listen";
-          else if (feed.prep && rtf(m) > 0) text += " · about " + dur((tot - have) * rtf(m)) + " left";
+          else {
+            if (fits < tot) text += " · about " + dur(fits) + " of its " + dur(tot) + " fits on this device";
+            if (feed.prep && rtf(m) > 0) text += " · about " + dur(Math.max(0, fits - have) * rtf(m)) + " left";
+            run = true;
+          }
         }
       }
     }
-    if (st && st.textContent !== text) st.textContent = text;
+    if (st && st.textContent !== text){
+      /* the running line changes with every clip made: while preparing it is read out at each quarter, otherwise not at
+         all; the start, the end (ready, full, stopped) and errors always are */
+      var live = !run ? "polite" : !feed.prep ? "off" : st.getAttribute("data-step") === String(Math.floor(pct / 25)) ? "off" : "polite";
+      if (st.getAttribute("aria-live") !== live) st.setAttribute("aria-live", live);
+      if (run && feed.prep) st.setAttribute("data-step", String(Math.floor(pct / 25))); else st.removeAttribute("data-step");
+      st.textContent = text;
+    }
     if (pr){ pr.hidden = !feed.prep || pct < 0; if (pct >= 0) pr.value = pct; }
   }
 
@@ -2215,18 +2421,27 @@
     audioSync(); prepSync(); feedKick();
     if (!st) return;
     function show(text, canDl, canRm, pct){
-      st.textContent = text;
+      if (m.load) liveStep(st, pct);
+      else if (st.hasAttribute("data-step")){ st.removeAttribute("data-step"); st.setAttribute("aria-live", "polite"); }     /* the download is over */
+      if (st.textContent !== text) st.textContent = text;
       if (dl) dl.hidden = !canDl;
       if (rm) rm.hidden = !canRm;
       if (pr){ pr.hidden = pct < 0; if (pct >= 0) pr.value = pct; }
     }
     if (m.load){ show(m.pct >= 0 ? "Downloading… " + m.pct + "%" : "Preparing…", false, false, m.pct); return; }
+    var other = natOther(m), also = "";
     function have(h){
-      if (h.ready) show("Ready · " + mb(h.bytes || m.mb * 1048576) + " on this device", false, true, -1);
-      else show(navigator.onLine ? "Not on this device yet" : "Not on this device yet — needs a connection once", true, false, -1);
+      if (h.ready) show("Ready · " + mb(h.bytes || m.mb * 1048576) + " on this device" + also, false, true, -1);
+      else if (h.model) show(navigator.onLine ? "Almost ready — the voice engine still needs a connection once" : "Not ready — the voice engine needs a connection once", true, true, -1);
+      else show((navigator.onLine ? "Not on this device yet" : "Not on this device yet — needs a connection once") + also, true, false, -1);
     }
-    if (m.have) have(m.have); else show("Checking…", false, false, -1);     /* what was last seen, while the cache is asked again */
-    natOnDevice(m).then(function(h){ if (!m.load && natCur() === m && document.getElementById("kokoroState") === st) have(h); });
+    /* what was last seen, while the cache is asked again (a model that has just loaded keeps its line until then) */
+    if (m.have) have(m.have); else if (!m.ready) show("Checking…", false, false, -1);
+    /* the other quality's model, still on the device, is named, so its space is not forgotten (choose it to remove it) */
+    natOnDevice(other).then(function(o){
+      also = o.model ? " · the " + other.label + " voices are here too (" + mb(o.bytes || other.mb * 1048576) + ")" : "";
+      return natOnDevice(m);
+    }).then(function(h){ if (!m.load && natCur() === m && document.getElementById("kokoroState") === st) have(h); });
   }
 
   /* the panel is drawn afresh each time it opens, so its rows are handled from the document; the key link, the
@@ -2542,9 +2757,15 @@
         /* let the panel paint first: a long book takes a moment */
         setTimeout(function(){
           if (!live()){ res(null); return; }
-          var list = whoCache && whoCache.key === src.key ? whoCache.list : whoList(attribute(src.units), src.units);
-          whoCache = { key: src.key, src: src, list: list };
-          whoVoices().then(function(vp){ res({ src: src, list: list, vp: vp }); });
+          /* the plan whose voices are shown has already worked out who speaks in this text: its answer is used rather
+             than going through the whole book a second time */
+          whoVoices().then(function(vp){
+            if (!live()){ res(null); return; }
+            var pl = vp && vp.pl, pa = pl && pl.a && !src.pdf && pl.docId === src.docId && pl.a.units && pl.a.units.length === src.units.length ? pl.a : null;
+            var list = whoCache && whoCache.key === src.key ? whoCache.list : whoList(pa || attribute(src.units), src.units);
+            whoCache = { key: src.key, src: src, list: list };
+            res({ src: src, list: list, vp: vp });
+          });
         }, 30);
       });
     }).then(function(r){
@@ -2672,14 +2893,16 @@
                          voices: voices, setModel: setModel, syncSettings: syncSettings, sent: function(){ return sent; }, plan: function(){ return plan; },
                          devicePlan: function(){ return devPlan; },
                          kokoro: kEngine, kokoroVoices: KOKORO_VOICES, kokoroPool: kokoroPool,
-                         downloadKokoro: function(){ natDownload(NAT.kokoro); }, removeKokoro: function(){ natRemove(NAT.kokoro); },
+                         downloadKokoro: function(){ natDownload(NAT.kokoro); }, removeKokoro: function(){ return natRemove(NAT.kokoro); },
                          kokoroOnDevice: function(){ return natOnDevice(NAT.kokoro); }, kokoroState: function(){ return natStateOf(NAT.kokoro); },
                          piper: pEngine, piperVoices: PIPER_VOICES, piperDefault: PIPER_DEFAULT, piperPool: piperPool,
-                         downloadPiper: function(){ natDownload(NAT.piper); }, removePiper: function(){ natRemove(NAT.piper); },
+                         downloadPiper: function(){ natDownload(NAT.piper); }, removePiper: function(){ return natRemove(NAT.piper); },
                          piperOnDevice: function(){ return natOnDevice(NAT.piper); }, piperState: function(){ return natStateOf(NAT.piper); },
                          /* the Download / Remove buttons of the chosen quality */
                          downloadNatural: function(){ natDownload(natCur()); }, removeNatural: function(){ natRemove(natCur()); },
                          naturalModel: function(){ return natCur().key; },
                          holdFor: holdFor, feed: feedKick, prepareBook: prepareBook,
+                         /* Speak's engine changed: a natural-voices worker no longer chosen is let go once idle */
+                         engineChanged: function(){ natIdle(1000); },
                          clearAudio: clearAudio, audioTotal: audioTotal, trimAudio: trimAudio, wavBlob: wavBlob, assignVoices: assignVoices };
 })();

@@ -1,13 +1,20 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.29-33";
+const VERSION = "2026.09.29-34";
 const CACHE = "lamplight-" + VERSION;
+/* the natural voices' runtime (vendor/kokoro/: kokoro-js and the 21.6 MB ONNX runtime both models run on;
+   vendor/piper/: the Piper runtime and the phonemizer), kept apart from this version's cache so that it outlives a
+   release as the models do: without it, a model on the device cannot run offline after an update. The files keep
+   their names, so this number goes up whenever one of them changes, or the old copy would be served for ever */
+const RUNTIME = "natural-runtime-1";
+const RUNTIME_PATH = /\/vendor\/(kokoro|piper)\//;
 /* caches that outlive a release: shared files on their way in, the natural voices — Best (the Kokoro model
-   and its voice files, kept there by kokoro-js, 95 MB) and Fast (the Piper model and its config, kept there by
-   workers/piper-worker.js, 78 MB) — and the Dutch ↔ English pack (the Bergamot runtime and its two models, kept
-   there by workers/mt-worker.js, 49 MB): downloads that must not go with every update */
-const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices", "bergamot-models"];
+   and its voice files, kept there by kokoro-js, ≈ 105 MB) and Fast (the Piper model and its config, kept there by
+   workers/piper-worker.js, 78 MB), and the runtime they run on (RUNTIME above) — and the Dutch ↔ English pack (the
+   Bergamot runtime and its two models, kept there by workers/mt-worker.js, 49 MB): downloads that must not go with
+   every update */
+const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices", "bergamot-models", RUNTIME];
 /* the pack's files (vendor/bergamot/*, models/bergamot/*) go straight to the network: the worker keeps them in
    "bergamot-models" itself, so they are neither precached nor copied into this version's cache */
 const PACK = /\/(vendor|models)\/bergamot\//;
@@ -38,6 +45,9 @@ const ASSETS = [
   "./vendor/jszip.min.js",
   "./workers/docx-worker.js",
   "./workers/mt-worker.js",
+  /* the natural voices' workers (small; their runtime is in RUNTIME), so a model on the device works offline */
+  "./workers/piper-worker.js",
+  "./workers/kokoro-worker.js",
   "./fonts/AtkinsonHyperlegible-Regular.woff2",
   "./fonts/AtkinsonHyperlegible-Bold.woff2",
   "./fonts/AtkinsonHyperlegible-Italic.woff2",
@@ -81,13 +91,45 @@ const FONTS = [
   "./fonts/ibm-plex-mono-latin-700-normal.woff2"
 ];
 
+/* a response with the cross-origin isolation headers (COI above). They go on every same-origin response, not
+   only the page: a cross-origin-isolated page may only start a module worker (workers/kokoro-worker.js,
+   workers/piper-worker.js) and its nested pthread workers (vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs) when
+   those scripts carry COEP too */
+const pageHeaders = (h) => {
+  const out = new Headers(h);
+  if (COI) { out.set("Cross-Origin-Opener-Policy", "same-origin"); out.set("Cross-Origin-Embedder-Policy", "credentialless"); }
+  return out;
+};
+const asPage = (r) => new Response(r.body, { status: r.status, statusText: r.statusText, headers: pageHeaders(r.headers) });
+
 /* fetched past the HTTP cache, so a release never installs files a CDN or the browser still
    held from the previous one */
 const fresh = (u) => new Request(u, { cache: "reload" });
+/* the dictionary (22 MB) and the fonts hardly ever change, and every release would download them again: the copy an
+   earlier release keeps is checked with the server instead (If-None-Match / If-Modified-Since, past the HTTP cache as
+   above), and kept when the answer is 304; any other answer is stored as it comes, and without an earlier copy (or a
+   validator on it) the file is fetched as before */
+async function keepOrFetch(c, u) {
+  try {
+    let old = null;
+    for (const k of await caches.keys()) {
+      if (!k.startsWith("lamplight-") || k === CACHE || k === "lamplight-share") continue;
+      old = await (await caches.open(k)).match(u);
+      if (old) break;
+    }
+    const tag = old && old.headers.get("ETag"), when = old && old.headers.get("Last-Modified");
+    if (tag || when) {
+      const res = await fetch(u, { cache: "no-store", headers: tag ? { "If-None-Match": tag } : { "If-Modified-Since": when } });
+      if (res.status === 304) return c.put(u, old);
+      if (res.ok) return c.put(u, res);
+    }
+  } catch (err) { /* asked for fresh below */ }
+  return c.add(fresh(u));
+}
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE).then((c) =>
-      c.addAll(ASSETS.map(fresh)).then(() => Promise.all(DICTS.concat(FONTS).map((d) => c.add(fresh(d)).catch(() => null))))
+      c.addAll(ASSETS.map(fresh)).then(() => Promise.all(DICTS.concat(FONTS).map((d) => keepOrFetch(c, d).catch(() => null))))
     )
   );
 });
@@ -98,11 +140,31 @@ self.addEventListener("message", (e) => {
   if (e.data && e.data.type === "GET_VERSION" && e.source) e.source.postMessage({ type: "VERSION", version: VERSION });
 });
 
+/* releases before RUNTIME existed kept the natural voices' runtime in their own versioned cache: it moves over
+   before that cache goes, so a reader who has the voices does not lose them offline (nor download the runtime
+   again). Only for "natural-runtime-1", whose files are the ones those releases kept; a new RUNTIME drops this */
+async function keepRuntime(old) {
+  if (RUNTIME !== "natural-runtime-1") return;
+  const rt = await caches.open(RUNTIME);
+  for (const k of old) {
+    if (!k.startsWith("lamplight-")) continue;
+    const c = await caches.open(k);
+    for (const req of await c.keys()) {
+      if (!RUNTIME_PATH.test(new URL(req.url).pathname) || (await rt.match(req))) continue;
+      const r = await c.match(req);
+      if (r) await rt.put(req, r);
+    }
+  }
+}
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && !KEEP.includes(k)).map((k) => caches.delete(k))))
+      .then(async (keys) => {
+        const old = keys.filter((k) => k !== CACHE && !KEEP.includes(k));
+        await keepRuntime(old).catch(() => null);
+        await Promise.all(old.map((k) => caches.delete(k)));
+      })
       .then(() => self.clients.claim())
   );
 });
@@ -139,6 +201,20 @@ self.addEventListener("fetch", (e) => {
      Dutch ↔ English pack's files (PACK above) */
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   if (PACK.test(url.pathname)) return;
+  /* the natural voices' runtime: from RUNTIME, else from the network into RUNTIME (never into this version's cache) */
+  if (RUNTIME_PATH.test(url.pathname)) {
+    e.respondWith(
+      (async () => {
+        const c = await caches.open(RUNTIME);
+        const hit = await c.match(e.request, { ignoreSearch: true });
+        if (hit) return asPage(hit);
+        const res = await fetch(e.request);
+        if (res.ok && res.type === "basic") c.put(e.request, res.clone()).catch(() => null);
+        return res.redirected ? res : asPage(res);
+      })()
+    );
+    return;
+  }
   const isPage =
     e.request.mode === "navigate" ||
     url.pathname.endsWith("/") ||
@@ -151,22 +227,12 @@ self.addEventListener("fetch", (e) => {
     (async () => {
       const c = await caches.open(CACHE);       /* this version's cache only, never a newer one still waiting */
       const hit = await c.match(e.request, { ignoreSearch: true });
-      /* the cached shell was stored under "./"; hand it back under the URL that was asked for
-         (./?shared=1, ./?action=continue) so nothing downstream sees the wrong address — and, for
-         a page, with the cross-origin isolation headers (COI above) */
-      const pageHeaders = (h) => {
-        const out = new Headers(h);
-        if (COI) { out.set("Cross-Origin-Opener-Policy", "same-origin"); out.set("Cross-Origin-Embedder-Policy", "credentialless"); }
-        return out;
-      };
-      /* the headers go on every same-origin response, not only the page: a cross-origin-isolated page may
-         only start a module worker (workers/kokoro-worker.js, workers/piper-worker.js) and its nested pthread
-         workers (vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs) when those scripts carry COEP too */
-      const asPage = (r) => new Response(r.body, { status: r.status, statusText: r.statusText, headers: pageHeaders(r.headers) });
+      /* the cached shell was stored under "./"; it is handed back under the URL that was asked for
+         (./?shared=1, ./?action=continue) so nothing downstream sees the wrong address (asPage below) */
       if (hit) return asPage(hit);
       try {
         const res = await fetch(e.request);
-        /* same-origin files that are not precached (vendor/kokoro/*, vendor/piper/*, the workers) land here on first use */
+        /* same-origin files that are not precached land here on first use */
         if (res.ok && res.type === "basic") c.put(e.request, res.clone()).catch(() => null);
         /* a redirect (…/Lamplight → …/Lamplight/) must reach the browser as one, so it is passed on untouched */
         return res.redirected ? res : asPage(res);

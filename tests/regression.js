@@ -265,7 +265,8 @@ async function textPoint(page, word){
     await page.mouse.click(sp.x, sp.y, { button: "right" });
     await page.waitForFunction(() => /did what|who \/ what/.test(document.getElementById("dictCard").textContent), null, { timeout: 30000 }).catch(() => null);
     R.check("explainer works offline", /did what|who \/ what/.test(await page.$eval("#dictCard", (c) => c.textContent)));
-    R.check("offline note shown, no AI button", await page.evaluate(() => /Offline/.test(document.getElementById("dictCard").textContent) && !document.getElementById("dictAiBtn")));
+    /* the explainer never uses the network, so offline it says nothing about being offline (and there is no AI button) */
+    R.check("no offline note on the explainer, no AI button", await page.evaluate(() => !/built-in dictionary only/.test(document.getElementById("dictCard").textContent) && !document.getElementById("dictAiBtn")));
     await page.keyboard.press("Escape");
     await ctx.setOffline(false);
     /* a new release: the server now hands out sw.js with a bumped VERSION */
