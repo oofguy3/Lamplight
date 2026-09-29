@@ -350,8 +350,9 @@ const V = {
     const texts = log.map((e) => e.text);
     R.check("reads the heading, then the first paragraph sentence by sentence",
       texts[0] === "The Lamp" && texts[2] === "Chapter 1" && texts[3] === "The lamp hums quietly as she turns the page." && texts[4] === "One more chapter," && texts[5] === "she tells herself," && texts[6] === "just one more.", JSON.stringify(texts.slice(0, 8)));
-    R.check("narration is spoken by the narrator, quoted speech by the dialogue voice, without quote marks",
-      log[3] && log[3].voice === V.karen && log[4] && log[4].voice === V.guy && log[5].voice === V.karen && log[6].voice === V.guy && texts.every(noQuotes), JSON.stringify(log.slice(3, 7).map((e) => e.voice)));
+    /* "she tells herself": an unnamed speaker, who gets a voice of her own (a woman's, never the narrator's) */
+    R.check("narration is spoken by the narrator, quoted speech in another voice (the speaker's own), without quote marks",
+      log[3] && log[3].voice === V.karen && log[4] && log[4].voice !== V.karen && log[5].voice === V.karen && log[6].voice === log[4].voice && texts.every(noQuotes), JSON.stringify(log.slice(3, 7).map((e) => e.voice)));
     R.check("each utterance carries its voice's own language", log[3].lang === "en-AU" && log[4].lang === "en-US", JSON.stringify([log[3].lang, log[4].lang]));
     const flat = unramp(log);
     R.check("heading is slower and lower; plain sentence neutral", flat[0] && near(flat[0].rate, 0.9) && near(flat[0].pitch, 0.95) && flat[3] && flat[3].pitch === 1 && flat[3].rate === 1, JSON.stringify([flat[0], flat[3]]));
@@ -817,7 +818,7 @@ const V = {
     await page.keyboard.press("r");
     await page.waitForFunction(() => window.__speakLog.length >= 6, null, { timeout: 30000 }).catch(() => null);
     const log = await page.evaluate(() => window.__speakLog.slice());
-    const spoken = log.filter((e) => e.voice === V.karen).length, quoted = log.filter((e) => e.voice === V.guy);
+    const spoken = log.filter((e) => e.voice === V.karen).length, quoted = log.filter((e) => e.voice !== V.karen);
     R.check("PDF: read aloud runs from the page text, narration and quoted speech in their own voices",
       spoken >= 3 && quoted.length >= 1 && quoted.every((e) => noQuotes(e.text)) && log.some((e) => /lamp hums quietly/.test(e.text)), JSON.stringify(log.slice(0, 6)));
     await page.waitForTimeout(1500);

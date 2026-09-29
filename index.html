@@ -71,6 +71,7 @@
       <div class="phint" id="qWeightNote" hidden>This font has two weights.</div>
       <div class="prow"><label for="qLs">Letters</label><input type="range" id="qLs" min="0" max="0.12" step="0.01" value="0"><span class="val" id="qLsV">0.00 em</span></div>
       <div class="prow"><label for="qWs">Words</label><input type="range" id="qWs" min="0" max="0.4" step="0.02" value="0"><span class="val" id="qWsV">0.00 em</span></div>
+      <div class="prow"><label class="check"><input type="checkbox" id="qFocus">Focus reading — bold the start of each word</label></div>
     </details>
     <div class="prow doc-row"><label for="fontQuick">Font</label><select id="fontQuick" class="sel"></select></div>
     <div class="prow pdf-row"><label class="check"><input type="checkbox" id="qSoften" checked>Soften pages in dark themes</label></div>
@@ -215,6 +216,16 @@
         <label class="check"><input type="checkbox" id="cJustify">Justify text</label>
         <label class="check"><input type="checkbox" id="cHyphens">Hyphenate</label>
       </div>
+      <!-- focus reading: the first letters of each word in bold (Focus in app.js); the text itself is unchanged -->
+      <div class="rowline"><label class="check"><input type="checkbox" id="cFocus" aria-describedby="focusHint">Focus reading — bold the start of each word</label></div>
+      <div class="rowline" id="focusRow"><label id="focusL">Strength</label>
+        <div class="chips seg" id="focusChips" role="group" aria-labelledby="focusL">
+          <button type="button" class="chip" data-focus="light" aria-pressed="false">Light</button>
+          <button type="button" class="chip" data-focus="medium" aria-pressed="false">Medium</button>
+          <button type="button" class="chip" data-focus="strong" aria-pressed="false">Strong</button>
+        </div>
+      </div>
+      <div class="hint" id="focusHint">The first letters of every word in bold, so the eye lands on each word sooner: about a third of the letters (light), half (medium) or two thirds (strong).</div>
       <div class="rowline"><button type="button" class="link-btn" id="typeReset">Reset text settings</button></div>
       <div id="typePreview">The lamp hums quietly as she turns the page — this is exactly how your book will look.</div>
       <div class="hint" id="textHint">Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).</div>
@@ -322,9 +333,9 @@
 
 <input type="file" id="fileInput" accept=".pdf,.epub,.docx,.txt,.text,.md,.markdown,.html,.htm" multiple hidden>
 
-<!-- parsers (pdf.js, mammoth, marked, DOMPurify, JSZip), the sentence explainer and the read-aloud voices module
-     (who speaks, a voice per character, ElevenLabs narration) live in vendor/, explain.js and audiobook.js and are
-     loaded on demand by app.js — see loadScript() / need() -->
+<!-- parsers (pdf.js, mammoth, marked, DOMPurify, JSZip), the sentence explainer, the read-aloud voices module
+     (who speaks, a voice per character, ElevenLabs narration) and the background sounds live in vendor/, explain.js,
+     audiobook.js and sounds.js and are loaded on demand by app.js — see loadScript() / need() -->
 <script src="./app.js"></script>
 </body>
 </html>

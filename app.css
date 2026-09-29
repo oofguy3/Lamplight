@@ -1123,6 +1123,27 @@
   .cast-row .cast-pitch input[type=range]{flex:1; min-width:80px;}
   .cast-row .cast-pitch .val{min-width:34px; font-variant-numeric:tabular-nums;}
   .cast-note{font-size:0.75rem; color:var(--muted); padding:8px 4px 2px; line-height:1.45;}
+  /* Who's who: a character per row (with their voice beside them when read aloud gives characters voices);
+     the row opens on their lines, each a jump into the text */
+  .who-item .who-head{
+    flex:1; min-width:0; display:grid; gap:1px; text-align:left; padding:4px 24px 4px 2px; position:relative;
+    background:transparent; border:0; border-radius:8px; color:var(--ink); font:inherit; cursor:pointer;
+  }
+  .who-item .who-head b{font-size:0.875rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .who-item .who-head span{font-size:0.7188rem; color:var(--muted); line-height:1.4;}
+  .who-item .who-head::after{
+    content:""; position:absolute; right:7px; top:13px; width:7px; height:7px;
+    border-right:1.8px solid var(--muted); border-bottom:1.8px solid var(--muted); transform:rotate(45deg); transition:transform .18s ease;
+  }
+  .who-item .who-head[aria-expanded="true"]::after{transform:rotate(-135deg); top:17px;}
+  .who-item .who-head:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .who-lines{flex:1 1 100%; min-width:0; display:grid; gap:2px; padding:0 0 6px;}
+  .who-lines[hidden]{display:none;}
+  .who-lines .chip{justify-self:start; max-width:100%; margin:2px 0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .who-line{width:100%; text-align:left; border:0; background:transparent; font-family:var(--ui-font);}
+  .who-line:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
+  @media (pointer: coarse){ .who-line{min-height:44px;} }
+  @media (prefers-reduced-motion: reduce){ .who-item .who-head::after{transition:none;} }
   /* a voice's name, and the little words under it. min-width:0 so a device that calls a voice
      "English United States" shortens it rather than pushing the panel past the drawer */
   .v-name{font-size:0.9375rem; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; max-width:100%;}
@@ -1469,3 +1490,88 @@
     #printHead{display:block; font-family:var(--ui-font); font-size:9pt; color:#555; border-bottom:1px solid #ccc; padding-bottom:4pt; margin-bottom:1em;}
     #printHead:empty{display:none;}
   }
+  /* ---------- focus reading: the first letters of each word in bold (Focus in app.js); the
+     bold is #doc b's weight, and a printout is plain text again ---------- */
+  #doc b.ll-focus{font-weight:var(--fwb);}
+  .rowline.dim-row .seg{opacity:.62;}
+  @media print{ #doc b.ll-focus{font-weight:inherit;} }
+
+  /* ---------- "Previously…": the recap card over the top of the text (Recap in app.js). It is never
+     part of #doc, so the text and its offsets stay as they are ---------- */
+  #recap{
+    display:none; position:fixed; z-index:26; left:0; right:0; margin:0 auto; top:calc(var(--headH, 56px) + 10px);
+    width:min(560px, calc(100% - 24px)); max-height:min(64vh, 540px); overflow-y:auto; overscroll-behavior:contain;
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.22);
+    padding:10px 14px 14px 16px; font-family:var(--ui-font);
+  }
+  #recap.on{display:block; animation:drop .22s ease;}
+  body.zen #recap, body.paged.immersive #recap, body.hidebar:not(.paged) #recap{top:10px;}
+  .recap-head{display:flex; align-items:center; gap:8px;}
+  .recap-head > svg{width:18px; height:18px; color:var(--accent); flex:none;}
+  .recap-title{margin:0; font-family:var(--reader-font); font-size:1.125rem; font-weight:600; line-height:1.3;}
+  .recap-ago{flex:1; min-width:0; font-size:0.75rem; color:var(--muted);}
+  .recap-x{flex:none; width:36px; height:36px; display:flex; align-items:center; justify-content:center; padding:0; border:0; border-radius:10px;
+    background:transparent; color:var(--muted); cursor:pointer;}
+  .recap-x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}
+  .recap-x svg{width:18px; height:18px;}
+  .recap-list{margin:6px 0 0; padding:0 0 0 1.2em; display:grid; gap:7px; font-family:var(--reader-font); font-size:0.9688rem; line-height:1.5;}
+  .recap-list li::marker{color:var(--accent); font-family:var(--ui-font); font-size:0.8em;}
+  .recap-who{margin:12px 0 0; font-size:0.8438rem; line-height:1.5;}
+  .recap-who .label{margin-right:8px;}
+  .recap-acts{display:flex; justify-content:flex-end; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px;}
+  .recap-acts .chip{display:inline-flex; align-items:center; gap:7px;}
+  .recap-acts .chip svg{width:16px; height:16px; flex:none;}
+  .recap-live{position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}
+
+  /* ---------- speed reading: one word at a time, centred on its recognition point (Rsvp in app.js) ---------- */
+  #rsvp{
+    position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; align-items:center;
+    background:var(--bg); color:var(--ink); font-family:var(--ui-font);
+    padding:max(8px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+  #rsvp[hidden]{display:none;}
+  body.rsvp-on{overflow:hidden;}
+  .rsvp-top{width:100%; max-width:920px; display:flex; align-items:center; gap:12px; min-height:48px;}
+  .rsvp-title{font-family:var(--reader-font); font-size:1.0625rem;}
+  .rsvp-where{flex:1; min-width:0; text-align:right; font-size:0.75rem; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .rsvp-x{flex:none; width:44px; height:44px; display:flex; align-items:center; justify-content:center; padding:0; border:0; border-radius:10px; background:transparent; color:var(--muted); cursor:pointer;}
+  .rsvp-x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}
+  .rsvp-x svg{width:20px; height:20px;}
+  .rsvp-stage{flex:1; min-height:0; width:100%; max-width:920px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px; cursor:pointer; user-select:none; -webkit-user-select:none;}
+  /* three columns, the outer two equal: the middle one (the recognition letter) is always at the centre */
+  .rsvp-word{
+    position:relative; width:100%; display:grid; grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr); align-items:baseline;
+    font-family:var(--reader-font); font-weight:var(--fw); letter-spacing:var(--ls); line-height:1.25; white-space:pre;
+    font-size:calc(clamp(2rem, 7.5vw, 3.6rem) * var(--k, 1)); padding:0.5em 0;
+    border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+  }
+  .rsvp-word::before, .rsvp-word::after{content:""; position:absolute; left:50%; width:2px; height:0.3em; margin-left:-1px; background:var(--accent); opacity:.8;}
+  .rsvp-word::before{top:0;}
+  .rsvp-word::after{bottom:0;}
+  .rsvp-l{text-align:right;}
+  .rsvp-orp{color:var(--accent);}
+  .rsvp-r{text-align:left;}
+  .rsvp-ctx{max-width:min(640px, 100%); margin:0; font-family:var(--reader-font); font-size:1rem; line-height:1.6; color:var(--muted); text-align:center;}
+  .rsvp-ctx[hidden]{display:none;}
+  .rsvp-ctx mark{background:color-mix(in srgb, var(--accent) 22%, transparent); color:var(--ink); border-radius:3px; padding:0 2px;}
+  .rsvp-prog{width:100%; max-width:920px; height:3px; margin:6px 0 16px; border-radius:2px; background:var(--line); overflow:hidden;}
+  .rsvp-prog i{display:block; height:100%; width:0; background:var(--accent);}
+  .rsvp-ctl{display:flex; align-items:center; justify-content:center; gap:16px;}
+  .rsvp-ctl .ctl{min-width:48px; height:48px;}
+  .rsvp-ctl .ctl svg{width:22px; height:22px;}
+  #rsvpPlay{width:68px; height:56px; border-radius:16px;}
+  .rsvp-speed{width:100%; max-width:520px; margin-top:14px;}
+  .rsvp-speed label{min-width:0;}
+  .rsvp-keys{margin:6px 0 0; text-align:center;}
+  @media (pointer: coarse){ .rsvp-keys{display:none;} }
+  @media (forced-colors: active){ .rsvp-orp{color:Highlight;} .rsvp-word::before, .rsvp-word::after, .rsvp-prog i{background:Highlight;} }
+
+  /* ---------- background sounds panel (sounds.js) ---------- */
+  .snd-panel{display:grid; gap:14px;}
+  .snd-chips .chip{display:inline-flex; align-items:center; gap:7px;}
+  .snd-chips .chip svg{width:16px; height:16px; flex:none; color:var(--accent);}
+  .snd-mix{display:grid; gap:6px;}
+  .snd-panel .rowline label:not(.check){min-width:96px;}
+  .snd-state{min-height:1.2em;}
+
+  @media print{ #recap, #rsvp{display:none !important;} }

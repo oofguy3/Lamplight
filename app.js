@@ -20,7 +20,8 @@
     explain: ["./explain.js"],
     morph:   ["./morph.js"],
     translate: ["./translate.js"],
-    audiobook: ["./audiobook.js"]   /* who speaks each line, a voice per character, ElevenLabs and natural (Piper, Kokoro) narration (see Speak.registerEngine) */
+    audiobook: ["./audiobook.js"],  /* who speaks each line, a voice per character, ElevenLabs and natural (Piper, Kokoro) narration (see Speak.registerEngine) */
+    sounds:  ["./sounds.js"]        /* background sounds made with the Web Audio API (see Sounds) */
   };
   function need(names){
     var files = [];
@@ -184,6 +185,8 @@
     /* weight 300–800 (clamped to the family's range), letter and word spacing in em, and the
        gap under a paragraph in em; warmth 0–100 with its own night schedule */
     weight:400, ls:0, ws:0, pgap:0.95, warmth:0, warmAuto:false,
+    /* focus reading: the start of each word in bold (light / medium / strong, see Focus) */
+    focus:false, focusLevel:"medium",
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
@@ -193,7 +196,7 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel"];
     var loading = false;
     /* a number inside its range, or the default when the stored value is nonsense */
     function num(v, lo, hi, dflt){
@@ -264,6 +267,8 @@
       state.warmth = Math.round(num(state.warmth, 0, 100, 0));
       state.warmAuto = state.warmAuto === true;
       if (state.flow !== "pages") state.flow = "scroll";
+      state.focus = state.focus === true;
+      if (!/^(light|medium|strong)$/.test(state.focusLevel)) state.focusLevel = "medium";
       loading = false;
     }
     return { save: save, load: load };
@@ -718,6 +723,15 @@
     warmth: Warmth
   };
 
+  /* focus reading's switch and strength (the sheet's Text group; the popover has the switch) */
+  function syncFocusUI(){
+    $("#cFocus").checked = !!state.focus;
+    $("#qFocus").checked = !!state.focus;
+    $("#focusRow").classList.toggle("dim-row", !state.focus);
+    Array.prototype.forEach.call(document.querySelectorAll("#focusChips .chip"), function(ch){
+      var on = ch.dataset.focus === state.focusLevel; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
   function applyType(){
     var r = document.documentElement.style, font = FONTS[state.font] || FONTS.serif;
     var rg = weightRange(font);
@@ -742,6 +756,8 @@
     $("#doc").classList.toggle("hyphens", !!state.hyphens);
     $("#cJustify").checked = !!state.justify;
     $("#cHyphens").checked = !!state.hyphens;
+    syncFocusUI();
+    if (Focus) Focus.sync();
     $("#rSize").value = state.size; $("#rLh").value = state.lh; $("#rW").value = state.width; $("#rM").value = state.margin || 0;
     $("#vSize").textContent = state.size + " px";
     $("#vLh").textContent   = state.lh.toFixed(2);
@@ -1014,6 +1030,7 @@
     $("#qLs").addEventListener("input", function(e){ state.ls = +e.target.value; applyType(); });
     $("#qWs").addEventListener("input", function(e){ state.ws = +e.target.value; applyType(); });
     fontQuick.addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
+    $("#qFocus").addEventListener("change", function(e){ state.focus = e.target.checked; applyType(); });
     $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
     $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
     /* the footer link: the sheet opens at the group, and Escape there hands focus back to the bar button */
@@ -1325,6 +1342,7 @@
       state.pdfPageNum = Math.round(frac * (state.pdfDoc.numPages - 1)) + 1;
     document.body.classList.remove("hidebar");
     reflow();
+    Focus.sync();     /* focus reading watches the page for the new flow */
     if (state.mode === "doc" && f === "pages" && (off === null || !revealOffset(off)))
       gotoPage(Math.round(frac * (state.totalPages - 1)));
     if (f === "scroll")
@@ -2034,6 +2052,10 @@
       bookmark: icon(path("M6 3h12v18l-6-4-6 4V3z")),
       notes:    icon(path("M4 20h4L18 10l-4-4L4 16v4z"), path("M13 7l4 4")),
       speaker:  icon(path("M4 9v6h4l5 4V5L8 9H4z"), path("M16 9a4 4 0 0 1 0 6")),
+      people:   icon(path("M9 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"), path("M3.5 20a5.5 5.5 0 0 1 11 0"), path("M15.5 5.3a3 3 0 0 1 0 5.4"), path("M17 14.3a5.5 5.5 0 0 1 3.5 5.7")),
+      recap:    icon(path("M3.5 12a8.5 8.5 0 1 0 2.5-6"), path("M3 4v4.5h4.5"), path("M12 8v4.5l3 2")),
+      bolt:     icon(path("M13 3L5 14h6l-1 7 8-11h-6l1-7z")),
+      sound:    icon(path("M4 15v-3a8 8 0 0 1 16 0v3"), path("M4 14h3v6H4z"), path("M17 14h3v6h-3z")),
       auto:     icon(path("M6 7l6 6 6-6"), path("M6 13l6 6 6-6")),
       ruler:    icon(path("M3 9h18v6H3z"), path("M7 9v3 M11 9v3 M15 9v3")),
       zen:      icon(path("M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5")),
@@ -2397,6 +2419,7 @@
       var pos = capture();
       if (!pos) return;
       positions[pos.id] = pos;
+      Recap.note(pos);          /* the reading sessions behind "Previously…" */
       tx("positions", "readwrite", function(st){ st.put(pos); }).catch(function(){});
     }
     function flush(){ if (current && !pending) savePosition(); }
@@ -2446,6 +2469,7 @@
         rec.opened = Date.now();
         if (titleQueue){ rec.title = titleQueue; titleQueue = null; }
         if (!existing) books.unshift(rec); else { books.splice(books.indexOf(existing), 1); books.unshift(rec); }
+        Recap.check();          /* back after two hours or more: the recap card (once the text is in, too) */
         return tx("books", "readwrite", function(st){ st.put(rec); }).catch(function(err){
           console.warn("couldn't save to library", err);
           if (!existing){ books.splice(books.indexOf(rec), 1); }
@@ -2466,9 +2490,9 @@
       var b = books.filter(function(x){ return x.id === current; })[0];
       if (b && b.title !== title){ b.title = title; tx("books", "readwrite", function(st){ st.put(b); }).catch(function(){}); render(); }
     }
-    function docReady(){ ready.doc = true; ready.pdfPages = {}; tryRestore(); Marks.docReady(); }
-    function pdfReady(){ tryRestore(); }
-    function pdfPageReady(n){ ready.pdfPages[n] = true; tryRestore(); }
+    function docReady(){ ready.doc = true; ready.pdfPages = {}; tryRestore(); Marks.docReady(); Recap.check(); }
+    function pdfReady(){ tryRestore(); Recap.check(); }
+    function pdfPageReady(n){ ready.pdfPages[n] = true; tryRestore(); Recap.check(); }
 
     /* ---- the list on the start screen ---- */
     function ago(t){
@@ -2658,6 +2682,7 @@
       Marks.forget(id);
       Tabs.drop(id);
       forgetAudio(id);
+      Recap.forget(id);
       tx("books", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       tx("positions", "readwrite", function(st){ st.delete(id); }).catch(function(){});
       if (current === id) current = null;
@@ -4946,7 +4971,7 @@
     function engineRows(){
       return '<div class="rowline"><label id="ttsEngineL">Voices from</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsEngineL" id="engineChips">' + engineChips() + '</div></div>' +
         '<div class="rowline" id="castRow"><label id="ttsCastL">Characters</label><div class="chips" role="radiogroup" aria-labelledby="ttsCastL" id="castChips">' + castChips() + '</div></div>' +
-        '<p class="hint" id="ttsCastHint">Every named character gets a device voice of their own, worked out from the text on this device (“said Anna”, “he whispered”); lines no one is named for keep the dialogue voice.</p>' +
+        '<p class="hint" id="ttsCastHint">Every character gets a device voice of their own, the unnamed ones too, worked out from the text on this device (“said Anna”, “he whispered”, who acts beside a line, who takes turns).</p>' +
         '<div class="rowline" id="castBtnRow"><button type="button" class="chip" id="ttsCastBtn">Voices for characters…</button></div>' +
         '<div class="subgroup" id="elevenRow" data-engine-only="eleven">' +
           '<div class="rowline"><label for="elevenNarrator">Narrator</label><select id="elevenNarrator" class="sel" disabled><option value="">Add a key first</option></select></div>' +
@@ -5306,6 +5331,9 @@
 
     Menu.add({ order: 40, group: "reading", icon: ICONS.speaker, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported || engineName !== "device"; } });
+    /* the characters of the open document (audiobook.js works them out, on this device) */
+    Menu.add({ order: 41, group: "reading", icon: ICONS.people, label: "Who’s who", run: function(){ withAudiobook(function(a){ a.openWho(); }); },
+               show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     /* test hook: the pure pieces, and what the panel would choose */
     window.llSpeak = {
       voiceGender: voiceGender, express: express, dialogueVoice: dialogueVoice, bestVoice: bestVoice, sortedVoices: sortedVoices,
@@ -6682,7 +6710,7 @@
     ["scroll", "wheel", "keydown", "pointerdown", "touchstart"].forEach(function(ev){ window.addEventListener(ev, active, { passive: true, capture: true }); });
     if (window.MutationObserver) new MutationObserver(active).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
     document.addEventListener("ll:fileopened", function(){ docKey = null; active(); renderWidget(); });
-    function busy(){ return Speak.isPlaying() || (Auto.isOn() && !Auto.isPaused()); }
+    function busy(){ return Speak.isPlaying() || (Auto.isOn() && !Auto.isPaused()) || Rsvp.isPlaying(); }
     /* ---- a day's reading speed, kept as it is earned: only while both the words and the time
        are still growing, and only once the day holds enough reading to mean anything ---- */
     var paceDay = "", paceWords = 0, paceMs = 0;
@@ -7174,7 +7202,7 @@
         if (!confirm("Clear everything Lamplight keeps on this device — books, positions, notes, translations, stats, themes and settings?")) return;
         if (!confirm("This can’t be undone. Clear everything?")) return;
         Stats.reset(true);
-        ["ll_stats", "ll_prefs", "ll_tabs", "ll_wpm", "ll_ppm", "ll_mark_legend"].forEach(function(k){ Store.remove(k); });
+        ["ll_stats", "ll_prefs", "ll_tabs", "ll_wpm", "ll_ppm", "ll_mark_legend", "ll_recap", "ll_sounds", "ll_rsvp_wpm"].forEach(function(k){ Store.remove(k); });
         Library.wipe(true).then(function(){ location.reload(); }, function(){ location.reload(); });
       }
     }
@@ -7435,6 +7463,913 @@
     document.addEventListener("visibilitychange", function(){ if (on && document.visibilityState === "hidden") pause(); });
     Menu.add({ order: 51, group: "reading", icon: ICONS.auto, label: function(){ return on ? "Stop auto-scroll" : "Auto-scroll"; }, key: "A", run: function(){ if (on) stop(); else start(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { start: start, stop: stop, pause: pause, resume: resume, isOn: function(){ return on; }, isPaused: function(){ return paused; }, pxPerSec: pxPerSec, mult: function(){ return mult; } };
+  })();
+
+  /* ============================================================
+     Focus reading — the first letters of every word in bold, so the
+     eye lands on each word sooner (light / medium / strong: about a
+     third, half or two thirds of the letters). The letters are wrapped
+     in <b class="ll-focus"> inside the text's own blocks, lazily, for
+     the blocks near the screen (an IntersectionObserver), by splitting
+     the text nodes in place: the concatenated text of #doc stays
+     exactly what it was, so every character offset (positions,
+     highlights, notes, search, read aloud) is untouched, and live
+     ranges on the text follow the split. Code and preformatted text
+     are left alone; only #doc is touched (never the dictionary card).
+     Turning it off puts the text nodes back together.
+     ============================================================ */
+  var Focus = (function(){
+    var LEVELS = { light: 0.3, medium: 0.45, strong: 0.6 };
+    /* the units observed and bolded one at a time: blocks, and a plain-text file's paragraphs (chunk spans) */
+    var UNITS = "p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dt, dd, figcaption, caption, div, section, article, aside, span.ll-fchunk";
+    /* never bolded inside these */
+    var NOPE = "pre, code, kbd, samp, tt, var, textarea, script, style, svg, math, b.ll-focus, .ll-hit, .ll-tr";
+    var L = "A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F\\u0370-\\u03FF\\u0400-\\u04FF\\u1E00-\\u1EFF";
+    var WORD = new RegExp("[" + L + "]+(?:['\\u2019][" + L + "]+)*", "g"), ANY = new RegExp("[" + L + "]");
+    var applied = "";              /* the strength on the page now ("" = none) */
+    var io = null, ioFlow = null, units = [], at = null, done = new WeakMap();
+    var queue = [], pumping = false, relayT = null;
+    var anchors = window.CSS && CSS.supports && CSS.supports("overflow-anchor", "auto");
+    function wanted(){ return state.focus && state.mode === "doc" ? (LEVELS[state.focusLevel] ? state.focusLevel : "medium") : ""; }
+    function isFocus(n){ return !!(n && n.nodeType === 1 && n.tagName === "B" && n.classList.contains("ll-focus")); }
+
+    /* ---- bolding one unit: its own text nodes (nested units are theirs), each word split in place ---- */
+    function textsOf(el, out){
+      for (var c = el.firstChild; c; c = c.nextSibling){
+        if (c.nodeType === 3){ if (ANY.test(c.data)) out.push(c); }
+        else if (c.nodeType === 1 && !c.matches(NOPE) && !c.matches(UNITS)) textsOf(c, out);
+      }
+      return out;
+    }
+    /* does the text just before n (inside unit u) end on a letter? Then n starts with the rest of a word: the tail
+       after a bold start, or a word cut by a highlight. A line break or an image ends a word. */
+    function letterBefore(n, u){
+      var p = n;
+      for (;;){
+        while (p && !p.previousSibling && p.parentNode && p.parentNode !== u) p = p.parentNode;
+        if (!p || !p.previousSibling) return false;
+        p = p.previousSibling;
+        var q = p;
+        while (q.nodeType === 1 && q.lastChild) q = q.lastChild;
+        if (q.nodeType === 3){ if (q.length) return ANY.test(q.data.charAt(q.length - 1)); }
+        else if (/^(BR|IMG|HR|WBR)$/.test(q.tagName)) return false;
+      }
+    }
+    function boldNode(n, frac, u){
+      var t = n.data, list = [], m;
+      WORD.lastIndex = 0;
+      while ((m = WORD.exec(t))) list.push(m.index, m[0].split(/['’]/)[0].length);
+      if (list.length && list[0] === 0 && letterBefore(n, u)) list.splice(0, 2);
+      /* from the last word back: n keeps the text before each word, so the offsets still hold; splitText
+         carries live ranges (read aloud, search) into the new nodes */
+      for (var i = list.length - 2; i >= 0; i -= 2){
+        var a = list[i], len = list[i + 1], k = Math.min(len, Math.max(1, Math.round(len * frac)));
+        if (a + k < n.length) n.splitText(a + k);
+        var mid = a > 0 ? n.splitText(a) : n, b = document.createElement("b");
+        b.className = "ll-focus";
+        mid.parentNode.replaceChild(b, mid);
+        b.appendChild(mid);
+      }
+    }
+    function bold(u){
+      if (!applied || done.get(u) === applied || !u.isConnected) return false;
+      var frac = LEVELS[applied];
+      textsOf(u, []).forEach(function(n){ boldNode(n, frac, u); });
+      done.set(u, applied);
+      if (io) io.unobserve(u);
+      return true;
+    }
+
+    /* ---- a plain-text file is one text node: its paragraphs become chunk spans (the same breaks the translator
+       uses, after the newline that ends a paragraph) so each can be observed and bolded on its own ---- */
+    function chunkPlain(div){
+      if (div.querySelector("span.ll-fchunk")) return;
+      var raw = div.textContent, cuts = [], re = /\r?\n[ \t\r]*\n/g, m, last = 0;
+      while ((m = re.exec(raw))){
+        var c = m.index + m[0].indexOf("\n") + 1;
+        /* a long stretch without blank lines is cut at line ends too, so no chunk is a whole book */
+        while (c - last > 4000){ var nl = raw.lastIndexOf("\n", last + 3000); if (nl <= last) break; cuts.push(nl + 1); last = nl + 1; }
+        cuts.push(c); last = c;
+      }
+      while (raw.length - last > 4000){ var nl2 = raw.lastIndexOf("\n", last + 3000); if (nl2 <= last) break; cuts.push(nl2 + 1); last = nl2 + 1; }
+      var kids = Array.prototype.slice.call(div.childNodes), pos = 0, ci = 0, span = null;
+      function fresh(){ span = document.createElement("span"); span.className = "ll-fchunk"; div.appendChild(span); }
+      fresh();
+      kids.forEach(function(k){
+        if (k.nodeType !== 3){ span.appendChild(k); pos += (k.textContent || "").length; while (ci < cuts.length && cuts[ci] <= pos) ci++; return; }
+        var start = pos, end = pos + k.length, node = k;
+        while (ci < cuts.length && cuts[ci] <= start) ci++;
+        while (ci < cuts.length && cuts[ci] < end){
+          var rest = node.splitText(cuts[ci] - start);
+          span.appendChild(node); fresh();
+          start = cuts[ci]; node = rest; ci++;
+        }
+        span.appendChild(node);
+        pos = end;
+        if (ci < cuts.length && cuts[ci] === end){ fresh(); ci++; }
+      });
+      if (!span.firstChild) div.removeChild(span);
+    }
+
+    /* ---- the queue: what came near the screen, and the units around it, a slice at a time ---- */
+    function onSeen(entries){
+      var any = false;
+      entries.forEach(function(en){
+        if (!en.isIntersecting) return;
+        var i = at.get(en.target);
+        if (i === undefined) return;
+        /* a little behind and well ahead, so a page turn seldom waits for the next batch */
+        for (var j = Math.max(0, i - 4); j < Math.min(units.length, i + 40); j++) if (done.get(units[j]) !== applied){ queue.push(units[j]); any = true; }
+      });
+      if (any) pump();
+    }
+    function pump(){
+      if (pumping) return;
+      pumping = true;
+      setTimeout(function(){
+        pumping = false;
+        if (!applied || !queue.length){ queue = []; return; }
+        var t0 = Date.now(), changed = false, paged = state.flow === "pages";
+        /* Scroll flow in a browser without scroll anchoring: text above the screen that grows must not push the
+           page, so the block at the top of the screen is held where it is */
+        var ref = !paged && !anchors ? topUnit() : null, top0 = ref ? ref.getBoundingClientRect().top : 0;
+        while (queue.length && Date.now() - t0 < 12) if (bold(queue.shift())) changed = true;
+        if (changed){
+          Anchor.invalidate();
+          if (ref){ var d = ref.getBoundingClientRect().top - top0; if (Math.abs(d) > 0.5) window.scrollBy(0, d); }
+          if (paged) relayout();
+        }
+        if (queue.length) pump();
+      }, 0);
+    }
+    function topUnit(){
+      var r = $("#doc").getBoundingClientRect(), el = document.elementFromPoint(r.left + r.width / 2, Library.headerHeight() + 12);
+      return el && el.closest && $("#doc").contains(el) ? el.closest(UNITS) : null;
+    }
+    /* Pages flow: bold letters are wider, so the columns are laid out again (landing on the same text) */
+    function relayout(){
+      clearTimeout(relayT);
+      relayT = setTimeout(function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); }, 160);
+    }
+
+    /* unwrapping (and chunking a plain-text file) moves text nodes, which collapses live ranges: the sentence read
+       aloud keeps its highlight by its character offsets (search paints its own again) */
+    function keepSpeak(fn){
+      var hl = window.CSS && CSS.highlights, saved = [];
+      function at(n, o){ return n && n.nodeType === 3 ? Anchor.offsetOf(n, o) : null; }
+      if (hl) ["ll-speak", "ll-speak-dialogue"].forEach(function(name){
+        var h = hl.get(name);
+        if (h) h.forEach(function(r){ var a = at(r.startContainer, r.startOffset), b = at(r.endContainer, r.endOffset); if (a !== null && b !== null) saved.push([name, a, b]); });
+      });
+      fn();
+      saved.forEach(function(x){ Anchor.invalidate(); var r = Anchor.rangeBetween(x[1], x[2]); if (r) hl.set(x[0], new Highlight(r)); });
+    }
+    /* ---- on, off, a new strength, a new document or flow ---- */
+    function attach(){
+      if (io){ io.disconnect(); io = null; }
+      queue = [];
+      if (!applied || state.mode !== "doc" || !window.IntersectionObserver) return;
+      var doc = $("#doc");
+      if (doc.querySelector("div.plain")) keepSpeak(function(){ Array.prototype.forEach.call(doc.querySelectorAll("div.plain"), chunkPlain); Anchor.invalidate(); });
+      units = Array.prototype.filter.call(doc.querySelectorAll(UNITS), function(u){ return !u.closest(NOPE); });
+      at = new WeakMap();
+      units.forEach(function(u, i){ at.set(u, i); });
+      var paged = state.flow === "pages";
+      ioFlow = state.flow;
+      /* Pages flow: the pages either side of the one shown (the view clips the columns); Scroll flow: a screen ahead */
+      io = new IntersectionObserver(onSeen, paged ? { root: $("#docView"), rootMargin: "0px 200% 0px 200%" } : { root: null, rootMargin: "25% 0px 150% 0px" });
+      units.forEach(function(u){ if (done.get(u) !== applied) io.observe(u); });
+    }
+    function undo(){ keepSpeak(unwrapAll); }
+    function unwrapAll(){
+      if (io){ io.disconnect(); io = null; }
+      queue = []; done = new WeakMap();
+      var doc = $("#doc"), parents = [], seen = new WeakMap();
+      function unwrap(el){
+        var p = el.parentNode;
+        if (!p) return;
+        while (el.firstChild) p.insertBefore(el.firstChild, el);
+        p.removeChild(el);
+        if (!seen.get(p)){ seen.set(p, true); parents.push(p); }
+      }
+      Array.prototype.slice.call(doc.querySelectorAll("b.ll-focus")).forEach(unwrap);
+      Array.prototype.slice.call(doc.querySelectorAll("span.ll-fchunk")).forEach(unwrap);
+      parents.forEach(function(p){ if (p.isConnected) p.normalize(); });
+      Anchor.invalidate();
+      if (window.Search && Search.refresh) Search.refresh();
+    }
+    /* called by applyType (and so by every text setting); cheap when nothing changed */
+    function sync(){
+      var w = wanted();
+      if (w === applied){ if (w && ioFlow !== state.flow) attach(); return; }
+      var had = !!applied;
+      if (applied) undo();
+      applied = w;
+      if (w) attach();
+      else if (had && state.mode === "doc" && state.flow === "pages") relayout();
+    }
+    /* a new document (or blocks added to it, such as translations): its units are gathered again; what is bold
+       stays bold (done is kept per element) */
+    new MutationObserver(function(){ if (applied && wanted() === applied) attach(); else sync(); }).observe($("#doc"), { childList: true });
+
+    /* ---- the dictionary: a tapped word that is split in two (bold start, plain rest) is made one text node
+       again for the lookup; again(el) bolds its unit anew once the tapped word's mark is gone ---- */
+    function unsplit(n, off){
+      if (!applied || !n || n.nodeType !== 3) return null;
+      var b = isFocus(n.parentNode) ? n.parentNode : isFocus(n.nextSibling) && off >= n.length - 1 ? n.nextSibling :
+              isFocus(n.previousSibling) && off <= 1 ? n.previousSibling : null;
+      if (!b) return null;
+      var t = b.firstChild, prev = b.previousSibling && b.previousSibling.nodeType === 3 ? b.previousSibling : null, p = b.parentNode;
+      if (!t || !p) return null;
+      var base = prev ? prev.length : 0, pos = n === t ? base + off : n === prev ? off : base + t.length + off;
+      p.insertBefore(t, b); p.removeChild(b);
+      p.normalize();
+      Anchor.invalidate();
+      var merged = prev || t, u = merged.parentNode && merged.parentNode.closest ? merged.parentNode.closest(UNITS) : null;
+      if (u) done.delete(u);
+      return { node: merged, offset: Math.min(pos, merged.length) };
+    }
+    function again(el){
+      if (!applied || !el || !el.closest) return;
+      var u = el.closest(UNITS);
+      if (!u || !$("#doc").contains(u)) return;
+      done.delete(u);
+      if (bold(u)){ Anchor.invalidate(); if (state.flow === "pages") relayout(); }
+    }
+    window.llFocus = { sync: sync, level: function(){ return applied; }, count: function(){ return $("#doc").querySelectorAll("b.ll-focus").length; }, unsplit: unsplit };
+    return { sync: sync, unsplit: unsplit, again: again, on: function(){ return !!applied; } };
+  })();
+
+  /* ---------- the text of #doc as blocks and sentences (the recap and speed reading) ----------
+     textBlocks(from, to): every innermost p / heading / li / … with the character offset of its first
+     character, the way read aloud and translation see the text (a plain-text file's paragraphs, split at
+     blank lines, are blocks of their own); only those that reach into [from, to) when given.
+     sentenceSpans(text): [{ a, b }] the sentences of a block, offsets inside it. */
+  var BLOCK_SEL = "p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dt, dd, pre, figcaption, div.plain";
+  function textBlocks(from, to){
+    var doc = $("#doc"), out = [], ranged = typeof from === "number";
+    var els = Array.prototype.filter.call(doc.querySelectorAll(BLOCK_SEL), function(b){ return !b.querySelector(BLOCK_SEL); });
+    if (!els.length) els = [doc];
+    els.forEach(function(el){
+      var first = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+      if (!first) return;
+      var base = Anchor.offsetOf(first, 0);
+      if (base === null) return;
+      var text = el.textContent, heading = /^H[1-6]$/.test(el.tagName);
+      if (ranged && (base + text.length <= from || base >= to)) return;
+      function push(a, b){
+        if (ranged && (base + b <= from || base + a >= to)) return;
+        if (/\S/.test(text.slice(a, b))) out.push({ start: base + a, text: text.slice(a, b), heading: heading });
+      }
+      if (el.classList.contains("plain") || el.tagName === "PRE"){
+        var re = /\r?\n[ \t\r]*\n/g, m, pos = 0;
+        while ((m = re.exec(text))){ push(pos, m.index); pos = m.index + m[0].length; }
+        push(pos, text.length);
+      } else push(0, text.length);
+    });
+    return out;
+  }
+  var ABBREV = /(?:^|[\s(“"])(?:Mr|Mrs|Ms|Mx|Dr|St|Sr|Jr|Prof|Rev|Gen|Col|Capt|Lt|Sgt|Mt|Messrs|Mme|Mlle|vs|etc|viz|cf|ca|approx|No|Nos|Vol|pp?|ch|fig|e\.g|i\.e|[A-Z])\.$/;
+  function sentenceSpans(text){
+    var out = [], start = 0, re = /[.!?…]+["'”’»)\]]*(?=\s|$)/g, m;
+    function push(a, b){
+      var s = text.slice(a, b), lead = s.length - s.replace(/^\s+/, "").length, trail = s.length - s.replace(/\s+$/, "").length;
+      if (b - trail > a + lead) out.push({ a: a + lead, b: b - trail });
+    }
+    while ((m = re.exec(text))){
+      var end = m.index + m[0].length;
+      if (m[0] === "." && ABBREV.test(text.slice(Math.max(start, m.index - 12), m.index + 1))) continue;
+      /* “Wait!” she said — a lower-case word after the stop carries the sentence on */
+      var next = /\S/.exec(text.slice(end, end + 40));
+      if (next && /[a-z]/.test(next[0])) continue;
+      push(start, end); start = end;
+    }
+    push(start, text.length);
+    return out;
+  }
+
+  /* ============================================================
+     Previously… — a short recap of the last reading session. Every book
+     keeps its sessions (where reading started and stopped, and when:
+     Library's position saves feed them). A book opened again, or a tab
+     come back to, after two hours or more shows a card over the top of
+     the text: the time away, three to five key sentences of what was
+     read last time (extractive: content words that recur in the span,
+     the characters in them, where they sit; spread across a long span),
+     and the characters who appeared (audiobook.js's attribute(), when it
+     loads). The menu's "Previously…" shows it at any time. Text
+     documents, and PDFs from their pages' text.
+     ============================================================ */
+  var Recap = (function(){
+    var KEY = "ll_recap", GAP = 2 * 3600000, MIN_WORDS = 150, KEEP = 8, BOOKS = 60, MAX_PDF_PAGES = 30;
+    var data = load(), cur = null, sitting = -1, checked = null, saveT = null;
+    var card = null, cardSess = null, speakGen = 0, opener = null, live = null;
+
+    /* ---- sessions: { a, b, t0, t1 } per book — character offsets (a PDF: page numbers) and times ---- */
+    function load(){
+      var o = null, out = { v: 1, books: {} };
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
+      if (!o || typeof o !== "object" || !o.books || typeof o.books !== "object") return out;
+      Object.keys(o.books).forEach(function(id){
+        var b = o.books[id];
+        if (!b || !Array.isArray(b.s) || (b.m !== "doc" && b.m !== "pdf")) return;
+        var s = b.s.filter(function(x){ return x && isFinite(x.a) && isFinite(x.b) && isFinite(x.t0) && isFinite(x.t1); })
+          .map(function(x){ return { a: +x.a, b: +x.b, t0: +x.t0, t1: +x.t1 }; });
+        if (s.length) out.books[id] = { m: b.m, s: s.slice(-KEEP) };
+      });
+      return out;
+    }
+    function save(){
+      clearTimeout(saveT); saveT = null;
+      var ids = Object.keys(data.books);
+      if (ids.length > BOOKS){
+        ids.sort(function(x, y){ var a = data.books[x].s, b = data.books[y].s; return a[a.length - 1].t1 - b[b.length - 1].t1; });
+        ids.slice(0, ids.length - BOOKS).forEach(function(id){ delete data.books[id]; });
+      }
+      Store.set(KEY, JSON.stringify(data));
+    }
+    function later(){ if (!saveT) saveT = setTimeout(save, 2000); }
+    function list(id, mode){
+      var b = data.books[id];
+      if (!b || b.m !== mode) b = data.books[id] = { m: mode, s: [] };
+      return b.s;
+    }
+    /* roughly how many words a session spans (the real count is taken from the text when a recap is made) */
+    function guess(x, mode){ return mode === "pdf" ? (x.b - x.a + 1) * 250 : (x.b - x.a) / 6; }
+    /* the latest session up to index i with enough reading in it, staying inside one sitting (a jump makes a
+       new session; a short one after it falls back on the one before) */
+    function pick(s, i, mode){
+      for (; i >= 0; i--){
+        if (guess(s[i], mode) >= MIN_WORDS) return i;
+        if (i > 0 && s[i].t0 - s[i - 1].t1 >= GAP) return -1;
+      }
+      return -1;
+    }
+
+    /* Library saves a position (a scroll or page turn settled, the tab hidden, the page left) */
+    function note(pos){
+      if (!pos || !pos.id || checked !== pos.id) return;
+      var at = pos.mode === "pdf" ? pos.pdfPage : pos.off, now = pos.updated || Date.now();
+      if (typeof at !== "number" || !isFinite(at)) return;
+      var s = list(pos.id, pos.mode), x = cur && cur.id === pos.id ? cur.x : null;
+      /* a jump (contents, search, a long way back) starts a new session */
+      if (x && (pos.mode === "pdf" ? at < x.a - 2 || at > x.b + 25 : at < x.a - 3000 || at > x.b + 40000)) x = null;
+      if (!x){
+        x = { a: at, b: at, t0: now, t1: now };
+        s.push(x);
+        while (s.length > KEEP){ s.shift(); if (sitting > 0) sitting--; }
+        cur = { id: pos.id, x: x };
+      } else { x.b = Math.max(x.b, at); x.t1 = now; }
+      later();
+    }
+    /* a book is open and its text (or its PDF) is in: two hours or more since it was last read shows the card */
+    function check(){
+      var id = Library.currentId();
+      if (!id || checked === id) return;
+      if (!(state.mode === "doc" && !state.opening) && !(state.mode === "pdf" && state.pdfDoc)) return;
+      checked = id;
+      var s = list(id, state.mode), last = s[s.length - 1], now = Date.now();
+      if (last && now - last.t1 < GAP){ cur = { id: id, x: last }; sitting = s.length - 1; return; }
+      cur = null; sitting = s.length;
+      if (last){ var i = pick(s, s.length - 1, state.mode); if (i >= 0) show(s[i], false); }
+    }
+    document.addEventListener("visibilitychange", function(){
+      if (document.visibilityState === "hidden"){ if (saveT) save(); return; }
+      var id = Library.currentId();
+      if (!cur || !id || cur.id !== id || checked !== id || Date.now() - cur.x.t1 < GAP) return;
+      var s = list(id, state.mode), i = pick(s, s.indexOf(cur.x), state.mode);
+      cur = null; sitting = s.length;
+      if (i >= 0) show(s[i], false);
+    });
+    window.addEventListener("pagehide", function(){ if (saveT) save(); });
+    document.addEventListener("ll:fileopened", function(){ close(true); checked = null; cur = null; sitting = -1; if (saveT) save(); });
+    function forget(id){ if (data.books[id]){ delete data.books[id]; save(); } }
+
+    /* ---- the menu: the last sitting's recap (before this one), else this one's so far ---- */
+    function onDemand(){
+      var id = Library.currentId();
+      if (!id){ Marks.toast("Open a book first"); return; }
+      check();
+      var s = list(id, state.mode), i = -1;
+      if (sitting > 0) i = pick(s, Math.min(sitting, s.length) - 1, state.mode);
+      if (i < 0) i = pick(s, s.length - 1, state.mode);
+      if (i < 0){ Marks.toast("Nothing to recap yet — read a little further first"); return; }
+      show(s[i], true);
+    }
+
+    /* ---- what was read: its blocks (with offsets), its words, and read-aloud units for attribute() ---- */
+    var STOP = {};
+    ("a about above after again against ago all almost along also although always am among an and another any anyone anything are around as at away back be " +
+     "became because become been before began behind being below beside besides best better between both but by came can cannot could did do does doing done " +
+     "down during each either else enough even ever every everything far few first for from further gave get gets getting give go goes going gone good got " +
+     "had has have having he her here hers herself him himself his how however i if in indeed inside into is it its itself just keep kept knew know known " +
+     "last least left less let like little long look looked looking made make many may maybe me might mine more most much must my myself near nearly neither " +
+     "never next no nobody none nor not nothing now of off often oh on once one only onto or other others ought our ours ourselves out over own perhaps put " +
+     "quite rather really right said same saw say saying says see seem seemed seen shall she should since so some something sometimes soon still such sure " +
+     "take taken than that the their theirs them themselves then there these they thing things think this those though thought three through thus till " +
+     "to together too took toward towards turn turned two under until up upon us very want wanted was way we well went were what whatever when where whether " +
+     "which while who whom whose why will with within without would yes yet you your yours yourself yourselves asked answered replied told tell cried " +
+     "mr mrs miss sir lady").split(" ").forEach(function(w){ STOP[w] = 1; });
+    function stem(w){
+      w = w.replace(/’/g, "'").replace(/'s$/, "");
+      if (w.length > 4 && /ies$/.test(w)) return w.slice(0, -3) + "y";
+      if (w.length > 4 && /[^s]s$/.test(w)) return w.slice(0, -1);
+      return w;
+    }
+    function words(t){ return (t.match(/\S+/g) || []).length; }
+    /* a long span is read in windows spread across it (enough to choose from, cheap however long) */
+    function windows(a, b){
+      if (b - a <= 60000) return [[a, b]];
+      var n = 6, w = 8000, out = [];
+      for (var i = 0; i < n; i++){ var end = Math.round(a + (b - a) * (i + 1) / n); out.push([end - w, end]); }
+      return out;
+    }
+    function gatherDoc(x){
+      var lo = Math.max(0, Math.min(x.a, x.b)), hi = Math.max(x.a, x.b), wins = windows(lo, hi), blocks = [], count = 0;
+      wins.forEach(function(w){
+        textBlocks(w[0], w[1]).forEach(function(bk){
+          var end = bk.start + bk.text.length, s0 = Math.max(bk.start, w[0]), s1 = Math.min(end, w[1]);
+          var t = bk.text.slice(s0 - bk.start, s1 - bk.start), m;
+          /* a block cut by the span's edge loses its broken first or last sentence */
+          if (s0 > bk.start){
+            m = /[.!?…]["'”’»)\]]*\s+/.exec(t);
+            if (!m) return;
+            s0 += m.index + m[0].length; t = t.slice(m.index + m[0].length);
+          }
+          if (s1 < end){
+            var re = /[.!?…]["'”’»)\]]*(?=\s)/g, cut = -1;
+            while ((m = re.exec(t))) cut = m.index + m[0].length;
+            if (cut < 0) return;
+            t = t.slice(0, cut);
+          }
+          if (!t.trim()) return;
+          blocks.push({ start: s0, text: t, heading: bk.heading });
+          count += words(t);
+        });
+      });
+      if (wins.length > 1) count = Math.round((hi - lo) / 6);
+      return Promise.resolve({ blocks: blocks, words: count, lo: lo, hi: hi });
+    }
+    function gatherPdf(x){
+      var lo = Math.max(1, Math.min(x.a, x.b)), hi = Math.max(x.a, x.b), pages = [], i;
+      if (state.pdfDoc) hi = Math.min(hi, state.pdfDoc.numPages);
+      if (hi - lo + 1 <= MAX_PDF_PAGES) for (i = lo; i <= hi; i++) pages.push(i);
+      else for (i = 0; i < MAX_PDF_PAGES; i++) pages.push(Math.round(lo + (hi - lo) * i / (MAX_PDF_PAGES - 1)));
+      return Promise.all(pages.map(function(n){ return PdfText.get(n); })).then(function(texts){
+        var blocks = [], pos = 0, count = 0;
+        texts.forEach(function(t, k){
+          t = String(t || "").replace(/-\n(?=[a-z])/g, "").replace(/\s*\n\s*/g, " ").trim();
+          if (!t) return;
+          blocks.push({ start: pos, text: t, heading: false, page: pages[k] });
+          pos += t.length + 1; count += words(t);
+        });
+        return { blocks: blocks, words: count, lo: 0, hi: pos };
+      });
+    }
+    /* read-aloud units for the span (Speak's own splitting), for attribute() */
+    function unitsOf(blocks){
+      var S = window.llSpeak, out = [];
+      if (!S || !S.plan) return out;
+      blocks.forEach(function(bk){
+        if (bk.heading) return;
+        S.plan(bk.text).forEach(function(u){
+          u.start += bk.start; u.end += bk.start; u.para = (u.para || 0) + bk.start;
+          if (bk.page) u.page = bk.page;
+          out.push(u);
+        });
+      });
+      return out;
+    }
+    /* the characters who speak in the span, most present first (audiobook.js, loaded on demand) */
+    function castOf(blocks){
+      var units = unitsOf(blocks);
+      if (!units.some(function(u){ return u.dialogue; })) return Promise.resolve([]);
+      return need(["audiobook"]).then(function(){
+        var A = window.llAudiobook;
+        if (!A || !A.attribute) return [];
+        return (A.attribute(units).cast || []).filter(function(c){ return !c.anon && !c.synthetic && c.name; })
+          .sort(function(p, q){ return (q.lines + (q.mentions || 0)) - (p.lines + (p.mentions || 0)); }).slice(0, 6);
+      }).catch(function(){ return []; });
+    }
+
+    /* ---- the key sentences: scored by the content words that recur in the span, the characters they name and
+       where they sit (later is fresher; a paragraph's first sentence often says what it is about); one from each
+       part of the span, so a long one is covered end to end; kept in reading order ---- */
+    function summarize(g, cast){
+      var cands = [], freq = {}, df = {}, total = 0;
+      g.blocks.forEach(function(bk){
+        if (bk.heading) return;
+        sentenceSpans(bk.text).forEach(function(sp, k){
+          var raw = bk.text.slice(sp.a, sp.b), text = raw.replace(/\s+/g, " ").trim();
+          var toks = (text.toLowerCase().match(/[a-zà-ɏ][a-zà-ɏ'’-]*/g) || []).map(stem);
+          var s = { start: bk.start + sp.a, text: text, first: k === 0, n: words(text), toks: toks };
+          var seen = {};
+          toks.forEach(function(w){ if (w.length < 3 || STOP[w]) return; freq[w] = (freq[w] || 0) + 1; if (!seen[w]){ seen[w] = 1; df[w] = (df[w] || 0) + 1; } });
+          total++;
+          cands.push(s);
+        });
+      });
+      if (!cands.length) return [];
+      /* names: the characters found, and capitalised words that recur away from a sentence's start */
+      var names = {}, caps = {};
+      cast.forEach(function(c){ String(c.name).split(/\s+/).concat(c.aka || []).forEach(function(w){ w = String(w).replace(/[^\wÀ-ɏ'-]/g, ""); if (w.length > 1 && !STOP[w.toLowerCase()]) names[w] = c.key; }); });
+      cands.forEach(function(s){
+        var m, re = /[\s“"‘(]([A-Z][a-zà-ɏ]{2,})\b/g;
+        while ((m = re.exec(" " + s.text.slice(1)))) caps[m[1]] = (caps[m[1]] || 0) + 1;
+      });
+      Object.keys(caps).forEach(function(w){ if (caps[w] >= 3 && !STOP[w.toLowerCase()] && !names[w]) names[w] = w; });
+      var nameRe = Object.keys(names).length ? new RegExp("\\b(" + Object.keys(names).map(function(w){ return w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|") + ")\\b", "g") : null;
+      var span = Math.max(1, g.hi - g.lo), common = total >= 12 ? total * 0.35 : Infinity, seenText = {};
+      cands.forEach(function(s){
+        var score = 0, uniq = {}, m;
+        s.toks.forEach(function(w){ if (w.length >= 3 && !STOP[w] && !uniq[w] && freq[w] >= 2 && df[w] <= common){ uniq[w] = 1; score += Math.log(1 + freq[w]); } });
+        score /= Math.sqrt(Math.max(6, s.n));
+        var who = {};
+        if (nameRe){ nameRe.lastIndex = 0; while ((m = nameRe.exec(s.text))) who[names[m[1]]] = 1; }
+        score += 0.35 * Math.min(2, Object.keys(who).length);
+        score += 0.25 * Math.max(0, Math.min(1, (s.start - g.lo) / span)) + (s.first ? 0.12 : 0);
+        if (s.n < 7) score *= 0.5; else if (s.n > 45) score *= 0.7;
+        if (!/^[“"‘'(]?[A-Z0-9À-ɏ]/.test(s.text) || !/[.!?…]["'”’»)\]]*$/.test(s.text)) score *= 0.4;   /* a fragment */
+        if (/^(chapter|part|book|section)\b/i.test(s.text) || s.text.length > 320 || s.text.length < 25) score = -1;
+        var key = s.text.toLowerCase();
+        if (seenText[key]) score = -1;
+        seenText[key] = 1;
+        s.score = score;
+      });
+      var ok = cands.filter(function(s){ return s.score > 0; });
+      var n = Math.min(ok.length, g.words < 700 ? 3 : g.words < 2500 ? 4 : 5), picked = [];
+      for (var k = 0; k < n; k++){
+        var a = g.lo + span * k / n, b = g.lo + span * (k + 1) / n, best = null;
+        ok.forEach(function(s){ if (s.start >= a && s.start < b && picked.indexOf(s) < 0 && (!best || s.score > best.score)) best = s; });
+        if (best) picked.push(best);
+      }
+      ok.slice().sort(function(p, q){ return q.score - p.score; }).forEach(function(s){ if (picked.length < n && picked.indexOf(s) < 0) picked.push(s); });
+      return picked.sort(function(p, q){ return p.start - q.start; }).map(function(s){ return { start: s.start, text: s.text }; });
+    }
+    /* the recap of a session, or null when too little was read */
+    function build(x, mode){
+      return (mode === "pdf" ? gatherPdf(x) : gatherDoc(x)).then(function(g){
+        if (g.words < MIN_WORDS) return null;
+        return castOf(g.blocks).then(function(cast){ return { sentences: summarize(g, cast), cast: cast, words: g.words }; });
+      });
+    }
+
+    /* ---- the card: over the top of the text (never inside #doc, whose text must stay as it is) ---- */
+    function ago(t){
+      var now = Date.now(), d = now - t, m = Math.round(d / 60000), h = Math.round(d / 3600000);
+      if (m < 2) return "a moment ago";
+      if (m < 60) return m + " minutes ago";
+      var a = new Date(t), b = new Date(now), days = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()) - new Date(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000);
+      if (days === 0 || h < 12) return h === 1 ? "an hour ago" : h + " hours ago";
+      if (days === 1) return "yesterday";
+      if (days < 31) return days + " days ago";
+      return "on " + a.toLocaleDateString(undefined, { day: "numeric", month: "long", year: a.getFullYear() === b.getFullYear() ? undefined : "numeric" });
+    }
+    function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    var gen = 0;
+    function show(x, asked){
+      var mode = state.mode, id = Library.currentId(), my = ++gen;
+      build(x, mode).then(function(r){
+        if (my !== gen || Library.currentId() !== id || state.mode !== mode) return;
+        if (!r || !r.sentences.length){ if (asked) Marks.toast("Nothing to recap yet — read a little further first"); return; }
+        render(x, r, asked);
+      }).catch(function(err){ console.warn("recap", err); if (asked) Marks.toast("Couldn’t make a recap"); });
+    }
+    function render(x, r, asked){
+      stopSpeech();
+      if (!card){
+        card = document.createElement("section");
+        card.id = "recap"; card.setAttribute("aria-labelledby", "recapTitle");
+        document.body.appendChild(card);
+        card.addEventListener("click", function(e){
+          var b = e.target.closest("button");
+          if (!b) return;
+          if (b.id === "recapRead") toggleSpeech();
+          else if (b.id === "recapGo" || b.id === "recapX") close();
+        });
+        card.addEventListener("keydown", function(e){ if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); close(); } });
+      }
+      cardSess = { x: x, r: r };
+      var names = r.cast.map(function(c){ return c.name; });
+      card.innerHTML =
+        '<div class="recap-head">' + ICONS.recap + '<h2 class="recap-title" id="recapTitle">Previously…</h2>' +
+          '<span class="recap-ago">' + esc(ago(x.t1)) + '</span>' +
+          '<button type="button" class="recap-x" id="recapX" title="Close" aria-label="Close the recap">' + ICONS.close + '</button></div>' +
+        '<ol class="recap-list">' + r.sentences.map(function(s){ return '<li>' + esc(s.text) + '</li>'; }).join("") + '</ol>' +
+        (names.length ? '<p class="recap-who"><span class="label">Characters</span> ' + names.map(esc).join(" · ") + '</p>' : '') +
+        '<div class="recap-acts">' +
+          (Speak.supported ? '<button type="button" class="chip" id="recapRead" aria-pressed="false">' + ICONS.speaker + '<span>Read it aloud</span></button>' : '') +
+          '<button type="button" class="ctl primary" id="recapGo">Continue</button></div>';
+      card.classList.add("on");
+      /* said once by a screen reader: the live region exists before its words arrive */
+      if (!live){ live = document.createElement("p"); live.className = "recap-live"; live.setAttribute("aria-live", "polite"); document.body.appendChild(live); }
+      live.textContent = "";
+      setTimeout(function(){ if (card.classList.contains("on")) live.textContent = "Previously: a recap of your last reading, " + ago(x.t1) + ", is at the top of the page."; }, 120);
+      if (asked){ opener = document.activeElement; var go = card.querySelector("#recapGo"); if (go) go.focus({ preventScroll: true }); }
+    }
+    function close(quiet){
+      if (!card || !card.classList.contains("on")) return;
+      stopSpeech();
+      var inside = card.contains(document.activeElement);
+      card.classList.remove("on"); card.innerHTML = ""; cardSess = null;
+      if (live) live.textContent = "";
+      if (!quiet && inside){ var to = opener && document.contains(opener) && opener.getClientRects().length ? opener : $("#main"); if (to) to.focus({ preventScroll: true }); }
+      opener = null;
+    }
+    /* Escape closes the card when nothing else is open over the page */
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !card || !card.classList.contains("on") || Side.current() || Menu.isOpen() || $("#pop").classList.contains("open") ||
+          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on")) return;
+      close();
+    });
+    /* the library, or a PDF turned into a page of status: the card belongs to the book */
+    if (window.MutationObserver) new MutationObserver(function(){ if (state.mode !== "doc" && state.mode !== "pdf") close(true); })
+      .observe(document.body, { attributes: true, attributeFilter: ["data-mode"] });
+
+    /* ---- read it aloud: the device voice read aloud uses (its narrator, speed and pitch); the natural and
+       ElevenLabs engines make a whole book's plan, so a recap is not theirs to read ---- */
+    function speechBtn(on){
+      var b = card && card.querySelector("#recapRead");
+      if (!b) return;
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.querySelector("span").textContent = on ? "Stop" : "Read it aloud";
+    }
+    function stopSpeech(){
+      if (!speakGen) return;
+      speakGen = 0;
+      try { speechSynthesis.cancel(); } catch(_){}
+      speechBtn(false);
+    }
+    function toggleSpeech(){
+      if (speakGen){ stopSpeech(); return; }
+      if (!cardSess || !Speak.supported) return;
+      if (Speak.isPlaying()) Speak.pause();
+      var r = cardSess.r, S = window.llSpeak, v = S && S.currentVoice ? S.currentVoice() : null, rate = Speak.rate ? Speak.rate() : 1;
+      var lines = ["Previously."].concat(r.sentences.map(function(s){ return s.text; }));
+      if (r.cast.length) lines.push("Characters: " + r.cast.map(function(c){ return c.name; }).join(", ") + ".");
+      var my = speakGen = Date.now(), i = 0;
+      try { speechSynthesis.cancel(); } catch(_){}
+      speechBtn(true);
+      (function next(){
+        if (speakGen !== my) return;
+        if (i >= lines.length || Speak.isActive()){ speakGen = 0; speechBtn(false); return; }
+        var u = new SpeechSynthesisUtterance(lines[i++].replace(/[“”"]/g, ""));
+        if (v){ u.voice = v; u.lang = v.lang; } else u.lang = Speak.docLang();
+        u.rate = Math.max(0.5, Math.min(2, rate));
+        u.onend = function(){ setTimeout(next, 250); };
+        u.onerror = function(){ if (speakGen === my){ speakGen = 0; speechBtn(false); } };
+        speechSynthesis.speak(u);
+      })();
+    }
+
+    Menu.add({ order: 42, group: "reading", icon: ICONS.recap, label: "Previously…", run: onDemand, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    window.llRecap = { summarize: summarize, sentences: sentenceSpans, blocks: textBlocks, sessions: function(id){ var b = data.books[id || Library.currentId()]; return b ? b.s.slice() : []; },
+                       show: onDemand, close: close, ago: ago, isOpen: function(){ return !!(card && card.classList.contains("on")); },
+                       build: function(x){ return build(x, state.mode); }, GAP: GAP };
+    return { note: note, check: check, forget: forget, show: onDemand, close: close };
+  })();
+
+  /* ============================================================
+     Speed reading — one word at a time (RSVP), each centred on its
+     optimal recognition point (that letter in the accent colour, under
+     a small guide mark), from the reading position on. Space or a tap
+     plays and pauses, ← → go back or on a sentence, ↑ ↓ change the
+     speed (150–900 words a minute, remembered), Esc closes — and the
+     book then continues from the word it stopped at. Commas, sentence
+     ends, paragraphs, headings and long words hold a little longer.
+     ============================================================ */
+  var Rsvp = (function(){
+    var KEY = "ll_rsvp_wpm", MIN = 150, MAX = 900, STEP = 25;
+    var F_SENT = 1, F_PARA = 2, F_HEAD = 4, F_PAUSE = 8;
+    var wpm = clampWpm(parseInt(Store.get(KEY) || "300", 10));
+    var toks = null, i = 0, playing = false, timer = null, ramp = 0, open = false, opener = null, held = [], shown = 0;
+    var el = null, wordEl = null, lEl = null, oEl = null, rEl = null, barEl = null, playBtn = null, wpmEl = null, wpmV = null, ctxEl = null, whereEl = null;
+    function clampWpm(v){ v = isFinite(v) ? v : 300; return Math.max(MIN, Math.min(MAX, Math.round(v / STEP) * STEP)); }
+
+    /* ---- the words of the document, with their offsets, and where sentences start ---- */
+    function build(){
+      var key = (Library.currentId() || "") + ":" + Anchor.textLength();
+      if (toks && toks.key === key) return toks;
+      var t = { key: key, w: [], s: [], f: [], sent: [] };
+      textBlocks().forEach(function(bk){
+        var spans = sentenceSpans(bk.text), si = 0, re = /\S+/g, m, fresh = true, last = -1;
+        while ((m = re.exec(bk.text))){
+          var a = m.index, e = a + m[0].length, f = 0;
+          if (fresh){ t.sent.push(t.w.length); fresh = false; }
+          while (si < spans.length && spans[si].b < e) si++;
+          if (si < spans.length && spans[si].b === e){ f |= F_SENT; fresh = true; }
+          else if (/[,;:]["'”’)\]]*$|[—–]$|^[—–]$/.test(m[0])) f |= F_PAUSE;
+          last = t.w.length;
+          t.w.push(m[0]); t.s.push(bk.start + a); t.f.push(f);
+        }
+        if (last >= 0) t.f[last] |= F_SENT | F_PARA | (bk.heading ? F_HEAD : 0);
+      });
+      toks = t;
+      return t;
+    }
+    function wordAt(off){
+      var s = toks.s, lo = 0, hi = s.length - 1, best = 0;
+      while (lo <= hi){ var mid = (lo + hi) >> 1; if (s[mid] <= off){ best = mid; lo = mid + 1; } else hi = mid - 1; }
+      /* the word the offset falls in, or the next one when it falls in the space after a word */
+      return s[best] + toks.w[best].length <= off && best < s.length - 1 ? best + 1 : best;
+    }
+    function sentOf(k){
+      var s = toks.sent, lo = 0, hi = s.length - 1, best = 0;
+      while (lo <= hi){ var mid = (lo + hi) >> 1; if (s[mid] <= k){ best = mid; lo = mid + 1; } else hi = mid - 1; }
+      return best;
+    }
+
+    /* ---- one word on the stage: the optimal recognition point sits a little left of the middle of the
+       word's letters (Spritz's table), and the stage centres that letter ---- */
+    function orp(n){ return n <= 1 ? 0 : n <= 5 ? 1 : n <= 9 ? 2 : n <= 13 ? 3 : 4; }
+    function paint(){
+      var w = toks.w[i] || "", first = w.search(/[0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/);
+      if (first < 0) first = 0;
+      var core = w.slice(first).replace(/[^0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]+$/, ""), o = Math.min(w.length - 1, first + orp(core.length || 1));
+      lEl.textContent = w.slice(0, o); oEl.textContent = w.charAt(o); rEl.textContent = w.slice(o + 1);
+      /* a word too long for its half of the stage is set smaller, so it never runs off the screen */
+      wordEl.style.removeProperty("--k");
+      var k = 1;
+      if (lEl.scrollWidth > lEl.clientWidth + 1) k = Math.min(k, lEl.clientWidth / lEl.scrollWidth);
+      if (rEl.scrollWidth > rEl.clientWidth + 1) k = Math.min(k, rEl.clientWidth / rEl.scrollWidth);
+      if (k < 1) wordEl.style.setProperty("--k", (k * 0.94).toFixed(3));
+      var n = toks.w.length, pct = n > 1 ? i / (n - 1) * 100 : 100;
+      barEl.style.width = pct.toFixed(2) + "%";
+      var left = Math.max(0, n - i), mins = Math.ceil(left / wpm);
+      whereEl.textContent = Math.round(pct) + "% · " + (mins < 60 ? mins + " min" : Math.floor(mins / 60) + " h " + (mins % 60) + " min") + " left at this speed";
+    }
+    /* paused: the sentence around the word, for bearings */
+    function context(){
+      if (playing){ ctxEl.hidden = true; ctxEl.innerHTML = ""; return; }
+      var si = sentOf(i), a = toks.sent[si], b = si + 1 < toks.sent.length ? toks.sent[si + 1] : toks.w.length, h = [];
+      a = Math.max(a, i - 40); b = Math.min(b, i + 40);
+      for (var k = a; k < b; k++) h.push(k === i ? '<mark>' + escapeHtml(toks.w[k]) + '</mark>' : escapeHtml(toks.w[k]));
+      ctxEl.innerHTML = h.join(" ");
+      ctxEl.hidden = false;
+    }
+    /* how long a word stays: the speed's beat, longer after a comma, a sentence, a paragraph or a heading, and
+       for a long word or a number; the first words after Play come in a little slower */
+    function delay(k){
+      var w = toks.w[k], f = toks.f[k], m = 1, n = w.replace(/[^0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/g, "").length;
+      if (n > 7) m += Math.min(0.9, (n - 7) * 0.12);
+      if (f & F_HEAD) m += 2.2;
+      else if (f & F_PARA) m += 1.9;
+      else if (f & F_SENT) m += 1.3;
+      else if (f & F_PAUSE) m += 0.6;
+      if (/\d/.test(w)) m += 0.3;
+      if (ramp < 4){ m *= [1.8, 1.45, 1.2, 1.08][ramp]; ramp++; }
+      return 60000 / wpm * m;
+    }
+    function tick(){
+      clearTimeout(timer);
+      if (!playing) return;
+      paint();
+      timer = setTimeout(function(){
+        if (!playing) return;
+        if (i >= toks.w.length - 1){ pause(); Marks.toast("End of the document"); return; }
+        i++; shown++;
+        if (shown >= 25) credit();
+        tick();
+      }, delay(i));
+    }
+    function syncPlay(){
+      playIcon(playBtn, playing);
+      playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+      playBtn.title = (playing ? "Pause" : "Play") + " (Space)";
+      el.classList.toggle("playing", playing);
+    }
+    function play(){ if (playing || !toks.w.length) return; if (i >= toks.w.length - 1) i = 0; playing = true; ramp = 0; syncPlay(); context(); tick(); }
+    function pause(){ playing = false; clearTimeout(timer); credit(); syncPlay(); paint(); context(); }
+    /* the words read this way count in the reading stats, like words read on the page */
+    function credit(){ if (shown > 0){ Stats.noteWords(shown); shown = 0; } }
+    function toggle(){ if (playing) pause(); else play(); }
+    /* back: to the start of this sentence, or of the one before when already there; on: the next sentence */
+    function back(){
+      var si = sentOf(i), st = toks.sent[si];
+      i = i - st > 1 || si === 0 ? st : toks.sent[si - 1];
+      moved();
+    }
+    function fwd(){ var si = sentOf(i); if (si + 1 < toks.sent.length) i = toks.sent[si + 1]; moved(); }
+    function moved(){ ramp = 0; if (playing) tick(); else { paint(); context(); } }
+    function setWpm(v){
+      wpm = clampWpm(v); Store.set(KEY, String(wpm));
+      wpmEl.value = wpm; wpmV.textContent = wpm + " wpm";
+      if (!playing) paint();
+    }
+
+    /* ---- the overlay, made the first time it opens ---- */
+    function make(){
+      el = document.createElement("div");
+      el.id = "rsvp"; el.hidden = true;
+      el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-labelledby", "rsvpTitle");
+      el.innerHTML =
+        '<div class="rsvp-top"><span class="rsvp-title" id="rsvpTitle">Speed reading</span><span class="rsvp-where" id="rsvpWhere"></span>' +
+          '<button type="button" class="rsvp-x" id="rsvpClose" title="Close (Esc)" aria-label="Close speed reading">' + ICONS.close + '</button></div>' +
+        '<div class="rsvp-stage" id="rsvpStage" title="Tap to play or pause">' +
+          '<div class="rsvp-word" aria-hidden="true"><span class="rsvp-l"></span><span class="rsvp-orp"></span><span class="rsvp-r"></span></div>' +
+          '<p class="rsvp-ctx" id="rsvpCtx" hidden></p></div>' +
+        '<div class="rsvp-prog" aria-hidden="true"><i id="rsvpBar"></i></div>' +
+        '<div class="rsvp-ctl">' +
+          '<button type="button" class="ctl" id="rsvpBack" title="Back a sentence (←)" aria-label="Back a sentence">' + ICONS.chevronL + '</button>' +
+          '<button type="button" class="ctl primary" id="rsvpPlay" aria-label="Play">' + ICONS.play + '</button>' +
+          '<button type="button" class="ctl" id="rsvpFwd" title="On a sentence (→)" aria-label="On a sentence">' + ICONS.chevronR + '</button></div>' +
+        '<div class="rowline rsvp-speed"><label for="rsvpWpm">Speed</label><input type="range" id="rsvpWpm" min="' + MIN + '" max="' + MAX + '" step="' + STEP + '">' +
+          '<span class="val" id="rsvpWpmV"></span></div>' +
+        '<p class="hint rsvp-keys">Space or a tap plays and pauses · ← → a sentence · ↑ ↓ speed · Esc closes</p>';
+      document.body.appendChild(el);
+      wordEl = el.querySelector(".rsvp-word"); lEl = el.querySelector(".rsvp-l"); oEl = el.querySelector(".rsvp-orp"); rEl = el.querySelector(".rsvp-r");
+      barEl = el.querySelector("#rsvpBar"); playBtn = el.querySelector("#rsvpPlay"); wpmEl = el.querySelector("#rsvpWpm"); wpmV = el.querySelector("#rsvpWpmV");
+      ctxEl = el.querySelector("#rsvpCtx"); whereEl = el.querySelector("#rsvpWhere");
+      playBtn.addEventListener("click", toggle);
+      el.querySelector("#rsvpBack").addEventListener("click", back);
+      el.querySelector("#rsvpFwd").addEventListener("click", fwd);
+      el.querySelector("#rsvpClose").addEventListener("click", function(){ close(); });
+      el.querySelector("#rsvpStage").addEventListener("click", toggle);
+      wpmEl.addEventListener("input", function(){ setWpm(+wpmEl.value); });
+      /* the keys belong to the overlay while it is open: caught on the window before the page's own
+         (page turns, single-key shortcuts, zen's Escape) see them */
+      window.addEventListener("keydown", function(e){
+        if (!open || e.key === "Tab") return;
+        e.stopImmediatePropagation();
+        if (e.key === "Escape"){ e.preventDefault(); close(); return; }
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        var t = e.target, onBtn = t && t.tagName === "BUTTON", onRange = t && t.type === "range";
+        if ((e.key === " " || e.key === "Enter") && onBtn) return;         /* the button's own press */
+        if (onRange && /^(Arrow|Home|End|Page)/.test(e.key)) return;       /* the slider's own keys */
+        if (e.key === " " || e.key === "k"){ e.preventDefault(); toggle(); }
+        else if (e.key === "ArrowLeft"){ e.preventDefault(); back(); }
+        else if (e.key === "ArrowRight"){ e.preventDefault(); fwd(); }
+        else if (e.key === "ArrowUp"){ e.preventDefault(); setWpm(wpm + STEP); }
+        else if (e.key === "ArrowDown"){ e.preventDefault(); setWpm(wpm - STEP); }
+        else if (e.key === "w"){ e.preventDefault(); close(); }
+      }, true);
+      /* leaving the page pauses; it never plays on unseen */
+      document.addEventListener("visibilitychange", function(){ if (open && playing && document.visibilityState === "hidden") pause(); });
+    }
+    function start(){
+      if (state.mode !== "doc"){ Marks.toast("Speed reading works in text documents"); return; }
+      if (open) return;
+      build();
+      if (!toks.w.length){ Marks.toast("Nothing to read"); return; }
+      if (!el) make();
+      var off = Library.topCharOffset();
+      if (off === null || off === undefined) off = typeof state.pageOff === "number" ? state.pageOff : 0;
+      i = wordAt(off);
+      if (Speak.isPlaying()) Speak.pause();
+      if (Auto.isOn()) Auto.stop();
+      Side.close(); Pop.close(true); Menu.close(); setSheet(false);
+      opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      /* modal: the rest of the page is inert while the overlay is up */
+      held = [];
+      Array.prototype.forEach.call(document.body.children, function(n){ if (n !== el && n.id !== "toast" && !n.inert){ n.inert = true; held.push(n); } });
+      open = true; playing = false;
+      el.hidden = false; el.classList.add("on");
+      document.body.classList.add("rsvp-on");
+      wpmEl.value = wpm; wpmV.textContent = wpm + " wpm";
+      syncPlay(); paint(); context();
+      playBtn.focus({ preventScroll: true });
+    }
+    /* closing moves the book to the word it stopped at */
+    function close(){
+      if (!open) return;
+      pause();
+      open = false;
+      el.hidden = true; el.classList.remove("on");
+      document.body.classList.remove("rsvp-on");
+      held.forEach(function(n){ n.inert = false; }); held = [];
+      if (state.mode === "doc" && toks && typeof toks.s[i] === "number"){ revealOffset(toks.s[i]); Library.notePosition(); }
+      var to = opener && document.contains(opener) && opener.getClientRects().length ? opener : $("#main");
+      if (to) to.focus({ preventScroll: true });
+      opener = null;
+    }
+    document.addEventListener("ll:fileopened", function(){ if (open) close(); toks = null; });
+
+    Menu.add({ order: 53, group: "reading", icon: ICONS.bolt, label: "Speed reading", key: "W", run: start, show: function(){ return state.mode === "doc"; } });
+    window.llRsvp = { open: start, close: close, play: play, pause: pause, back: back, fwd: fwd, setWpm: setWpm, isOpen: function(){ return open; },
+                      state: function(){ return { i: i, word: toks && toks.w[i], offset: toks && toks.s[i], playing: playing, wpm: wpm, words: toks ? toks.w.length : 0 }; },
+                      delay: function(k){ var r = ramp; ramp = 9; var d = delay(k === undefined ? i : k); ramp = r; return d; }, orp: orp };
+    return { open: start, close: close, isOpen: function(){ return open; }, isPlaying: function(){ return playing; } };
+  })();
+
+  /* ============================================================
+     Background sounds — rain, fire, café, forest night and waves, made
+     on the device with the Web Audio API (sounds.js, loaded the first
+     time they are wanted: from the menu, or a book opened while they
+     were left on). They play while a book is open, under read aloud too.
+     ============================================================ */
+  var Sounds = (function(){
+    var KEY = "ll_sounds";
+    function wanted(){
+      var o = null;
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
+      return !!(o && o.on === true && o.mix && Object.keys(o.mix).some(function(k){ return o.mix[k] > 0; }));
+    }
+    function load(){ return need(["sounds"]).then(function(){ if (!window.llSounds) throw new Error("sounds.js"); return window.llSounds; }); }
+    function openPanel(){ load().then(function(S){ S.openPanel(); }, function(){ Marks.toast("Couldn’t load the sounds"); }); }
+    /* left on last time: the module comes with the next book and watches the page from then on */
+    document.addEventListener("ll:fileopened", function(){ if (!window.llSounds && wanted()) load().then(function(S){ S.sync(); }).catch(function(){}); });
+    Menu.add({ order: 54, group: "reading", icon: ICONS.sound, label: "Background sounds", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    return { load: load, openPanel: openPanel };
   })();
 
   /* the app's own entries: opening a file (the bar's Open button goes away while reading), the
@@ -7993,11 +8928,18 @@
   $("#rPgap").addEventListener("input", function(e){ state.pgap = +e.target.value; applyType(); });
   $("#cJustify").addEventListener("change", function(e){ state.justify = e.target.checked; applyType(); });
   $("#cHyphens").addEventListener("change", function(e){ state.hyphens = e.target.checked; applyType(); });
+  $("#cFocus").addEventListener("change", function(e){ state.focus = e.target.checked; applyType(); });
+  $("#focusChips").addEventListener("click", function(e){
+    var ch = e.target.closest(".chip");
+    if (!ch) return;
+    state.focusLevel = ch.dataset.focus; state.focus = true;
+    applyType();
+  });
   /* back to the typography this reader ships with — the family and the theme are left alone */
   function resetType(){
     state.size = 19; state.lh = 1.75; state.width = 720; state.margin = 0;
     state.weight = 400; state.ls = 0; state.ws = 0; state.pgap = 0.95;
-    state.justify = false; state.hyphens = false;
+    state.justify = false; state.hyphens = false; state.focus = false;
     applyType();
     Marks.toast("Text settings reset");
   }
@@ -8096,6 +9038,7 @@
     add("l", "Reading ruler", function(){ Ruler.toggle(); }, docOpen);
     add("z", "Zen mode (enter / leave)", function(){ Zen.toggle(); }, function(){ return Zen.isOn() || docOpen(); });
     add("a", "Auto-scroll (start / stop)", function(){ if (Auto.isOn()) Auto.stop(); else Auto.start(); }, docOpen);
+    add("w", "Speed reading (one word at a time)", function(){ Rsvp.open(); }, function(){ return state.mode === "doc"; });
     add("h", "Library / home", function(){ Library.home(); }, docOpen);
     add("i", "About this text", function(){ About.openPanel(); }, docOpen);
     add("?", "Keyboard shortcuts", function(){ openHelp(); });
@@ -8687,6 +9630,7 @@
       if (p){ p.replaceChild(document.createTextNode(hitEl.textContent), hitEl); p.normalize(); }
       hitEl = null;
       Anchor.invalidate();
+      if (p) Focus.again(p);
     }
     function markHit(node, s, e){
       clearHit();
@@ -9277,6 +10221,9 @@
     function wordInNode(n, offset){
       if (!n || n.nodeType !== 3) return null;
       if (!n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
+      /* focus reading splits a word in two (its bold start and the rest): one text node again for the lookup */
+      var whole = Focus.on() ? Focus.unsplit(n, offset) : null;
+      if (whole){ n = whole.node; offset = whole.offset; }
       var t = n.textContent, i = Math.min(offset, t.length - 1);
       if (i < 0) return null;
       if (!WORDCH.test(t[i]) && i > 0 && WORDCH.test(t[i-1])) i--;
@@ -9622,7 +10569,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
+  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;

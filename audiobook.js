@@ -45,6 +45,14 @@
 
   /* ============================================================
      1. Who speaks — offline heuristics (no network, no DOM)
+     The evidence for a quote, strongest first: a speech tag in its sentence or in the narration beside it in the
+     paragraph (“said Anna”, “Tom asked”, “she whispered”, “cried his wife”, “said the captain”); an action beat, a
+     sentence of the paragraph whose subject is a character (“Anna frowned. “…”” — the one who acts speaks); a
+     name addressed inside the quote (“Tom, wait!”), who is not the speaker and is the likely next one to answer;
+     then the conversation: its participants (named, acting or speaking in the scene, forgotten at a chapter break
+     and after long narration) take turns, a new paragraph a new speaker, the same paragraph the same one.
+     Pronouns go to the latest character of that gender (the narration's too); gender comes from titles
+     (Mr, Lady…), a list of common first names, then he/she beside the name.
      ============================================================ */
   var VERB_FORMS = ("say says said ask asks asked reply replies replied answer answers answered whisper whispers whispered " +
     "shout shouts shouted cry cries cried call calls called mutter mutters muttered murmur murmurs murmured exclaim exclaims exclaimed " +
@@ -56,19 +64,72 @@
     "sob sobs sobbed gasp gasps gasped grumble grumbles grumbled groan groans groaned moan moans moaned mumble mumbles mumbled " +
     "stammer stammers stammered tease teases teased spit spits spat retort retorts retorted interrupt interrupts interrupted " +
     "inquire inquires inquired declare declares declared explain explains explained argue argues argued confess confesses confessed " +
-    "promise promises promised respond responds responded tell tells told order orders ordered think thinks thought muse muses mused")
-    .split(" ").concat(["go on", "goes on", "went on", "cut in", "cuts in", "put in", "puts in", "chime in", "chimes in", "chimed in"]);
+    "promise promises promised respond responds responded tell tells told order orders ordered think thinks thought muse muses mused " +
+    "return returns returned rejoin rejoins rejoined resume resumes resumed interpose interposes interposed counter counters countered " +
+    "concede concedes conceded conclude concludes concluded pursue pursues pursued whimper whimpers whimpered snarl snarls snarled " +
+    "roar roars roared chuckle chuckles chuckled giggle giggles giggled snort snorts snorted sneer sneers sneered drawl drawls drawled " +
+    "bellow bellows bellowed whine whines whined wail wails wailed beg begs begged boast boasts boasted scoff scoffs scoffed " +
+    "croak croaks croaked squeal squeals squealed stutter stutters stuttered persist persists persisted advise advises advised " +
+    "sing sings sang coax coaxes coaxed scold scolds scolded soothe soothes soothed")
+    .split(" ").concat(["go on", "goes on", "went on", "cut in", "cuts in", "put in", "puts in", "chime in", "chimes in", "chimed in",
+                        "blurt out", "blurts out", "blurted out", "call out", "calls out", "called out", "cry out", "cries out", "cried out"]);
   VERB_FORMS.sort(function(a, b){ return b.length - a.length; });
   var VERB = "(?:" + VERB_FORMS.join("|") + ")";
-  var TITLE = "(?:Mr|Mrs|Ms|Dr|Miss|Aunt|Uncle|Captain|Lord|Lady|Sir)\\.?\\s+";
-  var WORD = "[A-Z][a-z\\u00C0-\\u024F'\\u2019-]+";
+  /* “she added”, “he went on”: the same speaker as the line before */
+  var CONT = /^(?:continue|continues|continued|go on|goes on|went on|add|adds|added|resume|resumes|resumed|pursue|pursues|pursued|persist|persists|persisted)$/;
+  /* titles: the ones that say a man or a woman, and the ones that say neither */
+  var TGEN = {};
+  ("mr sir lord uncle father brother king prince duke count baron master messrs").split(" ").forEach(function(t){ TGEN[t] = "male"; });
+  ("mrs miss ms mme mlle lady aunt madam madame dame mother sister queen princess duchess countess baroness mistress").split(" ").forEach(function(t){ TGEN[t] = "female"; });
+  /* title words that are also ordinary words ("General Terms", "Master Bedroom"): not enough on their own */
+  var TWEAK = { general: 1, major: 1, count: 1, master: 1, judge: 1, king: 1, queen: 1, prince: 1, princess: 1, duke: 1, duchess: 1, countess: 1,
+                baron: 1, baroness: 1, father: 1, mother: 1, sister: 1, brother: 1, mistress: 1, admiral: 1 };
+  var TNORM = { capt: "captain", col: "colonel", lt: "lieutenant", sgt: "sergeant", prof: "professor", rev: "reverend", doctor: "dr" };
+  var TITLE_W = "Mr|Mrs|Ms|Mx|Dr|Miss|Mme|Mlle|Messrs|Aunt|Uncle|Captain|Capt|Colonel|Col|Major|General|Admiral|Lieutenant|Lt|Sergeant|Sgt|Inspector|" +
+                "Professor|Prof|Judge|Reverend|Rev|Father|Sister|Brother|Mother|Lord|Lady|Sir|Dame|Madam|Madame|King|Queen|Prince|Princess|Duke|Duchess|" +
+                "Count|Countess|Baron|Baroness|Master|Mistress";
+  var TITLE = "(?:" + TITLE_W + ")\\.?\\s+";
+  /* a capitalised word (McKay, O’Brien, Anne-Marie), ending on a letter */
+  var WORD = "[A-Z](?:[a-z\\u00C0-\\u024F'\\u2019-]|[A-Z](?=[a-z]))*[a-z\\u00C0-\\u024F]";
   var NAME = "((?:" + TITLE + ")?" + WORD + "(?:\\s+" + WORD + "){0,2})";
   var ADV = "(?:[a-z]+ly\\s+)?";
+  /* who a quote can be said by without a name: “said his wife”, “the old man said”, “said the captain” */
+  var NOUNS = {}, NOUN_LIST = [];
+  [["female", "wife lady mother sister daughter aunt niece grandmother widow woman girl lass maid maiden bride nurse governess hostess landlady queen princess duchess countess mistress"],
+   ["male", "husband father brother son uncle nephew grandfather widower man gentleman boy lad fellow groom host landlord king prince duke count master"],
+   ["", "captain doctor professor colonel major general inspector sergeant lieutenant judge stranger visitor newcomer voice figure friend companion child servant driver officer clerk priest vicar"]
+  ].forEach(function(g){ g[1].split(" ").forEach(function(w){ NOUNS[w] = { g: g[0] }; NOUN_LIST.push(w); }); });
+  ["wife", "husband", "lady"].forEach(function(w){ NOUNS[w].spouse = true; });
+  ["mother", "wife", "lady", "aunt", "widow"].forEach(function(w){ NOUNS[w].pref = { mrs: 1, lady: 1 }; });
+  ["father", "husband", "uncle"].forEach(function(w){ NOUNS[w].pref = { mr: 1, sir: 1, lord: 1 }; });
+  ["captain", "professor", "colonel", "major", "general", "inspector", "sergeant", "lieutenant", "judge", "king", "queen", "prince", "princess", "duke", "duchess", "count", "countess"]
+    .forEach(function(w){ NOUNS[w].title = w; });
+  NOUNS.doctor.title = "dr";
+  ["stranger", "visitor", "newcomer", "voice", "figure"].forEach(function(w){ NOUNS[w].anon = true; });
+  NOUN_LIST.sort(function(a, b){ return b.length - a.length; });
+  var ADJS = "old|young|little|elder|eldest|younger|youngest|other|poor|tall|short|big|small|stout|thin|pale|fat|grey|gray|first|second|third|dear|good|kind|" +
+             "bearded|elderly|strange|unknown|mysterious|new|same|masked|handsome";
+  /* a title used as a name takes a capital: "the Count shrugged", "said the Colonel" */
+  var DESC = "((?:[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Oo]ur)\\s+(?:(?:" + ADJS + ")\\s+){0,2}(?:" + NOUN_LIST.map(function(w){
+    return NOUNS[w].title ? "[" + w.charAt(0).toUpperCase() + w.charAt(0) + "]" + w.slice(1) : w;
+  }).join("|") + "))\\b";
+  /* someone the narration brings in without a name: "A man entered", "a stranger was standing in the doorway" */
+  var PERSONS = "man|woman|girl|boy|gentleman|lady|stranger|figure|visitor|newcomer|lad|lass|youth|fellow";
+  /* the verb after a sentence's subject: most past and present forms, the common irregular ones, auxiliaries */
+  var VERBISH = "(?:[a-z]+ed|[a-z]{2,}s|is|are|has|was|were|had|did|could|would|should|might|must|can|will|shall|came|went|sat|stood|took|gave|made|got|ran|saw|knew|felt|" +
+    "thought|began|held|kept|left|put|set|let|brought|caught|drew|fell|found|told|threw|wore|wrote|shook|spoke|broke|chose|hung|lay|led|meant|met|paid|read|" +
+    "rode|rose|sang|slept|struck|swung|taught|tore|woke|bit|blew|built|bought|dug|fled|flung|forgot|froze|grew|heard|hid|hit|hurt|knelt|leant|leapt|lost|rang|" +
+    "sank|shut|slid|sprang|stole|stuck|strode|swam|swept|swore|understood|wept|won|drank|ate|fought|sought|spun|crept|dealt|fed|lit|sent|spent|bent|lent|shone|" +
+    "shot|sped|spat|spread|strove|thrust|trod|wound|said|smiled|laughed|nodded|shrugged|frowned|sighed|grinned|glanced|turned|looked|walked|waited)";
+  var PRON_SUBJ = "[Hh]e|[Ss]he|I";
   var RX = {
     nameVerb: new RegExp(NAME + "\\s+" + ADV + "\\b(" + VERB + ")\\b", "g"),
-    verbName: new RegExp("\\b(" + VERB + ")\\s+" + ADV + NAME, "g"),
+    /* "said Anna", "added little Amy" */
+    verbName: new RegExp("\\b(" + VERB + ")\\s+" + ADV + "(?:(?:little|old|young|poor|dear|good|big|small|kind|elder|eldest)\\s+)?" + NAME, "g"),
     pronVerb: new RegExp("\\b(he|she|they|He|She|They|I)\\s+" + ADV + "\\b(" + VERB + ")\\b", "g"),
     verbPron: new RegExp("\\b(" + VERB + ")\\s+(he|she|they|I)\\b", "g"),
+    descVerb: new RegExp("\\b" + DESC + "\\s+" + ADV + "\\b(" + VERB + ")\\b", "g"),
+    verbDesc: new RegExp("\\b(" + VERB + ")\\s+" + ADV + "\\b" + DESC, "g"),
     /* narration that ends by introducing the quote: `Anna said, “` */
     tagEnd: new RegExp("\\b" + VERB + "\\s*[,:]?\\s*$"),
     /* a word broken across two lines of PDF text: "Ba-\nker" */
@@ -76,22 +137,87 @@
     /* a quote that ends in a full stop (its closing mark may be there or, in a dialogue unit, left out) */
     fullStop: /[.…]["”’»]?$/,
     capital: /^\s*[A-Z]/,
-    title: new RegExp("^" + TITLE),
+    title: new RegExp("^(" + TITLE_W + ")(\\.?)\\s+"),
     male: /\b(he|him|his|himself)\b/gi,
     female: /\b(she|her|hers|herself)\b/gi,
     sentenceEnd: /[.!?…]+["”’)]*(?:\s+|$)/g,
     letter: /[A-Za-zÀ-ɏ]/,
-    abbrev: /(?:^|[\s"“(])(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Capt|Lt|Sgt)$/
+    abbrev: /(?:^|[\s"“(])(?:Mr|Mrs|Ms|Mx|Dr|St|Jr|Sr|Prof|Capt|Col|Lt|Sgt|Rev|Mme|Mlle|Messrs)$/,
+    /* every name in a stretch of narration */
+    names: new RegExp(NAME, "g"),
+    /* a sentence's subject and its verb: a description, a pronoun or a name */
+    subject: new RegExp("(?:^|[\\s,;:(\\u2014\\u2013-])(" + DESC + "|" + PRON_SUBJ + "|(?:" + TITLE + ")?" + WORD + "(?:\\s+" + WORD + "){0,2})\\s+" +
+                        "(?:(?:[a-z]+ly|not|never|only|just|still|then|also|now|always|already|again|at once)\\s+)?" + VERBISH + "\\b", "g"),
+    /* names addressed in a quote: at a sentence's start (“Tom, wait!”, “Oh, Anna!”) or after a comma (“…, Anna?”) */
+    vocStart: new RegExp("(?:^|[.!?\\u2026]\\s+)[^A-Za-z]*(?:(?:[Oo]h|O|[Aa]h|[Ww]ell|[Nn]ow|[Cc]ome|[Yy]es|[Nn]o|[Nn]ay|[Ww]hy|[Ll]ook|[Ll]isten|[Pp]lease|[Hh]ello|[Hh]i|[Hh]ey|" +
+                         "[Gg]oodbye|[Gg]ood (?:morning|night|evening|afternoon|day)|[Tt]hank you|[Tt]hanks|[Ss]orry|[Ss]top|[Ww]ait|[Mm]y (?:dear|dearest|good|poor)|[Dd]ear|[Dd]earest|[Pp]oor)[,!]?\\s+)?" +
+                         NAME + "\\s*[,!?]", "g"),
+    vocMid: new RegExp("[,;]\\s+(?:(?:[Mm]y\\s+)?(?:dear|dearest|good|poor|little)\\s+)?" + NAME + "\\s*(?=[,.!?\\u2026;:\\u2014\\u2013-]|$)", "g"),
+    spouse: /\b(his|her)\s+(wife|husband|lady)\b/g,
+    intro: new RegExp("(?:^|[.;,:!?\u2014]\\s*|\\b(?:and|when|then|as|while|until|till)\\s+)[Aa]n?\\s+(?:[a-z]+,?\\s+){0,3}?(" + PERSONS + ")\\s+(?:[a-z]+ly\\s+)?" + VERBISH + "\\b", "g"),
+    /* "at Hunsford", "in Gracechurch Street": a place, not a person */
+    place: /\b(?:at|in|near|into|towards|toward|from|through|across|inside|outside)\s+(?:the\s+)?$/i,
+    /* a chapter or section line (EPUB and DOCX headings come flagged; plain text and PDFs have these) */
+    chapter: new RegExp("^\\s*(?:(?:chapter|book|part|volume|section|act|scene|canto|stave)\\s+(?:[0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|" +
+                        "eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|the\\s+[a-z]+)\\b[^\u201C\u201D\"]{0,70}|" +
+                        "prologue|epilogue|interlude|afterword|foreword)\\s*$", "i"),
+    /* a heading that is only a number: "IV.", "12" */
+    numeral: /^\s*(?:[IVXLC]{1,7}|\d{1,3})\.?\s*$/
   };
-  /* sentence-initial words that look like names but are not */
+  /* capitalised words that are not names (at a sentence's start, or words of address) */
   var STOP = {};
   ("The A An He She They I It But And Then When There This That What Who Yes No Oh Well Now So If In On At As Her His Their Our My Your Its " +
    "One Two Three Four Five Six Seven Eight Nine Ten Of To For With From By Or Nor Not All Some Any Each Every Both Either Neither Such Very Just Only Even " +
    "Still Yet Also Too Again Here Where Why How Which Whom Whose Whatever Whoever Once Twice Before After While Since Until Because Though Although Unless " +
    "Whether Perhaps Maybe Indeed Instead Meanwhile However Therefore Thus Otherwise Anyway Besides Finally First Last Next Nothing Something Anything " +
    "Everything Nobody Somebody Anybody Everybody None Never Always Sometimes Often Soon Later Today Tomorrow Yesterday Tonight Ah Ha Hey Hush Look Listen " +
-   "Come Wait Stop Please Thank Thanks Sorry Good God Dear Right Okay Ok Sure Fine Great Hello Goodbye Hi Suddenly Slowly Quickly Quietly Softly Loudly Mr Mrs Ms Dr Miss")
+   "Come Wait Stop Please Thank Thanks Sorry Good God Dear Right Okay Ok Sure Fine Great Hello Goodbye Hi Suddenly Slowly Quickly Quietly Softly Loudly Mr Mrs Ms Dr Miss " +
+   "Ay Aye Nay Alas Upon Into Onto Over Under About Above Below Between Through During Without Within Across Against Among Around Behind Beside Beyond " +
+   "Do Does Did Don Is Are Was Were Be Been Have Has Had Can Could Will Would Shall Should May Might Must Let Go Give Take Tell Say Said See Hear " +
+   "Mother Father Mamma Mama Papa Mum Mom Dad Daddy Mummy Mommy Grandmother Grandfather Granny Grandma Grandpa Madam Madame Sir Sirs Doctor Captain " +
+   "Uncle Aunt Lady Lord Master Mistress Darling Honey Sweetheart Love Friend Boy Girl Child Son Lad Gentlemen Ladies Everyone Heaven Heavens " +
+   "Monday Tuesday Wednesday Thursday Friday Saturday Sunday January February March April June July August September October November December " +
+   "Christmas Easter Chapter Book Part Section Volume English French German Latin Mrs Messrs Sister Brother Father Mother Majesty Highness Lordship Ladyship " +
+   "You We Me Us Him Them Mine Yours Ours Theirs Except Excepting Whilst Till Unto Towards Pray Lo Hark Behold Certainly Surely Really Truly Of Course " +
+   "Presently Instantly Directly Immediately Accordingly Evidently Apparently Probably Possibly Naturally Fortunately Unfortunately Luckily Happily Sadly " +
+   "Clearly Obviously Merely Simply Nearly Hardly Scarcely Shortly Lately Afterwards Having Being Seeing Hearing Knowing Taking Getting Looking Turning " +
+   "Children People Nor Yes")
     .split(" ").forEach(function(w){ STOP[w] = 1; });
+  /* about 460 common English first names, for the gender of a character no he or she has marked yet */
+  var FIRST = {};
+  ("abigail ada adela adelaide adele agatha agnes alice alicia alison amanda amelia amy anastasia andrea angela angelina ann anna annabel anne annie " +
+   "antonia arabella audrey augusta barbara beatrice beatrix becky bella bernadette bertha beth betsy betty beverly bianca blanche bridget camilla carla " +
+   "carol caroline carrie cassandra catherine cathy cecilia cecily celia charlotte chloe christina christine cicely clara clare claire clarissa constance " +
+   "cora cordelia cynthia daisy daphne deborah delia diana dinah dolly dora doris dorothea dorothy edith edna eleanor elinor eliza elizabeth ella ellen " +
+   "elsie emily emma esther ethel eugenia eva eve evelyn fanny felicity fiona flora florence frances georgiana georgina gertrude gloria grace gwen " +
+   "gwendolen hannah harriet hazel heather helen helena henrietta hester hetty hilda honor honoria imogen irene iris isabel isabella isobel ivy jane " +
+   "janet jean jemima jennifer jenny jessica jessie jill joan joanna josephine joy judith julia julie juliet karen kate katherine kathleen katie kitty " +
+   "laura lavinia leah lena letitia lilian lillian lily linda lisa lizzie lizzy lois lorna lottie louisa louise lucia lucinda lucy lydia mabel madeleine " +
+   "madeline maggie margaret margery maria marian marianne marie marilla marion marjorie martha mary matilda maud maude meg megan melanie mildred " +
+   "millie minnie miranda miriam molly muriel nancy nell nellie nelly nina nora norah olive olivia pamela patience patricia pauline peggy penelope " +
+   "philippa phoebe phyllis polly priscilla prudence rachel rebecca rhoda rita rosa rosalind rosamond rosamund rose rosie ruby ruth sally sara sarah " +
+   "selina sibyl sophia sophie sophy stella susan susanna susannah sylvia tabitha tess tessa theresa ursula valerie vera victoria violet virginia " +
+   "vivian wendy winifred").split(" ").forEach(function(w){ FIRST[w] = "female"; });
+  ("aaron abel abraham adam adrian albert alec alexander alfred algernon alan allan ambrose amos andrew angus anthony archibald archie arnold arthur " +
+   "augustus austin barnaby bartholomew basil ben benedict benjamin bernard bert bertie bill billy bob bobby brian bruce caleb carl cecil cedric charles " +
+   "charlie christopher clarence claude clement clifford colin conrad cornelius cuthbert cyril damian daniel david dennis derek desmond dick donald " +
+   "dorian douglas duncan edgar edmund edward edwin eli elijah elliot ernest eugene ezekiel ezra felix ferdinand fitzwilliam francis frank frankie fred " +
+   "freddie frederick gabriel gavin geoffrey george gerald gideon gilbert giles godfrey gordon graham gregory guy harold harry harvey hector henry " +
+   "herbert horace horatio howard hubert hugh hugo humphrey ian isaac ivan jack jacob jake james jamie jasper jeremy jerome jim jimmy joe joel john " +
+   "johnny jonathan joseph joshua josiah jude julian julius keith kenneth kevin lawrence leo leonard lewis liam lionel lloyd louis luke malcolm marcus " +
+   "mark martin matthew maurice max michael miles montague mortimer nathan nathaniel ned neil neville nicholas nick nigel noah norman oliver oscar " +
+   "oswald otto owen patrick paul percy peter philip phillip ralph randolph raymond reginald rex richard robert roderick rodney roger roland ronald " +
+   "rowland rufus rupert samuel sam sebastian septimus seth sidney silas simon solomon stanley stephen steven stuart ted teddy terence theodore thomas " +
+   "timothy tobias toby tom tommy tony tristram uriah victor vincent walter wilfred will william willie willy wyatt zachary").split(" ").forEach(function(w){ FIRST[w] = "male"; });
+  /* pet names, merged with the full name when a document has both (Lizzy and Elizabeth) */
+  var NICK = {};
+  [["elizabeth", "lizzy lizzie liz eliza beth betsy bess bessie betty"], ["catherine", "kitty kate katie cathy kit"], ["katherine", "kitty kate katie kathy"],
+   ["thomas", "tom tommy"], ["william", "bill billy will willy willie"], ["robert", "bob bobby rob robbie"], ["richard", "dick rick"], ["james", "jim jimmy jamie"],
+   ["john", "jack johnny"], ["edward", "ned ted teddy"], ["henry", "harry"], ["charles", "charlie"], ["samuel", "sam"], ["joseph", "joe"], ["daniel", "dan danny"],
+   ["michael", "mike"], ["nicholas", "nick"], ["anthony", "tony"], ["frederick", "fred freddie"], ["benjamin", "ben"], ["margaret", "peggy maggie meg"],
+   ["mary", "molly polly"], ["sarah", "sally"], ["martha", "patty patsy"], ["eleanor", "nell nelly nellie"], ["helen", "nell nelly nellie"], ["anne", "annie nan nancy"],
+   ["jane", "jenny"], ["susan", "sue susie"], ["frances", "fanny"], ["rebecca", "becky"], ["abigail", "abby"], ["dorothy", "dolly"], ["charlotte", "lottie"], ["matilda", "tilly"]
+  ].forEach(function(r){ r[1].split(" ").forEach(function(w){ (NICK[w] = NICK[w] || []).push(r[0]); }); });
   var SYNTH = { he: ["He", "male"], she: ["She", "female"], they: ["They", "unknown"], "other-1": ["Another voice", "unknown"], "unknown-1": ["Unknown speaker", "unknown"] };
 
   var STYLES = [
@@ -144,33 +270,59 @@
     }
     return text.slice(from);
   }
-  function cleanName(raw){
-    var toks = raw.replace(RX.title, "").split(/\s+/).map(function(t){ return t.replace(/-$/, ""); });
-    while (toks.length && STOP[toks[0]]) toks.shift();
-    while (toks.length && STOP[toks[toks.length - 1]]) toks.pop();
-    if (!toks.length) return null;
-    var name = toks.join(" ");
-    return { name: name, key: name.toLowerCase().replace(/’/g, "'") };
+  /* a stretch of text as sentences: [{ s, e }] */
+  function sentencesOf(text){
+    var out = [], m, from = 0;
+    RX.sentenceEnd.lastIndex = 0;
+    while ((m = RX.sentenceEnd.exec(text))){
+      if (!m[0].length){ RX.sentenceEnd.lastIndex++; continue; }
+      if (abbreviated(text, m)) continue;
+      out.push({ s: from, e: m.index + m[0].length }); from = m.index + m[0].length;
+    }
+    if (from < text.length && /\S/.test(text.slice(from))) out.push({ s: from, e: text.length });
+    return out;
   }
-  /* the speech tag nearest the quote in a piece of narration (NAME VERB, VERB NAME, PRONOUN VERB, VERB PRONOUN);
-     side is "after" when the text follows the quote and "before" when it precedes it */
+  /* "Mr. Darcy" → { key: "mr darcy", name: "Mr. Darcy", title: "mr", toks: ["darcy"] }; words that are not names are dropped */
+  function cleanName(raw){
+    var t = String(raw).replace(/\s+/g, " ").trim(), title = "", shown = "", m = RX.title.exec(t);
+    if (m){ title = m[1].toLowerCase(); shown = m[1] + m[2]; t = t.slice(m[0].length); }
+    /* "Jane’s" is Jane; "I’ll" is no one */
+    var toks = t.split(" ").map(function(w){ return /^I['’]/.test(w) ? "" : w.replace(/['’]s$/, "").replace(/[-'’]+$/, ""); });
+    while (toks.length && (STOP[toks[0]] || !toks[0])) toks.shift();
+    while (toks.length && (STOP[toks[toks.length - 1]] || !toks[toks.length - 1])) toks.pop();
+    if (!toks.length) return null;
+    title = TNORM[title] || title;
+    var low = toks.map(function(w){ return w.toLowerCase().replace(/’/g, "'"); });
+    return { key: (title ? title + " " : "") + low.join(" "), name: (shown ? shown + " " : "") + toks.join(" "), title: title, toks: low };
+  }
+  /* the speech tag nearest the quote in a piece of narration (NAME VERB, VERB NAME, PRONOUN VERB, VERB PRONOUN and the
+     same with a description: "his wife said", "said the captain"); side is "after" when the text follows the quote and
+     "before" when it precedes it */
   function tagIn(text, side){
     if (!text) return null;
     text = text.replace(RX.softHyphen, "$1");
     var found = [], best = null, m, nm, i, j;
-    function add(kind, m, tag, verbAt){ tag.src = text; found.push({ kind: kind, at: m.index, end: m.index + m[0].length, verbAt: verbAt, tag: tag }); }
+    function add(kind, m, tag, verbAt, verb){ tag.src = text; tag.verb = String(verb).toLowerCase(); found.push({ kind: kind, at: m.index, end: m.index + m[0].length, verbAt: verbAt, tag: tag }); }
+    function desc(s){
+      var w = s.split(/\s+/), noun = w[w.length - 1].toLowerCase();
+      return { desc: s.toLowerCase(), poss: w[0].toLowerCase(), noun: noun, adj: w.length > 2 ? w.slice(1, -1).join(" ").toLowerCase() : "" };
+    }
     RX.nameVerb.lastIndex = 0;
-    while ((m = RX.nameVerb.exec(text))){ nm = cleanName(m[1]); if (nm) add(0, m, nm, m.index + m[0].length - m[2].length); }
+    while ((m = RX.nameVerb.exec(text))){ nm = cleanName(m[1]); if (nm) add(0, m, nm, m.index + m[0].length - m[2].length, m[2]); }
     RX.verbName.lastIndex = 0;
-    while ((m = RX.verbName.exec(text))){ nm = cleanName(m[2]); if (nm) add(1, m, nm, m.index); }
+    while ((m = RX.verbName.exec(text))){ nm = cleanName(m[2]); if (nm) add(1, m, nm, m.index, m[1]); }
     RX.pronVerb.lastIndex = 0;
-    while ((m = RX.pronVerb.exec(text))) add(2, m, { pronoun: m[1].toLowerCase() }, m.index + m[0].length - m[2].length);
+    while ((m = RX.pronVerb.exec(text))) add(2, m, { pronoun: m[1] === "I" ? "i" : m[1].toLowerCase() }, m.index + m[0].length - m[2].length, m[2]);
     RX.verbPron.lastIndex = 0;
-    while ((m = RX.verbPron.exec(text))) add(3, m, { pronoun: m[2].toLowerCase() }, m.index);
+    while ((m = RX.verbPron.exec(text))) add(3, m, { pronoun: m[2] === "I" ? "i" : m[2].toLowerCase() }, m.index, m[1]);
+    RX.descVerb.lastIndex = 0;
+    while ((m = RX.descVerb.exec(text))) add(4, m, desc(m[1]), m.index + m[0].length - m[2].length, m[2]);
+    RX.verbDesc.lastIndex = 0;
+    while ((m = RX.verbDesc.exec(text))) add(5, m, desc(m[2]), m.index, m[1]);
     for (i = 0; i < found.length; i++){
       var f = found[i], skip = false;
-      /* "she asked Anna": the subject before the verb speaks, the name after it is spoken to */
-      if (f.kind === 1 || f.kind === 3) for (j = 0; j < found.length && !skip; j++) skip = (found[j].kind === 0 || found[j].kind === 2) && found[j].verbAt === f.verbAt;
+      /* "she asked Anna", "said Anna to her mother": the subject before the verb speaks, the one after it is spoken to */
+      if (f.kind === 1 || f.kind === 3 || f.kind === 5) for (j = 0; j < found.length && !skip; j++) skip = (found[j].kind === 0 || found[j].kind === 2 || found[j].kind === 4) && found[j].verbAt === f.verbAt;
       if (skip) continue;
       if (!best){ best = f; continue; }
       var nearer = side === "before" ? f.end > best.end : f.at < best.at;
@@ -180,25 +332,62 @@
     return best ? best.tag : null;
   }
   function count(rx, text){ rx.lastIndex = 0; return (text.match(rx) || []).length; }
+  /* the subjects of a stretch of narration: [{ at, kind: "name" | "pron" | "desc", nm | pron | d }], one per sentence at most */
+  function subjectsIn(text){
+    var out = [], ss = sentencesOf(text), i, m, s;
+    for (i = 0; i < ss.length; i++){
+      s = text.slice(ss[i].s, ss[i].e);
+      RX.subject.lastIndex = 0;
+      while ((m = RX.subject.exec(s)) && m.index < 90){
+        var np = m[1], w0 = np.split(/\s+/)[0], x = null;
+        if (/^(?:[Hh]e|[Ss]he|I)$/.test(np)) x = { kind: "pron", pron: np === "I" ? "i" : np.toLowerCase() };
+        else if (/^(?:the|his|her|their|my|our)$/i.test(w0) && NOUNS[np.split(/\s+/).pop().toLowerCase()]){
+          var w = np.split(/\s+/);
+          x = { kind: "desc", d: { desc: np.toLowerCase(), poss: w0.toLowerCase(), noun: w[w.length - 1].toLowerCase(), adj: w.length > 2 ? w.slice(1, -1).join(" ").toLowerCase() : "" } };
+        } else { var nm = cleanName(np); if (nm) x = { kind: "name", nm: nm }; }
+        if (x){ x.at = ss[i].s + m.index; x.rest = s.slice(m.index + m[0].length); out.push(x); break; }
+        RX.subject.lastIndex = m.index + 1;
+      }
+    }
+    return out;
+  }
+  /* names addressed in a quote's text: [cleanName] */
+  function vocativesIn(text){
+    var out = [], m, nm;
+    RX.vocStart.lastIndex = 0;
+    while ((m = RX.vocStart.exec(text))){
+      /* "…sick of Mr. Bingley," — the full stop of "Mr." does not start a sentence */
+      if (m[0].charAt(0) === "." && RX.abbrev.test(text.slice(0, m.index))){ RX.vocStart.lastIndex = m.index + 1; continue; }
+      nm = cleanName(m[1]); if (nm) out.push(nm);
+    }
+    RX.vocMid.lastIndex = 0;
+    while ((m = RX.vocMid.exec(text))){ nm = cleanName(m[1]); if (nm) out.push(nm); }
+    return out;
+  }
 
-  /* units: [{ start, end, text, para?, page?, dialogue? }] in reading order (Speak's units). A unit built by
+  /* units: [{ start, end, text, para?, page?, dialogue?, heading? }] in reading order (Speak's units). A unit built by
      Speak is either a quoted line (dialogue: true, the quote marks left out of its text) or narration; a
      list without dialogue flags (text that arrived some other way) has its quotes found in the text.
      Returns { units: [ [ {start, end, text, role} ... ] per unit ], roles: [ role per unit ],
-               cast: [ {key, name, gender, lines, synthetic} ] } */
+               cast: [ {key, name, gender, lines, synthetic, mentions, first, aka} ] (those who speak),
+               quotes: [ {role, unit, start, end, text} ] (every quoted line, in order),
+               sections: [ {unit, title} ] (chapter and section headings) } */
   function attribute(units){
-    var n = units ? units.length : 0, segs = new Array(n), roles = new Array(n), i, j, k, u, p, q;
-    if (!n) return { units: [], roles: [], cast: [] };
-    var chars = {}, order = [], flagged = false;
+    var n = units ? units.length : 0, segs = new Array(n), roles = new Array(n), i, j, k, u, p, q, m;
+    if (!n) return { units: [], roles: [], cast: [], quotes: [], sections: [] };
+    var chars = {}, order = [], flagged = false, sections = [], quotes = [];
     for (i = 0; i < n && !flagged; i++) flagged = !!(units[i] && units[i].dialogue !== undefined);
-    function character(key, name){
+    function character(key, name, extra){
       var c = chars[key];
-      if (!c){ c = chars[key] = { key: key, name: name, gender: "unknown", m: 0, f: 0, lines: 0, synthetic: false }; order.push(key); }
-      else if (name && name.length > c.name.length) c.name = name;
+      if (!c){
+        c = chars[key] = { key: key, name: name, gender: "unknown", m: 0, f: 0, lines: 0, mentions: 0, first: -1, synthetic: false, aka: [] };
+        order.push(key);
+        if (extra) for (var x in extra) if (extra.hasOwnProperty(x)) c[x] = extra[x];
+      }
       return c;
     }
     function synthetic(key){
-      if (!chars[key]){ var c = character(key, SYNTH[key][0]); c.gender = SYNTH[key][1]; c.synthetic = true; }
+      if (!chars[key]){ var c = character(key, SYNTH[key][0]); c.gender = SYNTH[key][1]; c.synthetic = true; c.anon = true; }
       return key;
     }
 
@@ -207,17 +396,33 @@
     for (i = 0; i < n; i++){
       u = units[i] || {};
       var pk = (u.page || 0) + ":" + (u.para === undefined ? "u" + i : u.para);
-      if (!cur || pk !== cur.pk){ cur = { pk: pk, units: [], base: [], text: "", quotes: [] }; paras.push(cur); }
+      if (!cur || pk !== cur.pk){ cur = { pk: pk, units: [], base: [], text: "", quotes: [], heading: true }; paras.push(cur); }
       if (cur.text) cur.text += " ";
       cur.base.push(cur.text.length);
       cur.units.push(i);
       cur.text += String(u.text || "");
+      if (!u.heading) cur.heading = false;
     }
     var style = flagged ? null : pickStyle(paras.map(function(x){ return x.text; }));
+    function unitAt(p, pos){ var r = 0; while (r + 1 < p.base.length && p.base[r + 1] <= pos) r++; return p.units[r]; }
 
-    /* pass 1: quotes, their explicit tags, and gender votes for named speakers */
-    for (k = 0; k < paras.length && (flagged || style); k++){
+    /* pass 1: quotes, their tags and the names addressed in them; the narration between them; the names met in the
+       narration (a character is a name that is tagged, titled, a known first name seen more than once, or a name
+       addressed that also acts) with the he/she beside them */
+    var cands = {}, iSubj = 0, narrSents = 0;
+    function cand(nm){
+      var c = cands[nm.key];
+      if (!c) c = cands[nm.key] = { key: nm.key, name: nm.name, title: nm.title, toks: nm.toks, tag: 0, voc: 0, list: 0, mid: 0, subj: 0, place: 0, m: 0, f: 0, n: 0 };
+      c.n++;
+      if (nm.title) c.title = nm.title;
+      if (FIRST[nm.toks[0]]) c.list = 1;
+      return c;
+    }
+    for (k = 0; k < paras.length; k++){
       p = paras[k];
+      var ptext = p.text.replace(/\s+/g, " ").trim();
+      if (!p.heading && ptext.length < 90 && (RX.chapter.test(ptext) || RX.numeral.test(ptext)) && !(flagged && p.units.some(function(ui){ return units[ui] && units[ui].dialogue; }))) p.heading = true;
+      if (p.heading){ sections.push({ unit: p.units[0], title: ptext.slice(0, 80) }); p.narr = []; continue; }
       if (flagged){
         /* a quote is a run of dialogue units with no narration between them */
         for (i = 0; i < p.units.length; i++){
@@ -228,9 +433,13 @@
           if (lastQ && lastQ.until === i - 1){ lastQ.e = ue; lastQ.until = i; }
           else p.quotes.push({ s: p.base[i], e: ue, until: i });
         }
-      } else p.quotes = findQuotes(p.text, style);
+      } else if (style) p.quotes = findQuotes(p.text, style);
+      p.narr = [];
+      var pos = 0;
       for (i = 0; i < p.quotes.length; i++){
         q = p.quotes[i];
+        if (q.s > pos) p.narr.push({ s: pos, e: q.s });
+        pos = q.e;
         var after = sentenceHead(p.text.slice(q.e, i + 1 < p.quotes.length ? p.quotes[i + 1].s : p.text.length));
         var before = sentenceTail(p.text.slice(i > 0 ? p.quotes[i - 1].e : 0, q.s).slice(-80));
         var tb = tagIn(before, "before"), ta = null;
@@ -241,77 +450,367 @@
           q.tag = ta || tb;
         }
         if (q.tag && q.tag.key){
-          var ch = character(q.tag.key, q.tag.name);
-          ch.m += count(RX.male, q.tag.src); ch.f += count(RX.female, q.tag.src);
+          var tc = cand(q.tag); tc.tag = 1;
+          tc.m += count(RX.male, q.tag.src); tc.f += count(RX.female, q.tag.src);
+        }
+        q.voc = vocativesIn(p.text.slice(q.s, q.e));
+        for (j = 0; j < q.voc.length; j++) cand(q.voc[j]).voc = 1;
+      }
+      if (pos < p.text.length) p.narr.push({ s: pos, e: p.text.length });
+      /* the narration: names, subjects and he/she after them */
+      for (i = 0; i < p.narr.length; i++){
+        var nt = p.text.slice(p.narr[i].s, p.narr[i].e), subs = subjectsIn(nt), ss = sentencesOf(nt), si = 0;
+        p.narr[i].subs = subs; p.narr[i].sents = ss;
+        narrSents += ss.length;
+        RX.names.lastIndex = 0;
+        while ((m = RX.names.exec(nt))){
+          var nm = cleanName(m[1]); if (!nm) continue;
+          while (si + 1 < ss.length && ss[si + 1].s <= m.index) si++;
+          var c = cand(nm);
+          /* not the sentence's first word, where any word has a capital */
+          if (ss[si] && /\S/.test(nt.slice(ss[si].s, m.index).replace(/^[^A-Za-zÀ-ɏ]+/, ""))) c.mid = 1;
+          if (RX.place.test(nt.slice(Math.max(0, m.index - 16), m.index))) c.place = 1;
+        }
+        for (j = 0; j < subs.length; j++){
+          if (subs[j].kind === "pron" && subs[j].pron === "i") iSubj++;
+          if (subs[j].kind !== "name") continue;
+          var sc = cand(subs[j].nm); sc.subj = 1;
+          sc.m += count(RX.male, subs[j].rest); sc.f += count(RX.female, subs[j].rest);
         }
       }
     }
-    /* "Tom Baker" and "Tom" are one person */
-    var alias = {};
+    /* a first-person narrator: "I" is the subject of the narration now and then */
+    var firstPerson = iSubj >= 3 && iSubj * 25 >= narrSents;
+
+    /* the characters, their gender, and one character for "Mr. Darcy" and "Darcy", "Elizabeth Bennet" and "Lizzy" */
+    Object.keys(cands).forEach(function(key){
+      var c = cands[key];
+      var strongTitle = c.title && !TWEAK[c.title];
+      if (!(c.tag || strongTitle || (c.list && (c.mid || c.subj || c.voc)) || (!c.place && c.voc && c.subj) ||
+            (c.title && TWEAK[c.title] && (c.voc || c.subj || c.list)))) return;
+      if (!(c.tag || strongTitle) && c.place && !c.list) return;
+      var ch = character(key, c.name);
+      ch.title = c.title; ch.toks = c.toks; ch.m = c.m; ch.f = c.f; ch.n = c.n; ch.shownN = c.n;
+    });
+    var alias = {}, bySur = {};
+    function root(key){ for (var g = 0; alias[key] && g < 10; g++) key = alias[key]; return key; }
+    order.forEach(function(key){
+      var c = chars[key], t = c.title ? c.title + " " : "", first = c.toks[0], lastT = c.toks[c.toks.length - 1];
+      if (c.toks.length < 2) return;
+      /* "Sir William Lucas" → "Sir William", "Mr. Fitzwilliam Darcy" → "Mr. Darcy", "Elizabeth Bennet" → "Elizabeth" */
+      if (t && chars[t + first]) alias[key] = t + first;
+      else if (t && chars[t + lastT]) alias[key] = t + lastT;
+      else if (!t && chars[first] && !chars[first].title) alias[key] = first;
+    });
+    order.forEach(function(key){
+      var c = chars[key], r = root(key);
+      if (!c.title || r !== key) return;
+      var sur = c.toks[c.toks.length - 1];
+      (bySur[sur] = bySur[sur] || []).push(key);
+    });
+    /* the one titled character with a surname: a man's title first ("Bingley" is Mr. Bingley, not Miss Bingley), a
+       plain title before a doubtful one ("Mr. Holmes" before "Master Holmes") */
+    function surnameOwner(sur, self){
+      var list = (bySur[sur] || []).filter(function(k2){ return k2 !== self; });
+      var strong = list.filter(function(k2){ return !TWEAK[chars[k2].title]; });
+      var men = strong.filter(function(k2){ return TGEN[chars[k2].title] === "male"; });
+      return men.length === 1 ? men[0] : strong.length === 1 ? strong[0] : list.length === 1 ? list[0] : null;
+    }
+    order.forEach(function(key){
+      var c = chars[key], first = c.toks[0], o;
+      if (c.title || c.toks.length !== 1 || alias[key] || FIRST[first]) return;
+      if ((o = surnameOwner(first, key))) alias[key] = o;
+    });
+    /* "Sherlock Holmes" → Holmes, when no one else in the book has that surname ("Charlotte Lucas" and "Maria Lucas" stay two) */
+    var fullBySur = {};
+    order.forEach(function(key){ var c = chars[key]; if (!c.title && c.toks.length >= 2) (fullBySur[c.toks[c.toks.length - 1]] = fullBySur[c.toks[c.toks.length - 1]] || []).push(key); });
+    order.forEach(function(key){
+      var c = chars[key], sur = c.toks[c.toks.length - 1];
+      if (alias[key] || c.title || c.toks.length < 2 || (fullBySur[sur] || []).length > 1) return;
+      var o = surnameOwner(sur, key) || (chars[sur] || alias[sur] ? root(sur) : null);
+      if (o && o !== key) alias[key] = o;
+    });
+    order.forEach(function(key){
+      var c = chars[key];
+      if (alias[key] || c.title || c.toks.length !== 1 || !NICK[c.toks[0]]) return;
+      var full = NICK[c.toks[0]].filter(function(f){ return chars[f] && !chars[f].title && root(f) !== key; });
+      if (full.length) alias[key] = root(full[0]);
+    });
     order.slice().forEach(function(key){
-      var toks = key.split(" ");
-      if (toks.length < 2) return;
-      var target = chars[toks[0]] ? toks[0] : chars[toks[toks.length - 1]] ? toks[toks.length - 1] : null;
-      if (!target || target === key) return;
-      alias[key] = target;
-      var a = chars[key], b = chars[target];
-      b.m += a.m; b.f += a.f; if (a.name.length > b.name.length) b.name = a.name;
+      if (!alias[key]) return;
+      var to = root(key), a = chars[key], b = chars[to];
+      if (!b || to === key) return;
+      b.m += a.m; b.f += a.f;
+      /* the name shown is the form the text uses most */
+      if (a.shownN > b.shownN){ b.aka.push(b.name); b.name = a.name; b.shownN = a.shownN; } else b.aka.push(a.name);
+      if (!b.title && a.title) b.title = a.title;
       delete chars[key]; order.splice(order.indexOf(key), 1);
     });
-    function keyOf(key){ return alias[key] || key; }
-    order.forEach(function(key){ var c = chars[key]; c.gender = c.m > c.f ? "male" : c.f > c.m ? "female" : "unknown"; });
-
-    /* pass 2: who says each quote */
-    var recent = [];
-    function lastOfGender(g){
-      for (var r = recent.length - 1, seen = 0; r >= 0 && seen < 8; r--, seen++){
-        var c = chars[recent[r].key];
-        if (c && c.gender === g) return c.key;
+    order.forEach(function(key){
+      var c = chars[key], tg = TGEN[c.title], fg = FIRST[c.toks[0]], i2;
+      for (i2 = 0; !fg && i2 < c.aka.length; i2++){ var an = cleanName(c.aka[i2]); if (an) fg = FIRST[an.toks[0]] || (an.title && TGEN[an.title]); }
+      c.gender = tg || fg || (c.m > c.f ? "male" : c.f > c.m ? "female" : "unknown");
+    });
+    /* a name met in the text → its character (or null) */
+    function canon(nm){
+      if (!nm) return null;
+      var key = nm.key;
+      if (chars[key] || alias[key]) return root(key);
+      if (nm.toks.length >= 2){
+        var t = nm.title ? nm.title + " " : "";
+        if (t && (chars[t + nm.toks[0]] || alias[t + nm.toks[0]])) return root(t + nm.toks[0]);
+        if (t && (chars[t + nm.toks[nm.toks.length - 1]] || alias[t + nm.toks[nm.toks.length - 1]])) return root(t + nm.toks[nm.toks.length - 1]);
+        if (!t && (chars[nm.toks[0]] || alias[nm.toks[0]])) return root(nm.toks[0]);
       }
       return null;
     }
-    function resolvePronoun(pr){
-      if (pr === "i") return "narrator";
-      var g = pr === "he" ? "male" : pr === "she" ? "female" : "unknown";
-      return lastOfGender(g) || synthetic(pr);
+    function genderOf(key){ var c = chars[key]; return c ? c.gender : "unknown"; }
+
+    /* pass 2: the paragraphs in order, with the scene they belong to */
+    var ment = [];                     /* characters mentioned, in reading order (names in the narration, speakers, names addressed) */
+    var scene = {}, sinceQ = {};       /* participants of the scene → paragraph last seen; those seen since the last quote */
+    var last = null, prev = null, addressee = null, leadIn = null, gap = 0, LONG = 600;
+    function mention(key, para, established, unit){
+      if (!key) return;
+      ment.push(key);
+      if (ment.length > 800) ment.splice(0, 400);
+      if (established){ scene[key] = para; sinceQ[key] = para; }
+      var c = chars[key];
+      if (c && unit !== undefined){ c.mentions++; if (c.first < 0 || unit < c.first) c.first = unit; }
     }
-    function turnTaking(para){
-      var A = null, B = null, r;
-      for (r = recent.length - 1; r >= 0 && recent[r].para >= para - 3; r--){
-        if (A === null){ A = recent[r].key; continue; }
-        if (recent[r].key !== A){ B = recent[r].key; break; }
+    function recentOf(g, skip, limit){
+      for (var r = ment.length - 1, seen = 0; r >= 0 && seen < (limit || 80); r--, seen++){
+        var key = ment[r];
+        if (key === "narrator" || (skip && skip[key])) continue;
+        if (!g || genderOf(key) === g) return key;
       }
-      if (B !== null) return B;
-      if (A !== null) return synthetic(A === "other-1" ? "unknown-1" : "other-1");
-      return synthetic("unknown-1");
+      return null;
     }
+    function copy(o){ var r = {}, x; for (x in o) if (o.hasOwnProperty(x)) r[x] = o[x]; return r; }
+    /* the pronoun's character: "he went on" is the one who spoke last; else the latest of that gender who did not speak
+       last (a new paragraph, a new speaker), else the last speaker, else an unnamed voice of that gender */
+    function resolvePron(pr, excl, cont, quiet, keepLast){
+      if (pr === "i") return firstPerson || !quiet ? "narrator" : null;
+      if (pr === "they") return quiet ? null : synthetic("they");
+      var g = pr === "he" ? "male" : "female", notG = g === "male" ? "female" : "male";
+      if (cont && last && last !== "narrator" && !excl[last] && genderOf(last) !== notG) return last;
+      var skip = copy(excl);
+      if (last && !keepLast) skip[last] = 1;
+      var r = recentOf(g, skip);
+      if (r) return r;
+      if (last && !excl[last] && genderOf(last) === g) return last;
+      return quiet ? null : synthetic(pr);
+    }
+    function spouseOf(P, g, create){
+      var c = chars[P], sur, key;
+      if (!c || !c.title || !c.toks) return null;
+      sur = c.toks[c.toks.length - 1];
+      if (c.title === "mr" && g === "female") key = "mrs " + sur;
+      else if (c.title === "mrs" && g === "male") key = "mr " + sur;
+      else return null;
+      if (chars[key] || alias[key]) return root(key);
+      if (!create) return null;
+      var shown = c.name.split(/\s+/).pop();
+      var sp = character(key, (g === "female" ? "Mrs. " : "Mr. ") + shown);
+      sp.title = key.split(" ")[0]; sp.toks = [sur]; sp.gender = g;
+      return key;
+    }
+    /* someone known only by a description: "The stranger", "The old man", "The Count" */
+    function descChar(d, g){
+      var key = d.desc.replace(/^(?:his|her|their|our)\b/, "the"), c = chars[key], info = NOUNS[d.noun] || {};
+      if (!c){
+        var shown = key.charAt(0).toUpperCase() + key.slice(1);
+        if (info.title) shown = shown.replace(new RegExp(d.noun + "$"), d.noun.charAt(0).toUpperCase() + d.noun.slice(1));
+        c = character(key, shown); c.gender = g || "unknown"; c.synthetic = true;
+      }
+      return key;
+    }
+    /* "cried his wife", "said her mother", "said the old man", "said the captain" */
+    function resolveDesc(d, excl, quiet){
+      var info = NOUNS[d.noun] || { g: "" }, g = info.g, r, x;
+      if (info.title){
+        var best = null;
+        for (r = ment.length - 1; r >= 0 && r >= ment.length - 200 && !best; r--) if (chars[ment[r]] && chars[ment[r]].title === info.title && !excl[ment[r]]) best = ment[r];
+        for (x = 0; !best && x < order.length; x++) if (chars[order[x]].title === info.title && !excl[order[x]]) best = order[x];
+        if (best) return best;
+      }
+      if (info.anon){
+        /* "said the stranger", "continued our strange visitor": the unnamed one the scene already has, if any */
+        var own = d.desc.replace(/^(?:his|her|their|our|my)\b/, "the");
+        if (chars[own]) return own;
+        for (r = ment.length - 1; r >= 0 && r >= ment.length - 40; r--){
+          var mk = ment[r];
+          if (chars[mk] && chars[mk].synthetic && !chars[mk].anon && scene[mk] !== undefined && !excl[mk]) return mk;
+        }
+        return quiet ? null : descChar(d, "");
+      }
+      /* "the Count" with no Count named: the Count, from now on */
+      if (info.title) return descChar(d, g || TGEN[info.title] || "");
+      if (d.poss === "his" || d.poss === "her" || d.poss === "their"){
+        var P = d.poss === "their" ? null : recentOf(d.poss === "his" ? "male" : "female", null);
+        if (info.spouse && P){ var sp = spouseOf(P, g, !quiet); if (sp && !excl[sp]) return sp; }
+        var skip = copy(excl);
+        if (P) skip[P] = 1;
+        if (info.pref) for (r = ment.length - 1; r >= 0 && r >= ment.length - 80; r--){
+          var key = ment[r];
+          if (!skip[key] && chars[key] && info.pref[chars[key].title] && (!g || chars[key].gender === g)) return key;
+        }
+        var rr = recentOf(g, skip);
+        if (rr) return rr;
+        return quiet ? null : synthetic(g === "male" ? "he" : g === "female" ? "she" : "they");
+      }
+      if (d.poss === "the" && g){
+        var skip2 = copy(excl);
+        if (last) skip2[last] = 1;
+        var r2 = recentOf(g, skip2, 40);
+        if (r2 && scene[r2] !== undefined) return r2;
+      }
+      return quiet ? null : descChar(d, g);
+    }
+    /* who speaks an untagged paragraph: the one addressed last (if in the scene), the one the narration just before was
+       about, the one before the last speaker (turns), the latest participant who did not speak last */
+    function expected(excl, nextVoc){
+      /* after narration about the one now addressed ("Jo began to whistle." “Don’t, Jo!”), the last speaker goes on */
+      var goOn = leadIn && excl[leadIn] && last && !excl[last] ? last : null;
+      var list = [nextVoc, addressee && scene[addressee] !== undefined ? addressee : null, goOn, leadIn, prev], r, best = null, bestAt = -1;
+      for (r = 0; r < list.length; r++) if (list[r] && (list[r] !== last || list[r] === goOn) && !excl[list[r]]) return list[r];
+      for (var key in scene) if (scene.hasOwnProperty(key) && key !== last && !excl[key] && scene[key] > bestAt && (key !== "narrator" || firstPerson)){ best = key; bestAt = scene[key]; }
+      return best;
+    }
+    function subjectKey(s, excl, keepLast){
+      if (s.kind === "name") return canon(s.nm);
+      if (s.kind === "pron") return resolvePron(s.pron, excl, false, true, keepLast);
+      return resolveDesc(s.d, excl, true);
+    }
+    /* the names in a stretch of narration: mentions (the sentence's subject last, the one it is about) and the scene */
+    function narrate(p, k, piece){
+      var nt = p.text.slice(piece.s, piece.e), subs = piece.subs || [], sents = piece.sents || [], found = [], spouses = [], f = 0, t, lastSubj = null;
+      RX.names.lastIndex = 0;
+      while ((m = RX.names.exec(nt))){ var key = canon(cleanName(m[1])); if (key) found.push({ key: key, at: m.index }); }
+      RX.spouse.lastIndex = 0;
+      while ((m = RX.spouse.exec(nt))) spouses.push({ at: m.index, poss: m[1], g: m[2] === "husband" ? "male" : "female" });
+      RX.intro.lastIndex = 0;
+      while ((m = RX.intro.exec(nt))){
+        var ik = descChar({ desc: "the " + m[1], poss: "the", noun: m[1], adj: "" }, NOUNS[m[1]] ? NOUNS[m[1]].g : "");
+        found.push({ key: ik, at: m.index + m[0].indexOf(m[1]) - 2, noCount: true });
+      }
+      found.sort(function(x, y){ return x.at - y.at; });
+      for (var si = 0; si < sents.length; si++){
+        var a = sents[si].s, b = sents[si].e, sub = null, here = [];
+        for (t = 0; t < subs.length && !sub; t++) if (subs[t].at >= a && subs[t].at < b) sub = subs[t];
+        for (; f < found.length && found[f].at < b; f++) if (found[f].at >= a) here.push(found[f]);
+        for (t = 0; t < spouses.length; t++) if (spouses[t].at >= a && spouses[t].at < b){
+          var P = recentOf(spouses[t].poss === "his" ? "male" : "female", null), sp = P ? spouseOf(P, spouses[t].g, false) : null;
+          if (sp) here.push({ key: sp, at: spouses[t].at, noCount: true });
+        }
+        here.sort(function(x, y){ return x.at - y.at; });
+        /* the sentence's names in order, and its subject (the one it is about) after them */
+        var sk = sub ? subjectKey(sub, {}, true) : null;
+        for (t = 0; t < here.length; t++){
+          if (sub && sub.kind === "name" && Math.abs(sub.at - here[t].at) <= 1 && here[t].key === sk) continue;
+          mention(here[t].key, k, true, here[t].noCount ? undefined : unitAt(p, piece.s + here[t].at));
+        }
+        if (sk){ mention(sk, k, true, sub.kind === "name" ? unitAt(p, piece.s + sub.at) : undefined); lastSubj = sk; }
+      }
+      return lastSubj;
+    }
+    function reset(){ scene = {}; sinceQ = {}; last = prev = addressee = leadIn = null; gap = 0; }
     for (k = 0; k < paras.length; k++){
       p = paras[k];
-      if (!p.quotes.length) continue;
-      /* one speaker per paragraph unless a tag says otherwise */
+      if (p.heading){ reset(); continue; }
+      if (!p.quotes.length){
+        var ls = null;
+        for (i = 0; i < p.narr.length; i++){ var s1 = narrate(p, k, p.narr[i]); if (s1) ls = s1; }
+        leadIn = ls; gap += p.text.length;
+        continue;
+      }
+      if (gap > LONG){ last = prev = addressee = null; scene = sinceQ; }
+      sinceQ = {}; gap = 0;
+      /* the narration before the first quote, then the names addressed */
+      var ni = 0;
+      for (; ni < p.narr.length && p.narr[ni].e <= p.quotes[0].s; ni++) narrate(p, k, p.narr[ni]);
+      var excl = {}, voc = [];
+      for (i = 0; i < p.quotes.length; i++) for (j = 0; j < p.quotes[i].voc.length; j++){
+        var vk = canon(p.quotes[i].voc[j]);
+        if (vk){ excl[vk] = 1; voc.push(vk); mention(vk, k, false); }
+      }
+      /* nor, when nothing names the speaker, anyone the quote talks about ("put it into Lizzy's head" is not Lizzy's line) */
+      var soft = copy(excl);
+      for (i = 0; i < p.quotes.length; i++){
+        var qt0 = p.text.slice(p.quotes[i].s, p.quotes[i].e);
+        RX.names.lastIndex = 0;
+        while ((m = RX.names.exec(qt0))){ var tk = canon(cleanName(m[1])); if (tk) soft[tk] = 1; }
+      }
+      /* explicit tags */
       var paraKey = null;
-      for (i = 0; i < p.quotes.length && paraKey === null; i++) if (p.quotes[i].tag && p.quotes[i].tag.key) paraKey = keyOf(p.quotes[i].tag.key);
-      for (i = 0; i < p.quotes.length && paraKey === null; i++) if (p.quotes[i].tag && p.quotes[i].tag.pronoun) paraKey = resolvePronoun(p.quotes[i].tag.pronoun);
-      if (paraKey === null) paraKey = turnTaking(k);
+      for (i = 0; i < p.quotes.length; i++){
+        q = p.quotes[i]; q.key = null;
+        var tg = q.tag;
+        if (!tg) continue;
+        if (tg.key){ q.key = canon(tg) || tg.key; if (!chars[q.key]) character(q.key, tg.name); }
+        else if (tg.pronoun) q.key = resolvePron(tg.pronoun, soft, CONT.test(tg.verb || ""), false);
+        else if (tg.desc) q.key = resolveDesc(tg, soft, false);
+        if (q.key && paraKey === null) paraKey = q.key;
+      }
+      /* an action beat: the subject of the narration nearest a quote */
+      if (paraKey === null){
+        var bestD = Infinity;
+        for (i = 0; i < p.narr.length; i++){
+          var subs2 = p.narr[i].subs || [];
+          for (j = 0; j < subs2.length; j++){
+            var at = p.narr[i].s + subs2[j].at, dist = Infinity;
+            for (var qi = 0; qi < p.quotes.length; qi++) dist = Math.min(dist, at >= p.quotes[qi].e ? at - p.quotes[qi].e : p.quotes[qi].s - at);
+            if (dist >= bestD) continue;
+            var bk = subjectKey(subs2[j], soft);
+            if (bk && !excl[bk] && (subs2[j].kind === "name" || !soft[bk])){ paraKey = bk; bestD = dist; }
+          }
+        }
+      }
+      if (paraKey === null){
+        /* “So I did, Beth.”, untagged, right after an untagged line that addresses no one: Beth said it */
+        var nv = null, pn = voc.length ? null : paras[k + 1];
+        if (pn && pn.quotes.some(function(x){ return !!x.tag; })) pn = null;
+        if (pn && !pn.heading && pn.quotes.length) for (i = 0; i < pn.quotes.length && !nv; i++) for (j = 0; j < pn.quotes[i].voc.length && !nv; j++){
+          var nk = canon(pn.quotes[i].voc[j]);
+          if (nk && scene[nk] !== undefined && !excl[nk]) nv = nk;
+        }
+        paraKey = expected(soft, nv);
+      }
+      /* nobody known: an unnamed voice, taking turns with the one before */
+      if (paraKey === null) paraKey = synthetic(last && last !== "other-1" ? "other-1" : "unknown-1");
       for (i = 0; i < p.quotes.length; i++){
         q = p.quotes[i];
-        q.key = q.tag && q.tag.key ? keyOf(q.tag.key) : q.tag && q.tag.pronoun ? resolvePronoun(q.tag.pronoun) : paraKey;
+        if (!q.key) q.key = paraKey;
         if (chars[q.key]) chars[q.key].lines++;
-        recent.push({ key: q.key, para: k });
+        if (q.key !== last){ prev = last; last = q.key; }
+        mention(q.key, k, true);
+      }
+      addressee = voc.length ? voc[voc.length - 1] : null;
+      leadIn = null;
+      for (; ni < p.narr.length; ni++) narrate(p, k, p.narr[ni]);
+      /* the names inside the quotes count as mentions of their characters (not for pronouns: they are talked about) */
+      for (i = 0; i < p.quotes.length; i++){
+        q = p.quotes[i];
+        var qt = p.text.slice(q.s, q.e);
+        RX.names.lastIndex = 0;
+        while ((m = RX.names.exec(qt))){
+          var mk = canon(cleanName(m[1]));
+          if (mk && chars[mk]){ chars[mk].mentions++; var mu = unitAt(p, q.s + m.index); if (chars[mk].first < 0 || mu < chars[mk].first) chars[mk].first = mu; }
+        }
       }
     }
 
     /* segments per unit: quoted spans carry their speaker, the rest is narration */
     for (k = 0; k < paras.length; k++){
       p = paras[k];
-      var spans = [], pos = 0;
+      var spans = [], sp0 = 0;
       for (i = 0; i < p.quotes.length; i++){
         q = p.quotes[i];
-        if (q.s > pos) spans.push({ s: pos, e: q.s, role: "narrator" });
-        spans.push({ s: q.s, e: q.e, role: q.key });
-        pos = q.e;
+        if (q.s > sp0) spans.push({ s: sp0, e: q.s, role: "narrator" });
+        spans.push({ s: q.s, e: q.e, role: q.key || "narrator", q: q });
+        sp0 = q.e;
       }
-      if (pos < p.text.length) spans.push({ s: pos, e: p.text.length, role: "narrator" });
+      if (sp0 < p.text.length) spans.push({ s: sp0, e: p.text.length, role: "narrator" });
       for (i = 0; i < p.units.length; i++){
         var ui = p.units[i], ub = p.base[i], list = [], role = "narrator";
         u = units[ui] || {};
@@ -321,18 +820,29 @@
           if (b <= a) continue;
           var text = utext.slice(a - ub, b - ub);
           if (!/\S/.test(text)) continue;
-          var last = list[list.length - 1];
-          if (last && last.role === spans[j].role){ last.end = us + (b - ub); last.text = utext.slice(last.start - us, b - ub); }
+          var sq = spans[j].q;
+          if (sq){
+            if (sq.unit === undefined){ sq.unit = ui; sq.start = us + (a - ub); }
+            sq.end = us + (b - ub);
+          }
+          var lastS = list[list.length - 1];
+          if (lastS && lastS.role === spans[j].role){ lastS.end = us + (b - ub); lastS.text = utext.slice(lastS.start - us, b - ub); }
           else list.push({ start: us + (a - ub), end: us + (b - ub), text: text, role: spans[j].role });
           if (role === "narrator" && spans[j].role !== "narrator") role = spans[j].role;
         }
         if (!list.length) list.push({ start: us, end: u.end !== undefined ? u.end : us + utext.length, text: utext, role: "narrator" });
         segs[ui] = list; roles[ui] = role;
       }
+      for (i = 0; i < p.quotes.length; i++){
+        q = p.quotes[i];
+        if (q.unit !== undefined) quotes.push({ role: q.key || "narrator", unit: q.unit, start: q.start, end: q.end, text: p.text.slice(q.s, q.e).replace(/\s+/g, " ").trim() });
+      }
     }
-    var cast = order.map(function(key){ var c = chars[key]; return { key: c.key, name: c.name, gender: c.gender, lines: c.lines, synthetic: c.synthetic }; })
-                    .filter(function(c){ return c.lines > 0; });
-    return { units: segs, roles: roles, cast: cast };
+    var cast = order.map(function(key){
+      var c = chars[key];
+      return { key: c.key, name: c.name, gender: c.gender, lines: c.lines, synthetic: c.synthetic, anon: !!c.anon, mentions: c.mentions, first: c.first, aka: c.aka.slice() };
+    }).filter(function(c){ return c.lines > 0; });
+    return { units: segs, roles: roles, cast: cast, quotes: quotes, sections: sections };
   }
 
   /* ============================================================
@@ -367,16 +877,18 @@
     return best;
   }
   /* cast: [{ key, gender, synthetic }] from attribute(); voices: the device's voices; opts: { lang, narrator (id),
-     gender(v) → "f" | "m" | "", id(v), rec: { key → { voice, pitch } } the record kept per document }.
-     Every named character without a voice in rec gets one: a distinct voice from its gender's pool (the
-     document's language, or every voice when that leaves fewer than two; never the narrator) first, then any
-     unused voice; when voices run out they are reused with another pitch, so the characters still sound
-     different. Unattributed speakers (he / she / another voice) are left to the dialogue voice, and a
-     character the reader set to "" (the dialogue voice) stays so. Deterministic; returns whether rec changed. */
+     gender(v) → "f" | "m" | "", id(v), rec: { key → { voice, pitch } } the record kept per document,
+     pinned: { key → 1 } the characters whose voice the reader chose }.
+     Every speaker without a voice in rec gets one, the unnamed ones (he, she, another voice, the stranger) too: a
+     distinct voice from its gender's pool (the document's language, or every voice when that leaves fewer than two;
+     never the narrator) first, then any unused voice; when voices run out they are reused with another pitch, so
+     the characters still sound different. A voice that has become the narrator's is given up for another unless
+     the reader chose it, and a character the reader set to "" (the dialogue voice) stays so. Deterministic;
+     returns whether rec changed. */
   function castDevice(cast, voices, opts){
     opts = opts || {};
     var id = opts.id || voiceId, gender = opts.gender || tableGender, lang = String(opts.lang || "").slice(0, 2).toLowerCase();
-    var rec = opts.rec || {}, narrator = opts.narrator || "", all = (voices || []).slice(), i, changed = false;
+    var rec = opts.rec || {}, pinned = opts.pinned || {}, narrator = opts.narrator || "", all = (voices || []).slice(), i, changed = false;
     var pool = all.filter(function(v){ return langOf(v) === lang; });
     if (pool.length < 2) pool = all.slice();
     var others = pool.filter(function(v){ return id(v) !== narrator; });
@@ -389,9 +901,11 @@
     Object.keys(rec).forEach(function(k){ var r = rec[k]; if (r && r.voice) used[r.voice] = (used[r.voice] || 0) + 1; });
     for (i = 0; i < (cast || []).length; i++){
       var c = cast[i];
-      if (!c || !c.key || c.synthetic) continue;
+      if (!c || !c.key) continue;
       var r = rec[c.key];
-      if (r && (r.voice === "" || (r.voice && have[r.voice]))) continue;     /* kept, unless the voice has gone from the device */
+      /* kept, unless the voice has gone from the device or is now the narrator's (and the reader did not choose it) */
+      if (r && (r.voice === "" || (r.voice && have[r.voice] && (r.voice !== narrator || pinned[c.key])))) continue;
+      if (r && r.voice && used[r.voice]) used[r.voice]--;
       var want = c.gender === "male" ? "m" : c.gender === "female" ? "f" : "";
       var gp = want && byG[want].length ? byG[want] : null;
       /* an unused voice of the character's gender, else any unused voice, else the least-used one of its gender */
@@ -399,38 +913,51 @@
       var bestN = used[id(best)] || 0, vg = gender(best) || "", pitch;
       if (bestN === 0) pitch = (want && vg !== want) ? (want === "m" ? 0.85 : 1.1) : 1;   /* a voice of the other (or no known) gender: nudged towards the character's */
       else pitch = PITCHES[(bestN - 1) % PITCHES.length];
+      /* a device with no voice but the narrator's: at least not in the narrator's own pitch */
+      if (id(best) === narrator && pitch === 1) pitch = PITCHES[bestN % PITCHES.length];
       rec[c.key] = { voice: id(best), pitch: pitch };
       used[id(best)] = bestN + 1; changed = true;
     }
     return changed;
   }
-  /* the plan for Speak's device engine: who speaks each unit and, for the named characters, which device voice
-     and pitch. opts: { lang, narrator (voice), voices() → list, gender(v), id(v), find(id) → voice }. The
-     record persists in the cast store beside the ElevenLabs cast; plan.voiceFor(i) → { voice, pitch } | null */
+  /* the plan for Speak's device engine: who speaks each unit and, for every speaker, which device voice and
+     pitch. opts: { lang, narrator (voice), voices() → list, gender(v), id(v), find(id) → voice }. The record
+     persists in the cast store beside the ElevenLabs cast; plan.voiceFor(i) → { voice, pitch } | null. The
+     narrator is looked up as each line is read, so a voice the reader has since made the narrator's is swapped
+     for another (unless they chose it for that character) */
   var devPlan = null;
   function deviceCast(units, ctx, opts){
     opts = opts || {};
     var docId = (ctx && ctx.docId) || "", id = opts.id || voiceId;
     var a = attribute(units);
+    function narrator(){
+      var S = window.llSpeak, v = S && S.currentVoice ? S.currentVoice() : null;
+      return v || opts.narrator || null;
+    }
     return loadCast(docId).then(function(rec){
       if (!rec) rec = newCast(docId);
+      var narrNow = "";
       function assign(cast){
-        var narr = opts.narrator ? id(opts.narrator) : "";
-        if (castDevice(cast, opts.voices ? opts.voices() : [], { lang: opts.lang, narrator: narr, gender: opts.gender, id: id, rec: rec.device })){ rec.updated = Date.now(); saveCast(rec); }
+        narrNow = narrator() ? id(narrator()) : "";
+        if (castDevice(cast, opts.voices ? opts.voices() : [], { lang: opts.lang, narrator: narrNow, gender: opts.gender, id: id, rec: rec.device, pinned: rec.picked.device })){ rec.updated = Date.now(); saveCast(rec); }
       }
       assign(a.cast);
       var plan = {
-        docId: docId, n: units.length, roles: a.roles, cast: a.cast, rec: rec,
+        docId: docId, n: units.length, roles: a.roles, cast: a.cast, rec: rec, a: a,
         voiceFor: function(i){
           var role = plan.roles[i];
-          if (!role || role === "narrator") return null;
+          if (!role) return null;
+          var nv = narrator();
+          /* a first-person narrator's own lines ("I said") are read in the narrator's voice */
+          if (role === "narrator") return nv ? { voice: nv, pitch: 1 } : null;
+          if ((nv ? id(nv) : "") !== narrNow) assign(plan.cast);
           var d = plan.rec.device[role];
           if (!d || !d.voice) return null;
           var v = opts.find ? opts.find(d.voice) : null;
           return v ? { voice: v, pitch: +d.pitch || 1 } : null;
         },
         /* PDF pages appended since: the whole list is read again (it is quick) */
-        extend: function(us){ var b = attribute(us); plan.roles = b.roles; plan.cast = b.cast; plan.n = us.length; assign(b.cast); if (Side && Side.is && Side.is("cast")) refreshCast(); }
+        extend: function(us){ var b = attribute(us); plan.roles = b.roles; plan.cast = b.cast; plan.a = b; plan.n = us.length; assign(b.cast); if (Side && Side.is && Side.is("cast")) refreshCast(); if (Side && Side.is && Side.is("who")) refreshWho(); }
       };
       devPlan = plan;
       if (Side && Side.is && Side.is("cast")) refreshCast();
@@ -545,14 +1072,18 @@
   }
 
   /* ---- the cast of a document, kept in IndexedDB: { docId, voices: { key → ElevenLabs voice_id },
-     device: { key → { voice, pitch } }, kokoro: { key → Kokoro voice name }, piper: { key → Piper speaker id }, updated } ---- */
-  function newCast(docId){ return { docId: docId, voices: {}, device: {}, kokoro: {}, piper: {}, updated: 0 }; }
+     device: { key → { voice, pitch } }, kokoro: { key → Kokoro voice name }, piper: { key → Piper speaker id },
+     picked: { voices | device | kokoro | piper → { key → 1 } } the voices the reader chose, updated } ---- */
+  var CAST_KEYS = ["voices", "device", "kokoro", "piper"];
+  function newCast(docId){ return { docId: docId, voices: {}, device: {}, kokoro: {}, piper: {}, picked: { voices: {}, device: {}, kokoro: {}, piper: {} }, updated: 0 }; }
   function loadCast(docId){
     if (!docId || !Library) return Promise.resolve(null);
     return Library.tx("cast", "readonly", function(st){ return st.get(docId); })
       .then(function(r){
         if (!(r && r.docId === docId)) return null;
-        ["voices", "device", "kokoro", "piper"].forEach(function(k){ if (!r[k] || typeof r[k] !== "object") r[k] = {}; });
+        CAST_KEYS.forEach(function(k){ if (!r[k] || typeof r[k] !== "object") r[k] = {}; });
+        if (!r.picked || typeof r.picked !== "object") r.picked = {};
+        CAST_KEYS.forEach(function(k){ if (!r.picked[k] || typeof r.picked[k] !== "object") r.picked[k] = {}; });
         return r;
       }).catch(function(){ return null; });
   }
@@ -560,21 +1091,28 @@
     if (!rec || !rec.docId || !Library) return;
     Library.tx("cast", "readwrite", function(st){ st.put(rec); }).catch(function(){});
   }
-  /* new characters get a distinct voice from their gender's pool (not the narrator's), round-robin; list is
-     [{ id, gender }] (ElevenLabs voices, or the natural voices of the document's language) and map the record's
-     { character key → voice id } to fill (rec.voices, rec.kokoro or rec.piper). Returns whether map changed. */
-  function assignVoices(cast, list, narrator, map){
+  /* every speaker, the unnamed ones (he, she, another voice, the stranger) too, gets a distinct voice from their
+     gender's pool (not the narrator's), round-robin; list is [{ id, gender }] (ElevenLabs voices, or the natural voices
+     of the document's language) and map the record's { character key → voice id } to fill (rec.voices, rec.kokoro or
+     rec.piper). A voice that has become the narrator's is given up for another, unless the reader chose it for that
+     character (pinned: { key → 1 }). Only a list with no voice but the narrator's gives it to a character. Returns
+     whether map changed. */
+  function assignVoices(cast, list, narrator, map, pinned){
     var pools = { male: [], female: [], unknown: [] }, all = [], used = {}, changed = false, i, j;
-    list.forEach(function(v){ if (v.id === narrator) return; all.push(v.id); pools[v.gender].push(v.id); });
-    if (!all.length) all = list.map(function(v){ return v.id; });
+    pinned = pinned || {};
+    list.forEach(function(v){ if (v.id === narrator) return; all.push(v.id); (pools[v.gender] || pools.unknown).push(v.id); });
+    var solo = !all.length;
+    if (solo) all = list.map(function(v){ return v.id; });
     Object.keys(map).forEach(function(k){ used[map[k]] = (used[map[k]] || 0) + 1; });
     for (i = 0; i < cast.length; i++){
-      var c = cast[i];
-      if (map[c.key]) continue;
+      var c = cast[i], had = c && c.key ? map[c.key] : null;
+      if (!c || !c.key || (had && (had !== narrator || solo || pinned[c.key]))) continue;
+      if (had) used[had]--;
       var pool = pools[c.gender] && pools[c.gender].length ? pools[c.gender] : all, best = null, bestN = Infinity;
       for (j = 0; j < pool.length; j++){ var nn = used[pool[j]] || 0; if (nn < bestN){ bestN = nn; best = pool[j]; } }
       if (!best) best = narrator;
-      map[c.key] = best; used[best] = (used[best] || 0) + 1; changed = true;
+      if (best !== had){ map[c.key] = best; changed = true; }
+      used[best] = (used[best] || 0) + 1;
     }
     return changed;
   }
@@ -597,19 +1135,36 @@
     var p = Promise.all([src.list(), prev ? Promise.resolve(prev.rec) : loadCast(docId)]).then(function(r){
       if (my !== prepSeq) return prepPromise;     /* a newer prepare is under way: it is the one to wait for */
       var list = r[0], rec = r[1] || newCast(docId);
-      var narrator = src.narrator(list);
-      if (assignVoices(a.cast, src.pool(list, (ctx && ctx.lang) || ""), narrator, rec[src.castKey])){ rec.updated = Date.now(); saveCast(rec); }
+      var narrator = src.narrator(list), pool = src.pool(list, (ctx && ctx.lang) || "");
       var sig = a.cast.map(function(c){ return c.key + ":" + c.lines; }).join("|") + "|" + narrator;
-      plan = { src: src, docId: docId, title: (ctx && ctx.title) || "", units: units, segs: a.units, cast: a.cast, rec: rec, list: list, narrator: narrator, sig: sig, clips: null, firstClip: null };
+      plan = { src: src, docId: docId, title: (ctx && ctx.title) || "", units: units, segs: a.units, cast: a.cast, a: a, rec: rec, list: list, pool: pool, narrator: narrator, sig: sig, clips: null, firstClip: null };
       buildClips(); syncName();
-      /* PDF pages appended to a plan: the panel is redrawn only when the cast changed */
-      if (!prev || prev.sig !== sig) refreshCast();
+      /* PDF pages appended to a plan: the panels are redrawn only when the cast changed */
+      if (!prev || prev.sig !== sig){ refreshCast(); refreshWho(); }
     });
     prepPromise = p;
     return p;
   }
   function prepare(units, ctx){ return planFor(SRC.eleven, units, ctx); }
-  function voiceFor(role){ return role === "narrator" ? plan.narrator : (plan.rec[plan.src.castKey][role] || plan.narrator); }
+  /* every speaker has a voice that is not the narrator's (a new speaker, or a narrator changed since, is cast now) */
+  function castPlanVoices(){
+    var ck = plan.src.castKey, rec = plan.rec;
+    if (!rec.picked) rec.picked = {};
+    if (!rec.picked[ck]) rec.picked[ck] = {};
+    if (assignVoices(plan.cast, plan.pool || plan.list || [], plan.narrator, rec[ck], rec.picked[ck])){
+      rec.updated = Date.now(); saveCast(rec);
+      if (Side && Side.is && (Side.is("cast") || Side.is("who"))) setTimeout(function(){ refreshCast(); refreshWho(); }, 0);
+    }
+  }
+  function voiceFor(role){
+    if (role === "narrator") return plan.narrator;
+    var v = plan.rec[plan.src.castKey][role];
+    if (v) return v;
+    /* a speaker the cast has not met: a voice of the pool that is not the narrator's */
+    var pool = plan.pool || plan.list || [], i;
+    for (i = 0; i < pool.length; i++) if (pool[i].id !== plan.narrator) return pool[i].id;
+    return plan.narrator;
+  }
   /* a unit's segments as runs of one voice */
   function runsOf(i){
     var list = plan.segs[i] || [], out = [], k;
@@ -625,6 +1180,7 @@
      split across clips (a unit with several voices gives one clip per run); clips stay inside a page.
      A source that does not pack (the natural voices) gets one clip per run. */
   function buildClips(){
+    castPlanVoices();
     var units = plan.units, clips = [], first = new Array(units.length), cur = null, mdl = plan.src.model(), i, j;
     for (i = 0; i < units.length; i++){
       var runs = runsOf(i), page = units[i].page || 0;
@@ -1754,17 +2310,17 @@
       return;
     }
     body.innerHTML = '<div class="empty-note">Finding who speaks…</div>';
+    whoButton(foot);
     castPlan(src).then(function(pl){
       if (!Side.is("cast")) return;
-      var map = pl.rec[pl.src.castKey];
+      var vp = { kind: "plan", pl: pl };
       var h = '<div class="cast-row"><div class="cast-who"><b>Narrator</b><span>everything outside the quotes</span></div>' +
               '<select class="sel" data-key="narrator" aria-label="Voice for the narrator">' + pl.src.options(pl.list, pl.narrator) + '</select></div>';
       pl.cast.forEach(function(c){
-        h += '<div class="cast-row"><div class="cast-who"><b>' + esc(c.name) + '</b><span>' + esc(who(c)) + '</span></div>' +
-             '<select class="sel" data-key="' + esc(c.key) + '" aria-label="Voice for ' + esc(c.name) + '">' + pl.src.options(pl.list, map[c.key] || pl.narrator) + '</select></div>';
+        h += '<div class="cast-row"><div class="cast-who"><b>' + esc(c.name) + '</b><span>' + esc(who(c)) + '</span></div>' + voiceSelect(vp, c) + '</div>';
       });
       if (!pl.cast.length) h += '<div class="empty-note">No dialogue found — the narrator reads everything.</div>';
-      else h += '<div class="cast-note">Speakers are worked out on this device from the quoted lines and speech tags (“said Anna”, “he whispered”). A change applies from the next sentence.</div>';
+      else h += '<div class="cast-note">Speakers are worked out on this device from the quoted lines, speech tags (“said Anna”, “he whispered”), who acts beside a line and who takes turns; the unnamed ones get voices of their own too. A change applies from the next sentence.</div>';
       var wrap = document.createElement("div");
       wrap.innerHTML = h;
       body.innerHTML = ""; body.appendChild(wrap);
@@ -1775,8 +2331,8 @@
           pl.narrator = sel.value;
           if (pl.src.nat){ Store.set(pl.src.nat.kNarr, sel.value); natShowNarrator(pl.src.nat, sel.value, sel); }
           else { Store.set(K_NARR, sel.value); showNarrator(sel.value, sel); }
-        } else { map[sel.dataset.key] = sel.value; pl.rec.updated = Date.now(); saveCast(pl.rec); }
-        if (plan === pl) replan();
+          if (plan === pl) replan();
+        } else voicePicked(vp, sel.dataset.key, sel.value);
       });
     }, function(err){
       if (Side.is("cast")) body.innerHTML = '<div class="empty-note">' + esc((err && err.message) || "Couldn’t load the voices") + '</div>';
@@ -1804,27 +2360,24 @@
       return;
     }
     body.innerHTML = '<div class="empty-note">Finding who speaks…</div>';
+    whoButton(foot);
     devicePlan().then(function(pl){
       if (!Side.is("cast")) return;
-      var narr = S.currentVoice();
+      var narr = S.currentVoice(), vp = { kind: "device", pl: pl, S: S };
       var h = '<div class="cast-row"><div class="cast-who"><b>Narrator</b><span>everything outside the quotes</span></div>' +
               '<span class="cast-name">' + esc(narr ? S.shortName(narr) : "Default voice") + '</span></div>';
       pl.cast.forEach(function(c){
         var d = pl.rec.device[c.key] || null, vid = d ? d.voice : "", pitch = d && d.voice ? (+d.pitch || 1) : 1;
-        h += '<div class="cast-row cast-dev"><div class="cast-who"><b>' + esc(c.name) + '</b><span>' + esc(who(c)) + '</span></div>' +
-             '<select class="sel" data-key="' + esc(c.key) + '" aria-label="Voice for ' + esc(c.name) + '">' + deviceOptions(S, vid) + '</select>' +
+        h += '<div class="cast-row cast-dev"><div class="cast-who"><b>' + esc(c.name) + '</b><span>' + esc(who(c)) + '</span></div>' + voiceSelect(vp, c) +
              '<label class="cast-pitch"><span>Pitch</span><input type="range" min="0.7" max="1.3" step="0.05" value="' + pitch + '" data-pitch="' + esc(c.key) + '" aria-label="Pitch for ' + esc(c.name) + '"' + (vid ? '' : ' disabled') + '><span class="val">' + pitch.toFixed(2) + '</span></label></div>';
       });
       if (!pl.cast.length) h += '<div class="empty-note">No dialogue found — the narrator reads everything.</div>';
-      else h += '<div class="cast-note">Speakers are worked out on this device from the quoted lines and speech tags (“said Anna”, “he whispered”); lines no one is named for take the dialogue voice. A change applies from the next sentence.</div>';
+      else h += '<div class="cast-note">Speakers are worked out on this device from the quoted lines, speech tags (“said Anna”, “he whispered”), who acts beside a line and who takes turns; the unnamed ones get voices of their own too. A change applies from the next sentence.</div>';
       var wrap = document.createElement("div");
       wrap.innerHTML = h;
       body.innerHTML = ""; body.appendChild(wrap);
       focusBack(wrap);
-      function saveRow(key, voice, pitch){
-        pl.rec.device[key] = { voice: voice, pitch: pitch };
-        pl.rec.updated = Date.now(); saveCast(pl.rec);
-      }
+      function saveRow(key, voice, pitch){ voicePicked(vp, key, voice, pitch); }
       wrap.addEventListener("change", function(e){
         var sel = e.target.closest("select[data-key]"); if (!sel) return;
         var row = sel.closest(".cast-row"), range = row.querySelector("input[data-pitch]"), v = sel.value;
@@ -1843,6 +2396,241 @@
       if (Side.is("cast")) body.innerHTML = '<div class="empty-note">' + esc((err && err.message) || "Couldn’t work out who speaks") + '</div>';
     });
   }
+  /* ---- a character's voice select, the same in the Cast panel and in Who's who. vp: { kind: "plan", pl } (ElevenLabs,
+     natural voices) or { kind: "device", pl, S } (the device's voices; "" is the dialogue voice) ---- */
+  function voiceSelect(vp, c){
+    var pl = vp.pl, cur;
+    if (vp.kind === "device"){ var d = pl.rec.device[c.key] || null; cur = d ? d.voice : ""; }
+    else cur = pl.rec[pl.src.castKey][c.key] || "";
+    return '<select class="sel" data-key="' + esc(c.key) + '" aria-label="Voice for ' + esc(c.name) + '">' +
+           (vp.kind === "device" ? deviceOptions(vp.S, cur) : pl.src.options(pl.list, cur || pl.narrator)) + '</select>';
+  }
+  /* the reader chose a voice (and, on the device, a pitch) for a character: kept for this document, and never
+     given up for another when it is also the narrator's */
+  function voicePicked(vp, key, voice, pitch){
+    var pl = vp.pl, ck = vp.kind === "device" ? "device" : pl.src.castKey;
+    if (!pl.rec.picked) pl.rec.picked = {};
+    if (!pl.rec.picked[ck]) pl.rec.picked[ck] = {};
+    pl.rec.picked[ck][key] = 1;
+    if (vp.kind === "device"){
+      var old = pl.rec.device[key];
+      pl.rec.device[key] = { voice: voice, pitch: voice ? (pitch !== undefined ? pitch : (old && +old.pitch) || 1) : 1 };
+    } else pl.rec[ck][key] = voice;
+    pl.rec.updated = Date.now(); saveCast(pl.rec);
+    if (vp.kind !== "device" && plan === pl) replan();
+  }
+  function whoButton(foot){
+    if (!foot) return;
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.id = "castWhoBtn"; b.textContent = "Who’s who…";
+    b.addEventListener("click", openWho);
+    foot.appendChild(b);
+  }
+
+  /* ============================================================
+     6b. Who's who — the characters of the open document: name, gender, lines, mentions and where they first
+         appear, their lines to jump to, and (when read aloud gives characters voices) the voice of each
+     ============================================================ */
+  /* pure: attribute()'s output and the units → the characters, most present first. Unnamed voices (he, she,
+     another voice) are left out; "The stranger" stays. [{ key, name, gender, lines, mentions, aka, first,
+     firstAt: { start, page, where }, quotes: [{ start, page, text, where }] }] */
+  function whoList(a, units){
+    var secs = (a && a.sections) || [], out = [], byKey = {};
+    function where(ui){
+      var lo = 0, hi = secs.length - 1, best = -1, mid;
+      while (lo <= hi){ mid = (lo + hi) >> 1; if (secs[mid].unit <= ui){ best = mid; lo = mid + 1; } else hi = mid - 1; }
+      var u = units[ui] || {};
+      if (best >= 0) return secs[best].title + (u.page ? " · page " + u.page : "");
+      return u.page ? "Page " + u.page : "";
+    }
+    ((a && a.cast) || []).forEach(function(c){
+      if (c.anon) return;
+      var x = { key: c.key, name: c.name, gender: c.gender, lines: c.lines, mentions: c.mentions || 0, aka: c.aka || [], first: c.first, quotes: [] };
+      byKey[c.key] = x; out.push(x);
+    });
+    ((a && a.quotes) || []).forEach(function(q){
+      var x = byKey[q.role]; if (!x) return;
+      var u = units[q.unit] || {};
+      if (x.first < 0 || q.unit < x.first) x.first = q.unit;
+      x.quotes.push({ start: q.start, page: u.page || 0, text: q.text, where: where(q.unit) });
+    });
+    out.forEach(function(x){
+      var u = units[x.first] || {};
+      x.firstAt = x.first >= 0 ? { start: u.start || 0, page: u.page || 0, where: where(x.first) } : null;
+    });
+    out.sort(function(p, q){ return (q.lines + q.mentions) - (p.lines + p.mentions) || p.name.localeCompare(q.name); });
+    return out;
+  }
+  function trimLine(t){ t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > 42 ? t.slice(0, 40).replace(/\s+\S*$/, "") + "…" : t; }
+  function genderWord(g){ return g === "male" ? "man" : g === "female" ? "woman" : ""; }
+  var whoCache = null, whoOpen = {}, whoSeq = 0, whoFocus = null;
+  var MAX_WHO_PAGES = 600;
+  /* the units to look at: a text document's all; a PDF's pages loaded so far (up to the page being read, and
+     what read aloud has loaded) */
+  function whoUnits(live){
+    var docId = (Library && Library.currentId && Library.currentId()) || "";
+    if (state && state.mode === "doc"){
+      if (!(Speak && Speak.buildDocUnits)) return Promise.reject(new Error("Couldn’t read this document"));
+      return Promise.resolve({ docId: docId, key: docId + ":doc", units: Speak.buildDocUnits(), pdf: false });
+    }
+    var PdfText = LL.PdfText, S = window.llSpeak;
+    if (!(state && state.mode === "pdf" && state.pdfDoc && PdfText && S && S.plan)) return Promise.reject(new Error("Open a book first."));
+    var doc = state.pdfDoc, upto = (Library.currentPdfPage && Library.currentPdfPage()) || 1, read = Speak && Speak.units ? Speak.units() : [];
+    if (Speak && Speak.isActive && Speak.isActive() && Speak.context && Speak.context() && Speak.context().docId === docId){
+      for (var r = 0; r < read.length; r++) if ((read[r].page || 0) > upto) upto = read[r].page;
+    }
+    upto = Math.min(upto, doc.numPages || upto, MAX_WHO_PAGES);
+    var key = docId + ":pdf:" + upto;
+    if (whoCache && whoCache.key === key) return Promise.resolve(whoCache.src);
+    var units = [], pg = 1;
+    return new Promise(function(res, rej){
+      (function next(){
+        if (!live() || state.pdfDoc !== doc){ rej(new Error("gone")); return; }
+        if (pg > upto){ res({ docId: docId, key: key, units: units, pdf: true, upto: upto, of: doc.numPages }); return; }
+        whoStatus("Reading page " + pg + " of " + upto + "…");
+        PdfText.get(pg).then(function(t){
+          var add = S.plan(t), p0 = pg;
+          add.forEach(function(u){ u.page = p0; });
+          units = units.concat(add); pg++;
+          setTimeout(next, 0);
+        }, function(){ pg++; setTimeout(next, 0); });
+      })();
+    });
+  }
+  function whoStatus(t){ var el = document.getElementById("whoStatus"); if (el && el.textContent !== t) el.textContent = t; }
+  /* read aloud gives characters voices: the device's with "A voice per character" on, ElevenLabs with a key, natural voices */
+  function voicesOn(){
+    var e = speakEngine();
+    if (e === "device") return !!(window.llSpeak && Speak && Speak.cast && Speak.cast());
+    if (e === "eleven") return !!apiKey();
+    return e === "kokoro" || e === "piper";
+  }
+  /* the plan whose record holds the voices (null when there is none to be had: a PDF not read aloud yet) */
+  function whoVoices(){
+    if (!voicesOn()) return Promise.resolve(null);
+    var e = speakEngine(), S = window.llSpeak;
+    var p = e === "device" ? devicePlan().then(function(pl){ return { kind: "device", pl: pl, S: S }; })
+                           : castPlan(e === "kokoro" || e === "piper" ? SRC[e] : SRC.eleven).then(function(pl){ return { kind: "plan", pl: pl }; });
+    return p.catch(function(){ return null; });
+  }
+  function openWho(){ if (Side && Side.open) Side.open("who", "Who’s who", renderWho, function(){ whoSeq++; }); }
+  function refreshWho(){
+    if (!(Side && Side.is && Side.is("who") && Side.refresh)) return;
+    var act = document.activeElement;
+    whoFocus = act && Side.body && Side.body.contains(act) && act.closest && act.closest("[data-who]") ? { key: act.closest("[data-who]").getAttribute("data-who"), cls: act.className.split(" ")[0] } : null;
+    Side.refresh("who", renderWho);
+  }
+  function whoJump(start, page){
+    if (state && state.mode === "pdf"){ if (page && LL.Toc && LL.Toc.goPdfPage) LL.Toc.goPdfPage(page); }
+    else if (LL.revealOffset) LL.revealOffset(start, { center: true });
+    if (window.innerWidth <= 560 && Side && Side.close) Side.close();
+  }
+  function renderWho(body, foot){
+    if (!state || (state.mode !== "doc" && state.mode !== "pdf")){ body.innerHTML = '<div class="empty-note">Open a book first.</div>'; return; }
+    var my = ++whoSeq;
+    function live(){ return my === whoSeq && Side.is("who"); }
+    body.innerHTML = '<div class="find-status" id="whoStatus" aria-live="polite">Finding who speaks…</div><div id="whoList"></div>';
+    if (voicesOn()){
+      var cb = document.createElement("button");
+      cb.type = "button"; cb.className = "chip"; cb.id = "whoCastBtn"; cb.textContent = "Voices for characters…";
+      cb.addEventListener("click", openCast);
+      foot.appendChild(cb);
+    }
+    whoUnits(live).then(function(src){
+      if (!live()) return null;
+      return new Promise(function(res){
+        /* let the panel paint first: a long book takes a moment */
+        setTimeout(function(){
+          if (!live()){ res(null); return; }
+          var list = whoCache && whoCache.key === src.key ? whoCache.list : whoList(attribute(src.units), src.units);
+          whoCache = { key: src.key, src: src, list: list };
+          whoVoices().then(function(vp){ res({ src: src, list: list, vp: vp }); });
+        }, 30);
+      });
+    }).then(function(r){
+      if (!r || !live()) return;
+      drawWho(r.src, r.list, r.vp);
+    }, function(err){
+      if (!live() || (err && err.message === "gone")) return;
+      whoStatus("");
+      var l = document.getElementById("whoList");
+      if (l) l.innerHTML = '<div class="empty-note">' + esc((err && err.message) || "Couldn’t read this document") + '</div>';
+    });
+  }
+  function drawWho(src, list, vp){
+    var box = document.getElementById("whoList");
+    if (!box) return;
+    if (!list.length){
+      whoStatus("");
+      box.innerHTML = '<div class="empty-note">No speaking characters found in this document.</div>';
+      return;
+    }
+    whoStatus(list.length + (list.length === 1 ? " character" : " characters") +
+              (src.pdf ? " · pages 1–" + src.upto + (src.of > src.upto ? " of " + src.of + " (the pages loaded so far)" : "") : ""));
+    var h = "";
+    list.forEach(function(x, n){
+      var meta = [genderWord(x.gender), x.lines + (x.lines === 1 ? " line" : " lines"), "mentioned " + x.mentions + (x.mentions === 1 ? " time" : " times")].filter(Boolean).join(" · ");
+      var id = "who-lines-" + n, open = !!whoOpen[x.key];
+      h += '<div class="who-item cast-row" data-who="' + esc(x.key) + '">' +
+             '<button type="button" class="who-head" aria-expanded="' + open + '" aria-controls="' + id + '">' +
+               '<b>' + esc(x.name) + '</b>' +
+               '<span>' + esc(meta) + '</span>' +
+               (x.firstAt && x.firstAt.where ? '<span>First appears: ' + esc(x.firstAt.where) + '</span>' : '') +
+               (x.aka.length ? '<span>Also: ' + esc(x.aka.slice(0, 3).join(", ")) + '</span>' : '') +
+             '</button>' +
+             (vp ? voiceSelect(vp, x) : '') +
+             '<div class="who-lines" id="' + id + '"' + (open ? '' : ' hidden') + '>' + (open ? whoLines(x) : '') + '</div>' +
+           '</div>';
+    });
+    if (!vp && voicesOn()) h += '<div class="cast-note">Start reading aloud to choose a voice for each character.</div>';
+    h += '<div class="cast-note">Worked out on this device from the quoted lines, speech tags, who acts beside a line and who takes turns; it can be wrong now and then.</div>';
+    box.innerHTML = h;
+    box.onclick = function(e){
+      var head = e.target.closest(".who-head"), jump = e.target.closest("[data-start]");
+      if (head){
+        var item = head.closest(".who-item"), key = item.getAttribute("data-who"), panel = item.querySelector(".who-lines"), on = head.getAttribute("aria-expanded") !== "true", x = null;
+        for (var i = 0; i < list.length; i++) if (list[i].key === key) x = list[i];
+        whoOpen[key] = on;
+        head.setAttribute("aria-expanded", on ? "true" : "false");
+        if (on && !panel.innerHTML && x) panel.innerHTML = whoLines(x);
+        panel.hidden = !on;
+        return;
+      }
+      if (jump){
+        if (jump.hasAttribute("data-more")){
+          var it = jump.closest(".who-item"), k2 = it.getAttribute("data-who");
+          for (var j = 0; j < list.length; j++) if (list[j].key === k2){ it.querySelector(".who-lines").innerHTML = whoLines(list[j], true); break; }
+          var nextBtn = it.querySelectorAll(".who-line")[100]; if (nextBtn) nextBtn.focus();
+          return;
+        }
+        whoJump(+jump.getAttribute("data-start") || 0, +jump.getAttribute("data-page") || 0);
+      }
+    };
+    box.onchange = function(e){
+      var sel = e.target.closest("select[data-key]");
+      if (!sel || !vp || (vp.kind !== "device" && !sel.value)) return;
+      voicePicked(vp, sel.getAttribute("data-key"), sel.value);
+    };
+    if (whoFocus){
+      var row = box.querySelector('[data-who="' + (window.CSS && CSS.escape ? CSS.escape(whoFocus.key) : whoFocus.key) + '"]');
+      var back = row ? row.querySelector("." + (whoFocus.cls || "who-head")) || row.querySelector(".who-head") : null;
+      whoFocus = null;
+      if (back) back.focus({ preventScroll: true });
+    }
+  }
+  /* a character's lines to jump to (the first hundred, or all) and where they first appear */
+  function whoLines(x, all){
+    var n = all ? x.quotes.length : Math.min(100, x.quotes.length), h = "";
+    if (x.firstAt) h += '<button type="button" class="chip who-first" data-start="' + x.firstAt.start + '" data-page="' + x.firstAt.page + '">First appearance' + (x.firstAt.where ? ' · ' + esc(x.firstAt.where) : '') + '</button>';
+    for (var i = 0; i < n; i++){
+      var q = x.quotes[i];
+      h += '<button type="button" class="find-item who-line" data-start="' + q.start + '" data-page="' + q.page + '">' +
+           (q.where ? '<span class="find-where">' + esc(q.where) + '</span>' : '') + '“' + esc(trimLine(q.text)) + '”</button>';
+    }
+    if (n < x.quotes.length) h += '<button type="button" class="chip who-more" data-start="0" data-more="1">Show all ' + x.quotes.length + ' lines</button>';
+    return h;
+  }
+  if (typeof document !== "undefined") document.addEventListener("ll:fileopened", function(){ whoCache = null; whoOpen = {}; if (Side && Side.is && Side.is("who")) Side.close(); });
 
   /* ============================================================
      7. The engines, registered with Speak
@@ -1880,6 +2668,7 @@
   }
 
   window.llAudiobook = { attribute: attribute, castDevice: castDevice, deviceCast: deviceCast, engine: engine, openCast: openCast, askForKey: askForKey,
+                         openWho: openWho, whoList: whoList,
                          voices: voices, setModel: setModel, syncSettings: syncSettings, sent: function(){ return sent; }, plan: function(){ return plan; },
                          devicePlan: function(){ return devPlan; },
                          kokoro: kEngine, kokoroVoices: KOKORO_VOICES, kokoroPool: kokoroPool,
