@@ -171,6 +171,9 @@ async function panel(page){
   s = await snap(page);
   const id = Object.keys(s.books)[0];
   R.check("finishing a book stamps when it happened", s.books[id].finished === true && s.books[id].finishedAt > 0, JSON.stringify(s.books[id]));
+  /* the count is the reading journal's: saved from the "Finished" card (Mark as finished opens it if two minutes did not) */
+  if (!(await page.$("#finish.on"))) await page.evaluate(() => window.llJournal.openCard());
+  await page.click("#finSave");
   await panel(page);
   text = await bodyText(page);
   R.check("the books-finished count follows it", /Books finished\n1 of 12\n/.test(text), (text.match(/THIS YEAR[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));

@@ -187,6 +187,10 @@
     weight:400, ls:0, ws:0, pgap:0.95, warmth:0, warmAuto:false,
     /* focus reading: the start of each word in bold (light / medium / strong, see Focus) */
     focus:false, focusLevel:"medium",
+    /* extra dim: a black film over everything, 0–85 %, on its own or only in the night window (see Dim).
+       e-ink mode: true / false once set, null while the reader has never set it; einkFlow is the
+       flow to go back to when it is turned off, einkAsked that a slow screen was offered it (see Eink) */
+    dim:false, dimLevel:40, dimNight:false, eink:null, einkFlow:null, einkAsked:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
@@ -196,7 +200,7 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked"];
     var loading = false;
     /* a number inside its range, or the default when the stored value is nonsense */
     function num(v, lo, hi, dflt){
@@ -269,6 +273,14 @@
       if (state.flow !== "pages") state.flow = "scroll";
       state.focus = state.focus === true;
       if (!/^(light|medium|strong)$/.test(state.focusLevel)) state.focusLevel = "medium";
+      state.dim = state.dim === true;
+      state.dimLevel = Math.round(num(state.dimLevel, 0, 85, 40));
+      state.dimNight = state.dimNight === true;
+      state.eink = state.eink === true ? true : state.eink === false ? false : null;
+      if (state.einkFlow !== "scroll" && state.einkFlow !== "pages") state.einkFlow = null;
+      state.einkAsked = state.einkAsked === true;
+      /* e-ink mode keeps the Pages flow */
+      if (state.eink) state.flow = "pages";
       loading = false;
     }
     return { save: save, load: load };
@@ -504,17 +516,23 @@
     if (contrast(t.accent, t.bg) < 4.5 || contrast(t.accent, t.panel) < 4.5) c.accent = fixColor(t.accent, [t.bg, t.panel]);
     syncCustomUI(); applyTheme();
   }
+  /* e-ink mode's colours, whatever the theme: pure black on pure white (body.eink in app.css
+     holds the same values for everything drawn inside the page) */
+  var EINK_COLORS = { bg: "#FFFFFF", ink: "#000000", muted: "#000000", panel: "#FFFFFF", line: "#000000", accent: "#000000" };
   function applyTheme(){
     var t = currentTheme(), custom = customById(state.theme);
+    /* e-ink mode is black on white whatever the theme: light controls, no softened PDF pages, a
+       white title bar; the theme itself stays chosen for when the mode is turned off */
+    var eink = state.eink === true, dark = isDarkColor(t.bg) && !eink, c = eink ? EINK_COLORS : t;
     var r = document.documentElement.style;
-    r.setProperty("--bg", t.bg);      r.setProperty("--ink", t.ink);
-    r.setProperty("--muted", t.muted);r.setProperty("--panel", t.panel);
-    r.setProperty("--line", t.line);  r.setProperty("--accent", t.accent);
-    document.documentElement.style.colorScheme = isDarkColor(t.bg) ? "dark" : "light";
-    document.body.classList.toggle("soften", state.soften && isDarkColor(t.bg));
+    r.setProperty("--bg", c.bg);      r.setProperty("--ink", c.ink);
+    r.setProperty("--muted", c.muted);r.setProperty("--panel", c.panel);
+    r.setProperty("--line", c.line);  r.setProperty("--accent", c.accent);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+    document.body.classList.toggle("soften", state.soften && dark);
     /* the installed app's title bar takes the panel colour */
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", t.panel);
+    if (meta) meta.setAttribute("content", c.panel);
     document.querySelectorAll("#themeChips .chip[data-theme]").forEach(function(ch){
       var on = ch.dataset.theme === state.theme;
       ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
@@ -542,12 +560,15 @@
   var AutoTheme = (function(){
     var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null, timer = null;
     function minutes(t){ var m = /^(\d\d):(\d\d)$/.exec(t || ""); return m ? (+m[1]) * 60 + (+m[2]) : 0; }
+    /* inside the night window (Night from … until), whatever Auto is set to: By time switches
+       themes on it, and Extra dim's "Only at night" keeps to it */
+    function inWindow(){
+      var d = new Date(), now = d.getHours() * 60 + d.getMinutes(), a = minutes(state.nightFrom), b = minutes(state.nightTo);
+      return a <= b ? (now >= a && now < b) : (now >= a || now < b);
+    }
     function isNight(){
       if (state.auto === "system") return !!(mq && mq.matches);
-      if (state.auto === "time"){
-        var d = new Date(), now = d.getHours() * 60 + d.getMinutes(), a = minutes(state.nightFrom), b = minutes(state.nightTo);
-        return a <= b ? (now >= a && now < b) : (now >= a || now < b);
-      }
+      if (state.auto === "time") return inWindow();
       return null;
     }
     function wanted(){ var n = isNight(); return n === null ? null : (n ? state.autoNight : state.autoDay); }
@@ -555,6 +576,7 @@
       var t = wanted();
       if (t && t !== state.theme){ state.theme = t; applyTheme(); }
       syncUI();
+      if (Dim) Dim.apply();   /* the night window may have moved, or been crossed */
     }
     function syncUI(){
       document.querySelectorAll("#autoChips .chip").forEach(function(ch){
@@ -591,7 +613,7 @@
     $("#autoNight").addEventListener("change", function(e){ state.autoNight = e.target.value; Prefs.save(); apply(); });
     $("#nightFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); apply(); });
     $("#nightTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); apply(); });
-    return { apply: apply, userPicked: userPicked, isNight: isNight, syncUI: syncUI };
+    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI };
   })();
 
   /* ---------- warmth: a warm film over the screen for the evening ----------
@@ -665,6 +687,115 @@
     timer = setInterval(function(){ if (state.warmAuto) apply(); }, 60000);
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && state.warmAuto) apply(); });
     return { apply: apply, cap: cap, level: level, opacity: opacity, isNight: isNight, set: set, setAuto: setAuto, through: through };
+  })();
+
+  /* ---------- extra dim: a black film over everything, for reading in bed ----------
+     `#dim` is a fixed sheet of black above every other layer — the bars, the drawers, the
+     popovers, the toasts, the read-aloud bar and the warm film — that lets every tap through.
+     The reader sets how dark, 0–85 %, which takes the screen below its own lowest brightness.
+     "Only at night" keeps it to the night window (Night from … until, the hours Auto → By time
+     uses). It fades over 300 ms (at once with reduced motion) and e-ink mode leaves it out (app.css). */
+  var Dim = (function(){
+    var el = $("#dim"), MAX = 85;
+    function isNight(){ return AutoTheme.inWindow(); }
+    /* how dark it is right now: nothing while off, or by day when it is set to night only */
+    function level(){ return !state.dim || (state.dimNight && !isNight()) ? 0 : Math.max(0, Math.min(MAX, state.dimLevel)); }
+    function apply(){
+      el.style.opacity = String(level() / 100);
+      syncUI();
+    }
+    /* the sheet's controls and the theme popover's are the same three twice */
+    function syncUI(){
+      $("#cDim").checked = !!state.dim; $("#qDim").checked = !!state.dim;
+      $("#cDimNight").checked = !!state.dimNight; $("#qDimNight").checked = !!state.dimNight;
+      $("#rDim").value = state.dimLevel; $("#qDimLevel").value = state.dimLevel;
+      $("#vDim").textContent = state.dimLevel + " %"; $("#qDimV").textContent = state.dimLevel + " %";
+      var h = $("#dimNightHint");
+      h.hidden = !state.dimNight;
+      h.textContent = "Night is " + state.nightFrom + "\u2013" + state.nightTo + " (Auto \u203a By time sets the hours). " +
+        (isNight() ? "It\u2019s night now." : "Off until " + state.nightFrom + ".");
+    }
+    function set(v){ state.dimLevel = Math.max(0, Math.min(MAX, Math.round(v))); Prefs.save(); apply(); }
+    function setOn(v){ state.dim = !!v; Prefs.save(); apply(); }
+    function setNight(v){ state.dimNight = !!v; Prefs.save(); apply(); }
+    $("#cDim").addEventListener("change", function(e){ setOn(e.target.checked); });
+    $("#qDim").addEventListener("change", function(e){ setOn(e.target.checked); });
+    $("#rDim").addEventListener("input", function(e){ set(+e.target.value); });
+    $("#qDimLevel").addEventListener("input", function(e){ set(+e.target.value); });
+    $("#cDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
+    $("#qDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
+    /* the night window is checked every minute, and again whenever the page comes back */
+    setInterval(function(){ if (state.dim && state.dimNight) apply(); }, 60000);
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && state.dim && state.dimNight) apply(); });
+    return { apply: apply, level: level, isNight: isNight, set: set, setOn: setOn, setNight: setNight };
+  })();
+
+  /* ---------- e-ink mode: black on white, nothing that moves, whole-page turns ----------
+     body.eink (app.css) puts pure black text on pure white whatever the theme, turns every tint,
+     grey, shadow, gradient and see-through layer black or white, stops every transition,
+     animation and smooth scroll, and draws highlights, notes, search hits and the sentence read
+     aloud as lines instead of fills (e-paper smears tints and ghosts on motion). Images and PDF
+     pages stay as they are. The mode keeps the Pages flow — the reader's own flow comes back when
+     it is turned off — turns whole pages without a slide (a tap on the left third goes back,
+     anywhere else forward; the page keys the same) and leaves out the extra dim film. A screen
+     that says it redraws slowly (update: slow) is offered the mode once, if it was never set. */
+  var Eink = (function(){
+    var offerEl = null;
+    function on(){ return state.eink === true; }
+    function apply(){
+      document.body.classList.toggle("eink", on());
+      syncUI();
+    }
+    function syncUI(){
+      $("#cEink").checked = on(); $("#qEink").checked = on();
+      /* the mode keeps the Pages flow, so Scroll is not on offer while it is on */
+      Array.prototype.forEach.call(document.querySelectorAll('#flowChips .chip[data-flow="scroll"], #qFlow .chip[data-flow="scroll"]'), function(ch){
+        ch.disabled = on();
+        if (on()) ch.title = "E-ink mode keeps the Pages flow"; else ch.removeAttribute("title");
+      });
+    }
+    function set(v){
+      v = !!v;
+      var was = on();
+      state.eink = v;   /* set now, even to off: a slow screen is never asked again */
+      if (v !== was){
+        if (v){
+          state.einkFlow = state.flow;
+          /* the middle of the page turns it now, so the bars must not be left hidden */
+          document.body.classList.remove("immersive");
+        }
+        apply(); applyTheme();
+        var back = state.einkFlow;
+        if (!v) state.einkFlow = null;
+        var f = v ? "pages" : (back === "scroll" ? "scroll" : state.flow);
+        /* the stroke widths and the bars change the room for the text: a new flow lays it out,
+           an unchanged one is laid out again */
+        if (f !== state.flow) setFlow(f);
+        else if (pagedActive()) relayoutPaged();
+      } else apply();
+      Prefs.save();
+      dismiss();
+    }
+    /* the one-time offer on a slow-refreshing screen: a toast with a button, until it is answered */
+    function offer(){
+      if (offerEl || state.eink !== null || state.einkAsked) return;
+      state.einkAsked = true; Prefs.save();
+      offerEl = document.createElement("div");
+      offerEl.id = "einkToast"; offerEl.setAttribute("role", "status");
+      document.body.appendChild(offerEl);
+      offerEl.innerHTML = '<span>Looks like an e-ink screen \u2014 use E-ink mode?</span><button type="button" id="einkYes">Turn on</button><button type="button" id="einkNo" aria-label="No thanks" title="No thanks">' + ICONS.close + '</button>';
+      offerEl.querySelector("#einkYes").addEventListener("click", function(){ set(true); Marks.toast("E-ink mode is on \u2014 Settings \u203a Reading turns it off"); });
+      offerEl.querySelector("#einkNo").addEventListener("click", dismiss);
+    }
+    function dismiss(){ if (offerEl){ offerEl.remove(); offerEl = null; } }
+    function slowScreen(){ return !!(window.matchMedia && window.matchMedia("(update: slow)").matches); }
+    function boot(){
+      apply();
+      if (state.eink === null && !state.einkAsked && slowScreen()) setTimeout(offer, 600);
+    }
+    $("#cEink").addEventListener("change", function(e){ set(e.target.checked); });
+    $("#qEink").addEventListener("change", function(e){ set(e.target.checked); });
+    return { on: on, set: set, apply: apply, boot: boot, offer: offer, dismiss: dismiss };
   })();
   /* ---------- keep the screen on while a document is open ---------- */
   var Wake = (function(){
@@ -935,7 +1066,6 @@
   var Pop = (function(){
     var el = $("#pop"), scrim = $("#popScrim"), panes = { type: $("#typePop"), theme: $("#themePop") };
     var current = null, anchor = null, scrollY0 = 0, docH = 0;
-    var reduce = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
     function phone(){ return window.matchMedia && window.matchMedia("(max-width:560px)").matches; }
     /* where the page stands now, and how tall it is: the scroll-to-close rule below measures the
        reader's own scrolling from here, and a reflow (a new spacing or font moves the text under
@@ -1095,7 +1225,7 @@
       if (!g) return;
       var top = g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop - (strip ? strip.offsetHeight : 0) - 2;
       if (SheetTabs) SheetTabs.mark(g.id, 700);
-      sheet.scrollTo({ top: Math.max(0, top), behavior: reduce && reduce.matches ? "auto" : "smooth" });
+      sheet.scrollTo({ top: Math.max(0, top), behavior: noMotion() ? "auto" : "smooth" });
       var first = g.querySelector("input, select, button");
       if (first) first.focus({ preventScroll: true });
     }
@@ -1230,6 +1360,8 @@
     doc.style.transform = "";
   }
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  /* nothing slides or scrolls smoothly with reduced motion, nor in e-ink mode */
+  function noMotion(){ return !!(reduceMotion && reduceMotion.matches) || state.eink === true; }
   /* show page n. `anchor` is the character the caller navigated to (a resume position, a
      heading, a search hit, the place kept through a re-layout); without one the page's own
      first character becomes the anchor. Re-layouts land on the page holding the anchor. */
@@ -1238,7 +1370,7 @@
     var was = state.page;
     state.page = n;
     var view = $("#docView"), left = n * (state.perPage || 1) * state.stride;
-    var smooth = animate && !(reduceMotion && reduceMotion.matches) && Math.abs(n - was) === 1;
+    var smooth = animate && !noMotion() && Math.abs(n - was) === 1;
     if (smooth && view.scrollTo) view.scrollTo({ left: left, behavior: "smooth" });
     else view.scrollLeft = left;
     state.pageOff = (typeof anchor === "number") ? anchor : pageTopOffset();
@@ -1331,6 +1463,7 @@
   }
   function setFlow(f){
     if (f === state.flow) return;
+    if (state.eink === true && f !== "pages"){ Marks.toast("E-ink mode keeps the Pages flow"); return; }
     var frac = readFrac();
     var off = state.mode === "doc" ? (state.flow === "pages" ? pageTopOffset() : Library.topCharOffset()) : null;
     state.flow = f;
@@ -2061,6 +2194,9 @@
       zen:      icon(path("M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5")),
       print:    icon(path("M6 9V3h12v6"), path("M6 17H4V9h16v8h-2"), path("M6 14h12v7H6z")),
       chart:    icon(path("M5 20V12 M12 20V6 M19 20V10", dots)),
+      journal:  icon(path("M6 3h11a2 2 0 0 1 2 2v16H7.5A2.5 2.5 0 0 1 5 18.5V4a1 1 0 0 1 1-1z"), path("M5 18.5A2.5 2.5 0 0 1 7.5 16H19"), path("M9 7.5h6 M9 11h4")),
+      finished: icon(path("M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"), path("M8 12.3l2.7 2.7L16 9.7")),
+      star:     icon(path("M12 3.5l2.55 5.2 5.7.83-4.13 4.02.98 5.68L12 16.55l-5.1 2.68.98-5.68-4.13-4.02 5.7-.83z")),
       books:    icon(path("M4 4h5v16H4z"), path("M9 4h5v16H9z"), path("M14 6l5-1.5L23 19l-5 1.5z")),
       keyboard: icon(path("M3 7h18v10H3z"), path("M7 11h.01 M11 11h.01 M15 11h.01 M7 14h10", dots)),
       open:     icon(path("M3 7V5h6l2 2h10v12H3z"), path("M3 11h18")),
@@ -2276,7 +2412,7 @@
   })();
 
   var Library = (function(){
-    var DB_NAME = "lamplight", DB_VERSION = 4;
+    var DB_NAME = "lamplight", DB_VERSION = 5;
     var dbp = null, books = [], positions = {}, current = null, pending = null, saveTimer = null, titleQueue = null;
     var ready = { doc: false, pdfPages: {} };
 
@@ -2303,6 +2439,12 @@
             au.createIndex("doc", "docId");
           }
           if (!d.objectStoreNames.contains("cast")) d.createObjectStore("cast", { keyPath: "docId" });
+          /* the reading journal: one entry per book finished (a re-read is a new one), kept apart from
+             the library so that clearing the library keeps it (see Journal) */
+          if (!d.objectStoreNames.contains("journal")){
+            var jr = d.createObjectStore("journal", { keyPath: "id" });
+            jr.createIndex("book", "book");
+          }
         };
         /* another tab is installing a newer version: let go of the database so it can */
         req.onblocked = function(){ try { Marks.toast("Close other Lamplight tabs to finish updating"); } catch(_){} };
@@ -2464,6 +2606,7 @@
         Tabs.noteOpen(id, file.name, file);
         var pos = positions[id];
         if (pos && !opts.fresh){ pending = pos; tryRestore(); }
+        Journal.opened(id, pos && !opts.fresh ? pos : null, !!opts.fresh);   /* where this sitting starts: the "Finished" card waits for the reader to arrive at the end */
         var existing = books.filter(function(b){ return b.id === id; })[0];
         var rec = existing || { id: id, name: file.name, type: typeOf(file.name), size: file.size, added: Date.now(), blob: file };
         rec.opened = Date.now();
@@ -2557,12 +2700,14 @@
       try { return (window.llStats && window.llStats.forecast) ? window.llStats.forecast(b, positions[b.id]) : ""; }
       catch(_){ return ""; }
     }
+    /* in the reading journal: a small check and the latest stars (Journal.badge), in place of the "Finished" pill */
+    function finOf(b){ try { return Journal.badge(b.id); } catch(_){ return ""; } }
     /* a card is a plain wrapper holding sibling buttons: the book (opens it), move up and down
        for a pinned one, the pin and the remove; nesting one inside another would give the card
        every one of their names */
     function item(b, idx, of){
       var pct = pctOf(b), name = escapeHtml(b.title || b.name), done = pct >= 98, pinned = !!b.pinned;
-      var id = escapeHtml(b.id), left = forecastOf(b);
+      var id = escapeHtml(b.id), left = forecastOf(b), fin = finOf(b);
       function move(dir, label, icon, off){
         return '<button type="button" class="lib-move" data-move="' + dir + '" data-id="' + id + '" title="' + label +
           '" aria-label="' + label + " " + name + '"' + (off ? " disabled" : "") + '>' + icon + '</button>';
@@ -2572,7 +2717,7 @@
         '<span class="lib-type">' + escapeHtml(b.type) + '</span>' +
         '<span class="lib-main"><span class="lib-name">' + name + '</span>' +
         '<span class="lib-meta"><span class="lib-bar"><i style="width:' + pct + '%"></i></span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
-        (done ? '<span class="lib-done">Finished</span>' : '') + '</span>' +
+        (fin || (done ? '<span class="lib-done">Finished</span>' : '')) + '</span>' +
         (left ? '<span class="lib-left">' + escapeHtml(left) + '</span>' : '') + '</span>' +
         '</button>' +
         (pinned ? move("up", "Move up", ICONS.chevronU, idx === 0) + move("down", "Move down", ICONS.chevronD, idx === of - 1) : '') +
@@ -2650,7 +2795,7 @@
       return Promise.all(jobs);
     }
     $("#libClear").addEventListener("click", function(){
-      if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device?")) return;
+      if (!books.length || !confirm("Remove all " + books.length + " files and reading positions from this device? Your reading journal is kept.")) return;
       wipe(false);
       show("empty");
     });
@@ -2713,6 +2858,7 @@
              onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
              flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render, forgetAudio: forgetAudio,
              ready: loaded, currentId: function(){ return current; }, positionFor: function(id){ return positions[id]; },
+             restoring: function(){ return !!pending; },
              _debug: function(){ return { pending: pending, ready: ready, current: current }; } };
   })();
 
@@ -3272,7 +3418,7 @@
 
     return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, clearAll: clearAll, addHighlight: addHighlight, highlightSelection: highlightSelection,
              selectionOffsets: selectionOffsets, hidePop: hidePop, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
-             toMarkdown: toMarkdown, toJSON: toJSON, toObsidian: toObsidian, tagsOf: tagsOf,
+             toMarkdown: toMarkdown, toJSON: toJSON, toObsidian: toObsidian, tagsOf: tagsOf, download: download,
              legend: function(){ return Object.assign({}, legend); }, setLegend: setLegend };
   })();
 
@@ -6548,6 +6694,7 @@
     function tick(){
       Pace.poke("tick");
       if (state.mode !== "doc" && state.mode !== "pdf") return;
+      if (Journal) Journal.poke();     /* a scroll or a page turn may have reached the end of the book */
       var now = Date.now();
       if (now - lastTick < 250){
         /* a fling is a burst of scroll events: draw once more when the throttle is up, so the
@@ -6733,6 +6880,7 @@
         touch();
         notePace();
         checkGoal();
+        Journal.check();       /* sitting at the end of a book: the time read may now be enough for the "Finished" card */
       }
       renderWidget();
       refreshPanel();
@@ -6811,18 +6959,10 @@
     }
 
     /* ---- this year ---- */
-    /* older records carry no finishing date; the position's last update says when it was read */
-    function finishedThisYear(){
-      var y = new Date().getFullYear(), n = 0;
-      Object.keys(data.books).forEach(function(id){
-        var b = data.books[id];
-        if (!b.finished) return;
-        var t = b.finishedAt;
-        if (!t){ var p = Library.positionFor(id); t = (p && p.updated) || 0; }
-        if (t && new Date(t).getFullYear() === y) n++;
-      });
-      return n;
-    }
+    /* books finished are the reading journal's entries (a re-read counts again), so the goal, the
+       widget and the journal always agree; the journal is loaded a moment after the page */
+    function journalCount(year){ try { return Journal.count(year); } catch(_){ return 0; } }
+    function finishedThisYear(){ return journalCount(new Date().getFullYear()); }
     /* pages read: a PDF's are counted, a text document's are estimated at 275 words to the page */
     function pagesThisYear(){
       var y = String(new Date().getFullYear()), pages = 0;
@@ -6941,7 +7081,8 @@
       /* this year, against the goals the reader set */
       var yb = finishedThisYear(), yp = Math.round(pagesThisYear());
       h += '<section class="st-sec"><div class="label sec">This year</div>' +
-        yearRow("Books finished", yb, "books") + yearRow("Pages read", yp, "pages") + '</section>';
+        yearRow("Books finished", yb, "books") + yearRow("Pages read", yp, "pages") +
+        '<div class="so-acts"><button type="button" class="chip st-journal" data-st="journal">' + ICONS.journal + '<span>Reading journal</span></button></div></section>';
       /* the books in the library, most recently opened first, with what is left of each */
       var recent = [];
       try { recent = Library.books().slice(0, 5); } catch(_){}
@@ -6960,7 +7101,7 @@
          much reading the numbers rest on */
       var all = { ms: 0, words: 0, pages: 0, skimmed: 0, listened: 0 }, dayKeys = Object.keys(data.days).sort(), ids = Object.keys(data.books);
       dayKeys.forEach(function(key){ var d = data.days[key]; all.ms += d.ms; all.words += d.words; all.pages += d.pages; all.skimmed += d.skimmed || 0; all.listened += d.listened || 0; });
-      var finished = ids.filter(function(id){ return data.books[id].finished; }).length, first = dayKeys.length ? dateOf(dayKeys[0]) : null;
+      var finished = journalCount(), first = dayKeys.length ? dateOf(dayKeys[0]) : null;
       var pace = Pace.summary(), thisDoc = "";
       if (pace.doc && docOpen()){
         thisDoc = state.mode === "pdf" ? row("This document", pace.doc.ppm.toFixed(1) + " pages per minute over " + dur(pace.doc.ms))
@@ -7022,6 +7163,7 @@
     }
     Side.body.addEventListener("click", function(e){
       if (!Side.is("stats")) return;
+      if (e.target.closest('button[data-st="journal"]')){ Journal.openPanel(); return; }
       var b = e.target.closest("button[data-goal]");
       if (b){ setGoal(+b.dataset.goal); return; }
       var y = e.target.closest("button[data-yg]");
@@ -7043,8 +7185,11 @@
     /* for tests and other scripts */
     window.llStats = { onMode: onMode, openPanel: openPanel, snapshot: snapshot, streak: streak, setGoal: setGoal, tick: tick, flush: save,
                        forecast: forecast, reset: reset, setYearGoal: setYearGoal };
+    /* a book's reading so far (active time, words and pages read forward), for the "Finished" card */
+    function bookRead(id){ var b = data.books[id]; return b ? { ms: b.ms, words: b.words, pages: b.pages } : { ms: 0, words: 0, pages: 0 }; }
     return { noteWords: noteWords, notePages: notePages, noteSkimmed: noteSkimmed, noteListened: noteListened, unnote: unnote,
-             onMode: onMode, openPanel: openPanel, snapshot: snapshot, forecast: forecast, reset: reset };
+             onMode: onMode, openPanel: openPanel, snapshot: snapshot, forecast: forecast, reset: reset, book: bookRead,
+             refresh: function(){ renderWidget(); refreshPanel(); } };
   })();
 
   /* ============================================================
@@ -7068,7 +7213,7 @@
     /* ---- the count ---- */
     function measure(){
       var list = Library.books();
-      var o = { books: list.length, bookBytes: 0, finished: 0, positions: 0, marks: 0,
+      var o = { books: list.length, bookBytes: 0, finished: 0, positions: 0, marks: 0, journal: 0,
                 trDocs: 0, trWords: 0, trBytes: 0,
                 stats: (Store.get("ll_stats") || "").length, statDays: 0,
                 themes: (state.customs || []).length, usage: null, quota: null, persisted: null };
@@ -7081,6 +7226,7 @@
       var jobs = [
         countOf("positions").then(function(n){ o.positions = n; }),
         countOf("marks").then(function(n){ o.marks = n; }),
+        countOf("journal").then(function(n){ o.journal = n; }),
         Library.tx("translations", "readonly", function(st){ return st.getAll(); }).then(function(rows){
           (rows || []).forEach(function(r){
             /* a document's blocks are one record; single words and sentences are keyed "s|…" */
@@ -7149,6 +7295,7 @@
         row("Cached translations", plural(o.trDocs, "document", "documents") + " · " + plural(o.trWords, "word or sentence", "words and sentences"),
             o.trBytes ? size(o.trBytes) : "", (o.trDocs + o.trWords) ? "translations" : "", "Clear cached translations") +
         row("Reading stats", plural(o.statDays, "day", "days"), size(o.stats), o.statDays ? "stats" : "", "Reset reading stats") +
+        row("Reading journal", plural(o.journal, "book finished", "books finished") + " · kept when the library is cleared", "", o.journal ? "journal" : "", "Clear reading journal") +
         row("Saved themes", plural(o.themes, "theme", "themes"), "", "", "") +
         cacheRow() + '</section>';
       h += '<section class="so-sec"><div class="label sec">Keeping it</div><div class="so-line">' +
@@ -7191,6 +7338,8 @@
           .then(function(){ Marks.toast("Cached translations cleared"); reload(); }, function(){});
       } else if (what === "stats"){
         if (Stats.reset()) reload();
+      } else if (what === "journal"){
+        Journal.clear().then(function(done){ if (done) reload(); });
       } else if (what === "persist"){
         if (!(navigator.storage && navigator.storage.persist)) return;
         navigator.storage.persist().then(function(ok){
@@ -7199,11 +7348,11 @@
           reload();
         }, function(){});
       } else if (what === "wipe"){
-        if (!confirm("Clear everything Lamplight keeps on this device — books, positions, notes, translations, stats, themes and settings?")) return;
+        if (!confirm("Clear everything Lamplight keeps on this device — books, positions, notes, translations, stats, reading journal, themes and settings?")) return;
         if (!confirm("This can’t be undone. Clear everything?")) return;
         Stats.reset(true);
-        ["ll_stats", "ll_prefs", "ll_tabs", "ll_wpm", "ll_ppm", "ll_mark_legend", "ll_recap", "ll_sounds", "ll_rsvp_wpm"].forEach(function(k){ Store.remove(k); });
-        Library.wipe(true).then(function(){ location.reload(); }, function(){ location.reload(); });
+        ["ll_stats", "ll_prefs", "ll_tabs", "ll_wpm", "ll_ppm", "ll_mark_legend", "ll_recap", "ll_sounds", "ll_rsvp_wpm", "ll_finish"].forEach(function(k){ Store.remove(k); });
+        Promise.all([Library.wipe(true), Journal.clear(true)]).then(function(){ location.reload(); }, function(){ location.reload(); });
       }
     }
     Side.body.addEventListener("click", function(e){
@@ -7217,6 +7366,500 @@
     Menu.add({ order: 62, group: "app", icon: ICONS.books, label: "Storage", run: openPanel });
     window.llStorage = { openPanel: openPanel, measure: measure, act: act };
     return { openPanel: openPanel };
+  })();
+
+  /* ============================================================
+     Reading journal — the books finished, each with its stars, a line of
+     its own and the day it was done. Reaching the end of a book after
+     reading it for a while brings up a small "Finished" card, once per
+     reading; "Mark as finished" in the menu opens the same card anywhere.
+     The entries live in IndexedDB ("journal", keyPath id, index book) and
+     outlast the library: clearing the library keeps them, since they are
+     a record of what was read. Reading stats count finished books here.
+     ============================================================ */
+  var Journal = (function(){
+    /* KEY: per book, where the last card left the reading (the stats at that moment, and the entry
+       saved for it); a new reading begins once the reader goes back to the start (AGAIN) */
+    var KEY = "ll_finish", MIN_MS = 3 * 60000, MIN_PART = 0.2, END = 0.98, AGAIN = 0.1, KEEP = 400, NOTE_MAX = 200;
+    var MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var list = [], loaded = false, seen = loadSeen(), sess = null, pokeT = null;
+    var card = null, cur = null, opener = null, live = null, expanded = null;
+
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function cssEsc(x){ return window.CSS && CSS.escape ? CSS.escape(x) : String(x).replace(/["\\]/g, "\\$&"); }
+    function num(x){ return typeof x === "number" && isFinite(x) && x > 0 ? x : 0; }
+
+    /* ---- days: local dates as "YYYY-MM-DD" (toISOString would shift them to UTC) ---- */
+    function pad(n){ return (n < 10 ? "0" : "") + n; }
+    function isoDay(d){ return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+    function today(){ return isoDay(new Date()); }
+    function dateOf(s){ var p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+    function isDay(s){ return typeof s === "string" && /^\d{4}-\d\d-\d\d$/.test(s) && isoDay(dateOf(s)) === s; }
+    function dayText(s){ var d = dateOf(s); return d.getDate() + " " + MO[d.getMonth()] + " " + d.getFullYear(); }
+    /* "took 12 days", when the day it was first opened is known */
+    function took(e){
+      if (!isDay(e.started) || !isDay(e.finished) || e.started > e.finished) return "";
+      var n = Math.round((dateOf(e.finished) - dateOf(e.started)) / 86400000);
+      return n < 1 ? "read in a day" : "took " + n + (n === 1 ? " day" : " days");
+    }
+    function books(n){ return n + (n === 1 ? " book" : " books"); }
+
+    /* ---- the readings seen through to the card ---- */
+    function loadSeen(){
+      var o = null, out = {};
+      try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
+      if (!o || typeof o !== "object") return out;
+      Object.keys(o).forEach(function(id){
+        var x = o[id];
+        if (!x || typeof x !== "object") return;
+        out[id] = { ms: num(x.ms), words: num(x.words), pages: num(x.pages), at: num(x.at), entry: typeof x.entry === "string" ? x.entry : null, away: x.away === true, t: num(x.t) };
+      });
+      return out;
+    }
+    function saveSeen(){
+      var ids = Object.keys(seen);
+      if (ids.length > KEEP){
+        ids.sort(function(a, b){ return seen[a].t - seen[b].t; });
+        ids.slice(0, ids.length - KEEP).forEach(function(id){ delete seen[id]; });
+      }
+      Store.set(KEY, JSON.stringify(seen));
+    }
+    /* this reading has had its card: what the stats say now is where the next reading is counted from */
+    function markSeen(id, entry){
+      var r = Stats.book(id);
+      seen[id] = { ms: r.ms || 0, words: r.words || 0, pages: r.pages || 0, at: Math.round(Math.max(0, Math.min(1, readFrac())) * 1000) / 1000,
+                   entry: entry || null, away: false, t: Date.now() };
+      saveSeen();
+    }
+
+    /* ---- the entries ---- */
+    function clean(e){
+      if (!e || typeof e !== "object" || typeof e.id !== "string" || !e.id || !isDay(e.finished)) return null;
+      return { id: e.id, book: typeof e.book === "string" ? e.book : "", title: String(e.title || "Untitled"), author: typeof e.author === "string" ? e.author : "",
+               stars: Math.max(0, Math.min(5, Math.round(+e.stars || 0))), note: typeof e.note === "string" ? e.note : "",
+               finished: e.finished, started: isDay(e.started) ? e.started : "", created: num(e.created) };
+    }
+    /* newest first: by the day finished, then by when the entry was made */
+    function sort(){ list.sort(function(a, b){ return a.finished < b.finished ? 1 : a.finished > b.finished ? -1 : (b.created || 0) - (a.created || 0); }); }
+    function byId(id){ for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; }
+    function latestFor(book){ for (var i = 0; i < list.length; i++) if (list[i].book === book) return list[i]; return null; }
+    function count(year){
+      if (year === undefined || year === null) return list.length;
+      var y = String(year);
+      return list.filter(function(e){ return e.finished.slice(0, 4) === y; }).length;
+    }
+    function newId(){ return "j" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+    function put(e){ return Library.tx("journal", "readwrite", function(st){ st.put(e); }).catch(function(){ Marks.toast("Couldn’t save to the reading journal"); }); }
+    function bookRec(id){ return Library.books().filter(function(b){ return b.id === id; })[0] || null; }
+    /* an EPUB's library title is "Title — Author"; nothing else carries an author */
+    function nameOf(b){
+      var t = (b && (b.title || String(b.name || "").replace(/\.[^.]+$/, ""))) || ($("#fname").textContent || "").trim() || "Untitled", author = "";
+      var i = t.indexOf(" \u2014 ");
+      if (b && b.title && b.type === "EPUB" && i > 0){ author = t.slice(i + 3).trim(); t = t.slice(0, i).trim(); }
+      return { title: t, author: author };
+    }
+    /* the library list, the stats and the panel follow the journal */
+    function changed(){
+      try { Library.render(); } catch(_){}
+      try { Stats.refresh(); } catch(_){}
+      refreshPanel();
+    }
+    var ready = Library.tx("journal", "readonly", function(st){ return st.getAll(); }).then(function(rows){
+      var mine = list;
+      list = (rows || []).map(clean).filter(Boolean);
+      mine.forEach(function(e){ if (!byId(e.id)) list.push(e); });
+      sort();
+    }).catch(function(err){ console.warn("journal unavailable", err); }).then(function(){ loaded = true; changed(); });
+
+    /* ---- stars: a radio group of five (arrow keys move the rating, a click on the chosen star clears it) ---- */
+    /* stars to look at: named for a screen reader as "4 of 5 stars" (label: false leaves them to the caller's name) */
+    function starsShow(n, cls, onlyOn, label){
+      var h = '<span class="' + cls + '" ' + (label === false ? 'aria-hidden="true"' : 'role="img" aria-label="' + starWords(n) + '"') + '>';
+      for (var i = 1; i <= (onlyOn ? n : 5); i++) h += '<i' + (i <= n ? ' class="on"' : '') + '>' + ICONS.star + '</i>';
+      return h + '</span>';
+    }
+    function starWords(n){ return n ? n + " of 5 stars" : "no stars"; }
+    function pickHtml(n, attrs){
+      var h = "";
+      for (var i = 1; i <= 5; i++){
+        var tab = n ? i === n : i === 1;
+        h += '<button type="button" role="radio" class="jr-star' + (i <= n ? " on" : "") + '" data-star="' + i + '"' + (attrs || "") +
+             ' aria-checked="' + (i === n) + '" aria-label="' + i + (i === 1 ? " star" : " stars") + '" tabindex="' + (tab ? "0" : "-1") + '">' + ICONS.star + '</button>';
+      }
+      return h;
+    }
+    function setPick(group, n, focus){
+      if (!group) return;
+      Array.prototype.forEach.call(group.querySelectorAll(".jr-star"), function(b){
+        var i = +b.dataset.star;
+        b.classList.toggle("on", i <= n);
+        b.setAttribute("aria-checked", i === n ? "true" : "false");
+        b.tabIndex = (n ? i === n : i === 1) ? 0 : -1;
+      });
+      if (focus){ var f = group.querySelector('.jr-star[tabindex="0"]'); if (f) f.focus({ preventScroll: true }); }
+    }
+    /* a key on a star: arrows one step, Home / End one and five, a digit that many, 0 / Delete / Backspace none */
+    function pickKey(e, n){
+      if (e.ctrlKey || e.metaKey || e.altKey) return null;
+      var k = e.key;
+      if (k === "ArrowRight" || k === "ArrowUp") return Math.min(5, n + 1);
+      if (k === "ArrowLeft" || k === "ArrowDown") return Math.max(1, n - 1);
+      if (k === "Home") return 1;
+      if (k === "End") return 5;
+      if (/^[0-5]$/.test(k)) return +k;
+      if (k === "Delete" || k === "Backspace") return 0;
+      return null;
+    }
+    /* a click with the pointer on the chosen star takes it back; Enter or Space (detail 0) only chooses */
+    function clicked(ev, n, was){ return ev.detail && n === was ? 0 : n; }
+
+    /* ---- the end of a book ---- */
+    function atEnd(){
+      if (state.mode === "pdf"){
+        var n = state.pdfDoc ? state.pdfDoc.numPages : 0;
+        if (n < 2) return false;
+        if (state.flow === "pages") return state.pdfPageNum + (state.perPage || 1) - 1 >= n;
+        return Library.currentPdfPage() >= n || readFrac() >= 0.995;
+      }
+      if (state.mode !== "doc") return false;
+      if (state.flow === "pages") return state.totalPages > 1 && state.page >= state.totalPages - 1;
+      return readFrac() >= END;
+    }
+    function posAtEnd(pos){
+      if (!pos) return false;
+      if (pos.mode === "pdf") return (pos.pdfPages || 0) > 1 && (pos.pdfPage || 1) >= pos.pdfPages - (pos.flow === "pages" ? 1 : 0);
+      return (pos.frac || 0) >= END;
+    }
+    /* read for a while since the last card (or ever): a few minutes of reading time, or a fifth of the
+       book read forward — what Stats and the pace detector have credited to it */
+    function enough(id, s){
+      var r = Stats.book(id);
+      function since(k){ var base = s ? s[k] || 0 : 0, v = r[k] || 0; return v >= base ? v - base : v; }
+      if (since("ms") >= MIN_MS) return true;
+      if (state.mode === "pdf"){ var n = state.pdfDoc ? state.pdfDoc.numPages : 0; return n > 1 && since("pages") >= n * MIN_PART; }
+      var w = Progress.docWords();
+      return w > 0 && since("words") >= w * MIN_PART;
+    }
+    /* Library: a book was opened (pos: where it was restored to; fresh: "Read again", a new reading) */
+    function opened(id, pos, fresh){
+      close(true);
+      sess = { id: id, fromEnd: posAtEnd(pos) };
+      var s = seen[id];
+      if (fresh && s && !s.away){ s.away = true; saveSeen(); }
+    }
+    /* a scroll or page turn settles; the stats' 15-second tick checks too */
+    function poke(){ clearTimeout(pokeT); pokeT = setTimeout(check, 700); }
+    function check(){
+      clearTimeout(pokeT); pokeT = null;
+      var id = Library.currentId();
+      if (!id || !sess || sess.id !== id || (state.mode !== "doc" && state.mode !== "pdf")) return;
+      if (document.visibilityState !== "visible" || state.opening || Library.restoring()) return;
+      var s = seen[id];
+      if (!atEnd()){
+        /* reading, not at the end: arriving there later is reaching it; back at the start after a card is a new reading */
+        sess.fromEnd = false;
+        if (s && !s.away && readFrac() <= AGAIN){ s.away = true; saveSeen(); }
+        return;
+      }
+      if (sess.fromEnd || isOpen() || Side.current() || document.body.classList.contains("rsvp-on")) return;
+      if (s && !s.away) return;          /* this reading has had its card */
+      if (!enough(id, s)) return;        /* opened at the end, or jumped there */
+      openCard(false);
+    }
+
+    /* ---- the card: at the foot of the page, over the text (never inside #doc) ---- */
+    function isOpen(){ return !!(card && card.classList.contains("on")); }
+    function build(){
+      card = document.createElement("section");
+      card.id = "finish"; card.setAttribute("role", "dialog");
+      card.setAttribute("aria-labelledby", "finTitle"); card.setAttribute("aria-describedby", "finBook");
+      document.body.appendChild(card);
+      card.addEventListener("click", function(ev){
+        if (!cur) return;
+        var star = ev.target.closest(".jr-star");
+        if (star){ setStars(clicked(ev, +star.dataset.star, cur.stars)); return; }
+        var b = ev.target.closest("button");
+        if (!b) return;
+        if (b.id === "finSave") save();
+        else if (b.id === "finLater" || b.id === "finX") close();
+      });
+      card.addEventListener("keydown", function(ev){
+        if (ev.key === "Escape"){ ev.preventDefault(); ev.stopPropagation(); close(); return; }
+        if (ev.key === "Tab" || !cur) return;
+        if (ev.target.closest && ev.target.closest(".jr-star")){
+          var n = pickKey(ev, cur.stars);
+          if (n !== null){ ev.preventDefault(); setStars(n, true); }
+        } else if (ev.key === "Enter" && ev.target.id === "finNote"){ ev.preventDefault(); save(); }
+        /* the page's own keys (page turns, single-letter shortcuts) stay out of the card */
+        ev.stopPropagation();
+      });
+    }
+    function setStars(n, focus){
+      if (!cur) return;
+      cur.stars = n;
+      setPick(card.querySelector(".jr-pick"), n, focus);
+    }
+    /* asked: from the menu (focus moves in); otherwise the end was reached, and a live region says so */
+    function openCard(asked){
+      var id = Library.currentId();
+      if (!id){ if (asked) Marks.toast("Open a book first"); return; }
+      var s = seen[id], edit = s && !s.away && s.entry ? byId(s.entry) : null;
+      if (!asked) markSeen(id, null);     /* once per reading */
+      var n = edit ? { title: edit.title, author: edit.author } : nameOf(bookRec(id));
+      if (!card) build();
+      cur = { book: id, edit: edit ? edit.id : null, stars: edit ? edit.stars : 0 };
+      card.innerHTML =
+        '<div class="recap-head">' + ICONS.finished + '<h2 class="recap-title" id="finTitle">Finished</h2>' +
+          '<button type="button" class="recap-x" id="finX" title="Close" aria-label="Close">' + ICONS.close + '</button></div>' +
+        '<p class="fin-book" id="finBook"><span class="fin-t">' + esc(n.title) + '</span>' + (n.author ? '<span class="fin-a"> · ' + esc(n.author) + '</span>' : '') + '</p>' +
+        '<div class="jr-pick fin-stars" role="radiogroup" aria-label="Your rating">' + pickHtml(cur.stars) + '</div>' +
+        '<input type="text" class="jr-in" id="finNote" maxlength="' + NOTE_MAX + '" placeholder="A few words…" aria-label="A few words about it (optional)" autocomplete="off" value="' + esc(edit ? edit.note : "") + '">' +
+        '<div class="rowline fin-when"><label for="finDate">Finished on</label><input type="date" class="sel" id="finDate" max="' + today() + '" value="' + (edit ? edit.finished : today()) + '"></div>' +
+        '<div class="recap-acts"><button type="button" class="chip" id="finLater">' + (edit ? "Cancel" : "Not now") + '</button>' +
+          '<button type="button" class="ctl primary" id="finSave">Save</button></div>';
+      card.classList.add("on");
+      if (!live){ live = document.createElement("p"); live.className = "recap-live"; live.setAttribute("aria-live", "polite"); document.body.appendChild(live); }
+      live.textContent = "";
+      if (asked){
+        opener = document.activeElement;
+        var f = card.querySelector('.jr-star[tabindex="0"]');
+        if (f) f.focus({ preventScroll: true });
+      } else {
+        opener = null;
+        setTimeout(function(){ if (isOpen()) live.textContent = "Finished " + n.title + ". A card at the foot of the page asks for your stars."; }, 120);
+      }
+    }
+    function close(quiet){
+      if (!isOpen()) return;
+      var inside = card.contains(document.activeElement);
+      card.classList.remove("on"); card.innerHTML = ""; cur = null;
+      if (live) live.textContent = "";
+      if (!quiet && inside){ var to = opener && document.contains(opener) && opener.getClientRects().length ? opener : $("#main"); if (to) to.focus({ preventScroll: true }); }
+      opener = null;
+    }
+    function save(){
+      if (!cur) return;
+      var noteEl = card.querySelector("#finNote"), dateEl = card.querySelector("#finDate"), now = today();
+      var day = dateEl && isDay(dateEl.value) && dateEl.value <= now ? dateEl.value : now;
+      var note = noteEl ? noteEl.value.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX) : "";
+      var e = cur.edit ? byId(cur.edit) : null, fresh = !e;
+      if (fresh){
+        var b = bookRec(cur.book), n = nameOf(b);
+        e = { id: newId(), book: cur.book, title: n.title, author: n.author, stars: 0, note: "", finished: day,
+              started: b && b.added ? isoDay(new Date(b.added)) : "", created: Date.now() };
+        list.push(e);
+        var s = seen[cur.book];
+        if (s && !s.away){ s.entry = e.id; s.t = Date.now(); saveSeen(); } else markSeen(cur.book, e.id);
+      }
+      e.stars = cur.stars; e.note = note; e.finished = day;
+      sort();
+      put(e);
+      close();
+      Marks.toast(fresh ? "Added to your reading journal" : "Journal entry saved");
+      changed();
+    }
+    /* the card belongs to the book: a new file, the library or a status page closes it */
+    document.addEventListener("ll:fileopened", function(){ close(true); sess = null; });
+    if (window.MutationObserver) new MutationObserver(function(){ if (state.mode !== "doc" && state.mode !== "pdf") close(true); })
+      .observe(document.body, { attributes: true, attributeFilter: ["data-mode"] });
+    /* Escape closes the card when nothing else is open over the page */
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !isOpen() || Side.current() || Menu.isOpen() || $("#pop").classList.contains("open") ||
+          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on")) return;
+      close();
+    });
+
+    /* ---- the panel: newest first, a group per year; a row opens to edit, open the book or delete ---- */
+    function rowInner(e){
+      var t = took(e);
+      return '<span class="jr-t">' + esc(e.title) + '</span>' +
+        (e.author ? '<span class="jr-a">' + esc(e.author) + '</span>' : '') +
+        (e.stars ? starsShow(e.stars, "jr-s") : '') +
+        (e.note ? '<span class="jr-n">' + esc(e.note) + '</span>' : '') +
+        '<span class="jr-d">Finished ' + dayText(e.finished) + (t ? " · " + t : "") + '</span>';
+    }
+    function editorHtml(e){
+      var id = esc(e.id), d = ' data-id="' + id + '"';
+      return '<div class="jr-ed" id="jrEd-' + id + '">' +
+        '<div class="rowline"><span class="jr-l" id="jrSL-' + id + '">Stars</span><div class="jr-pick" role="radiogroup" aria-labelledby="jrSL-' + id + '">' +
+          pickHtml(e.stars, ' data-jr="star"' + d) + '</div></div>' +
+        '<div class="rowline"><label for="jrN-' + id + '">Note</label><input type="text" class="jr-in" id="jrN-' + id + '" data-jr="note"' + d +
+          ' maxlength="' + NOTE_MAX + '" placeholder="A few words…" autocomplete="off" value="' + esc(e.note) + '"></div>' +
+        '<div class="rowline"><label for="jrD-' + id + '">Finished on</label><input type="date" class="sel" id="jrD-' + id + '" data-jr="date"' + d +
+          ' max="' + today() + '" value="' + e.finished + '" data-was="' + e.finished + '"></div>' +
+        '<div class="jr-acts">' + (bookRec(e.book) ? '<button type="button" class="chip" data-jr="open"' + d + '>' + ICONS.books + '<span>Open book</span></button>' : '') +
+          '<button type="button" class="chip" data-jr="del"' + d + '>Delete</button></div></div>';
+    }
+    function itemHtml(e){
+      var open = expanded === e.id, id = esc(e.id);
+      return '<li class="jr-item' + (open ? " open" : "") + '" data-id="' + id + '">' +
+        '<button type="button" class="jr-row" data-jr="row" data-id="' + id + '" aria-expanded="' + open + '"' + (open ? ' aria-controls="jrEd-' + id + '"' : '') + '>' +
+        rowInner(e) + '</button>' + (open ? editorHtml(e) : '') + '</li>';
+    }
+    function renderPanel(body, foot){
+      if (!list.length){
+        body.innerHTML = '<div class="empty-note">' + (loaded ? "Books you finish will appear here." : "Loading…") + '</div>';
+        foot.innerHTML = "";
+        return;
+      }
+      var groups = [], at = {};
+      list.forEach(function(e){
+        var y = e.finished.slice(0, 4);
+        if (!at[y]){ at[y] = { y: y, list: [] }; groups.push(at[y]); }
+        at[y].list.push(e);
+      });
+      body.innerHTML = groups.map(function(g){
+        return '<section class="jr-year" data-year="' + g.y + '" aria-labelledby="jrY-' + g.y + '">' +
+          '<h3 class="label sec jr-yh" id="jrY-' + g.y + '">' + g.y + ' · ' + books(g.list.length) + '</h3>' +
+          '<ul class="jr-list">' + g.list.map(itemHtml).join("") + '</ul></section>';
+      }).join("");
+      foot.innerHTML = '<button type="button" class="chip" data-jr="export">Export</button><button type="button" class="chip" data-jr="clear">Clear journal…</button>';
+    }
+    function selOf(a){
+      if (!a || !a.dataset || !a.dataset.jr) return null;
+      return '[data-jr="' + a.dataset.jr + '"]' + (a.dataset.id ? '[data-id="' + cssEsc(a.dataset.id) + '"]' : '') + (a.dataset.star ? '[data-star="' + a.dataset.star + '"]' : '');
+    }
+    /* redraw in place: the scroll position and the focused control survive (or sel names where focus goes) */
+    function refreshPanel(sel){
+      if (!Side.is("journal")) return;
+      var body = Side.body, top = body.scrollTop, a = document.activeElement;
+      var had = a && (body.contains(a) || Side.foot.contains(a));
+      if (!sel && had) sel = selOf(a);
+      Side.refresh("journal", renderPanel);
+      body.scrollTop = top;
+      var again = sel && (body.querySelector(sel) || Side.foot.querySelector(sel));
+      if (again) again.focus({ preventScroll: true });
+      else if (had && !document.contains(a)){ var first = body.querySelector(".jr-row"); (first || $("#sideClose")).focus({ preventScroll: true }); }
+    }
+    function openPanel(){
+      expanded = null;
+      Side.open("journal", "Reading journal", renderPanel, function(){ expanded = null; });
+    }
+    function update(e, fields){
+      Object.keys(fields).forEach(function(k){ e[k] = fields[k]; });
+      sort(); put(e);
+      try { Library.render(); } catch(_){}
+      try { Stats.refresh(); } catch(_){}
+    }
+    function patchRow(e){
+      var row = Side.body.querySelector('.jr-row[data-id="' + cssEsc(e.id) + '"]');
+      if (row) row.innerHTML = rowInner(e);
+    }
+    function commitNote(input){
+      var e = byId(input.dataset.id);
+      if (!e) return;
+      var v = input.value.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX);
+      if (v !== e.note){ update(e, { note: v }); patchRow(e); }
+    }
+    function remove(e){
+      var rows = Array.prototype.slice.call(Side.body.querySelectorAll(".jr-row")), i = -1;
+      rows.forEach(function(r, k){ if (r.dataset.id === e.id) i = k; });
+      var next = rows[i + 1] || rows[i - 1];
+      list = list.filter(function(x){ return x !== e; });
+      if (expanded === e.id) expanded = null;
+      Object.keys(seen).forEach(function(id){ if (seen[id].entry === e.id){ seen[id].entry = null; saveSeen(); } });
+      Library.tx("journal", "readwrite", function(st){ st.delete(e.id); }).catch(function(){});
+      Marks.toast("Removed from your reading journal");
+      refreshPanel(next ? '[data-jr="row"][data-id="' + cssEsc(next.dataset.id) + '"]' : null);
+      if (!list.length) $("#sideClose").focus({ preventScroll: true });
+      try { Library.render(); } catch(_){}
+      try { Stats.refresh(); } catch(_){}
+    }
+    /* quiet: the caller has already asked (the Storage panel's "Clear everything"), and every trace goes */
+    function clear(quiet){
+      if (!quiet && !confirm("Delete all " + books(list.length) + " from your reading journal? This can’t be undone.")) return Promise.resolve(false);
+      list = []; expanded = null;
+      if (quiet){ seen = {}; Store.remove(KEY); }
+      else { Object.keys(seen).forEach(function(id){ seen[id].entry = null; }); saveSeen(); }
+      var job = Library.tx("journal", "readwrite", function(st){ st.clear(); }).catch(function(){});
+      if (!quiet){ Marks.toast("Reading journal cleared"); changed(); }
+      return job.then(function(){ return true; });
+    }
+
+    /* ---- export: Markdown, a heading per year and a line per book ---- */
+    function md(x){ return String(x).replace(/\s+/g, " ").replace(/([\\`*_\[\]<>])/g, "\\$1"); }
+    function toMarkdown(){
+      var out = ["# Reading journal", "", "_Exported from Lamplight on " + dayText(today()) + "_"], year = null;
+      list.forEach(function(e){
+        var y = e.finished.slice(0, 4), t = took(e);
+        if (y !== year){ year = y; out.push("", "## " + y, ""); }
+        out.push("- **" + md(e.title) + "**" + (e.author ? " — " + md(e.author) : "") +
+          (e.stars ? " · " + new Array(e.stars + 1).join("★") + new Array(6 - e.stars).join("☆") : "") +
+          " · finished " + dayText(e.finished) + (t ? " · " + t : "") + (e.note ? " · " + md(e.note) : ""));
+      });
+      return out.join("\n") + "\n";
+    }
+    function exportMd(){
+      if (!list.length){ Marks.toast("Nothing in the journal yet"); return; }
+      Marks.download("lamplight-journal.md", toMarkdown(), "text/markdown");
+    }
+
+    Side.body.addEventListener("click", function(ev){
+      if (!Side.is("journal")) return;
+      var t = ev.target.closest("[data-jr]");
+      if (!t) return;
+      var what = t.dataset.jr, e = byId(t.dataset.id);
+      if (what === "row"){ expanded = expanded === t.dataset.id ? null : t.dataset.id; refreshPanel(selOf(t)); return; }
+      if (!e) return;
+      if (what === "star"){ update(e, { stars: clicked(ev, +t.dataset.star, e.stars) }); setPick(t.parentNode, e.stars); patchRow(e); }
+      else if (what === "open"){ Side.close(); Library.openId(e.book); }
+      else if (what === "del") remove(e);
+    });
+    Side.body.addEventListener("keydown", function(ev){
+      if (!Side.is("journal")) return;
+      var t = ev.target, e = t.dataset ? byId(t.dataset.id) : null;
+      if (!e) return;
+      if (t.dataset.jr === "star"){
+        var n = pickKey(ev, e.stars);
+        if (n === null) return;
+        ev.preventDefault(); ev.stopPropagation();
+        update(e, { stars: n }); setPick(t.parentNode, n, true); patchRow(e);
+      } else if (t.dataset.jr === "note" && ev.key === "Enter"){ ev.preventDefault(); commitNote(t); }
+    });
+    Side.body.addEventListener("change", function(ev){
+      if (!Side.is("journal")) return;
+      var t = ev.target, e = t.dataset ? byId(t.dataset.id) : null;
+      if (!e) return;
+      if (t.dataset.jr === "note") commitNote(t);
+      else if (t.dataset.jr === "date" && isDay(t.value) && t.value <= today() && t.value !== e.finished){ update(e, { finished: t.value }); patchRow(e); }
+    });
+    /* a new year moves the entry to its group: redrawn once the field is left */
+    Side.body.addEventListener("focusout", function(ev){
+      if (!Side.is("journal")) return;
+      var t = ev.target, e = t.dataset && t.dataset.jr === "date" ? byId(t.dataset.id) : null;
+      if (!e) return;
+      if (!isDay(t.value) || t.value > today()) t.value = e.finished;
+      /* not while a press is on its way to a button (that button must still be there to take the click):
+         the next redraw regroups then */
+      if (String(t.dataset.was).slice(0, 4) !== e.finished.slice(0, 4) && !pressing) setTimeout(function(){ refreshPanel(); }, 0);
+    });
+    var pressing = false;
+    Side.body.addEventListener("pointerdown", function(){ pressing = true; }, true);
+    ["pointerup", "pointercancel"].forEach(function(ev){ window.addEventListener(ev, function(){ pressing = false; }, true); });
+    Side.foot.addEventListener("click", function(ev){
+      if (!Side.is("journal")) return;
+      var b = ev.target.closest("button[data-jr]");
+      if (!b) return;
+      if (b.dataset.jr === "export") exportMd();
+      else if (b.dataset.jr === "clear") clear();
+    });
+    $("#libJournal").addEventListener("click", openPanel);
+
+    Menu.add({ order: 55, group: "reading", icon: ICONS.finished, label: "Mark as finished", run: function(){ openCard(true); },
+               show: function(){ return (state.mode === "doc" || state.mode === "pdf") && !!Library.currentId(); } });
+    Menu.add({ order: 61.5, group: "app", icon: ICONS.journal, label: "Reading journal", key: "J", run: openPanel });
+
+    /* for tests and other scripts */
+    window.llJournal = { entries: function(){ return list.map(function(e){ return Object.assign({}, e); }); }, ready: ready, openPanel: openPanel,
+                         openCard: function(){ openCard(true); }, closeCard: close, isOpen: isOpen, check: check, count: count,
+                         toMarkdown: toMarkdown, seen: function(){ return JSON.parse(JSON.stringify(seen)); }, clear: clear };
+    return { opened: opened, poke: poke, check: check, count: count, latestFor: latestFor, badge: function(id){
+               var e = latestFor(id);
+               if (!e) return "";
+               var words = "Finished" + (e.stars ? ", " + starWords(e.stars) : "");
+               return '<span class="lib-fin" role="img" title="' + words + '" aria-label="' + words + '">' + ICONS.check + (e.stars ? starsShow(e.stars, "lib-stars", true, false) : '') + '</span>';
+             },
+             openPanel: openPanel, openCard: openCard, clear: clear, ready: ready };
   })();
 
   /* ============================================================
@@ -7314,7 +7957,8 @@
     /* in Pages flow the middle tap toggles the bars (tapNav, registered later on the same
        elements, so this runs first): in zen it only reminds how to leave, once */
     function middleTap(e){
-      if (!on || !pagedActive() || e.target.closest("a")) return;
+      /* e-ink mode's middle turns the page like the rest of the right two-thirds */
+      if (!on || !pagedActive() || state.eink === true || e.target.closest("a")) return;
       var sel = window.getSelection();
       if (sel && sel.toString()) return;
       var r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
@@ -8716,7 +9360,7 @@
       if (!g) return;
       pad();
       mark(id, 700);
-      sheet.scrollTo({ top: Math.max(0, topOf(g) - strip.offsetHeight - 2), behavior: reduceMotion && reduceMotion.matches ? "auto" : "smooth" });
+      sheet.scrollTo({ top: Math.max(0, topOf(g) - strip.offsetHeight - 2), behavior: noMotion() ? "auto" : "smooth" });
     }
     return { build: build, pick: pick, mark: mark, go: go };
   })();
@@ -8984,6 +9628,8 @@
     if (sel && sel.toString()) return;
     var r = e.currentTarget.getBoundingClientRect();
     var x = (e.clientX - r.left) / r.width;
+    /* e-ink mode: the left third goes back, the rest forward, a whole page at a time */
+    if (state.eink === true){ turn(x < 1 / 3 ? -1 : 1); return; }
     if (x < 0.35) turn(-1);
     else if (x > 0.65) turn(1);
     else {
@@ -9043,6 +9689,7 @@
     add("i", "About this text", function(){ About.openPanel(); }, docOpen);
     add("?", "Keyboard shortcuts", function(){ openHelp(); });
     add("g", "Reading stats", function(){ Stats.openPanel(); });
+    add("j", "Reading journal", function(){ Journal.openPanel(); });
     var extra = [
       ["\u2190 \u2192, PgUp/PgDn, Space", "Turn pages (Pages flow)"], ["Home / End", "First / last page (Pages flow)"],
       ["Ctrl/\u2318+F", "Search"], ["Ctrl/\u2318+Tab", "Next tab"], ["Enter / Shift+Enter", "Next / previous match (in search)"],
@@ -10569,7 +11216,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
+  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, Dim: Dim, Eink: Eink, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset };
   window.Search = Search;
   window.Marks_highlightSelection = function(){ var m = Marks.highlightSelection(); if (m) Marks.toast("Highlighted"); };
   window.Marks_selectionOffsets = Marks.selectionOffsets;
@@ -10592,6 +11239,8 @@
   });
   applyTheme();
   applyType();
+  Eink.boot();
+  Dim.apply();
   $("#cSpread").checked = state.spread !== false;
   $("#cWake").checked = state.wake !== false;
   AutoTheme.apply();

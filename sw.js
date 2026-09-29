@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.28-31";
+const VERSION = "2026.09.29-32";
 const CACHE = "lamplight-" + VERSION;
 /* caches that outlive a release: shared files on their way in, and the natural voices — Best (the Kokoro model
    and its voice files, kept there by kokoro-js, 95 MB) and Fast (the Piper model and its config, kept there by

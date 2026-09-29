@@ -85,6 +85,10 @@ const goalToasts = (page) => page.evaluate(() => window.__toasts.filter((t) => /
   await page.clock.runFor(15000);
   s = await snap(page); t = s.days[today];
   R.check("reaching the end marks the book finished", s.books[id].finished === true, JSON.stringify(s.books[id]));
+  /* books finished are counted from the reading journal: the "Finished" card is up (eleven minutes read), and saved */
+  R.check("the Finished card comes up at the end", !!(await page.$("#finish.on")));
+  await page.click("#finSave");
+  R.check("saving puts the book in the reading journal", (await page.evaluate(() => window.llJournal.entries())).length === 1);
 
   await page.keyboard.press("g");
   R.check("g opens the panel", (await panelTitle(page)) === "Reading stats");
@@ -140,6 +144,7 @@ const goalToasts = (page) => page.evaluate(() => window.__toasts.filter((t) => /
   await page.click('#sideBody [data-goal="20"]');
   await page.keyboard.press("Escape");
   await page.reload({ waitUntil: "load" });
+  await page.evaluate(() => window.llJournal.ready);     /* the journal comes out of IndexedDB a moment after the page */
   s = await snap(page); w = await widget(page);
   R.check("goal and days persist across a reload", s.goal === 20 && s.days[today] && s.days[today].ms === m3 && s.books[id] && s.books[id].finished, JSON.stringify(s));
   R.check("widget is back on load", w.show && / · goal 20 min · 1 of 12 books this year$/.test(w.text), JSON.stringify(w));

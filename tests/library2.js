@@ -164,7 +164,7 @@ async function home(page){ await page.keyboard.press("h"); await page.waitForTim
   R.check("the menu opens the Storage panel", (await panelTitle(page)) === "Storage");
   let text = await panelText(page);
   R.check("rows for every kind of thing kept", /Books/.test(text) && /Reading positions/.test(text) && /Highlights and notes/.test(text) &&
-    /Cached translations/.test(text) && /Reading stats/.test(text) && /Saved themes/.test(text) && /App files and dictionary/.test(text), text.replace(/\n/g, " | ").slice(0, 320));
+    /Cached translations/.test(text) && /Reading stats/.test(text) && /Reading journal/.test(text) && /Saved themes/.test(text) && /App files and dictionary/.test(text), text.replace(/\n/g, " | ").slice(0, 320));
   R.check("books are counted and sized", /Books\n3 files\n[\d.]+ (KB|MB)/.test(text), text.replace(/\n/g, " | ").slice(0, 120));
   R.check("translations are counted as documents and single words", /Cached translations\n1 document · 2 words and sentences/.test(text), text.replace(/\n/g, " | "));
   const statDays = Object.keys(await page.evaluate(() => window.llStats.snapshot().days)).length;
@@ -280,7 +280,7 @@ async function home(page){ await page.keyboard.press("h"); await page.waitForTim
     await p2.screenshot({ path: path.join(SHOTS, "storage-" + name + ".png") });
     const shot = await p2.evaluate(() => ({ rows: document.querySelectorAll("#sideBody .so-row").length,
       over: document.documentElement.scrollWidth > window.innerWidth + 1 }));
-    R.check("screenshots " + name, shot.rows === 7 && !shot.over, JSON.stringify(shot));
+    R.check("screenshots " + name, shot.rows === 8 && !shot.over, JSON.stringify(shot));   /* seven kinds of thing kept (the reading journal among them), and the app files */
     note(p2, name);
     await c2.close();
   }

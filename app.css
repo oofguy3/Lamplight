@@ -206,6 +206,8 @@
   .chip:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
   .chip:active{transform:scale(.97);}
   .chip.on, .chip[aria-pressed="true"]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent); color:var(--ink); font-weight:600;}
+  .chip:disabled{cursor:default; border-style:dashed;}
+  .chip:disabled:hover{background:transparent;}
   /* segmented control: a pill holding its options; the chosen one is tinted */
   .seg{
     display:inline-flex; flex-wrap:nowrap; align-items:center; gap:2px; padding:3px;
@@ -756,6 +758,74 @@
     .so-meter{forced-color-adjust:none; background:GrayText;}
     .so-meter i{background:Highlight;}
   }
+
+  /* ---------- reading journal (Journal in app.js): the "Finished" card at the foot of the page,
+     the panel, the stars, and the check on a finished book in the library ---------- */
+  .lib-acts{display:flex; align-items:center; gap:2px; flex-wrap:wrap; justify-content:flex-end;}
+  .lib-fin{display:inline-flex; align-items:center; gap:3px; color:var(--accent); flex:none;}
+  .lib-fin > svg{width:15px; height:15px;}
+  .lib-stars{display:inline-flex; gap:1px;}
+  .lib-stars svg, .jr-s svg{width:11px; height:11px; fill:currentColor;}
+  #finish{
+    display:none; position:fixed; z-index:26; left:0; right:0; margin:0 auto; bottom:calc(var(--toastRow) + var(--updateH, 0px));
+    width:min(440px, calc(100% - 24px)); max-height:min(72vh, 480px); overflow-y:auto; overscroll-behavior:contain;
+    background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.22);
+    padding:10px 14px 14px 16px; font-family:var(--ui-font);
+  }
+  #finish.on{display:block; animation:drop .22s ease;}
+  #finish .recap-head > svg{width:20px; height:20px;}
+  #finish .recap-title{flex:1; min-width:0;}
+  .fin-book{margin:0 0 6px; font-size:0.8438rem; line-height:1.4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .fin-a{color:var(--muted);}
+  .fin-stars{margin:0 0 8px -6px;}
+  .fin-when{margin-top:8px;}
+  .fin-when label{min-width:0;}
+  .jr-pick{display:inline-flex; gap:0;}
+  .jr-star{
+    width:40px; height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0;
+    border:0; border-radius:10px; background:transparent; color:var(--muted); cursor:pointer;
+  }
+  .jr-star svg{width:26px; height:26px;}
+  .jr-star.on{color:var(--accent);}
+  .jr-star.on svg{fill:currentColor;}
+  .jr-star:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--accent);}
+  .jr-star:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
+  .jr-in{
+    width:100%; min-width:0; padding:8px 11px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink);
+    font-family:var(--ui-font); font-size:0.875rem;
+  }
+  .rowline .jr-in{flex:1; width:auto;}
+  /* the panel: a group per year, a row per book that opens to edit it */
+  .jr-year{padding:6px 0 10px;}
+  .jr-yh{margin:6px 2px 8px; font-variant-numeric:tabular-nums;}
+  .jr-list{list-style:none; margin:0; padding:0; display:grid; gap:8px;}
+  .jr-item{border:1px solid var(--line); border-radius:10px; transition:border-color .2s;}
+  .jr-item:hover, .jr-item.open{border-color:var(--accent);}
+  .jr-row{
+    display:block; width:100%; text-align:left; padding:10px 12px 9px; border:0; border-radius:10px; background:transparent; color:var(--ink);
+    font-family:var(--ui-font); cursor:pointer;
+  }
+  .jr-t{display:block; font-family:var(--reader-font); font-size:0.9688rem; line-height:1.35;}
+  .jr-a{display:block; font-size:0.7812rem; color:var(--muted); margin-top:1px;}
+  .jr-s{display:flex; gap:2px; margin-top:5px; color:var(--accent);}
+  .jr-s i{color:color-mix(in srgb, var(--muted) 45%, transparent);}
+  .jr-s i.on{color:var(--accent);}
+  .jr-s i:not(.on) svg{fill:none;}
+  .jr-n{display:block; font-size:0.8438rem; line-height:1.45; margin-top:5px;}
+  .jr-d{display:block; font-size:0.7188rem; color:var(--muted); margin-top:5px; font-variant-numeric:tabular-nums;}
+  .jr-ed{display:grid; gap:8px; padding:4px 12px 12px; border-top:1px solid color-mix(in srgb, var(--line) 60%, transparent);}
+  .jr-ed .rowline label, .jr-l{font-size:0.8125rem; color:var(--muted); min-width:74px;}
+  .jr-ed .jr-star{width:36px; height:36px;}
+  .jr-ed .jr-star svg{width:22px; height:22px;}
+  .jr-acts{display:flex; gap:8px; flex-wrap:wrap; margin-top:2px;}
+  .jr-acts .chip, .st-journal{display:inline-flex; align-items:center; gap:7px; font-size:0.7812rem; padding:7px 12px;}
+  .jr-acts .chip svg, .st-journal svg{width:16px; height:16px; flex:none; color:var(--accent);}
+  @media (pointer: coarse){ .jr-star, .jr-ed .jr-star{width:44px; height:44px;} .jr-acts .chip, .st-journal{min-height:40px;} }
+  @media (forced-colors: active){
+    .jr-star.on, .jr-s i.on, .lib-fin{color:Highlight;}
+    .jr-item{border-color:ButtonText;}
+  }
+  @media print{ #finish{display:none !important;} }
 
   #status{max-width:var(--w); margin:30px auto; text-align:center; color:var(--muted); font-size:0.875rem; display:none;}
 
@@ -1334,7 +1404,7 @@
      translation pill step up over it, so it never hides them */
   body{--toastRow:calc(var(--aboveDock) + 6px);}
   body.auto-on{--toastRow:calc(var(--aboveDock) + 58px);}
-  #toast, #updateToast, #trStatus{
+  #toast, #updateToast, #trStatus, #einkToast{
     position:fixed; left:50%; bottom:var(--toastRow); z-index:70; transform:translateX(-50%);
     display:flex; align-items:center; justify-content:center; gap:10px; width:max-content; max-width:calc(100% - 32px);
     background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:12px;
@@ -1345,22 +1415,24 @@
   #toast{opacity:0; pointer-events:none; transform:translateX(-50%) translateY(12px); text-align:center; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
   #toast.on{opacity:1; transform:translateX(-50%);}
   #updateToast{z-index:71; padding:8px 8px 8px 14px;}
+  /* the one-time offer of e-ink mode (Eink in app.js): the update offer's shape, over it if both show */
+  #einkToast{z-index:72; padding:8px 8px 8px 14px; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
   #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 52px + var(--updateH, 0px)); padding:8px 8px 8px 14px; font-variant-numeric:tabular-nums;}
   #trStatus.on{display:flex;}
   #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   /* their buttons are chips */
-  #updateToast button, #trStatus .tr-x{
+  #updateToast button, #trStatus .tr-x, #einkToast button{
     flex:none; border:1px solid var(--line); border-radius:999px; padding:7px 12px; background:transparent; color:var(--ink);
     font-family:var(--ui-font); font-size:0.78rem; font-weight:600; cursor:pointer; transition:border-color .2s, background .2s;
   }
-  #updateToast button:hover, #trStatus .tr-x:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
-  #updateToast #updateReload{background:var(--accent); border-color:var(--accent); color:var(--panel);}
-  #updateToast #updateReload:hover{background:var(--accent);}
-  #updateToast #updateLater{width:34px; height:34px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:1.125rem; font-weight:400; line-height:1; color:var(--muted);}
-  #updateToast #updateLater svg{width:18px; height:18px;}
+  #updateToast button:hover, #trStatus .tr-x:hover, #einkToast button:hover{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  #updateToast #updateReload, #einkToast #einkYes{background:var(--accent); border-color:var(--accent); color:var(--panel);}
+  #updateToast #updateReload:hover, #einkToast #einkYes:hover{background:var(--accent);}
+  #updateToast #updateLater, #einkToast #einkNo{width:34px; height:34px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:1.125rem; font-weight:400; line-height:1; color:var(--muted);}
+  #updateToast #updateLater svg, #einkToast #einkNo svg{width:18px; height:18px;}
   @media (forced-colors: active){
-    #toast, #updateToast, #trStatus, #progressInfo, #autoBar, #moreMenu, #moreMenu button, #side .side-switch button, #side .side-x{border:1px solid ButtonText;}
-    #updateToast button, #trStatus .tr-x, #autoBar button{border:1px solid ButtonText;}
+    #toast, #updateToast, #trStatus, #einkToast, #progressInfo, #autoBar, #moreMenu, #moreMenu button, #side .side-switch button, #side .side-x{border:1px solid ButtonText;}
+    #updateToast button, #trStatus .tr-x, #einkToast button, #autoBar button{border:1px solid ButtonText;}
     #moreMenu button.on::before{background:Highlight;}
     #side .side-switch button[aria-pressed="true"]{border-width:2px; border-color:Highlight;}
   }
@@ -1451,6 +1523,85 @@
   @media print{ #warmth{display:none !important;} }
   @media (forced-colors: active){ #warmth{display:none !important;} }
 
+  /* ---------- extra dim ---------- */
+  /* a fixed sheet of black over the whole screen, above every other layer (the bars, the drawers,
+     the popovers, the toasts, the read-aloud bar, the warm film) and never in the way of a tap.
+     app.js sets its opacity, 0–0.85, from the Dim setting (Dim); it fades over 300 ms, at once
+     with reduced motion (the rule below). Black stays black under forced colours: the point is
+     less light, whatever the palette. */
+  #dim{
+    position:fixed; inset:0; z-index:2147483647; pointer-events:none;
+    background:#000; opacity:0; transition:opacity .3s ease; forced-color-adjust:none;
+  }
+  @media print{ #dim{display:none !important;} }
+
+  /* ---------- e-ink mode (Eink in app.js) ----------
+     Pure black on pure white for e-paper screens, whatever the theme: the theme's colours are
+     replaced, every grey, tint, shadow, gradient and see-through layer becomes black or white,
+     borders are 1px black, nothing transitions, animates or scrolls smoothly, and the marks in the
+     text are lines instead of fills (e-paper smears tints and ghosts on motion). A chosen control
+     is drawn inverted, white on black. Images and the PDF pages are left as they are; the warm
+     film and the extra dim are left out. */
+  body.eink{
+    --bg:#fff; --ink:#000; --muted:#000; --panel:#fff; --line:#000; --accent:#000; --warn:#000;
+    background:#fff; color:#000; color-scheme:light;
+  }
+  body.eink #customRow{--warn:#000;}
+  html:has(> body.eink){scroll-behavior:auto !important;}
+  body.eink, body.eink *, body.eink *::before, body.eink *::after{
+    transition:none !important; animation:none !important; scroll-behavior:auto !important;
+    box-shadow:none !important; text-shadow:none !important;
+  }
+  body.eink *:not(img):not(canvas), body.eink *::before, body.eink *::after{
+    background-image:none !important; -webkit-mask:none !important; mask:none !important; border-width:1px !important;
+  }
+  body.eink #warmth, body.eink #dim{display:none !important;}
+  /* the scrims let the page show as it is */
+  body.eink #popScrim, body.eink #moreScrim, body.eink #sideScrim, body.eink #dictScrim, body.eink #ruler .rt, body.eink #ruler .rb,
+  body.eink.dragging::after{background:transparent !important;}
+  /* a hover adds nothing (a chosen or filled control keeps its fill) */
+  body.eink :is(button, a, summary, [role="button"], [role="tab"], .tab-x, .toc-item, .find-item, .figrow):hover:not(.primary):not(.on):not(.cur):not(.go):not(.dot):not(.sw):not(#updateReload):not(#einkYes):not([aria-pressed="true"]):not([aria-selected="true"]):not([aria-expanded="true"]){background-color:transparent !important;}
+  /* a chosen control: white on black */
+  body.eink :is(.chip.on, .chip[aria-pressed="true"], .tab.on, .sheet-tabs button.on, .font-item[aria-pressed="true"], #side .side-switch button[aria-pressed="true"],
+    .bar .ctl[aria-expanded="true"], .find-item.cur, #dictCard [role=tab][aria-selected=true], #dictCard .pill.acc, #dictCard .chg[aria-expanded=true],
+    #dictCard .figrow[aria-pressed=true], #dictCard .act[aria-pressed=true]){
+    --ink:#fff; --muted:#fff; --accent:#fff; --line:#fff; background:#000 !important; color:#fff !important; border-color:#000 !important;
+  }
+  /* tinted tiles and pills: white, held by a black rule */
+  body.eink :is(.key-row kbd, #moreMenu kbd, #tts .tts-sleep, .meter-row.low, #dictCard .mark, #dictCard .quote, #dictCard .bdg, #dictCard .chgnote,
+    #dictCard .role, #dictCard .pill.ink, #dictCard .quote mark.fig){background:transparent !important;}
+  body.eink :is(#dictCard .mark, #dictCard .bdg, #dictCard .chgnote, #dictCard .role){border:1px solid #000;}
+  /* tracks white with a black rule, what they measure black */
+  body.eink :is(.meter-bar, .st-pbar, .so-meter, .lib-bar, .rsvp-prog, .about-scale, .st-bar:not(.met)){background:#fff !important; border:1px solid #000;}
+  body.eink .st-bar.met{background:#000 !important;}
+  body.eink .cc-ring, body.eink .st-ring{background:conic-gradient(#000 var(--p), #fff 0) !important; border:1px solid #000;}
+  body.eink .st-day.half{background:linear-gradient(90deg, #000 50%, #fff 50%) !important; border-color:#000;}
+  body.eink :is(.lib-type, .lib-done, .st-book, .so-row, .jr-ed, .mark-item .mark-text.q, #ruler .rl){border-color:#000 !important;}
+  body.eink .jr-s i{color:#000;}
+  body.eink .hero-lamp .glow, body.eink .hero-lamp .cone{display:none;}
+  /* greyed-out controls are whole again; a disabled one is dashed (a hidden one stays hidden) */
+  body.eink :is(.group.dim, .tts-panel .subgroup.dim, .rowline.dim-row .seg, .two-weights input[type=range], #tts.fetching #ttsPlay, :disabled, [aria-disabled="true"]),
+  body.eink .rsvp-word::before, body.eink .rsvp-word::after{opacity:1 !important;}
+  body.eink :is(button:disabled, [aria-disabled="true"]){border-style:dashed !important;}
+  body.eink #moreMenu button[disabled]{border:1px dashed #000;}
+  body.eink .lib-move:disabled{opacity:0 !important;}
+  /* marks in the text: lines, not fills — a highlight is underlined (a dotted rule under it when it
+     has a note), the sentence read aloud is underlined heavily, search hits dotted and the current
+     one ruled above and below, the word being looked up outlined */
+  body.eink #doc mark.ll-mark, body.eink #doc mark.ll-mark[data-color]{
+    background:transparent !important; color:#000;
+    text-decoration:underline solid #000; text-decoration-thickness:2px; text-underline-offset:.16em; text-decoration-skip-ink:none;
+  }
+  body.eink #doc mark.ll-mark.noted{border-bottom:1px dotted #000;}
+  body.eink ::highlight(ll-speak){background-color:transparent; color:#000; text-decoration:underline solid #000 3px;}
+  body.eink ::highlight(ll-speak-dialogue){background-color:transparent; color:#000; text-decoration:underline dashed #000 3px;}
+  body.eink ::highlight(ll-find){background-color:transparent; color:#000; text-decoration:underline dotted #000 2px;}
+  body.eink ::highlight(ll-find-cur){background-color:transparent; color:#000; text-decoration:underline overline solid #000 2px;}
+  body.eink .ll-hit{background:transparent !important; color:#000; outline:2px solid #000; outline-offset:1px;}
+  body.eink .rsvp-ctx mark{background:transparent !important; text-decoration:underline solid #000 2px;}
+  /* the focus ring: solid black, 2px */
+  body.eink :focus-visible:not(#main, #pop, #dictCard, #dictCard .panel, .lib-open){outline:2px solid #000 !important;}
+
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}
   }
@@ -1465,7 +1616,7 @@
     html, body{background:#fff !important; color:#000 !important; height:auto !important; min-height:0 !important; overflow:visible !important;}
     *{transition:none !important; animation:none !important;}
     header, #sheet, #pager, #tts, #autoBar, #side, #sideScrim, #dictCard, #dictScrim, #dictPill, #markPop, #progress, #progressInfo,
-    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #pdf, .skip{display:none !important;}
+    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #einkToast, #pdf, .skip{display:none !important;}
     body > main{padding:0 !important;}
     #docView{display:block !important; position:static !important; width:auto !important; max-width:none !important; height:auto !important; overflow:visible !important; padding:0 !important; margin:0 !important;}
     /* Pages flow sets the columns and the height inline, so these need !important: one long column again */
