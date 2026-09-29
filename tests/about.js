@@ -108,14 +108,14 @@ const num = (s) => parseFloat(String(s || "").replace(/,/g, ""));
   R.check("opening another file closes the panel", !(await sideOpen()));
   await openAbout(page);
   t = await tiles(page);
-  R.check("the panel then counts the new document", (await aboutName()) === "sample.txt" && num(t["Words"]) > 200 && num(t["Words"]) !== mdWords, (await aboutName()) + " " + JSON.stringify(t));
+  R.check("the panel then counts the new document", (await aboutName()) === "sample" && num(t["Words"]) > 200 && num(t["Words"]) !== mdWords, (await aboutName()) + " " + JSON.stringify(t));
   /* the same on a tab switch (both files are open now) */
   await page.keyboard.press("Control+Tab");
   await page.waitForFunction(() => /sample\.md/.test(document.title), null, { timeout: 15000 });
   R.check("switching tabs closes the panel", !(await sideOpen()));
   await openAbout(page);
   t = await tiles(page);
-  R.check("reopened, it counts the tab's document", (await aboutName()) === "sample.md" && num(t["Words"]) === mdWords, (await aboutName()) + " " + t["Words"]);
+  R.check("reopened, it counts the tab's document", (await aboutName()) === "The Lamp" && num(t["Words"]) === mdWords, (await aboutName()) + " " + t["Words"]);
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
   /* a count still under way is dropped when the document changes: a long text, then a switch mid-count */
@@ -130,7 +130,7 @@ const num = (s) => parseFloat(String(s || "").replace(/,/g, ""));
   await page.waitForTimeout(1500);
   R.check("a count under way is dropped when another file opens", counting && !(await sideOpen()) && !(await page.evaluate(() => !!document.querySelector("#sideBody .about-tile"))), "counting=" + counting);
   await openAbout(page);
-  R.check("afterwards the panel shows the new document", (await aboutName()) === "sample.md" && num((await tiles(page))["Words"]) === mdWords, (await aboutName()) + " " + (await tiles(page))["Words"]);
+  R.check("afterwards the panel shows the new document", (await aboutName()) === "The Lamp" && num((await tiles(page))["Words"]) === mdWords, (await aboutName()) + " " + (await tiles(page))["Words"]);
   await page.keyboard.press("Escape");
   R.check("no page errors (markdown)", !(page._errors || []).length, (page._errors || []).join(" | "));
   await page.close();

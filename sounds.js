@@ -423,41 +423,49 @@
   if (window.MutationObserver) new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["data-mode"] });
 
   /* ============================================================
-     3. The panel: a chip per sound to play it alone (again to stop),
-     a slider each to blend them, the master volume, and the switch
+     3. The panel: the switch on top, a tile per sound that adds it to
+     what is playing or takes it out (from silence, a tile plays its
+     sound alone), the volume, and the blend of the five folded away
+     under "Mix"
      ============================================================ */
   function icon(d){
-    return '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    return '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
       d.split(" | ").map(function(p){ return '<path d="' + p + '"/>'; }).join("") + '</svg>';
   }
   function nameOf(id){ for (var i = 0; i < SOUNDS.length; i++) if (SOUNDS[i].id === id) return SOUNDS[i].name; return id; }
+  function listOf(ids){
+    var names = ids.map(nameOf);
+    return names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0];
+  }
   function stateText(){
     var on = playingIds();
-    if (!cfg.on || !on.length) return "Off.";
-    var names = on.map(nameOf), list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0];
-    if (!docOpen()) return list + " — plays while a book is open.";
-    if (playing && ctx && ctx.state !== "running") return list + " — tap anywhere to start the sound.";
-    return list + (names.length > 1 ? " are playing." : " is playing.");
+    if (!cfg.on || !on.length) return on.length ? "Off \u2014 the switch plays " + listOf(on) + " again." : "Off \u2014 tap a sound to start it.";
+    var list = listOf(on);
+    if (!docOpen()) return list + " \u2014 plays while a book is open.";
+    if (playing && ctx && ctx.state !== "running") return list + " \u2014 tap anywhere to start the sound.";
+    return list + (on.length > 1 ? " are playing." : " is playing.");
   }
+  var mixOpen = false;
   function render(body){
-    var chips = SOUNDS.map(function(s){
-      return '<button type="button" class="chip" data-snd="' + s.id + '" aria-pressed="false">' + icon(s.icon) + '<span>' + esc(s.name) + '</span></button>';
+    var tiles = SOUNDS.map(function(s){
+      return '<button type="button" class="chip snd-tile" data-snd="' + s.id + '" aria-pressed="false">' + icon(s.icon) + '<span>' + esc(s.name) + '</span></button>';
     }).join("");
     var rows = SOUNDS.map(function(s){
       return '<div class="rowline"><label for="snd-' + s.id + '">' + esc(s.name) + '</label><input type="range" id="snd-' + s.id + '" data-mix="' + s.id + '" min="0" max="100" step="1">' +
         '<span class="val" id="snd-' + s.id + 'V"></span></div>';
     }).join("");
-    /* on a phone the sheet shows about its first 580 px: the switch, the chips, the volume and what is playing (or waiting
-       for a tap) come first, the blend and the notes after */
+    /* one clear control: the switch says whether anything plays, the tiles say what, and the blend
+       of the five (the same sliders as ever) waits under Mix for whoever wants it */
     body.innerHTML = '<div class="snd-panel">' +
-      '<div class="rowline"><label class="check"><input type="checkbox" id="sndOn">Play background sounds</label></div>' +
-      '<div class="chips snd-chips" id="sndChips" role="group" aria-label="Play one sound on its own">' + chips + '</div>' +
+      '<div class="rowline snd-master"><label class="check"><input type="checkbox" role="switch" id="sndOn" aria-describedby="sndState">Play background sounds</label></div>' +
+      '<p class="hint cap snd-state" id="sndState" aria-live="polite"></p>' +
+      '<div class="snd-tiles" id="sndChips" role="group" aria-label="Sounds: tap to add or take out">' + tiles + '</div>' +
       '<div class="rowline"><label for="sndMaster">Volume</label><input type="range" id="sndMaster" min="0" max="100" step="1"><span class="val" id="sndMasterV"></span></div>' +
-      '<p class="hint snd-state" id="sndState" aria-live="polite"></p>' +
-      '<div class="snd-mix" role="group" aria-labelledby="sndMixL"><div class="label sec" id="sndMixL">Mix</div>' + rows + '</div>' +
-      '<p class="hint">Tap a sound to play it on its own, and again to stop it. The sliders blend several; 0 turns one off.</p>' +
-      '<p class="hint">Made on this device as they play — no recordings, nothing to download. They play while a book is open, under read aloud too, and pause when you leave the page.</p>' +
+      '<details class="pop-more snd-mix" id="sndMix"' + (mixOpen ? " open" : "") + '><summary>Mix</summary><div class="snd-mix-rows" role="group" aria-label="How loud each sound is">' + rows + '</div></details>' +
+      '<p class="hint">Tap a sound to start it, or to add it to what is playing; tap it again to take it out. Mix sets how loud each one is.</p>' +
+      '<p class="hint">Made on this device as they play \u2014 no recordings, nothing to download. They play while a book is open, under read aloud too, and pause when you leave the page.</p>' +
       '</div>';
+    body.querySelector("#sndMix").addEventListener("toggle", function(e){ mixOpen = e.target.open; });
     paint(body);
   }
   function paint(body){
@@ -486,6 +494,19 @@
     if (el){ var t = stateText(); if (el.textContent !== t) el.textContent = t; }
   }
   function changed(){ save(); sync(); paint(); }
+  /* a tile: from silence it plays its sound alone; while sounds play it adds its own, or takes it
+     out (the last one out turns them off, and the blend is kept for the switch) */
+  function toggle(id){
+    if (ids.indexOf(id) < 0) return;
+    if (!cfg.on){ solo(id); return; }
+    if (cfg.mix[id] > 0){
+      if (playingIds().length === 1){ cfg.on = false; changed(); return; }
+      cfg.keep = cfg.keep || {}; cfg.keep[id] = cfg.mix[id];
+      cfg.mix[id] = 0; changed(); return;
+    }
+    cfg.mix[id] = (cfg.keep && cfg.keep[id]) || 60; cfg.last = id;
+    ensure(); changed();
+  }
   /* one sound on its own; the same chip again stops it */
   function solo(id){
     if (ids.indexOf(id) < 0) return;
@@ -518,7 +539,7 @@
     Side.body.addEventListener("click", function(e){
       if (!Side.is("sounds")) return;
       var ch = e.target.closest("#sndChips .chip");
-      if (ch) solo(ch.dataset.snd);
+      if (ch) toggle(ch.dataset.snd);
     });
     Side.body.addEventListener("input", function(e){
       if (!Side.is("sounds")) return;
@@ -545,8 +566,13 @@
       return { rms: Math.sqrt(sum / n), peak: peak };
     });
   }
+  /* the menu's entry: while sounds play it stops them; else it plays the last blend again (the panel
+     opens instead the very first time, when there is no blend to go back to) */
+  function isOn(){ return cfg.on && playingIds().length > 0; }
+  function describe(){ return listOf(playingIds().length ? playingIds() : [cfg.last]); }
   window.llSounds = {
-    openPanel: openPanel, sync: sync, solo: solo, setMix: setMix, setOn: setOn, setMaster: setMaster, sounds: ids.slice(),
+    openPanel: openPanel, sync: sync, solo: solo, toggle: toggle, setMix: setMix, setOn: setOn, setMaster: setMaster, sounds: ids.slice(),
+    isOn: isOn, describe: describe,
     settings: function(){ return JSON.parse(JSON.stringify(cfg)); },
     isPlaying: function(){ return playing; }, context: function(){ return ctx; }, layers: function(){ return Object.keys(layers); },
     fade: function(){ return fadeG ? fadeG.gain.value : 0; }, measure: measure

@@ -8,6 +8,137 @@
     set: function(k, v){ try { localStorage.setItem(k, v); } catch(_){} },
     remove: function(k){ try { localStorage.removeItem(k); } catch(_){} }
   };
+  /* phones: a window 560px wide or less, the width at which the popovers, panels and cards become
+     bottom sheets; held in one hand: the same with a finger as the pointer (PhoneBar) */
+  var PHONE_MQ = window.matchMedia ? window.matchMedia("(max-width:560px)") : null;
+  function isPhone(){ return !!(PHONE_MQ && PHONE_MQ.matches); }
+  /* a book is named by its own title (an EPUB's metadata, the first heading of a Markdown, HTML or
+     DOCX file, a DOCX's core title); without one, by its file name less the extension */
+  function bareName(n){ n = String(n || ""); return n.replace(/\.[A-Za-z0-9]{1,8}$/, "") || n; }
+  function bookName(b){ return b ? (b.title || bareName(b.name)) : ""; }
+  /* the title in the bar. Its text is the title alone — the notes export, printing, About and the
+     lock-screen controls read it; the section follows it from a data attribute (Section) */
+  function setFname(t){
+    var f = document.getElementById("fname");
+    f.textContent = "";
+    if (t){ var sp = document.createElement("span"); sp.className = "fn-t"; sp.textContent = t; f.appendChild(sp); }
+  }
+
+  /* a long press (about half a second on the spot) runs `fn` instead of the tap: the click the
+     finger's lift would send is swallowed, and so is the context menu a long press brings up on
+     some phones. Keys keep the tap (the same actions have their own keys and buttons) */
+  function longPress(el, fn, ms){
+    if (!el) return;
+    var timer = null, x = 0, y = 0, fired = 0;
+    function clear(){ clearTimeout(timer); timer = null; }
+    el.addEventListener("pointerdown", function(e){
+      if (e.button !== undefined && e.button !== 0) return;
+      clear(); x = e.clientX; y = e.clientY;
+      timer = setTimeout(function(){
+        timer = null; fired = Date.now();
+        if (navigator.vibrate) try { navigator.vibrate(12); } catch(_){}
+        fn();
+      }, ms || 520);
+    });
+    el.addEventListener("pointermove", function(e){ if (timer && (Math.abs(e.clientX - x) > 10 || Math.abs(e.clientY - y) > 10)) clear(); });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(function(t){ el.addEventListener(t, clear); });
+    el.addEventListener("click", function(e){ if (Date.now() - fired < 900){ fired = 0; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+    el.addEventListener("contextmenu", function(e){ if (timer || Date.now() - fired < 900) e.preventDefault(); });
+  }
+
+  /* swipe a bottom sheet down to close it (phones). From its handle or its head the sheet follows the
+     finger one to one; past 80px, or on a quick flick, it closes through `close` — the sheet's own
+     close, so focus and the inert page come back exactly as they do for its × — else it springs
+     back. The springs are the sheet's own transitions: none under reduced motion or in e-ink mode. */
+  /* sel: for a sheet drawn anew each time it opens, the parts of it (under a grip) that drag */
+  function dragToClose(sheet, grips, close, when, sel){
+    if (!sheet || !window.PointerEvent) return;
+    var id = null, y0 = 0, dy = 0, lastY = 0, lastT = 0, v = 0, moved = 0, grip = null;
+    function start(e){
+      if (id !== null || !isPhone() || (when && !when()) || (e.button !== undefined && e.button !== 0)) return;
+      if (sel && !(e.target.closest && e.target.closest(sel))) return;
+      /* a control in the head (the ×, a switcher button) keeps its tap; the handle and the words drag */
+      if (e.target.closest && e.target.closest("button, a, input, select, textarea, summary, [role=tab], [tabindex='0']") && !e.target.closest("[data-grip]")) return;
+      id = e.pointerId; y0 = lastY = e.clientY; lastT = Date.now(); dy = 0; v = 0; grip = e.currentTarget;
+    }
+    function move(e){
+      if (e.pointerId !== id) return;
+      dy = Math.max(0, e.clientY - y0);
+      var now = Date.now();
+      if (now > lastT){ v = (e.clientY - lastY) / (now - lastT); lastY = e.clientY; lastT = now; }
+      if (dy > 4){
+        /* a drag, not a tap: the grip keeps the pointer from here (taken at once, it would steal the
+           handle's own click) */
+        if (grip){ try { grip.setPointerCapture(id); } catch(_){} grip = null; }
+        sheet.style.transition = "none"; sheet.style.transform = "translateY(" + Math.round(dy) + "px)"; sheet.classList.add("dragging");
+      }
+    }
+    function end(e){
+      if (e.pointerId !== id) return;
+      id = null; grip = null;
+      var was = dy > 4, go = dy > 80 || (dy > 24 && v > 0.55);
+      sheet.classList.remove("dragging");
+      sheet.style.transition = ""; sheet.style.transform = "";
+      if (was) moved = Date.now();
+      if (go) close();
+    }
+    grips.forEach(function(g){
+      if (!g) return;
+      g.addEventListener("pointerdown", start);
+      g.addEventListener("pointermove", move);
+      g.addEventListener("pointerup", end);
+      g.addEventListener("pointercancel", function(e){ if (e.pointerId === id){ dy = 0; end(e); } });
+      /* the tap a drag ends with is not a tap on the handle */
+      g.addEventListener("click", function(e){ if (Date.now() - moved < 400){ moved = 0; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+    });
+  }
+
+  /* ---------- sliders: the part up to the thumb is filled (app.css draws it from --v) ----------
+     Every range input carries --v, its value as a share of its span: kept on input, on every
+     .value a script sets (a preference restored, the other copy of a pair kept in step), when its
+     min, max or value attribute changes, and for the sliders the panels draw later */
+  var RangeFill = (function(){
+    var SEL = 'input[type="range"]';
+    function fill(r){
+      if (!r || r.type !== "range") return;
+      var min = r.min === "" ? 0 : +r.min, max = r.max === "" ? 100 : +r.max, v = +r.value;
+      var p = max > min ? (v - min) / (max - min) * 100 : 0;
+      r.style.setProperty("--v", Math.max(0, Math.min(100, p)).toFixed(2) + "%");
+    }
+    function sweep(root){ Array.prototype.forEach.call((root || document).querySelectorAll(SEL), fill); }
+    document.addEventListener("input", function(e){ fill(e.target); }, true);
+    document.addEventListener("change", function(e){ fill(e.target); }, true);
+    try {
+      var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (d && d.get && d.set && d.configurable){
+        Object.defineProperty(HTMLInputElement.prototype, "value", { configurable: true, enumerable: d.enumerable, get: d.get,
+          set: function(v){ d.set.call(this, v); if (this.type === "range") fill(this); } });
+      }
+    } catch(_){}
+    if (window.MutationObserver){
+      new MutationObserver(function(recs){
+        for (var i = 0; i < recs.length; i++){
+          var rec = recs[i], t = rec.target;
+          if (rec.type === "attributes"){ if (t.type === "range") fill(t); continue; }
+          if (t.closest && t.closest("#doc, #pdf")) continue;
+          for (var j = 0; j < rec.addedNodes.length; j++){
+            var n = rec.addedNodes[j];
+            if (n.nodeType !== 1) continue;
+            if (n.type === "range") fill(n); else if (n.querySelector && n.querySelector(SEL)) sweep(n);
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["min", "max", "value"] });
+    }
+    sweep();
+    return { fill: fill, sweep: sweep };
+  })();
+  /* the bar lifts off the page (a shadow on a light theme, app.css) once there is text under it */
+  (function(){
+    var on = null;
+    function check(){ var s = window.scrollY > 2; if (s !== on){ on = s; document.body.classList.toggle("scrolled", s); } }
+    window.addEventListener("scroll", check, { passive: true });
+    check();
+  })();
 
   /* parsers are separate files, fetched the first time a file type needs them
      (and precached by the service worker so that still works offline) */
@@ -59,44 +190,47 @@
     }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
-  /* Built-in themes. Every pair the reader meets (text, secondary text and accent on the page
-     and on the panel) is at least 4.5:1 — tests/themes.js audits this table. */
+  /* Built-in themes. Every pair the reader meets (text, secondary text, the accent and the lamp
+     on the page and on the panel) is at least 4.5:1 — tests/themes.js audits this table.
+     `lamp` is the warm "light, brand and now" colour (the progress line, the wordmark, the primary
+     buttons, the stars): a deep brass on the light pages, honey on the dark ones, and the theme's
+     own accent where that is already warm or where the colour is the theme's whole character. */
   var THEMES = {
     /* light */
-    day:   {name:"Day",    bg:"#EDEDE6", ink:"#1F2323", muted:"#646B68", panel:"#F5F5EF", line:"#D8D9CF", accent:"#2F6D5B"},
-    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#86551A"},
-    mist:  {name:"Mist",   bg:"#E7EBEE", ink:"#25303A", muted:"#5D6A76", panel:"#F0F3F5", line:"#D1D9DF", accent:"#3C6E93"},
-    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#A8495A"},
-    paper:     {name:"Paper",     bg:"#FAFAF7", ink:"#141414", muted:"#5C5C58", panel:"#FFFFFF", line:"#E1E1DA", accent:"#BE2A24"},
-    parchment: {name:"Parchment", bg:"#F1E4C6", ink:"#2C2114", muted:"#67563A", panel:"#F7ECD4", line:"#DCCBA3", accent:"#8B2F2A"},
-    linen:     {name:"Linen",     bg:"#F3EFE6", ink:"#2B2A26", muted:"#65625A", panel:"#FAF8F1", line:"#DDD8CB", accent:"#5A6828"},
-    sage:      {name:"Sage",      bg:"#E3EADD", ink:"#1F2A22", muted:"#556358", panel:"#EDF2E8", line:"#CAD5C3", accent:"#A2502E"},
-    lavender:  {name:"Lavender",  bg:"#ECE7F4", ink:"#29233A", muted:"#605876", panel:"#F4F1FA", line:"#D6CFE4", accent:"#6A4DB5"},
-    sky:       {name:"Sky",       bg:"#E2EDF7", ink:"#17293A", muted:"#4F6274", panel:"#EEF5FB", line:"#C7D8E7", accent:"#2068A8"},
-    peach:     {name:"Peach",     bg:"#FBE7DA", ink:"#3B2A21", muted:"#765A4D", panel:"#FDF1E8", line:"#EBD1C0", accent:"#146C72"},
-    newsprint: {name:"Newsprint", bg:"#E3E2DC", ink:"#2B2B2B", muted:"#5E5E5B", panel:"#EBEAE5", line:"#CDCCC5", accent:"#A82424"},
-    mint:      {name:"Mint",      bg:"#DEF2E8", ink:"#153128", muted:"#48685C", panel:"#EAF7F0", line:"#C1DFD1", accent:"#0D7566"},
+    day:   {name:"Day",    bg:"#EDEDE6", ink:"#1F2323", muted:"#646B68", panel:"#F5F5EF", line:"#D8D9CF", accent:"#2F6D5B", lamp:"#955F0F"},
+    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#86551A", lamp:"#86551A"},
+    mist:  {name:"Mist",   bg:"#E7EBEE", ink:"#25303A", muted:"#5D6A76", panel:"#F0F3F5", line:"#D1D9DF", accent:"#3C6E93", lamp:"#905C0E"},
+    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#A8495A", lamp:"#905C0E"},
+    paper:     {name:"Paper",     bg:"#FAFAF7", ink:"#141414", muted:"#5C5C58", panel:"#FFFFFF", line:"#E1E1DA", accent:"#BE2A24", lamp:"#9E6510"},
+    parchment: {name:"Parchment", bg:"#F1E4C6", ink:"#2C2114", muted:"#67563A", panel:"#F7ECD4", line:"#DCCBA3", accent:"#8B2F2A", lamp:"#8B590E"},
+    linen:     {name:"Linen",     bg:"#F3EFE6", ink:"#2B2A26", muted:"#65625A", panel:"#FAF8F1", line:"#DDD8CB", accent:"#5A6828", lamp:"#955F0F"},
+    sage:      {name:"Sage",      bg:"#E3EADD", ink:"#1F2A22", muted:"#556358", panel:"#EDF2E8", line:"#CAD5C3", accent:"#A2502E", lamp:"#905C0E"},
+    lavender:  {name:"Lavender",  bg:"#ECE7F4", ink:"#29233A", muted:"#605876", panel:"#F4F1FA", line:"#D6CFE4", accent:"#6A4DB5", lamp:"#905C0E"},
+    sky:       {name:"Sky",       bg:"#E2EDF7", ink:"#17293A", muted:"#4F6274", panel:"#EEF5FB", line:"#C7D8E7", accent:"#2068A8", lamp:"#955F0F"},
+    peach:     {name:"Peach",     bg:"#FBE7DA", ink:"#3B2A21", muted:"#765A4D", panel:"#FDF1E8", line:"#EBD1C0", accent:"#146C72", lamp:"#905C0E"},
+    newsprint: {name:"Newsprint", bg:"#E3E2DC", ink:"#2B2B2B", muted:"#5E5E5B", panel:"#EBEAE5", line:"#CDCCC5", accent:"#A82424", lamp:"#8B590E"},
+    mint:      {name:"Mint",      bg:"#DEF2E8", ink:"#153128", muted:"#48685C", panel:"#EAF7F0", line:"#C1DFD1", accent:"#0D7566", lamp:"#955F0F"},
     /* dark */
-    dusk:  {name:"Dusk",   bg:"#14161B", ink:"#D6D3C8", muted:"#8E9088", panel:"#1B1E25", line:"#2A2E37", accent:"#D8A24A"},
-    forest:{name:"Forest", bg:"#101711", ink:"#CDD8C6", muted:"#83907E", panel:"#161F17", line:"#263223", accent:"#7FB069"},
-    ocean: {name:"Ocean",  bg:"#0D141E", ink:"#CBD5E1", muted:"#7E8CA0", panel:"#131C29", line:"#223042", accent:"#5C9CD6"},
-    plum:  {name:"Plum",   bg:"#17101F", ink:"#D8CDE3", muted:"#91849F", panel:"#1E1628", line:"#2F2440", accent:"#A97FD6"},
-    ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#7F7C72", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F"},
-    midnight:  {name:"Midnight",  bg:"#0B1126", ink:"#D8DDEE", muted:"#8F9AB9", panel:"#111A36", line:"#20294B", accent:"#9DB4FF"},
-    graphite:  {name:"Graphite",  bg:"#1E1F22", ink:"#D8D8D5", muted:"#9A9A96", panel:"#26272B", line:"#36373C", accent:"#74D0B8"},
-    ember:     {name:"Ember",     bg:"#1A1210", ink:"#EBDACD", muted:"#A68F80", panel:"#221815", line:"#3B2A22", accent:"#F2812E"},
-    moss:      {name:"Moss",      bg:"#161A10", ink:"#D7DBC2", muted:"#949B7F", panel:"#1D2215", line:"#303826", accent:"#B7C86A"},
-    cocoa:     {name:"Cocoa",     bg:"#1B1411", ink:"#E9DBCF", muted:"#A6958A", panel:"#241B17", line:"#3A2D27", accent:"#D8A067"},
-    slate:     {name:"Slate",     bg:"#1C2229", ink:"#D5DBE1", muted:"#8F9BA7", panel:"#242B33", line:"#353E48", accent:"#EF8C76"},
+    dusk:  {name:"Dusk",   bg:"#14161B", ink:"#D6D3C8", muted:"#8E9088", panel:"#1B1E25", line:"#2A2E37", accent:"#D8A24A", lamp:"#D8A24A"},
+    forest:{name:"Forest", bg:"#101711", ink:"#CDD8C6", muted:"#83907E", panel:"#161F17", line:"#263223", accent:"#7FB069", lamp:"#E3931C"},
+    ocean: {name:"Ocean",  bg:"#0D141E", ink:"#CBD5E1", muted:"#7E8CA0", panel:"#131C29", line:"#223042", accent:"#5C9CD6", lamp:"#E3931C"},
+    plum:  {name:"Plum",   bg:"#17101F", ink:"#D8CDE3", muted:"#91849F", panel:"#1E1628", line:"#2F2440", accent:"#A97FD6", lamp:"#E3931C"},
+    ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#7F7C72", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F", lamp:"#C08D3F"},
+    midnight:  {name:"Midnight",  bg:"#0B1126", ink:"#D8DDEE", muted:"#8F9AB9", panel:"#111A36", line:"#20294B", accent:"#9DB4FF", lamp:"#E3931C"},
+    graphite:  {name:"Graphite",  bg:"#1E1F22", ink:"#D8D8D5", muted:"#9A9A96", panel:"#26272B", line:"#36373C", accent:"#74D0B8", lamp:"#E3931C"},
+    ember:     {name:"Ember",     bg:"#1A1210", ink:"#EBDACD", muted:"#A68F80", panel:"#221815", line:"#3B2A22", accent:"#F2812E", lamp:"#F2812E"},
+    moss:      {name:"Moss",      bg:"#161A10", ink:"#D7DBC2", muted:"#949B7F", panel:"#1D2215", line:"#303826", accent:"#B7C86A", lamp:"#E3931C"},
+    cocoa:     {name:"Cocoa",     bg:"#1B1411", ink:"#E9DBCF", muted:"#A6958A", panel:"#241B17", line:"#3A2D27", accent:"#D8A067", lamp:"#D8A067"},
+    slate:     {name:"Slate",     bg:"#1C2229", ink:"#D5DBE1", muted:"#8F9BA7", panel:"#242B33", line:"#353E48", accent:"#EF8C76", lamp:"#E3931C"},
     /* dim: for reading in the dark without a black screen */
-    candle:    {name:"Candle",    bg:"#2A1D14", ink:"#F0DDB4", muted:"#B39F80", panel:"#33251A", line:"#4C3A2A", accent:"#E9C46A"},
+    candle:    {name:"Candle",    bg:"#2A1D14", ink:"#F0DDB4", muted:"#B39F80", panel:"#33251A", line:"#4C3A2A", accent:"#E9C46A", lamp:"#E9C46A"},
     /* phosphor screens and pure black */
-    terminal:  {name:"Terminal",  bg:"#050805", ink:"#3FE86F", muted:"#2FA354", panel:"#0A110A", line:"#183018", accent:"#D9FF6E"},
-    amber:     {name:"Amber",     bg:"#0F0A03", ink:"#FFB000", muted:"#B98319", panel:"#17100A", line:"#302311", accent:"#FFDF70"},
-    noir:      {name:"Noir",      bg:"#000000", ink:"#C6C6C6", muted:"#8E8E8E", panel:"#0B0B0B", line:"#242424", accent:"#EDEDED"},
+    terminal:  {name:"Terminal",  bg:"#050805", ink:"#3FE86F", muted:"#2FA354", panel:"#0A110A", line:"#183018", accent:"#D9FF6E", lamp:"#D9FF6E"},
+    amber:     {name:"Amber",     bg:"#0F0A03", ink:"#FFB000", muted:"#B98319", panel:"#17100A", line:"#302311", accent:"#FFDF70", lamp:"#FFDF70"},
+    noir:      {name:"Noir",      bg:"#000000", ink:"#C6C6C6", muted:"#8E8E8E", panel:"#0B0B0B", line:"#242424", accent:"#EDEDED", lamp:"#EDEDED"},
     /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
-    hicon: {name:"Contrast",      bg:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", panel:"#FFFFFF", line:"#000000", accent:"#0033CC"},
-    hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400"}
+    hicon: {name:"Contrast",      bg:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", panel:"#FFFFFF", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
+    hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
   };
   /* the chips and the day / night lists show the built-ins in three groups; the lamp cycles
      them in the same order: lights, then darks, then high contrast */
@@ -524,11 +658,21 @@
     /* e-ink mode is black on white whatever the theme: light controls, no softened PDF pages, a
        white title bar; the theme itself stays chosen for when the mode is turned off */
     var eink = state.eink === true, dark = isDarkColor(t.bg) && !eink, c = eink ? EINK_COLORS : t;
-    var r = document.documentElement.style;
+    var root = document.documentElement, r = root.style;
     r.setProperty("--bg", c.bg);      r.setProperty("--ink", c.ink);
     r.setProperty("--muted", c.muted);r.setProperty("--panel", c.panel);
     r.setProperty("--line", c.line);  r.setProperty("--accent", c.accent);
-    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+    /* the design tokens app.css builds on: the lamp (a custom theme's accent), the tone that picks
+       the elevation style — shadows on a light page, lifted surfaces on a dark one, borders only
+       in the two high-contrast themes (e-ink is "light"; body.eink's own rules win) — and the
+       raised surface of a dark tone's cards and sheets, kept only while secondary text reads on it */
+    var tone = eink ? "light" : HICON.indexOf(state.theme) >= 0 ? "contrast" : dark ? "dark" : "light";
+    var raise = c.panel;
+    if (tone === "dark"){ raise = mix(c.panel, c.ink, 0.05); if (contrast(c.muted, raise) < 4.5) raise = c.panel; }
+    r.setProperty("--lamp", eink ? "#000000" : (t.lamp || t.accent));
+    r.setProperty("--raise", raise);
+    root.setAttribute("data-tone", tone);
+    root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
     /* the installed app's title bar takes the panel colour */
     var meta = document.querySelector('meta[name="theme-color"]');
@@ -674,7 +818,11 @@
       $("#rWarm").value = state.warmth; $("#qWarm").value = state.warmth;
       $("#vWarm").textContent = state.warmth + " %"; $("#qWarmV").textContent = state.warmth + " %";
       $("#cWarmAuto").checked = !!state.warmAuto; $("#qWarmAuto").checked = !!state.warmAuto;
-      $("#warmHint").textContent = !state.warmAuto ? "A warm film over the screen for evening reading. At 0 % nothing is added."
+      /* "Warm at night" by day: the film is off, so the slider steps back (it still sets the night's level) */
+      var idle = !!state.warmAuto && !isNight();
+      $("#warmRow").classList.toggle("is-idle", idle);
+      var qRow = $("#qWarm").closest(".prow"); if (qRow) qRow.classList.toggle("is-idle", idle);
+      $("#warmHint").textContent = !state.warmAuto ? "A warm film over the screen for evening reading. At 0\u00A0% nothing is added."
         : isNight() ? "It\u2019s night now \u2014 the warm film is on." : "Off until the night window; it comes back on then.";
     }
     function set(v){ state.warmth = Math.max(0, Math.min(100, Math.round(v))); Prefs.save(); apply(); }
@@ -710,6 +858,12 @@
       $("#cDimNight").checked = !!state.dimNight; $("#qDimNight").checked = !!state.dimNight;
       $("#rDim").value = state.dimLevel; $("#qDimLevel").value = state.dimLevel;
       $("#vDim").textContent = state.dimLevel + " %"; $("#qDimV").textContent = state.dimLevel + " %";
+      /* the rows that follow the switch — the level, "Only at night" and its hours — step back and
+         leave the Tab order while it is off (app.css .dim-row) */
+      ["#dimLevelRow", "#qDimLevelRow", "#dimNightRow", "#qDimNightRow", "#dimTimes"].forEach(function(sel){
+        var row = $(sel); if (!row) return;
+        row.classList.toggle("dim-row", !state.dim); row.inert = !state.dim;
+      });
       var h = $("#dimNightHint"), q = $("#qDimHint"), byTime = state.auto === "time", eink = state.eink === true;
       var hours = state.nightFrom + "\u2013" + state.nightTo, now = isNight() ? "It\u2019s night now." : "Off until " + state.nightFrom + ".";
       /* e-ink mode leaves the film out (app.css): said here, so a switch that is on but does nothing is not a mystery */
@@ -1053,7 +1207,7 @@
 
   /* ---------- icons for the shell (the shared set; the same strings the other surfaces draw) ---------- */
   var ICONS = (function(){
-    var open = 'stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    var open = 'stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
     function svg(paths, extra){ return '<svg viewBox="0 0 24 24" ' + open + (extra || '') + '>' + paths + '</svg>'; }
     return {
       close:     svg('<path d="M6 6l12 12M18 6L6 18"/>'),
@@ -1094,9 +1248,11 @@
       if (!current) return;
       /* a resize across the phone breakpoint with the popover open: the scrim belongs to the sheet form only */
       scrim.classList.toggle("on", phone());
-      if (phone()){ el.style.top = ""; el.style.left = ""; el.style.right = ""; return; }
+      if (phone()){ el.style.top = ""; el.style.left = ""; el.style.right = ""; el.style.maxHeight = ""; return; }
       var r = anchor.getBoundingClientRect();
       el.style.top = Math.round(r.bottom + 6) + "px";
+      /* a short window: the popover scrolls inside rather than run off the bottom */
+      el.style.maxHeight = Math.max(200, Math.round(window.innerHeight - r.bottom - 14)) + "px";
       el.style.left = "";
       var right = Math.max(8, Math.round(window.innerWidth - r.right));
       el.style.right = right + "px";
@@ -1191,14 +1347,25 @@
     }
     function renderTheme(){
       var groups = themeGroups(), light = groups[0].ids.slice(), dark = groups[1].ids.slice();
-      /* the two high-contrast themes and the saved ones join the row of their lightness */
-      HICON.forEach(function(k){ (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
+      /* the saved themes join the row of their lightness; the two high-contrast ones have a row of their own */
       state.customs.forEach(function(c){ (isDarkColor(c.bg) ? dark : light).push("c:" + c.id); });
       $("#qLight").innerHTML = light.map(chip).join("");
       $("#qDark").innerHTML = dark.map(chip).join("");
+      $("#qHi").innerHTML = HICON.map(chip).join("");
+      /* the last few used, the one on screen left out (it is marked in its own row) */
+      var recent = recentThemes().filter(function(k){ return k !== state.theme && resolveTheme(k); }).slice(0, 3);
+      $("#qRecent").innerHTML = recent.map(chip).join("");
+      $("#qRecentSec").hidden = !recent.length;
     }
     function syncTheme(){
       var t = currentTheme(), custom = customById(state.theme);
+      /* the Day and Night buttons name the pair they go to, and the one on screen is pressed */
+      var dayT = resolveTheme(state.autoDay) || THEMES.day, nightT = resolveTheme(state.autoNight) || THEMES.dusk;
+      $("#qDayName").textContent = dayT.name; $("#qNightName").textContent = nightT.name;
+      Array.prototype.forEach.call(panes.theme.querySelectorAll(".dn"), function(b){
+        var on = state.theme === (b.dataset.dn === "day" ? state.autoDay : state.autoNight);
+        b.setAttribute("aria-pressed", on ? "true" : "false"); b.classList.toggle("on", on);
+      });
       Array.prototype.forEach.call(panes.theme.querySelectorAll(".strip .chip"), function(ch){
         var on = ch.dataset.theme === state.theme;
         ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
@@ -1215,6 +1382,11 @@
     panes.theme.addEventListener("click", function(e){
       var ch = e.target.closest(".strip .chip");
       if (ch){ selectTheme(ch.dataset.theme); showCurrent(); return; }
+      var dn = e.target.closest(".dn");
+      if (dn){
+        var to = dn.dataset.dn === "day" ? state.autoDay : state.autoNight;
+        selectTheme(resolveTheme(to) ? to : (dn.dataset.dn === "day" ? "day" : "dusk")); showCurrent(); return;
+      }
       var a = e.target.closest("#qAuto .chip");
       if (a){ state.auto = a.dataset.auto; Prefs.save(); AutoTheme.apply(); syncTheme(); }
     });
@@ -1260,6 +1432,7 @@
     }, true);
     scrim.addEventListener("click", function(){ close(); });
     el.querySelector(".pop-handle").addEventListener("click", function(){ close(); });
+    dragToClose(el, [el.querySelector(".pop-handle")].concat(Array.prototype.slice.call(el.querySelectorAll(".pop-head"))), function(){ close(); }, function(){ return !!current; });
     /* scrolling away from the popover closes it — on a desktop, where it hangs from the bar. A
        phone's sheet stays: Escape, the scrim or the handle close it, and the page is held still
        under it anyway. A scroll that comes with a change of the page's height is the text
@@ -1295,11 +1468,12 @@
       document.body.classList.remove("paged");
       $("#pager").style.display = "none";
     }
-    $("#textGroup").classList.toggle("dim", mode === "pdf");
+    if (SheetTabs) SheetTabs.applies(); else $("#textGroup").classList.toggle("dim", mode === "pdf");
     $("#textHint").textContent = mode === "pdf"
       ? "A PDF is open — these apply to text documents. Use Zoom below for PDFs."
       : "Applies to text documents (EPUB, DOCX, TXT, Markdown, HTML).";
     if (window.llStats) window.llStats.onMode(mode);
+    if (PhoneBar) PhoneBar.place();
   }
   function status(msg){ $("#status").textContent = msg; show("status"); }
   $("#status").setAttribute("role", "status"); $("#status").setAttribute("aria-live", "polite");
@@ -1554,13 +1728,20 @@
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
     else if (state.pdfDoc){ cur = state.pdfPageNum; total = state.pdfDoc.numPages; if (state.perPage === 2 && state.flow === "pages" && cur < total) cur = cur + "\u2013" + (cur + 1); }
     else { cur = 1; total = 1; }
-    var info = $("#pgInfo"), part = function(cls, text){ var el = document.createElement("span"); el.className = cls; el.textContent = text; info.appendChild(el); };
+    /* the " · " before the section and the time left is a span of its own, so the stylesheet can
+       set the fraction on a line above the other two without a stray dot opening the second line
+       (the text, which screen readers and the tests read, is unchanged) */
+    var info = $("#pgInfo"), part = function(cls, text, dot){
+      var el = document.createElement("span"); el.className = cls;
+      if (dot){ var d = document.createElement("span"); d.className = "pg-dot"; d.textContent = " \u00B7 "; el.appendChild(d); }
+      el.appendChild(document.createTextNode(text)); info.appendChild(el);
+    };
     info.textContent = "";
     part("pg-n", cur + " / " + total);
     if (!pagedActive()) return;
     var sec = currentSection(), left = Progress.left();
-    if (sec) part("pg-sec", " \u00B7 " + sec);
-    if (left) part("pg-left", " \u00B7 " + left);
+    if (sec) part("pg-sec", sec, true);
+    if (left) part("pg-left", left, true);
   }
   function updateProgress(){
     if (!pagedActive()) return;
@@ -1599,7 +1780,7 @@
     var gen = ++openGen;
     var live = function(){ return gen === openGen; };
     Library.onOpen(file, opts, live);
-    $("#fname").textContent = file.name;
+    setFname(bareName(file.name));
     document.title = file.name + " — lamplight";
     window.scrollTo(0,0);
     document.body.classList.remove("hidebar");
@@ -1640,6 +1821,8 @@
         Promise.all([need(["purify"]), docxToHtml(file)]).then(function(r){
           if (!live()) return;
           setDocHtml(r[1]);
+          /* the document's core title when it has one, else its first heading */
+          docxTitle(file).then(function(t){ if (live()) docTitle(t || firstHeading()); });
         }).catch(fail);
 
       } else if (ext === "epub"){
@@ -1648,11 +1831,7 @@
           return openEpub(buf);
         }).then(function(book){
           if (!live()){ releaseEpubUrls(); return; }
-          if (book.title){
-            $("#fname").textContent = book.title + (book.author ? " — " + book.author : "");
-            Library.setTitle(book.title + (book.author ? " — " + book.author : ""));
-            Tabs.setName(Library.currentId(), book.title + (book.author ? " — " + book.author : ""));
-          }
+          if (book.title) docTitle(book.title + (book.author ? " — " + book.author : ""));
           if (book.lang) Speak.setDocLang(book.lang);     /* the book says what language it is in */
           setDocHtml(book.html, {toc: book.toc, keepIds: true});
         }).catch(fail);
@@ -1664,6 +1843,7 @@
         need(["marked", "purify"]).then(function(){ return file.text(); }).then(function(txt){
           if (!live()) return;
           setDocHtml(marked.parse(txt));
+          docTitle(firstHeading());
         }).catch(fail);
 
       } else if (ext === "html" || ext === "htm"){
@@ -1671,6 +1851,7 @@
         need(["purify"]).then(function(){ return file.text(); }).then(function(txt){
           if (!live()) return;
           setDocHtml(readerHtml(txt));
+          docTitle(firstHeading() || htmlTitle(txt));
         }).catch(fail);
 
       } else {
@@ -1688,6 +1869,69 @@
         }).catch(fail);
       }
     } catch(err){ fail(err); }
+  }
+  /* the book's own title, once the text is in: the bar, the library, the tab */
+  function docTitle(t){
+    t = String(t || "").replace(/\s+/g, " ").trim();
+    if (!t) return;
+    if (t.length > 140) t = t.slice(0, 139).replace(/\s+\S*$/, "") + "\u2026";
+    setFname(t);
+    Library.setTitle(t);
+    var id = Library.currentId();
+    if (id) Tabs.setName(id, t);
+  }
+  /* the first top-level heading of the text (an h1; a document that starts with an h2 names nothing) */
+  function firstHeading(){
+    var h = $("#doc").querySelector("h1");
+    return h ? h.textContent : "";
+  }
+  /* a saved web page's <title>, when its text has no heading of its own */
+  function htmlTitle(src){
+    var m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(src || "");
+    if (!m) return "";
+    var d = document.createElement("textarea"); d.innerHTML = m[1];
+    return d.value;
+  }
+  /* a DOCX's own title (docProps/core.xml, dc:title), read with the EPUB reader's zip library */
+  function docxTitle(file){
+    return need(["jszip"]).then(function(){ return file.arrayBuffer(); }).then(function(buf){ return JSZip.loadAsync(buf); })
+      .then(function(zip){ var f = zip.file("docProps/core.xml"); return f ? f.async("string") : ""; })
+      .then(function(xml){
+        if (!xml) return "";
+        var doc = new DOMParser().parseFromString(xml, "application/xml"), el = doc.getElementsByTagNameNS("http://purl.org/dc/elements/1.1/", "title")[0];
+        return el ? el.textContent.trim() : "";
+      }).catch(function(){ return ""; });
+  }
+  /* a file's title without opening it (files added together become tabs and books before they are
+     read): a Markdown file's first "# " heading, an HTML file's first h1 or its <title>, an EPUB's
+     metadata, a DOCX's core title. Whatever it finds is replaced by the real thing on opening */
+  function peekTitle(file){
+    var ext = (String(file && file.name || "").split(".").pop() || "").toLowerCase(), clean = function(t){ return String(t || "").replace(/\s+/g, " ").trim(); };
+    if (ext === "md" || ext === "markdown")
+      return file.slice(0, 65536).text().then(function(t){
+        var m = /^#[ \t]+(.+?)[ \t#]*$/m.exec(t) || /^(\S[^\n]*)\n=+[ \t]*$/m.exec(t);
+        return m ? clean(m[1].replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, "")) : "";
+      }).catch(function(){ return ""; });
+    if (ext === "html" || ext === "htm")
+      return file.slice(0, 262144).text().then(function(t){
+        var d = new DOMParser().parseFromString(t, "text/html"), h = d.querySelector("h1");
+        return clean((h && h.textContent) || (d.querySelector("title") || {}).textContent || "");
+      }).catch(function(){ return ""; });
+    if (ext === "epub")
+      return need(["jszip"]).then(function(){ return JSZip.loadAsync(file); }).then(function(zip){
+        var c = zip.file("META-INF/container.xml");
+        return c ? c.async("string").then(function(xml){
+          var rf = new DOMParser().parseFromString(xml, "application/xml").querySelector("rootfile"), p = rf && rf.getAttribute("full-path");
+          return p && zip.file(p) ? zip.file(p).async("string") : "";
+        }) : "";
+      }).then(function(opfXml){
+        if (!opfXml) return "";
+        var opf = new DOMParser().parseFromString(opfXml, "application/xml"), DC = "http://purl.org/dc/elements/1.1/";
+        var t = opf.getElementsByTagNameNS(DC, "title")[0], a = opf.getElementsByTagNameNS(DC, "creator")[0];
+        return t ? clean(t.textContent) + (a && clean(a.textContent) ? " \u2014 " + clean(a.textContent) : "") : "";
+      }).catch(function(){ return ""; });
+    if (ext === "docx") return docxTitle(file);
+    return Promise.resolve("");
   }
   /* ---------- html files: reduce a saved web page to clean reader text, like a DOCX ---------- */
   function readerHtml(src){
@@ -2203,7 +2447,7 @@
   /* ---------- icons: the shared set, drawn inline in the text colour (24×24 boxes) ---------- */
   /* the menu's, panels' and bars' icons join the shared table declared above the popovers */
   ICONS = Object.assign(ICONS, (function(){
-    var head = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+    var head = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
     var dots = 'stroke-width="2.6"', solid = 'fill="currentColor" stroke="none"';
     function path(d, attrs){ return '<path d="' + d + '"' + (attrs ? " " + attrs : "") + '/>'; }
     function icon(){ return head + Array.prototype.join.call(arguments, "") + "</svg>"; }
@@ -2227,16 +2471,29 @@
       finished: icon(path("M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"), path("M8 12.3l2.7 2.7L16 9.7")),
       star:     icon(path("M12 3.5l2.55 5.2 5.7.83-4.13 4.02.98 5.68L12 16.55l-5.1 2.68.98-5.68-4.13-4.02 5.7-.83z")),
       books:    icon(path("M4 4h5v16H4z"), path("M9 4h5v16H9z"), path("M14 6l5-1.5L23 19l-5 1.5z")),
+      /* what is kept on this device: a stack of disks, not the library's books */
+      storage:  icon(path("M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"), path("M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"), path("M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6")),
       keyboard: icon(path("M3 7h18v10H3z"), path("M7 11h.01 M11 11h.01 M15 11h.01 M7 14h10", dots)),
       open:     icon(path("M3 7V5h6l2 2h10v12H3z"), path("M3 11h18")),
       sliders:  icon(path("M4 7h10 M18 7h2 M4 17h4 M12 17h8"), path("M14 7m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0"), path("M8 17m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0")),
       close:    icon(path("M6 6l12 12 M18 6L6 18")),
+      /* Settings: a gear (the Aa button is the type, the sliders say "adjust") */
+      gear:     icon(path("M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"), path("M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z")),
+      moon:     icon(path("M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z")),
+      undo:     icon(path("M9 14L4 9l5-5"), path("M4 9h10.5a5.5 5.5 0 0 1 0 11H11")),
+      tabs:     icon(path("M4 7h12v13H4z"), path("M8 7V4h12v13h-4")),
       play:     icon(path("M8 5v14l11-7z", solid)),
       pause:    icon(path("M7 5h3.5v14H7z M13.5 5H17v14h-3.5z", solid))
     };
   })());
   /* a bar's play / pause button: the icon follows the state, the callers set the label */
   function playIcon(btn, playing){ btn.innerHTML = playing ? ICONS.pause : ICONS.play; }
+  /* an empty panel: a lamp-tinted round with a line icon, a title and one sentence (app.css
+     .empty-state). It keeps the .empty-note class the panels have always used for their notes. */
+  function emptyState(icon, title, text, extra){
+    return '<div class="empty-note empty-state"><span class="es-icon" aria-hidden="true">' + (icon || "") + '</span>' +
+      '<div class="es-title">' + title + '</div>' + (text ? '<p class="es-text">' + text + '</p>' : '') + (extra || '') + '</div>';
+  }
 
   /* ---------- side panel: contents, marks, search share one drawer ----------
      The four document panels (contents, search, notes, about) are one family: a segmented
@@ -2314,6 +2571,7 @@
     scrim.addEventListener("click", close);
     $("#sideClose").addEventListener("click", close);
     el.querySelector(".side-grab").addEventListener("click", close);
+    dragToClose(el, [el.querySelector(".side-top")], close, function(){ return !!current; });
     /* Escape closes only the topmost layer: the key stops here once it has closed a panel, so the
        settings sheet and the menu, whose listeners come after this one, keep their state; the
        dictionary card, which sits over the panel, takes the key first in the capture phase */
@@ -2342,6 +2600,11 @@
   var Menu = (function(){
     var items = [], btn = $("#more"), menu = $("#moreMenu"), wrap = $("#moreWrap"), scrim = null;
     var GROUPS = [["navigate", "Navigate"], ["marks", "Bookmarks"], ["reading", "Reading"], ["tools", "Tools"], ["app", "Lamplight"]];
+    /* on a phone the sheet leads with four large tiles for what every sitting uses (an entry's
+       `quick`, its place in the row), then Reading, Tools and Lamplight; an entry may move group or
+       place there (`pgroup`, `porder`: Search, About and the notes join Reading, Print, Storage and
+       Close document go last), and Settings (`head`) is the gear in the sheet's head */
+    var PHONE_GROUPS = [["quick", "Quick"], ["navigate", "Navigate"], ["marks", "Bookmarks"], ["reading", "Reading"], ["tools", "Tools"], ["app", "Lamplight"]];
     menu.setAttribute("aria-labelledby", "more");
     function add(item){
       if (item.order === undefined) item.order = 100 + items.length;
@@ -2351,31 +2614,43 @@
     function text(it){ return typeof it.label === "function" ? it.label() : it.label; }
     /* a toggle that is on reads "Stop…", "Hide…", "Leave…" or "Show original": it gets a dot */
     function isOn(label){ return /^(Stop|Hide|Leave|Show original)\b/.test(label); }
+    function entry(it){
+      var label = text(it), b = document.createElement("button");
+      b.type = "button"; b.setAttribute("role", "menuitem");
+      /* the key hint is decoration to a screen reader; the shortcut itself is declared */
+      b.innerHTML = '<i class="mi">' + (it.icon || "") + '</i><span>' + label + '</span>' + (it.key ? '<kbd aria-hidden="true">' + it.key + '</kbd>' : '');
+      if (it.key) b.setAttribute("aria-keyshortcuts", it.key);
+      if (isOn(label)) b.classList.add("on");
+      if (it.enabled && !it.enabled()) b.disabled = true;
+      b.addEventListener("click", function(){ close(true); it.run(); });
+      return b;
+    }
     function render(){
       menu.innerHTML = "";
+      var phone = isPhone(), shown = function(it){ return !it.sep && !(it.show && !it.show()); };
       var grab = document.createElement("div");
       grab.className = "menu-grab"; grab.setAttribute("aria-hidden", "true");
       grab.addEventListener("click", function(){ close(true); });
-      menu.appendChild(grab);
-      var sorted = items.slice().sort(function(a, b){ return a.order - b.order; }), groups = [], rows = 0;
-      GROUPS.forEach(function(g){
-        var list = sorted.filter(function(it){ return !it.sep && it.group === g[0] && !(it.show && !it.show()); });
+      /* the phone sheet's head: the handle, the book (or the app) in the title face, the Settings gear */
+      if (phone){
+        var mh = document.createElement("div"), mt = document.createElement("div");
+        mh.className = "menu-head";
+        mt.className = "menu-title"; mt.textContent = (state.mode === "doc" || state.mode === "pdf") && $("#fname").textContent ? $("#fname").textContent : "Lamplight";
+        mh.appendChild(grab); mh.appendChild(mt);
+        items.filter(function(it){ return it.head && shown(it); }).forEach(function(it){ var b = entry(it); b.classList.add("menu-gear"); b.setAttribute("aria-label", text(it)); b.title = text(it); mh.appendChild(b); });
+        menu.appendChild(mh);
+      } else menu.appendChild(grab);
+      var gOf = function(it){ return phone ? (it.quick ? "quick" : it.pgroup || it.group) : it.group; };
+      var oOf = function(it){ return phone ? (it.quick ? it.quick : it.porder !== undefined ? it.porder : it.order) : it.order; };
+      var sorted = items.slice().sort(function(a, b){ return oOf(a) - oOf(b); }), groups = [], rows = 0;
+      (phone ? PHONE_GROUPS : GROUPS).forEach(function(g){
+        var list = sorted.filter(function(it){ return shown(it) && gOf(it) === g[0] && !(phone && it.head); });
         if (!list.length) return;
         var sec = document.createElement("div"), head = document.createElement("div"), grid = document.createElement("div");
-        sec.className = "menu-group"; sec.setAttribute("role", "group"); sec.setAttribute("aria-labelledby", "menuG-" + g[0]);
+        sec.className = "menu-group" + (g[0] === "quick" ? " menu-quick" : ""); sec.setAttribute("role", "group"); sec.setAttribute("aria-labelledby", "menuG-" + g[0]);
         head.className = "label"; head.id = "menuG-" + g[0]; head.textContent = g[1];
         grid.className = "menu-items";
-        list.forEach(function(it){
-          var label = text(it), b = document.createElement("button");
-          b.type = "button"; b.setAttribute("role", "menuitem");
-          /* the key hint is decoration to a screen reader; the shortcut itself is declared */
-          b.innerHTML = '<i class="mi">' + (it.icon || "") + '</i><span>' + label + '</span>' + (it.key ? '<kbd aria-hidden="true">' + it.key + '</kbd>' : '');
-          if (it.key) b.setAttribute("aria-keyshortcuts", it.key);
-          if (isOn(label)) b.classList.add("on");
-          if (it.enabled && !it.enabled()) b.disabled = true;
-          b.addEventListener("click", function(){ close(true); it.run(); });
-          grid.appendChild(b);
-        });
+        list.forEach(function(it){ grid.appendChild(entry(it)); });
         sec.appendChild(head); sec.appendChild(grid);
         groups.push({ el: sec, rows: list.length }); rows += list.length;
       });
@@ -2392,7 +2667,11 @@
       if (wide){ var box = document.createElement("div"); box.className = "menu-cols"; box.appendChild(cols[0]); box.appendChild(cols[1]); menu.appendChild(box); }
       else menu.appendChild(cols[0]);
     }
-    function focusables(){ return Array.prototype.filter.call(menu.querySelectorAll("button[role=menuitem]"), function(b){ return !b.disabled; }); }
+    /* the tiles in order, then the head's gear: arrows end on Settings as they do on a desktop */
+    function focusables(){
+      var all = Array.prototype.filter.call(menu.querySelectorAll(".menu-group button[role=menuitem]"), function(b){ return !b.disabled; });
+      return all.concat(Array.prototype.slice.call(menu.querySelectorAll(".menu-head button[role=menuitem]")));
+    }
     function isOpen(){ return menu.classList.contains("open"); }
     function open(){
       render();
@@ -2432,6 +2711,7 @@
       else return;
       e.preventDefault(); e.stopPropagation(); to.focus();
     });
+    dragToClose(menu, [menu], function(){ close(true); }, isOpen, ".menu-grab, .menu-head");
     /* the menu hangs from the bar, which slides away on a scroll: close rather than drift off */
     window.addEventListener("scroll", function(){ if (isOpen()) close(); }, { passive: true });
     var narrow = window.matchMedia ? window.matchMedia("(max-width: 560px)") : null;
@@ -2526,6 +2806,7 @@
       books = (r[0] || []).sort(function(a, b){ return (b.opened || 0) - (a.opened || 0); });
       (r[1] || []).forEach(function(p){ positions[p.id] = p; });
       render();
+      if (Tabs) Tabs.render();     /* the tabs name their books by the titles kept here */
     }).catch(function(err){ console.warn("library unavailable", err); });
 
     /* ---- position capture ---- */
@@ -2533,7 +2814,8 @@
     function headerHeight(){
       if (document.body.classList.contains("immersive")) return 0;
       var head = document.querySelector("header"), sheet = $("#sheet");
-      return (head ? head.offsetHeight : 0) + (sheet && sheet.classList.contains("open") ? sheet.offsetHeight : 0);
+      /* a phone's settings sheet rises from the bottom instead (position: fixed): nothing more at the top */
+      return (head ? head.offsetHeight : 0) + (sheet && sheet.classList.contains("open") && getComputedStyle(sheet).position !== "fixed" ? sheet.offsetHeight : 0);
     }
     var charOffsetOf = Anchor.offsetOf, rangeAtOffset = Anchor.rangeAt;
     function topCharOffset(){
@@ -2667,7 +2949,6 @@
         if (live && !live()) return;          /* another file was opened meanwhile */
         current = id;
         Marks.setDoc(id, file.name);
-        Tabs.noteOpen(id, file.name, file);
         var pos = positions[id];
         if (pos && !opts.fresh){ pending = pos; tryRestore(); }
         Journal.opened(id, pos && !opts.fresh ? pos : null, !!opts.fresh);   /* where this sitting starts: the "Finished" card waits for the reader to arrive at the end */
@@ -2676,6 +2957,9 @@
         rec.opened = Date.now();
         if (titleQueue){ rec.title = titleQueue; titleQueue = null; }
         if (!existing) books.unshift(rec); else { books.splice(books.indexOf(existing), 1); books.unshift(rec); }
+        /* the tab (and the bar) name the book by the title known for it, from before or from its text */
+        Tabs.noteOpen(id, file.name, file);
+        if (rec.title && live && live()) setFname(rec.title);
         Recap.check();          /* back after two hours or more: the recap card (once the text is in, too) */
         return tx("books", "readwrite", function(st){ st.put(rec); }).catch(function(err){
           console.warn("couldn't save to library", err);
@@ -2689,14 +2973,20 @@
         var rec = { id: id, name: file.name, type: typeOf(file.name), size: file.size, added: Date.now(), opened: Date.now() - 1, blob: file };
         books.push(rec); books.sort(function(a, b){ return (b.opened || 0) - (a.opened || 0); });
         tx("books", "readwrite", function(st){ st.put(rec); }).then(render).catch(function(){});
+        /* named by its own title before it is ever opened (the tab too) */
+        peekTitle(file).then(function(t){
+          if (!t || rec.title || books.indexOf(rec) < 0) return;
+          rec.title = t; put(rec); render(); Tabs.render();
+        });
       });
     }
     function setTitle(title){
       if (!title) return;
       if (!current){ titleQueue = title; return; }
       var b = books.filter(function(x){ return x.id === current; })[0];
-      if (b && b.title !== title){ b.title = title; tx("books", "readwrite", function(st){ st.put(b); }).catch(function(){}); render(); }
+      if (b && b.title !== title){ b.title = title; tx("books", "readwrite", function(st){ st.put(b); }).catch(function(){}); render(); Tabs.render(); }
     }
+    function titleOf(id){ return bookName(byId(id)); }
     function docReady(){ ready.doc = true; ready.pdfPages = {}; tryRestore(); Marks.docReady(); Recap.check(); }
     function pdfReady(){ tryRestore(); Recap.check(); }
     function pdfPageReady(n){ ready.pdfPages[n] = true; tryRestore(); Recap.check(); }
@@ -2770,7 +3060,7 @@
        for a pinned one, the pin and the remove; nesting one inside another would give the card
        every one of their names */
     function item(b, idx, of){
-      var pct = pctOf(b), name = escapeHtml(b.title || b.name), done = pct >= 98, pinned = !!b.pinned;
+      var pct = pctOf(b), name = escapeHtml(bookName(b)), done = pct >= 98, pinned = !!b.pinned;
       var id = escapeHtml(b.id), left = forecastOf(b), fin = finOf(b);
       function move(dir, label, icon, off){
         return '<button type="button" class="lib-move" data-move="' + dir + '" data-id="' + id + '" title="' + label +
@@ -2792,9 +3082,9 @@
     }
     /* a finished book starts again from the beginning; the words on the card say so */
     function continueHtml(b){
-      var pct = pctOf(b), name = escapeHtml(b.title || b.name), again = pct >= 98, left = forecastOf(b);
+      var pct = pctOf(b), name = escapeHtml(bookName(b)), again = pct >= 98, left = forecastOf(b);
       var lead = again ? "Read again" : waiting(b) ? "Up next" : "Continue reading";
-      return '<button type="button" id="continueCard" title="' + (again ? "Read " + name + " again" : "Continue reading " + name) + '">' +
+      return '<button type="button" id="continueCard" data-file="' + escapeHtml(b.name) + '" title="' + (again ? "Read " + name + " again" : "Continue reading " + name) + '">' +
         '<span class="cc-ring" style="--p:' + pct + '%" aria-hidden="true"><span>' + (pct ? pct + "%" : "new") + '</span></span>' +
         '<span class="cc-main"><span class="label">' + lead + '</span><span class="cc-title">' + name + '</span>' +
         '<span class="cc-meta"><span class="lib-type">' + escapeHtml(b.type) + '</span><span>' + (pct ? pct + "%" : "new") + ' · ' + ago(b.opened) + '</span>' +
@@ -2835,7 +3125,7 @@
       var mv = e.target.closest(".lib-move");
       if (mv){ movePinned(mv.dataset.id, mv.dataset.move === "up" ? -1 : 1); return; }
       var x = e.target.closest(".lib-x");
-      if (x){ remove(x.dataset.x); return; }
+      if (x){ removeByHand(x.dataset.x, x.contains(document.activeElement) || x === document.activeElement); return; }
       var it = e.target.closest(".lib-open");
       if (it) openId(it.dataset.id);
     });
@@ -2898,6 +3188,34 @@
       render();
       if (!books.length) show("empty");
     }
+    /* the × on a card: the book leaves the list at once and is removed for good 4 s later, unless the
+       toast's Undo brings it back (the page being left settles it at once) */
+    var pendingRemoval = null;
+    function commitRemoval(){
+      if (!pendingRemoval) return;
+      var p = pendingRemoval; pendingRemoval = null; clearTimeout(p.timer);
+      if (books.indexOf(p.book) < 0){ books.push(p.book); remove(p.book.id); }
+    }
+    function removeByHand(id, keyboard){
+      commitRemoval();
+      var b = byId(id); if (!b) return;
+      var i = books.indexOf(b), row = $("#libList").querySelector('.lib-item[data-id="' + cssEsc(id) + '"]');
+      var next = row && (row.nextElementSibling && row.nextElementSibling.classList.contains("lib-item") ? row.nextElementSibling : row.previousElementSibling);
+      var nextId = next && next.classList.contains("lib-item") ? next.dataset.id : null;
+      books.splice(i, 1);
+      render();
+      if (keyboard){ if (nextId) refocus(nextId, ".lib-open"); else if ($("#libOpen").offsetParent) $("#libOpen").focus(); }
+      pendingRemoval = { book: b, timer: setTimeout(commitRemoval, 4300) };
+      Marks.toast("Removed \u201C" + bookName(b) + "\u201D", { undo: function(){
+        if (!pendingRemoval || pendingRemoval.book !== b) return;
+        clearTimeout(pendingRemoval.timer); pendingRemoval = null;
+        books.splice(Math.min(i, books.length), 0, b);
+        render();
+        refocus(b.id, ".lib-open");
+      } });
+    }
+    window.addEventListener("pagehide", commitRemoval);
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "hidden") commitRemoval(); });
     function home(){
       flush();
       abandonOpen();
@@ -2907,7 +3225,7 @@
         window.scrollTo(0, 0);
       }
       setSheet(false);
-      $("#fname").textContent = "";
+      setFname("");
       Section.reset();
       $("#progressInfo").classList.remove("on");   /* the readout belongs to the document just left */
       document.title = "lamplight — reader";
@@ -2920,7 +3238,7 @@
              pin: setPinned, togglePin: togglePin, move: movePinned, pinned: pinnedList, upNext: upNext,
              removeFinished: removeFinished, wipe: wipe,
              onOpen: onOpen, docReady: docReady, pdfReady: pdfReady, pdfPageReady: pdfPageReady, notePosition: notePosition,
-             flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, render: render, forgetAudio: forgetAudio,
+             flush: flush, home: home, count: function(){ return books.length; }, setTitle: setTitle, titleOf: titleOf, render: render, forgetAudio: forgetAudio,
              ready: loaded, currentId: function(){ return current; }, positionFor: function(id){ return positions[id]; },
              restoring: function(){ return !!pending; },
              _debug: function(){ return { pending: pending, ready: ready, current: current }; } };
@@ -3149,12 +3467,26 @@
       m.pct = pctOf(m);
       list.push(m); list.sort(function(a, b){ return sortKey(a) - sortKey(b); });
       save(m); refreshPanel();
-      toast("Bookmarked");
+      /* a bookmark set by a stray tap in the ⋯ grid is one tap from gone */
+      toast("Bookmarked", { undo: function(){ remove(m); toast("Bookmark removed"); } });
       return m;
     }
     function remove(m){
       list = list.filter(function(x){ return x !== m; });
       del(m); if (m.kind === "highlight") unwrapOne(m); refreshPanel(); hidePop();
+    }
+    /* put a removed mark back as it was: kept again, and drawn again if it is a highlight in the open text */
+    function restore(m){
+      if (m.doc !== docId || list.indexOf(m) >= 0) return;
+      list.push(m); list.sort(function(a, b){ return sortKey(a) - sortKey(b); });
+      save(m);
+      if (m.kind === "highlight") applyOne(m);
+      refreshPanel();
+    }
+    /* the reader's own removal (the highlight's popover, the panel): with an Undo */
+    function removeByHand(m){
+      remove(m);
+      toast(m.kind === "highlight" ? "Highlight removed" : m.kind === "bookmark" ? "Bookmark removed" : "Note removed", { undo: function(){ restore(m); } });
     }
     function setNote(m, note){ m.note = note || ""; m.updated = Date.now(); save(m); if (m.kind === "highlight") restyle(m); refreshPanel(); }
     function setColor(m, color){ m.color = color; save(m); restyle(m); refreshPanel(); }
@@ -3170,10 +3502,38 @@
     /* ---- small toast ---- */
     var toastEl = null, toastTimer = null;
     /* ms: how long it stays (a longer message needs longer than the usual 1.8 s) */
-    function toast(msg, ms){
+    /* the toast's leading icon (app.css draws it at 18px in the toast's own colour): a warning for
+       what went wrong, the bookmark, a check for what is done, else a note. It holds no text, so the
+       toast's text (which screen readers and the tests read) is the message alone, and the icon and
+       the words go in as one change */
+    var TOAST_WARN = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>';
+    function toastIcon(msg){
+      if (/^(Couldn|Speech stopped)|isn’t|not available|^Nothing|^No text|^Open a book/.test(msg)) return TOAST_WARN;
+      if (/[Bb]ookmark/.test(msg)) return ICONS.bookmark;
+      if (/^(Copied|Saved|Highlighted|Removed|Daily goal)|cleared$|deleted$|removed$|reset$/.test(msg)) return ICONS.check;
+      return ICONS.info;
+    }
+    /* toast(msg, ms) or toast(msg, { undo: fn, ms }) / toast(msg, { action: "Mix…", run: fn }): a
+       change of data (a bookmark added, a book or a highlight removed) offers to take it back. With
+       a button the toast stays 4 s and takes taps; the button is a real one, so keys reach it too */
+    function toast(msg, ms, act){
+      if (ms && typeof ms === "object"){ act = ms; ms = act.ms; }
+      if (act && act.undo){ act = { label: "Undo", run: act.undo, ms: act.ms }; }
+      else if (act && act.action){ act = { label: act.action, run: act.run, ms: act.ms }; }
       if (!toastEl){ toastEl = document.createElement("div"); toastEl.id = "toast"; toastEl.setAttribute("role", "status"); document.body.appendChild(toastEl); }
-      toastEl.textContent = msg; toastEl.classList.add("on");
-      clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove("on"); }, ms || 1800);
+      var ic = document.createElement("span"); ic.className = "toast-ic"; ic.setAttribute("aria-hidden", "true"); ic.innerHTML = toastIcon(String(msg)) || "";
+      var parts = [ic, document.createTextNode(msg)];
+      if (act && act.run){
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "toast-act"; b.innerHTML = (act.label === "Undo" ? ICONS.undo : "") + "<span></span>";
+        b.lastChild.textContent = act.label;
+        b.addEventListener("click", function(){ clearTimeout(toastTimer); toastEl.classList.remove("on", "act"); act.run(); });
+        parts.push(b);
+      }
+      if (toastEl.replaceChildren) toastEl.replaceChildren.apply(toastEl, parts); else { toastEl.textContent = msg; }
+      toastEl.classList.toggle("act", !!(act && act.run));
+      toastEl.classList.add("on");
+      clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove("on", "act"); }, ms || (act && act.run ? 4000 : 1800));
     }
 
     /* ---- popover on a highlight ---- */
@@ -3195,7 +3555,7 @@
       var b = e.target.closest("button"); if (!b) return;
       var m = list.filter(function(x){ return x.key === popKey; })[0]; if (!m) return;
       if (b.dataset.color){ setColor(m, b.dataset.color); hidePop(); }
-      else if (b.dataset.act === "remove") remove(m);
+      else if (b.dataset.act === "remove") removeByHand(m);
       else if (b.dataset.act === "note"){ hidePop(); openPanel(m.key); }
     });
     $("#doc").addEventListener("click", function(e){
@@ -3294,9 +3654,9 @@
     }
     function renderPanel(body, foot){
       if (!list.length){
-        body.innerHTML = '<div class="empty-note">No bookmarks or highlights yet.<br>' +
-          (state.mode === "pdf" ? 'Use \u201CBookmark here\u201D in the \u22EF menu to mark a page.' :
-           'Select text and choose Highlight, or hold a sentence and tap Highlight. \u201CBookmark here\u201D in the \u22EF menu marks your spot.') + '</div>';
+        body.innerHTML = emptyState(ICONS.bookmark, "No bookmarks or highlights yet",
+          state.mode === "pdf" ? 'Use \u201CBookmark here\u201D in the \u22EF menu to mark a page.' :
+           'Select text and choose Highlight, or hold a sentence and tap Highlight. \u201CBookmark here\u201D in the \u22EF menu marks your spot.');
         foot.innerHTML = "";
         return;
       }
@@ -3360,7 +3720,7 @@
       var b = e.target.closest("button");
       if (!b){ if (!e.target.closest("textarea")) reveal(m); return; }
       var act = b.dataset.act;
-      if (act === "del"){ remove(m); }
+      if (act === "del"){ removeByHand(m); }
       else if (act === "note"){ editKey = m.key; refreshPanel(); }
       else if (act === "cancel"){ editKey = null; refreshPanel(); }
       else if (act === "savenote"){ var ta = item.querySelector("textarea"); editKey = null; setNote(m, ta ? ta.value.trim() : ""); }
@@ -3479,8 +3839,8 @@
       else copy(toMarkdown());
     }
 
-    Menu.add({ order: 30, group: "marks", icon: ICONS.bookmark, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
-    Menu.add({ order: 31, group: "marks", icon: ICONS.notes, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 30, quick: 2, group: "marks", icon: ICONS.bookmark, label: "Bookmark here", key: "B", run: addBookmark, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 31, pgroup: "reading", porder: 40.1, group: "marks", icon: ICONS.notes, label: function(){ return "Bookmarks & notes" + (list.length ? " (" + list.length + ")" : ""); }, key: "N", run: function(){ openPanel(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
 
     return { setDoc: setDoc, docReady: docReady, apply: apply, forget: forget, clearAll: clearAll, addHighlight: addHighlight, highlightSelection: highlightSelection,
              selectionOffsets: selectionOffsets, hidePop: hidePop, addBookmark: addBookmark, openPanel: openPanel, toast: toast, list: function(){ return list; },
@@ -3606,7 +3966,7 @@
       }
     }
     function openPanel(){ Side.open("toc", "Contents", render, function(){ shown = null; }, { family: "doc" }); }
-    Menu.add({ order: 10, group: "navigate", icon: ICONS.contents, label: "Contents", key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 10, quick: 3, group: "navigate", icon: ICONS.contents, label: "Contents", key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, entries: docEntries, pdfEntries: pdfEntries, goPdfPage: goPdfPage };
   })();
 
@@ -3745,9 +4105,9 @@
       if (!listEl) return;
       if (!query || query.length < 2){ statusEl.textContent = ""; listEl.innerHTML = '<div class="empty-note">Type at least two letters.</div>'; return; }
       statusEl.textContent = results.length ? (results.length >= 500 ? "500+ matches" : results.length + (results.length === 1 ? " match" : " matches")) + (cur >= 0 ? " \u00B7 " + (cur + 1) + " of " + results.length : "") : "No matches";
-      listEl.innerHTML = results.map(function(r, i){
+      listEl.innerHTML = results.length ? results.map(function(r, i){
         return '<div class="find-item' + (i === cur ? ' cur' : '') + '" data-i="' + i + '" role="button" tabindex="0">' + (r.where ? '<span class="find-where">' + esc(r.where) + '</span>' : '') + r.html + '</div>';
-      }).join("");
+      }).join("") : emptyState(ICONS.search, "No matches", "Nothing in this " + (state.mode === "pdf" ? "PDF" : "document") + " matches \u201C" + esc(query) + "\u201D.");
     }
     function go(i, keepPanel){
       if (!results.length) return;
@@ -3796,7 +4156,7 @@
         e.preventDefault(); openPanel();
       }
     });
-    Menu.add({ order: 20, group: "navigate", icon: ICONS.search, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 20, pgroup: "reading", porder: 40.2, group: "navigate", icon: ICONS.search, label: "Search", key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, reset: reset, refresh: refresh, repair: repair, clearPaint: clearPaint, go: go, results: function(){ return results; } };
   })();
 
@@ -3823,7 +4183,7 @@
       [0,  "Very difficult", "Very hard to read; best understood by graduates and specialists."]
     ];
     var TIER = { 3: "very rare", 2: "rare", 1: "uncommon" };
-    var FIND_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="6.8" cy="6.8" r="4.6"/><path d="M10.4 10.4 14 14"/></svg>';
+    var FIND_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="6.8" cy="6.8" r="4.6"/><path d="M10.4 10.4 14 14"/></svg>';
     var cache = null, gen = 0, statusEl = null;
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
@@ -4035,7 +4395,7 @@
     /* ---- the panel ---- */
     function docLabel(){
       var id = Library.currentId(), b = Library.books().filter(function(x){ return x.id === id; })[0];
-      return { name: (b && (b.title || b.name)) || $("#fname").textContent || "This document",
+      return { name: bookName(b) || $("#fname").textContent || "This document",
                type: b ? b.type : (state.mode === "pdf" ? "PDF" : "") };
     }
     function keyNow(){
@@ -4179,7 +4539,7 @@
     /* a new document (a file, or another tab) replaces the text under the panel: its numbers
        would be the old document's, so the panel closes, which also stops a count under way */
     document.addEventListener("ll:fileopened", function(){ if (Side.is("about")) Side.close(); });
-    Menu.add({ order: 60, group: "navigate", icon: ICONS.info, label: "About this text", key: "I", run: openPanel, show: docOpen });
+    Menu.add({ order: 60, pgroup: "reading", porder: 40.3, group: "navigate", icon: ICONS.info, label: "About this text", key: "I", run: openPanel, show: docOpen });
     window.llAbout = { openPanel: openPanel, stats: analyse, syllables: syllables, sentences: sentencesIn, hardest: hardest, summary: summary };
     return { openPanel: openPanel, stats: analyse, syllables: syllables, hardest: hardest };
   })();
@@ -4213,7 +4573,19 @@
     var pitchPref = clamp(parseFloat(Store.get("ll_tts_pitch") || "1") || 1, 0.7, 1.3);
     var hasHL = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
     if (!/^(off|natural|dramatic)$/.test(expr)) expr = "natural";
-    rateEl.value = rate; rateV.textContent = rate.toFixed(1) + "×";
+    var speedBtn = $("#ttsSpeed"), speedPop = $("#ttsSpeedPop");
+    /* the speed as the chip says it: one decimal (1.0×), two where a preset needs them (1.25×) */
+    function fmtRate(r){ var x = Math.round(r * 100) / 100; return (Math.abs(x * 10 - Math.round(x * 10)) < 1e-6 ? x.toFixed(1) : x.toFixed(2)) + "×"; }
+    function showRate(){
+      var t = fmtRate(rate);
+      rateV.textContent = t; $("#ttsRateN").textContent = t;
+      speedBtn.setAttribute("aria-label", "Speed " + t + " — change");
+      rateEl.setAttribute("aria-valuetext", t);
+      Array.prototype.forEach.call(document.querySelectorAll("#ttsPresets .chip"), function(c){
+        var on = Math.abs(+c.dataset.rate - rate) < 0.001; c.classList.toggle("on", on); c.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    rateEl.value = rate; showRate();
     function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
 
     /* ---- engines ---- */
@@ -4806,7 +5178,7 @@
         var v = $("#docView").getBoundingClientRect();
         if (rect.left < v.left - 2 || rect.left > v.right) revealOffset(u.start);
       } else {
-        var head = Library.headerHeight(), bottom = window.innerHeight - (bar.classList.contains("on") ? bar.offsetHeight : 0);
+        var head = Library.headerHeight(), bottom = window.innerHeight - $("#dock").offsetHeight;
         if (rect.top < head + 4 || rect.bottom > bottom - 10) revealOffset(u.start, { center: true });
       }
     }
@@ -5027,22 +5399,35 @@
       var was = runEngine;
       if (runEngine && runEngine.stop) runEngine.stop();
       runEngine = null; ctx = null; devPlan = null; session++;
-      bar.classList.remove("on"); bar.removeAttribute("data-engine");
+      bar.classList.remove("on"); bar.removeAttribute("data-engine"); speedMenu(false);
       if (was && was !== engines.device) fillVoices();     /* the mirror select lists the device voices again */
       document.body.classList.remove("tts-on");
       if (state.flow === "pages") relayoutPaged();
     }
-    var narrow = window.matchMedia ? window.matchMedia("(max-width: 720px)") : null;
-    /* the bar's height, for the page to clear it, and one row or two: two below 720px, and
-       whenever the speed control would overflow its row (with the sleep timer showing, one row
-       needs ~830px) */
+    /* the bar's height, for the page to clear it. It is one row at every width now: the voice, ‹ ▶ ›,
+       the speed chip and the close; the sleep timer is a badge on the voice and the slider lives in
+       the speed chip's popover, so nothing is left to wrap */
     function measure(){
       if (!active) return;
       bar.classList.remove("tts-wrap");
-      var lab = rateEl.parentNode;
-      if ((narrow && narrow.matches) || lab.scrollWidth > lab.clientWidth + 1) bar.classList.add("tts-wrap");
       document.documentElement.style.setProperty("--ttsH", bar.offsetHeight + "px");
       dockVar();
+    }
+    /* the speed chip's popover: the slider and four presets, over the bar. Escape, a tap outside or
+       the chip again closes it; focus goes to the slider and back to the chip */
+    function speedMenu(open){
+      var was = !speedPop.hidden;
+      if (open === undefined) open = !was;
+      if (open === was) return;
+      speedPop.hidden = !open;
+      speedBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) rateEl.focus({ preventScroll: true });
+      else if (speedPop.contains(document.activeElement)) speedBtn.focus({ preventScroll: true });
+    }
+    function setRate(r){
+      rate = clamp(Math.round(r * 100) / 100, 0.5, 2); rateEl.value = rate; showRate(); Store.set("ll_tts_rate", String(rate));
+      if (runEngine && runEngine.setRate) runEngine.setRate(rate);     /* clips play faster or slower, nothing is made again */
+      else restart();
     }
     /* the engine looks at the units (who speaks, clips…) before the first sentence plays */
     function prepared(fn){
@@ -5335,10 +5720,10 @@
     /* the icons this panel draws, kept here so the read-aloud region owns them */
     var V_ICONS = {
       play:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg>',
-      pair:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
-      cards: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h6v8H3z"/><path d="M9 8h6v8H9z"/><path d="M15 8h6v8h-6z"/></svg>',
-      expr:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7"/><path d="M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7"/></svg>',
-      clock: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M12 7v5l3 2"/></svg>'
+      pair:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
+      cards: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h6v8H3z"/><path d="M9 8h6v8H9z"/><path d="M15 8h6v8h-6z"/></svg>',
+      expr:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15c-2 0-3.5-1.5-3.5-3.5S5 8 7 8s3 1.5 3 3.5c0 3-2 6-4 7"/><path d="M17 15c-2 0-3.5-1.5-3.5-3.5S15 8 17 8s3 1.5 3 3.5c0 3-2 6-4 7"/></svg>',
+      clock: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z"/><path d="M12 7v5l3 2"/></svg>'
     };
     var SEX = { f: "♀", m: "♂", "": "—" };
     var SEXNAME = { f: "a woman’s voice", m: "a man’s voice", "": "not marked" };
@@ -5591,17 +5976,25 @@
     $("#ttsStop").addEventListener("click", stop);
     $("#ttsPrev").addEventListener("click", function(){ step(-1); });
     $("#ttsNext").addEventListener("click", function(){ step(1); });
-    rateEl.addEventListener("input", function(){
-      rate = +rateEl.value; rateV.textContent = rate.toFixed(1) + "×"; Store.set("ll_tts_rate", String(rate));
-      if (runEngine && runEngine.setRate) runEngine.setRate(rate);     /* clips play faster or slower, nothing is made again */
-      else restart();
-    });
+    rateEl.addEventListener("input", function(){ setRate(+rateEl.value); });
+    speedBtn.addEventListener("click", function(e){ e.stopPropagation(); speedMenu(); });
+    $("#ttsPresets").addEventListener("click", function(e){ var c = e.target.closest(".chip[data-rate]"); if (c) setRate(+c.dataset.rate); });
+    /* a tap outside closes it and goes no further (it would look the word under it up) */
+    document.addEventListener("click", function(e){
+      if (speedPop.hidden || speedPop.contains(e.target) || speedBtn.contains(e.target)) return;
+      speedMenu(false); e.preventDefault(); e.stopPropagation();
+    }, true);
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape" && !speedPop.hidden){ e.preventDefault(); e.stopImmediatePropagation(); speedMenu(false); }
+    }, true);
     voiceSel.addEventListener("change", function(){
       if (runEngine && runEngine.voiceChanged){ runEngine.voiceChanged(voiceSel.value); syncBar(); restart(); }
       else setVoice(voiceSel.value);
     });
     voicesBtn.addEventListener("click", openPanel);
     sleepBtn.addEventListener("click", openPanel);
+    /* a long press on the bar's speaker opens the voices without starting (a tap starts and stops) */
+    longPress($("#speakBtn"), openPanel);
     window.addEventListener("resize", measure);
     window.addEventListener("pagehide", function(){
       if (supported) try { speechSynthesis.cancel(); } catch(_){}
@@ -5609,7 +6002,7 @@
       if (silence) try { silence.pause(); } catch(_){}
     });
 
-    Menu.add({ order: 40, group: "reading", icon: ICONS.speaker, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
+    Menu.add({ order: 40, quick: 1, group: "reading", icon: ICONS.speaker, label: function(){ return active ? "Stop reading aloud" : "Read aloud"; }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported || engineName !== "device"; } });
     /* the characters of the open document (audiobook.js works them out, on this device) */
     Menu.add({ order: 41, group: "reading", icon: ICONS.people, label: "Who’s who", run: function(){ withAudiobook(function(a){ a.openWho(); }); },
@@ -6820,8 +7213,9 @@
       if (state.mode !== "doc" && state.mode !== "pdf") return;
       if (pagedActive()){ el.classList.remove("on"); return; }
       el.textContent = text; el.classList.add("on");
+      /* at the foot of the screen, never over the line being read; it fades 1.2 s after the scrolling stops */
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(function(){ el.classList.remove("on"); }, 2600);
+      hideTimer = setTimeout(function(){ el.classList.remove("on"); }, 1200);
     }
     /* every scroll and page turn: the pace detector sees the movement first (before the throttle,
        so no gesture's time is lost), then the readout is drawn */
@@ -7077,7 +7471,7 @@
       });
       var label = "Reading speed over " + weeks.length + " weeks: " + Math.round(lo) + " to " + Math.round(hi) + " words per minute";
       return '<svg class="st-spark" viewBox="0 0 100 28" preserveAspectRatio="none" role="img" aria-label="' + label + '">' +
-        '<polyline points="' + pts.join(" ") + '" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+        '<polyline points="' + pts.join(" ") + '" fill="none" stroke="currentColor" stroke-width="1.75" ' +
         'stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
     }
     /* one sentence about where the speed is going */
@@ -7224,7 +7618,7 @@
         h += '<section class="st-sec"><div class="label sec">Books</div>';
         recent.forEach(function(r){
           var rb = data.books[r.id], pos = Library.positionFor(r.id), pct = pos ? pos.pct : 0, fc = forecast(r, pos);
-          h += '<div class="st-book"><div class="st-book-n">' + esc(r.title || r.name) + '</div>' +
+          h += '<div class="st-book"><div class="st-book-n">' + esc(bookName(r)) + '</div>' +
             '<div class="st-book-m"><span class="st-pbar" aria-hidden="true"><i style="width:' + pct + '%"></i></span>' +
             '<span>' + pct + '% · ' + dur(rb ? rb.ms : 0) + ' read</span></div>' +
             (fc ? '<div class="st-book-f">' + esc(fc) + '</div>' : '') + '</div>';
@@ -7595,7 +7989,7 @@
       if (!Side.is("storage")) return;
       var b = e.target.closest("button[data-so]"); if (b) act(b.dataset.so);
     });
-    Menu.add({ order: 62, group: "app", icon: ICONS.books, label: "Storage", run: openPanel });
+    Menu.add({ order: 62, porder: 91, group: "app", icon: ICONS.storage, label: "Storage", run: openPanel });
     window.llStorage = { openPanel: openPanel, measure: measure, act: act };
     return { openPanel: openPanel };
   })();
@@ -7695,7 +8089,7 @@
     function bookRec(id){ return Library.books().filter(function(b){ return b.id === id; })[0] || null; }
     /* an EPUB's library title is "Title — Author"; nothing else carries an author */
     function nameOf(b){
-      var t = (b && (b.title || String(b.name || "").replace(/\.[^.]+$/, ""))) || ($("#fname").textContent || "").trim() || "Untitled", author = "";
+      var t = bookName(b) || ($("#fname").textContent || "").trim() || "Untitled", author = "";
       var i = t.indexOf(" \u2014 ");
       if (b && b.title && b.type === "EPUB" && i > 0){ author = t.slice(i + 3).trim(); t = t.slice(0, i).trim(); }
       return { title: t, author: author };
@@ -7993,7 +8387,7 @@
     }
     function renderPanel(body, foot){
       if (!list.length){
-        body.innerHTML = '<div class="empty-note">' + (loaded ? "Books you finish will appear here." : "Loading…") + '</div>';
+        body.innerHTML = loaded ? emptyState(ICONS.journal, "No finished books yet", "Books you finish appear here with your stars and a note.") : '<div class="empty-note">Loading…</div>';
         foot.innerHTML = "";
         return;
       }
@@ -8292,7 +8686,7 @@
       var name = $("#fname").textContent;
       if (name) return name;
       var id = Library.currentId(), book = id ? Library.books().filter(function(b){ return b.id === id; })[0] : null;
-      return book ? (book.title || book.name) : "";
+      return book ? bookName(book) : "";
     }
     function printPdf(){
       var file = currentFile();
@@ -8338,7 +8732,7 @@
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "p" || e.key === "P") && state.mode === "pdf"){ e.preventDefault(); printPdf(); }
     });
-    Menu.add({ order: 70, group: "tools", icon: ICONS.print, label: "Print…", run: print, show: canPrint });
+    Menu.add({ order: 70, pgroup: "app", porder: 90, group: "tools", icon: ICONS.print, label: "Print…", run: print, show: canPrint });
     /* for tests and other scripts */
     window.llPrint = { print: print, canPrint: canPrint };
     return { print: print, canPrint: canPrint };
@@ -9131,7 +9525,7 @@
       })();
     }
 
-    Menu.add({ order: 42, group: "reading", icon: ICONS.recap, label: "Previously…", run: onDemand, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 42, quick: 4, group: "reading", icon: ICONS.recap, label: "Previously…", run: onDemand, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     window.llRecap = { summarize: summarize, sentences: sentenceSpans, blocks: textBlocks, sessions: function(id){ var b = data.books[id || Library.currentId()]; return b ? b.s.slice() : []; },
                        show: onDemand, close: close, ago: ago, isOpen: function(){ return !!(card && card.classList.contains("on")); }, speaking: function(){ return !!speakGen; },
                        build: function(x){ return build(x, state.mode); }, GAP: GAP };
@@ -9441,7 +9835,23 @@
     function openPanel(){ load().then(function(S){ S.openPanel(); }, function(){ Marks.toast("Couldn’t load the sounds"); }); }
     /* left on last time: the module comes with the next book and watches the page from then on */
     document.addEventListener("ll:fileopened", function(){ if (!window.llSounds && wanted()) load().then(function(S){ S.sync(); }).catch(function(){}); });
-    Menu.add({ order: 54, group: "reading", icon: ICONS.sound, label: "Background sounds", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    function playing(){ return !!(window.llSounds && window.llSounds.isOn && window.llSounds.isOn()); }
+    /* the menu's entry in one tap: stop what plays, or play the last blend again; the panel (the
+       sounds, the volume, the mix) is the toast's Mix… away, and opens by itself the first time */
+    function quick(){
+      var mix = { action: "Mix\u2026", run: openPanel };
+      if (playing()){ window.llSounds.setOn(false); Marks.toast("Background sounds off", mix); return; }
+      if (!Store.get(KEY)){ openPanel(); return; }
+      var go = function(S){ S.setOn(true); Marks.toast(S.describe() + " \u2014 playing", mix); };
+      if (window.llSounds) go(window.llSounds);
+      else load().then(go, function(){ Marks.toast("Couldn’t load the sounds"); });
+    }
+    Menu.add({ order: 54, group: "reading", icon: ICONS.sound, label: function(){ return playing() ? "Stop background sounds" : "Background sounds"; }, run: quick, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    /* once there is a blend to go back to, the tile above plays or stops it; the panel itself (which
+       sounds, the volume, the mix) keeps an entry of its own beside it, so it never hangs on the
+       toast's four seconds */
+    Menu.add({ order: 54.5, group: "reading", icon: ICONS.sliders, label: "Sound mix…", run: openPanel,
+               show: function(){ return (state.mode === "doc" || state.mode === "pdf") && !!Store.get(KEY); } });
     return { load: load, openPanel: openPanel };
   })();
 
@@ -9449,7 +9859,7 @@
      library, and the settings sheet (the ⋯ menu and the s key open it) */
   Menu.add({ order: 1, group: "app", icon: ICONS.open, label: "Open a file\u2026", key: "O", run: function(){ $("#fileInput").click(); } });
   Menu.add({ order: 2, group: "app", icon: ICONS.books, label: "Library", run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
-  Menu.add({ order: 85, group: "app", icon: ICONS.sliders, label: "Settings", key: "S", run: function(){ setSheet(true); } });
+  Menu.add({ order: 85, head: true, group: "app", icon: ICONS.gear, label: "Settings", key: "S", run: function(){ setSheet(true); } });
 
   /* ============================================================
      Tabs — several open documents; switching re-renders from the library copy
@@ -9458,8 +9868,10 @@
   var Tabs = (function(){
     var KEY = "ll_tabs", tabs = [], activeId = null, strip = $("#tabs");
     try { tabs = JSON.parse(Store.get(KEY) || "[]"); if (!Array.isArray(tabs)) tabs = []; } catch(_){ tabs = []; }
-    tabs = tabs.filter(function(t){ return t && t.id && t.name; }).map(function(t){ return { id: t.id, name: t.name, file: null }; });
-    function save(){ try { Store.set(KEY, JSON.stringify(tabs.map(function(t){ return { id: t.id, name: t.name }; }))); } catch(_){} }
+    tabs = tabs.filter(function(t){ return t && t.id && t.name; }).map(function(t){ return { id: t.id, name: t.name, title: t.title || "", file: null }; });
+    function save(){ try { Store.set(KEY, JSON.stringify(tabs.map(function(t){ return { id: t.id, name: t.name, title: t.title || "" }; }))); } catch(_){} }
+    /* a tab shows the book's title (the file's name is its tooltip) */
+    function titleOf(t){ return t.title || Library.titleOf(t.id) || bareName(t.name); }
     function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
     /* one Tab stop for the strip (the active tab; arrows move along it), and the close is a plain
        mark inside the tab rather than a second control nested in it: Delete, Backspace or the
@@ -9471,7 +9883,7 @@
       strip.innerHTML = tabs.map(function(t){
         var on = t.id === activeId;
         return '<button type="button" class="tab' + (on ? ' on' : '') + '" role="tab" tabindex="' + (t.id === stop ? 0 : -1) + '" aria-selected="' + on + '" aria-keyshortcuts="Delete" data-id="' + esc(t.id) + '" title="' + esc(t.name) + '">' +
-          '<span class="tab-name">' + esc(t.name) + '</span><span class="tab-x" aria-hidden="true" data-x="' + esc(t.id) + '">' + ICONS.close + '</span></button>';
+          '<span class="tab-name">' + esc(titleOf(t)) + '</span><span class="tab-x" aria-hidden="true" data-x="' + esc(t.id) + '">' + ICONS.close + '</span></button>';
       }).join("");
       var on = strip.querySelector(".tab.on"); if (on) on.scrollIntoView({ inline: "nearest", block: "nearest" });
       /* the strip is drawn again when a document opens: keyboard focus that was in it stays in it */
@@ -9482,11 +9894,11 @@
     function focusTab(id){ var t = tabEl(id); if (t) t.focus({ preventScroll: true }); }
     function noteOpen(id, name, file){
       var t = tabs.filter(function(x){ return x.id === id; })[0];
-      if (!t){ t = { id: id, name: name, file: file }; tabs.push(t); }
+      if (!t){ t = { id: id, name: name, title: "", file: file }; tabs.push(t); }
       else { t.file = file || t.file; if (name) t.name = name; }
       activeId = id; save(); render();
     }
-    function setName(id, name){ var t = tabs.filter(function(x){ return x.id === id; })[0]; if (t && name){ t.name = name; save(); render(); } }
+    function setName(id, title){ var t = tabs.filter(function(x){ return x.id === id; })[0]; if (t && title && t.title !== title){ t.title = title; save(); render(); } }
     function activate(id){
       var t = tabs.filter(function(x){ return x.id === id; })[0];
       if (!t) return;
@@ -9522,7 +9934,7 @@
         var added = false;
         ids.forEach(function(id, i){
           var f = list[i];
-          if (!tabs.some(function(x){ return x.id === id; })){ tabs.push({ id: id, name: f.name, file: f }); added = true; }
+          if (!tabs.some(function(x){ return x.id === id; })){ tabs.push({ id: id, name: f.name, title: "", file: f }); added = true; }
           /* make sure it is in the library too */
           Library.remember(f, id);
         });
@@ -9549,7 +9961,7 @@
       if (e.key === "w" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); close(t.dataset.id); }
     });
     /* the × is hidden from assistive technology, so the menu carries the same action */
-    Menu.add({ order: 3, group: "app", icon: ICONS.close, label: "Close document", show: function(){ return !!activeId && (state.mode === "doc" || state.mode === "pdf"); }, run: function(){ if (activeId) close(activeId); } });
+    Menu.add({ order: 3, porder: 92, group: "app", icon: ICONS.close, label: "Close document", show: function(){ return !!activeId && (state.mode === "doc" || state.mode === "pdf"); }, run: function(){ if (activeId) close(activeId); } });
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && e.key === "Tab" && tabs.length > 1){
         e.preventDefault();
@@ -9559,7 +9971,7 @@
       }
     });
     render();
-    return { noteOpen: noteOpen, activate: activate, close: close, drop: drop, clear: clear, addFiles: addFiles, setName: setName, list: function(){ return tabs; }, active: function(){ return activeId; }, render: render };
+    return { noteOpen: noteOpen, activate: activate, close: close, drop: drop, clear: clear, addFiles: addFiles, setName: setName, list: function(){ return tabs; }, active: function(){ return activeId; }, render: render, titleOf: titleOf };
   })();
 
   /* open one or many files: the first shows, the rest become tabs */
@@ -9671,18 +10083,100 @@
     if (to === cur) to = dark ? "day" : "dusk";
     selectTheme(to);
   }
+
+  /* ---------- phones held in one hand: the reading actions at the foot of the screen ----------
+     With a finger for a pointer on a phone (560px and under) and a document open, the reading
+     buttons (Contents, Aa, Read aloud, the lamp and ⋯) move from the top bar into a slim row at the
+     foot of the dock (#actRow), where the thumb is. The bar keeps the library mark, the book's
+     title with its section, and Search. The buttons themselves move, their ids and listeners with
+     them; the row goes and comes back with the bar (hidebar in Scroll flow, immersive in Pages,
+     app.css). The tabs strip folds into the title: a tap on it opens a switcher of the open books. */
+  var PhoneBar = (function(){
+    var mq = window.matchMedia ? window.matchMedia("(pointer: coarse) and (max-width: 560px)") : null;
+    var row = $("#actRow"), fname = $("#fname"), IDS = ["tocBtn", "gear", "speakBtn", "lamp", "more"], homes = {};
+    IDS.forEach(function(id){ var el = document.getElementById(id), ph = document.createComment(" " + id + " "); el.parentNode.insertBefore(ph, el); homes[id] = ph; });
+    function on(){ return !!(mq && mq.matches) && (state.mode === "doc" || state.mode === "pdf"); }
+    function place(){
+      var want = on(), was = document.body.classList.contains("phonebar");
+      if (want !== was) Pop.close(true);
+      document.body.classList.toggle("phonebar", want);
+      IDS.forEach(function(id){
+        var el = document.getElementById(id), ph = homes[id];
+        if (want){ if (el.parentNode !== row) row.appendChild(el); }
+        else if (el.parentNode === row) ph.parentNode.insertBefore(el, ph.nextSibling);
+      });
+      /* the title is the way to the other open books */
+      if (want){ fname.setAttribute("role", "button"); fname.tabIndex = 0; fname.setAttribute("aria-haspopup", "dialog"); }
+      else { fname.removeAttribute("role"); fname.removeAttribute("tabindex"); fname.removeAttribute("aria-haspopup"); }
+      if (want !== was){ headVar(); dockVar(); if (pagedActive()) relayoutPaged(); }
+    }
+    if (mq){ if (mq.addEventListener) mq.addEventListener("change", place); else if (mq.addListener) mq.addListener(place); }
+
+    /* the switcher: the open books (the tabs), each with its close; the library and a new file below */
+    function esc(x){ return escapeHtml(String(x)); }
+    function render(body, foot){
+      var list = Tabs.list(), act = Tabs.active() || Library.currentId();
+      if (!list.length && act) list = [{ id: act, name: "" }];
+      body.innerHTML = '<ul class="bk-list">' + list.map(function(t){
+        var b = Library.books().filter(function(x){ return x.id === t.id; })[0], pos = Library.positionFor(t.id), pct = pos ? pos.pct : 0, on = t.id === act;
+        var title = Tabs.titleOf ? Tabs.titleOf(t) : bookName(b), type = b ? b.type : "";
+        return '<li class="bk-row' + (on ? ' on' : '') + '"><button type="button" class="bk-open" data-id="' + esc(t.id) + '"' + (on ? ' aria-current="true"' : '') + '>' +
+          (type ? '<span class="lib-type">' + esc(type) + '</span>' : '') +
+          '<span class="bk-name">' + esc(title) + '</span><span class="bk-meta">' + (on ? 'Reading now \u00B7 ' : '') + (pct ? pct + "%" : "new") + '</span></button>' +
+          '<button type="button" class="bk-x" data-x="' + esc(t.id) + '" title="Close" aria-label="Close ' + esc(title) + '">' + ICONS.close + '</button></li>';
+      }).join("") + '</ul>';
+      foot.innerHTML = '<button type="button" class="chip" data-bk="library">' + ICONS.books + '<span>Library</span></button>' +
+        '<button type="button" class="chip" data-bk="open">' + ICONS.open + '<span>Open a file\u2026</span></button>';
+    }
+    function openSwitcher(){ Side.open("books", "Open books", render); }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("books")) return;
+      var x = e.target.closest(".bk-x");
+      if (x){
+        Tabs.close(x.dataset.x);
+        if (Tabs.list().length && (state.mode === "doc" || state.mode === "pdf")) Side.refresh("books", render); else Side.close();
+        return;
+      }
+      var o = e.target.closest(".bk-open");
+      if (o){ var id = o.dataset.id; Side.close(); if (id !== (Tabs.active() || Library.currentId())) Tabs.activate(id); }
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("books")) return;
+      var b = e.target.closest("[data-bk]"); if (!b) return;
+      Side.close();
+      if (b.dataset.bk === "library") Library.home(); else $("#fileInput").click();
+    });
+    fname.addEventListener("click", function(){ if (document.body.classList.contains("phonebar")) openSwitcher(); });
+    fname.addEventListener("keydown", function(e){
+      if ((e.key === "Enter" || e.key === " ") && document.body.classList.contains("phonebar")){ e.preventDefault(); openSwitcher(); }
+    });
+    /* a long press on the lamp switches between the day and the night theme without the popover */
+    longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight(); Marks.toast(currentTheme().name + " theme"); });
+    place();
+    return { place: place, on: on, openSwitcher: openSwitcher };
+  })();
   /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
      Scroll flow, opening it should push the text down so what was at the top reappears just
      under the sheet, and closing it should pull the text back up; browsers with scroll
      anchoring undo exactly that shift, so the document is put where it belongs afterwards. */
   var sheetOpener = null;
   /* `from` is the control that asked for the sheet; without one, the element that had focus */
+  var sheetScrim = null;
   function setSheet(open, from){
     var sheet = $("#sheet");
     var was = sheet.classList.contains("open");
     if (open === undefined) open = !was;
     if (open === was) return;
-    var paged = document.body.classList.contains("paged"), ref = $("#main");
+    /* a phone: the sheet rises from the bottom like every other panel, over a scrim that closes it,
+       and the page stays where it is under it; wider screens: it drops from the bar and pushes the text */
+    var phone = isPhone(), paged = phone || document.body.classList.contains("paged"), ref = $("#main");
+    if (!sheetScrim){
+      sheetScrim = document.createElement("div"); sheetScrim.id = "sheetScrim"; sheetScrim.setAttribute("aria-hidden", "true");
+      sheetScrim.addEventListener("click", function(){ setSheet(false); });
+      sheet.parentNode.insertBefore(sheetScrim, sheet);
+    }
+    sheetScrim.classList.toggle("on", open && phone);
+    document.documentElement.classList.toggle("lock-sheet", open && phone);
     var before = ref.getBoundingClientRect().top, h = was ? sheet.offsetHeight : 0;
     /* read before the class flips: the browser only drops focus from a hidden element lazily */
     var active = document.activeElement, inside = sheet.contains(active);
@@ -9718,6 +10212,8 @@
     /* icon and id per group, by the label's text */
     var META = { Reading: [ICONS.books, "readingGroup"], Theme: [ICONS.sun, "themeGroup"], Text: [ICONS.aa, "textGroup"],
                  PDF: [ICONS.print, "pdfGroup"], Dictionary: [ICONS.meaning, "dictGroup"], Translation: [ICONS.translate, "trGroup"] };
+    /* the section buttons carry a line icon beside the word (the Text group's heading keeps its "Aa") */
+    var TAB_ICONS = { Text: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/></svg>' };
     function nameOf(g){
       var l = g.querySelector(".label"), t = "";
       if (l) Array.prototype.forEach.call(l.childNodes, function(n){ if (n.nodeType === 3) t += n.textContent; });
@@ -9728,6 +10224,12 @@
       groups = Array.prototype.slice.call(sheet.querySelectorAll(".sheet-inner > .group"));
       strip = document.createElement("nav");
       strip.className = "sheet-tabs"; strip.id = "sheetTabs"; strip.setAttribute("aria-label", "Settings sections");
+      /* a phone's bottom sheet: its handle and its title over the sections (app.css shows them there only) */
+      var grab = document.createElement("div"), ttl = document.createElement("div");
+      grab.className = "sheet-grab"; grab.setAttribute("aria-hidden", "true");
+      ttl.className = "sheet-title"; ttl.textContent = "Settings"; ttl.setAttribute("aria-hidden", "true");
+      grab.addEventListener("click", function(){ setSheet(false); });
+      strip.appendChild(grab); strip.appendChild(ttl);
       var row = document.createElement("div"); row.className = "sheet-tabs-row";
       groups.forEach(function(g, i){
         var n = nameOf(g), m = META[n] || [];
@@ -9735,10 +10237,13 @@
         var l = g.querySelector(".label");
         if (l && m[0] && !l.querySelector("svg, .label-aa")) l.insertAdjacentHTML("afterbegin", m[0]);
         var b = document.createElement("button");
-        b.type = "button"; b.textContent = n || g.id; b.dataset.group = g.id;
+        b.type = "button"; b.dataset.group = g.id;
+        b.innerHTML = (TAB_ICONS[n] || (m[0] && m[0].indexOf("<svg") === 0 ? m[0] : "")) + "<span></span>";
+        b.lastChild.textContent = n || g.id;
         row.appendChild(b);
       });
       strip.appendChild(row);
+      dragToClose(sheet, [grab, ttl], function(){ setSheet(false); }, function(){ return sheet.classList.contains("open"); });
       var x = document.createElement("button");
       x.type = "button"; x.className = "sheet-x"; x.id = "sheetClose"; x.title = "Close settings"; x.setAttribute("aria-label", "Close settings");
       x.innerHTML = ICONS.close;
@@ -9758,6 +10263,19 @@
       pick();
     }
     function topOf(g){ return g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop; }
+    /* a group that does not apply to the open document (PDF while a text is open, Text while a PDF
+       is) steps back, and its section button leaves the strip; on the start screen both apply */
+    function applies(){
+      var pdf = state.mode === "pdf", txt = state.mode === "doc";
+      $("#textGroup").classList.toggle("dim", pdf);
+      $("#pdfGroup").classList.toggle("dim", txt);
+      var ph = $("#pdfHint"); if (ph) ph.hidden = !txt;
+      if (!strip) return;
+      Array.prototype.forEach.call(strip.querySelectorAll("button[data-group]"), function(b){
+        var g = document.getElementById(b.dataset.group);
+        b.hidden = !!(g && g.classList.contains("dim"));
+      });
+    }
     /* room under the last group, so that it too can be scrolled up under the strip like the others */
     function pad(){
       var last = groups[groups.length - 1], inner = sheet.querySelector(".sheet-inner");
@@ -9791,7 +10309,7 @@
       mark(id, 700);
       sheet.scrollTo({ top: Math.max(0, topOf(g) - strip.offsetHeight - 2), behavior: noMotion() ? "auto" : "smooth" });
     }
-    return { build: build, pick: pick, mark: mark, go: go };
+    return { build: build, pick: pick, mark: mark, go: go, applies: applies };
   })();
 
   /* ---- the current section after the title while reading: the last heading at or above the
@@ -9801,6 +10319,8 @@
   var Section = (function(){
     var timer = null, last = 0, offs = null, offsLen = -1, fname = $("#fname");
     function set(t){
+      /* a section named like the book (its title heading) is not said twice */
+      if (t && t === fname.textContent.trim()) t = "";
       if (t) fname.dataset.sec = t; else delete fname.dataset.sec;
       fname.title = fname.textContent + (t ? " · " + t : "");
     }
@@ -9875,7 +10395,16 @@
     if (!ch) return;
     if (ch.dataset.new) createCustom(); else selectTheme(ch.dataset.theme);
   });
+  /* the themes picked by hand, the latest first: the theme popover shows the last few */
+  function recentThemes(){ try { var a = JSON.parse(Store.get("ll_theme_recent") || "[]"); return Array.isArray(a) ? a : []; } catch(_){ return []; } }
+  function noteTheme(prev){
+    if (!prev) return;
+    var a = recentThemes().filter(function(k){ return k !== prev; });
+    a.unshift(prev);
+    Store.set("ll_theme_recent", JSON.stringify(a.slice(0, 6)));
+  }
   function selectTheme(theme){
+    if (theme !== state.theme) noteTheme(state.theme);
     state.theme = theme;
     if (customById(theme)) syncCustomUI();
     applyTheme(); AutoTheme.userPicked(theme);
@@ -10050,6 +10579,21 @@
   $("#prevPg").addEventListener("click", function(){ turn(-1); });
   $("#nextPg").addEventListener("click", function(){ turn(1); });
 
+  /* the bars in Pages flow: shown (show true), hidden (false) or the other way round (undefined) */
+  function toggleBars(show){
+    var imm = document.body.classList.contains("immersive"), want = show === undefined ? !imm : !show;
+    if (want === imm) return;
+    document.body.classList.toggle("immersive", want);
+    setSheet(false);
+    relayoutPaged();
+  }
+  /* the top and bottom 56px of the page, where the bars live: a tap there shows or hides them, and
+     never looks a word up (in the middle of a phone's page almost every point is a word) */
+  var BAR_STRIP = 56;
+  function inBarStrip(y, el){
+    var r = (el || (state.mode === "pdf" ? $("#pdf") : $("#docView"))).getBoundingClientRect();
+    return y - r.top < BAR_STRIP || r.bottom - y < BAR_STRIP;
+  }
   function tapNav(e){
     if (!pagedActive()) return;
     if (e.target.closest("a")) return;
@@ -10059,20 +10603,21 @@
     var x = (e.clientX - r.left) / r.width;
     /* e-ink mode: the left third goes back, the rest forward, a whole page at a time */
     if (state.eink === true){ turn(x < 1 / 3 ? -1 : 1); return; }
-    if (x < 0.35) turn(-1);
+    if (inBarStrip(e.clientY, e.currentTarget)) toggleBars();
+    else if (x < 0.35) turn(-1);
     else if (x > 0.65) turn(1);
-    else {
-      document.body.classList.toggle("immersive");
-      setSheet(false);
-      relayoutPaged();
-    }
+    else toggleBars();
   }
   $("#docView").addEventListener("click", tapNav);
   $("#pdf").addEventListener("click", tapNav);
 
-  var touchX = null, touchY = null;
+  /* swipes in Pages flow: sideways turns the page; down on the page shows the bars, up hides them
+     (the page itself never scrolls vertically in Pages flow — a zoomed PDF page that does keeps its
+     vertical swipes, and e-ink mode keeps its bars) */
+  var touchX = null, touchY = null, touchPage = false;
   document.addEventListener("touchstart", function(e){
     touchX = e.touches[0].clientX; touchY = e.touches[0].clientY;
+    touchPage = !!(e.target && e.target.closest && e.target.closest("#docView, #pdf"));
   }, {passive:true});
   document.addEventListener("touchend", function(e){
     if (touchX === null || !pagedActive()) { touchX = null; return; }
@@ -10080,6 +10625,11 @@
     var dy = e.changedTouches[0].clientY - touchY;
     touchX = null;
     if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) turn(dx < 0 ? 1 : -1);
+    else if (touchPage && Math.abs(dy) > 55 && Math.abs(dy) > Math.abs(dx) * 1.4 && state.eink !== true){
+      var pdf = $("#pdf");
+      if (state.mode === "pdf" && pdf.scrollHeight > pdf.clientHeight + 2) return;
+      toggleBars(dy > 0);
+    }
   }, {passive:true});
 
   document.addEventListener("keydown", function(e){
@@ -10211,7 +10761,7 @@
       close:     "M6 6l12 12 M18 6L6 18"
     };
     function icon(name, size){
-      return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         ICONS[name].split(" | ").map(function(d){ return '<path d="' + d + '"/>'; }).join("") + '</svg>';
     }
     var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
@@ -10232,105 +10782,107 @@
       ".ll-hit{background:var(--accent); color:var(--bg); border-radius:3px;}",
       /* text for screen readers only (the pill's announcement) */
       ".ll-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}",
-      "#dictScrim{position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.18); display:none; touch-action:none;}",
+      "#dictScrim{position:fixed; inset:0; z-index:59; background:var(--scrim); display:none; touch-action:none;}",
       "#dictScrim.on{display:block;}",
+      /* a bottom sheet on phones: the raised surface, 24px top corners, the third step of elevation */
       "#dictCard{",
       "  position:fixed; left:0; right:0; bottom:0; z-index:60;",
       "  display:flex; flex-direction:column; max-height:66vh;",
-      "  background:var(--panel); color:var(--ink);",
-      "  border-top:1px solid var(--line); border-radius:16px 16px 0 0;",
-      "  box-shadow:0 -10px 40px rgba(0,0,0,.28);",
+      "  background:var(--raise); color:var(--ink);",
+      "  border-top:1px solid var(--line); border-radius:var(--r-xl) var(--r-xl) 0 0;",
+      "  box-shadow:var(--shadow-3);",
       "  transform:translateY(110%); visibility:hidden;",
-      "  transition:transform .22s ease, visibility 0s linear .22s;",
+      "  transition:transform var(--t-fade) var(--ease-in), visibility 0s linear var(--t-fade), background var(--t-theme) ease;",
       "  font-family:var(--ui-font);",
       "}",
-      "#dictCard.open{transform:none; visibility:visible; transition:transform .22s ease, visibility 0s;}",
+      "#dictCard.open{transform:none; visibility:visible; transition:transform var(--t-sheet) var(--ease-out), visibility 0s, background var(--t-theme) ease;}",
       "#dictCard:focus{outline:none;}",
-      "#dictCard:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}",
-      "#dictCard .grab{flex:none; width:40px; height:4px; border-radius:999px; background:var(--line); margin:8px auto 0;}",
+      "#dictCard:focus-visible{outline:var(--ring) solid var(--accent); outline-offset:-2px;}",
+      /* the handle: a 36 × 4 pill in a 24px grab zone */
+      "#dictCard .grab{flex:none; width:36px; height:4px; border-radius:999px; background:color-mix(in srgb, var(--ink) 22%, transparent); margin:10px auto;}",
       "#dictCard .inner{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}",
-      /* head: the mark, the word or “This sentence” in the reader serif, a close button */
-      "#dictCard .head{flex:none; display:flex; align-items:center; gap:12px; padding:8px 16px 0;}",
+      /* head: the mark (a lamp-tinted round), the word or “This sentence” in the title face, a round close */
+      "#dictCard .head{flex:none; display:flex; align-items:center; gap:12px; padding:4px 8px 0 16px; min-height:56px;}",
       "#dictCard .mark{",
-      "  flex:none; width:36px; height:36px; border-radius:50%;",
+      "  flex:none; width:40px; height:40px; border-radius:50%;",
       "  display:flex; align-items:center; justify-content:center;",
-      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent);",
+      "  background:var(--lamp-soft); color:var(--lamp);",
       "}",
+      "#dictCard .mark svg{width:22px; height:22px;}",
       "#dictCard .hw{flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 10px;}",
-      "#dictCard .term{font-family:var(--reader-font); font-size:1.25rem; line-height:1.3; word-break:break-word;}",
-      "#dictCard .ipa{color:var(--muted); font-size:0.875rem; line-height:1.3;}",
+      "#dictCard .term{font-family:var(--title-font); font-size:var(--fs-term); font-weight:600; line-height:1.25; letter-spacing:-.01em; word-break:break-word;}",
+      "#dictCard .ipa{color:var(--muted); font-size:var(--fs-body); line-height:1.3;}",
       "#dictCard .x{",
-      "  flex:none; width:36px; height:36px; margin-right:-8px; border:0; border-radius:10px;",
-      "  background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer;",
+      "  flex:none; width:48px; height:48px; border:0; border-radius:50%;",
+      "  background:transparent; color:var(--ink); display:flex; align-items:center; justify-content:center; cursor:pointer;",
       "}",
-      "#dictCard .x:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}",
-      "@media (pointer: coarse){ #dictCard .x{width:44px; height:44px; margin-right:-12px;} }",
+      "#dictCard .x svg{width:22px; height:22px;}",
+      "#dictCard .x:hover{background:var(--accent-soft);}",
       /* the sentence itself, cut at three lines with a way to see it all */
       "#dictCard .quote{",
-      "  flex:none; margin:10px 16px 0; padding:8px 12px; font-family:var(--reader-font); font-size:0.9375rem; line-height:1.5;",
-      "  border-left:3px solid var(--accent); border-radius:0 8px 8px 0;",
-      "  background:color-mix(in srgb, var(--accent) 8%, transparent); overflow-wrap:break-word;",
+      "  flex:none; margin:10px 16px 0; padding:10px 14px; font-family:var(--reader-font); font-size:1rem; line-height:1.55;",
+      "  border-left:3px solid var(--lamp); border-radius:0 var(--r-sm) var(--r-sm) 0;",
+      "  background:var(--lamp-soft); overflow-wrap:break-word;",
       "}",
       "#dictCard .quote.clamp{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}",
       "#dictCard .more{",
-      "  flex:none; align-self:flex-end; margin:2px 12px 0; padding:4px 6px; border:0; border-radius:6px;",
-      "  background:transparent; color:var(--muted); font:inherit; font-size:0.75rem; cursor:pointer;",
+      "  flex:none; align-self:flex-end; min-height:40px; margin:0 8px 0; padding:0 10px; border:0; border-radius:var(--r-pill);",
+      "  background:transparent; color:var(--accent); font:inherit; font-size:var(--fs-small); font-weight:600; cursor:pointer;",
       "}",
-      "#dictCard .more:hover{color:var(--ink); background:color-mix(in srgb, var(--accent) 10%, transparent);}",
-      /* the tab strip: equal tabs, the chosen one underlined in the accent */
+      "#dictCard .more:hover{background:var(--accent-soft);}",
+      /* the tab strip: equal tabs, the chosen one underlined in the accent and in the text's weight */
       "#dictCard .tabs{flex:none; display:flex; gap:2px; margin:10px 0 0; padding:0 8px; border-bottom:1px solid var(--line);}",
       "#dictCard [role=tab]{",
-      "  flex:1 1 0; min-width:0; height:40px; position:relative;",
+      "  flex:1 1 0; min-width:0; height:44px; position:relative;",
       "  display:flex; align-items:center; justify-content:center; gap:6px; padding:0 6px;",
-      "  border:0; border-radius:8px 8px 0 0; background:transparent; color:var(--muted);",
-      "  font:inherit; font-size:0.8125rem; font-weight:600; white-space:nowrap; cursor:pointer;",
+      "  border:0; border-radius:var(--r-sm) var(--r-sm) 0 0; background:transparent; color:var(--muted);",
+      "  font:inherit; font-size:var(--fs-body); font-weight:600; white-space:nowrap; cursor:pointer;",
       "}",
-      "#dictCard [role=tab] svg{flex:none;}",
+      "#dictCard [role=tab] svg{flex:none; width:18px; height:18px; stroke-width:2;}",
       "#dictCard [role=tab]:focus-visible{outline-offset:-3px;}",
-      "#dictCard [role=tab]:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--ink);}",
+      "#dictCard [role=tab]:hover{background:var(--accent-soft); color:var(--ink);}",
       "#dictCard [role=tab][aria-selected=true]{color:var(--ink);}",
       "#dictCard [role=tab][aria-selected=true]::after{",
-      "  content:\"\"; position:absolute; left:6px; right:6px; bottom:-1px; height:2px; border-radius:2px 2px 0 0; background:var(--accent);",
+      "  content:\"\"; position:absolute; left:8px; right:8px; bottom:-1px; height:3px; border-radius:3px 3px 0 0; background:var(--accent);",
       "}",
       "#dictCard [role=tab][aria-disabled=true]{opacity:.42; cursor:default;}",
       "#dictCard [role=tab][aria-disabled=true]:hover{background:transparent; color:var(--muted);}",
       "#dictCard .bdg{",
-      "  font-size:0.6875rem; line-height:1; padding:3px 6px; border-radius:999px; font-variant-numeric:tabular-nums;",
-      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--ink);",
+      "  font-size:var(--fs-eyebrow); line-height:1; padding:4px 7px; border-radius:999px; font-variant-numeric:tabular-nums;",
+      "  background:var(--accent-soft); color:var(--ink);",
       "}",
       "#dictCard .dot{flex:none; width:6px; height:6px; border-radius:50%; background:var(--accent);}",
-      "@media (pointer: coarse){ #dictCard [role=tab]{height:44px;} }",
-      "@media (max-width:359px){ #dictCard [role=tab]{gap:4px; padding:0 4px; font-size:0.75rem;} }",
+      "@media (max-width:359px){ #dictCard [role=tab]{gap:4px; padding:0 4px; font-size:var(--fs-small);} }",
       /* the panels scroll between the strip and the footer */
       "#dictCard .body{flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:12px 16px;}",
       "#dictCard .panel[hidden]{display:none;}",
       "#dictCard .panel:focus{outline:none;}",
       "#dictCard .panel:focus-visible{outline:2px solid var(--accent); outline-offset:-2px; border-radius:8px;}",
       "#dictCard .foot{",
-      "  flex:none; display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px calc(12px + env(safe-area-inset-bottom, 0px));",
-      "  border-top:1px solid var(--line);",
+      "  flex:none; display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px calc(8px + env(safe-area-inset-bottom, 0px));",
+      "  border-top:1px solid var(--line); background:var(--raise);",
       "}",
-      "#dictCard .empty{color:var(--muted); font-size:0.875rem; line-height:1.5; text-align:center; padding:22px 8px;}",
+      "#dictCard .empty{color:var(--muted); font-size:var(--fs-body); line-height:1.5; text-align:center; padding:24px 8px;}",
       /* the keyboard's way in: a field to type a word or a sentence into */
       "#dictCard .lookup{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:2px 0 4px;}",
       "#dictCard .lookup input{",
-      "  flex:1; min-width:0; min-height:40px; padding:0 12px; border:1px solid var(--line); border-radius:10px;",
-      "  background:var(--bg); color:var(--ink); font:inherit; font-size:0.9375rem;",
+      "  flex:1; min-width:0; min-height:48px; padding:0 14px; border:1.5px solid var(--ctl-line); border-radius:var(--r-sm);",
+      "  background:var(--well); color:var(--ink); font:inherit; font-size:var(--fs-body);",
       "}",
-      "#dictCard .lookup .hint{flex-basis:100%; color:var(--muted); font-size:0.78rem; line-height:1.45;}",
+      "#dictCard .lookup .hint{flex-basis:100%; color:var(--muted); font-size:var(--fs-small); line-height:1.45;}",
       /* meaning: senses with the part of speech as an italic accent word, synonyms in muted */
-      "#dictCard .senses{display:grid; gap:9px;}",
-      "#dictCard .sense{font-size:0.9375rem; line-height:1.5;}",
-      "#dictCard .pos{color:var(--accent); font-style:italic; margin-right:6px;}",
-      "#dictCard .syn{display:block; margin-top:3px; font-size:0.78rem; color:var(--muted);}",
-      "#dictCard .note{color:var(--muted); font-size:0.78rem; line-height:1.45; padding:2px 0 6px;}",
+      "#dictCard .senses{display:grid; gap:12px;}",
+      "#dictCard .sense{font-size:var(--fs-body); line-height:1.5;}",
+      "#dictCard .pos{color:var(--accent); font-family:var(--title-font); font-style:italic; font-weight:500; margin-right:6px;}",
+      "#dictCard .syn{display:block; margin-top:4px; font-size:var(--fs-small); color:var(--muted);}",
+      "#dictCard .note{color:var(--muted); font-size:var(--fs-small); line-height:1.45; padding:2px 0 6px;}",
       "#dictCard .sec{",
-      "  font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;",
-      "  color:var(--muted); margin:14px 0 6px;",
+      "  font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase;",
+      "  color:var(--muted); margin:16px 0 8px;",
       "}",
       "#dictCard .panel > .sec:first-child{margin-top:0;}",
       "#dictCard .brk{display:grid; gap:7px; margin-top:2px;}",
-      "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
+      "#dictCard .brk div{font-size:var(--fs-body); line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
       "#dictCard .brk i{color:var(--muted); font-style:italic;}",
       /* word parts: a row of tiles, one per prefix / root / suffix, joined by plus signs (drawn
@@ -10338,33 +10890,33 @@
       "#dictCard .parts{display:flex; flex-wrap:wrap; align-items:stretch; gap:6px 4px; margin:2px 0 6px;}",
       "#dictCard .part{",
       "  display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:12em; position:relative;",
-      "  padding:6px 9px 7px; border-radius:10px; border:1px solid var(--line);",
-      "  background:var(--panel); font:inherit; color:var(--ink); text-align:left;",
+      "  padding:8px 12px 9px; border-radius:var(--r-md); border:1px solid var(--line);",
+      "  background:var(--raise); font:inherit; color:var(--ink); text-align:left;",
       "}",
       "#dictCard .part + .part{margin-left:18px;}",
       "#dictCard .part + .part::before{content:\"+\"; position:absolute; left:-15px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:0.9375rem;}",
       "#dictCard button.part{cursor:pointer; border-color:color-mix(in srgb, var(--accent) 45%, var(--line));}",
-      "#dictCard button.part:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
-      "#dictCard .part .pt{font-family:var(--reader-font); font-size:1.0625rem; line-height:1.2; font-weight:600;}",
-      "#dictCard .part .pk{font-size:0.7812rem; line-height:1.3; color:var(--accent); margin-top:1px;}",
-      "#dictCard .part .pm{font-size:0.7812rem; line-height:1.35; margin-top:2px;}",
-      "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
-      "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
+      "#dictCard button.part:hover{background:var(--accent-soft);}",
+      "#dictCard .part .pt{font-family:var(--title-font); font-size:var(--fs-subtitle); line-height:1.2; font-weight:600;}",
+      "#dictCard .part .pk{font-size:var(--fs-small); line-height:1.3; color:var(--accent); margin-top:2px;}",
+      "#dictCard .part .pm{font-size:var(--fs-small); line-height:1.35; margin-top:2px;}",
+      "#dictCard .part .po{font-size:var(--fs-small); line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
+      "#dictCard .gloss{font-style:italic; font-size:var(--fs-body); line-height:1.45; margin:2px 0 4px;}",
       /* the translation line (filled by translate.js): under the word, lined up with it, or under the quoted
          sentence; the translation in the reader font, a quiet engine line, a "translating…" while it comes */
       "#dictCard .trline{flex:none; margin:6px 16px 0; min-width:0;}",
       "#dictCard .trline[hidden]{display:none;}",
-      "#dictCard .trline[data-kind=word]{padding-left:48px;}",
+      "#dictCard .trline[data-kind=word]{padding-left:52px;}",
       "#dictCard .trline[data-kind=sentence]{padding:2px 12px 0 15px;}",
-      "#dictCard .tr-out{font-family:var(--reader-font); font-size:1rem; line-height:1.5; overflow-wrap:break-word;}",
+      "#dictCard .tr-out{font-family:var(--title-font); font-size:var(--fs-subtitle); line-height:1.45; overflow-wrap:break-word;}",
       "#dictCard .trline[data-kind=sentence] .tr-out{font-size:0.9375rem;}",
       "#dictCard .trline.clamp .tr-out{display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;}",
       "#dictCard .tr-out[dir=rtl]{text-align:right;}",
-      "#dictCard .tr-eng{color:var(--muted); font-size:0.72rem; line-height:1.4; padding:1px 0 0;}",
-      "#dictCard .tr-wait{color:var(--muted); font-size:0.8125rem; font-style:italic; line-height:1.5;}",
+      "#dictCard .tr-eng{color:var(--muted); font-size:var(--fs-small); line-height:1.4; padding:2px 0 0;}",
+      "#dictCard .tr-wait{color:var(--muted); font-size:var(--fs-small); font-style:italic; line-height:1.5;}",
       "#dictCard .trline .note{padding:0;}",
       "#dictCard .trline .acts{margin:6px 0 0;}",
-      "#dictCard .tr-offer{margin:8px 0 2px; padding:8px 10px; border:1px solid var(--line); border-radius:10px;}",
+      "#dictCard .tr-offer{margin:10px 0 2px; padding:12px 14px; border:var(--bw) solid var(--line); border-radius:var(--r-md); background:var(--raise); font-size:var(--fs-small); line-height:1.45; color:var(--muted);}",
       "#dictCard .tr-offer .acts[hidden]{display:none;}",
       "#dictCard .tr-offer progress{display:block; width:100%; height:6px; margin:6px 0 0; accent-color:var(--accent);}",
       /* simpler: how plain to make it, then the plainer text with each change dotted in the
@@ -10379,88 +10931,106 @@
       "  cursor:pointer; border-radius:2px; text-decoration:underline dotted var(--accent);",
       "  text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
-      "#dictCard .chg[aria-expanded=true]{background:color-mix(in srgb, var(--accent) 14%, transparent);}",
+      "#dictCard .chg[aria-expanded=true]{background:var(--accent-soft);}",
       /* text on the ink tint is ink: muted slips under 4.5:1 on the tint on eight themes */
       "#dictCard .chgnote{",
       "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
-      "  font-family:var(--ui-font); font-size:0.75rem; line-height:1.5; color:var(--ink);",
+      "  font-family:var(--ui-font); font-size:var(--fs-small); line-height:1.5; color:var(--ink);",
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
       /* explain: one box per clause, its roles as small tiles */
-      "#dictCard .clause{padding:9px 11px; margin:0 0 8px; border:1px solid var(--line); border-radius:10px;}",
-      "#dictCard .clause .ctext{font-family:var(--reader-font); font-size:0.9375rem; line-height:1.45;}",
+      "#dictCard .clause{padding:12px 14px; margin:0 0 10px; border:var(--bw) solid var(--line); border-radius:var(--r-md); background:var(--raise);}",
+      "#dictCard .clause .ctext{font-family:var(--reader-font); font-size:var(--fs-body); line-height:1.5;}",
       "#dictCard .clause .ckind{",
-      "  display:inline-block; font-size:0.6875rem; color:var(--accent); font-weight:600;",
-      "  letter-spacing:.04em; margin:0 0 4px;",
+      "  display:inline-block; font-size:var(--fs-eyebrow); color:var(--accent); font-weight:700;",
+      "  letter-spacing:.06em; margin:0 0 4px;",
       "}",
-      "#dictCard .roles{display:flex; flex-wrap:wrap; gap:5px 6px; margin-top:7px;}",
+      "#dictCard .roles{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}",
       "#dictCard .role{",
-      "  font-size:0.7812rem; line-height:1.35; padding:4px 8px; border-radius:8px;",
+      "  font-size:var(--fs-small); line-height:1.35; padding:5px 9px; border-radius:var(--r-sm);",
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
       "#dictCard .role b{",
-      "  display:block; font-size:0.6875rem; font-weight:700; letter-spacing:.08em;",
+      "  display:block; font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em;",
       "  text-transform:uppercase; color:var(--ink); margin-bottom:1px;",
       "}",
-      "#dictCard .tense{font-size:0.7812rem; color:var(--muted); margin-top:7px; line-height:1.4;}",
+      "#dictCard .tense{font-size:var(--fs-small); color:var(--muted); margin-top:8px; line-height:1.4;}",
       "#dictCard .tense b{color:var(--ink); font-weight:600;}",
-      "#dictCard .plain{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 2px;}",
+      "#dictCard .plain{font-family:var(--reader-font); font-size:1rem; line-height:1.55; padding:2px 0 2px;}",
       /* style: the register as a quiet pill, then a row per figure of speech; a row marks its
          own words in the quote above */
       "#dictCard #dictExpl > .sec:first-child{margin-top:0;}",
       "#dictCard .style{display:grid; gap:6px; margin:0 0 4px;}",
       "#dictCard .pill{",
       "  display:inline-block; padding:2px 9px; border-radius:999px; flex:none;",
-      "  font-size:0.7188rem; line-height:1.55; white-space:nowrap; border:1px solid var(--line);",
+      "  font-size:var(--fs-small); line-height:1.55; white-space:nowrap; border:1px solid var(--line);",
       "}",
       "#dictCard .pill.ink{background:color-mix(in srgb, var(--ink) 6%, transparent); color:var(--ink);}",
-      "#dictCard .pill.acc{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent); color:var(--ink);}",
+      "#dictCard .pill.acc{background:var(--accent-soft); border-color:var(--accent); color:var(--ink);}",
       "#dictCard .reg{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px;}",
-      "#dictCard .reg .rnote{color:var(--muted); font-size:0.78rem; line-height:1.45;}",
+      "#dictCard .reg .rnote{color:var(--muted); font-size:var(--fs-small); line-height:1.45;}",
       "#dictCard .figrow{",
       "  display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; width:100%; margin:0; text-align:left;",
-      "  padding:7px 9px; border:1px solid var(--line); border-radius:10px; background:transparent;",
-      "  color:var(--ink); font-family:inherit; font-size:0.8125rem; line-height:1.5; cursor:pointer;",
-      "  transition:background .2s, border-color .2s;",
+      "  padding:10px 12px; border:var(--bw) solid var(--line); border-radius:var(--r-sm); background:transparent;",
+      "  color:var(--ink); font-family:inherit; font-size:var(--fs-small); line-height:1.5; cursor:pointer;",
+      "  transition:background-color var(--t-fade), border-color var(--t-fade);",
       "}",
-      "#dictCard .figrow:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
-      "#dictCard .figrow[aria-pressed=true]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}",
+      "#dictCard .figrow:hover{background:var(--accent-soft);}",
+      "#dictCard .figrow[aria-pressed=true]{background:var(--accent-soft); border:var(--bw-sel) solid var(--accent);}",
       "#dictCard .figrow .ftext{font-family:var(--reader-font);}",
       "#dictCard .figrow .fnote{color:var(--muted);}",
-      "@media (pointer: coarse){ #dictCard .figrow{min-height:44px;} }",
+      "@media (pointer: coarse){ #dictCard .figrow{min-height:48px;} }",
       "#dictCard .quote mark.fig{",
-      "  background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--ink); border-radius:3px;",
+      "  background:var(--accent-soft); color:var(--ink); border-radius:3px;",
       "  text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
-      /* chips: quiet actions; .go is the one primary action of a panel (the AI rewrite, a translation) */
-      "#dictCard .acts{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px;}",
+      /* chips: quiet actions; the footer's are tonal (the accent's tint, no border); .go is the one
+         primary action of a panel (the AI rewrite, a translation, a download), filled with the lamp */
+      "#dictCard .acts{display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 4px;}",
       "#dictCard .act{",
-      "  display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 12px; border-radius:999px;",
-      "  border:1px solid var(--line); background:transparent; color:var(--ink);",
-      "  font:inherit; font-size:0.8125rem; cursor:pointer; transition:background .15s, border-color .15s;",
+      "  display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 16px; border-radius:999px;",
+      "  border:1.5px solid var(--ctl-line); background:transparent; color:var(--ink);",
+      "  font:inherit; font-size:var(--fs-body); font-weight:600; cursor:pointer; transition:background-color var(--t-fade), border-color var(--t-fade), transform var(--t-press) var(--ease-out);",
       "}",
-      "#dictCard .act:hover{background:color-mix(in srgb, var(--accent) 10%, transparent); border-color:var(--accent);}",
+      "#dictCard .act svg{width:18px; height:18px; stroke-width:2;}",
+      "#dictCard .foot .act{background:var(--accent-soft); border-color:transparent;}",
+      "#dictCard .act:hover, #dictCard .foot .act:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);}",
       "#dictCard .act:active{transform:scale(.97);}",
-      "#dictCard .act[aria-pressed=true]{background:color-mix(in srgb, var(--accent) 14%, transparent); border-color:var(--accent);}",
-      "#dictCard .act.go{background:var(--accent); border-color:var(--accent); color:var(--panel);}",
-      "#dictCard .act.go:hover{background:var(--accent);}",
-      "@media (pointer: coarse){ #dictCard .act{min-height:40px;} }",
+      "#dictCard .act[aria-pressed=true]{background:var(--accent-soft); border-color:var(--accent);}",
+      "#dictCard .act.go, #dictCard .act.go:hover{background:var(--lamp); border-color:var(--lamp); color:var(--on-fill);}",
+      "#dictCard .act.go:hover{box-shadow:0 0 0 4px var(--glow);}",
+      ":root[data-tone=contrast] #dictCard .foot .act{border-color:var(--line);}",
+      /* a finger's 48px: the chips reach it through a margin they share with no neighbour (8px apart),
+         the tabs and "Show all" are drawn at it, the selection pill's buttons reach its edges */
+      "@media (pointer: coarse){",
+      "  #dictCard .act{min-height:44px; position:relative;}",
+      "  #dictCard .act::after{content:\"\"; position:absolute; inset:-2px;}",
+      "  #dictCard [role=tab]::before{content:\"\"; position:absolute; inset:-2px 0;}",
+      "  #dictCard .more{min-height:48px;}",
+      "  #dictPill button::after{content:\"\"; position:absolute; inset:-4px 0;}",
+      "}",
+      /* a phone's footer keeps its actions (Highlight, Note…, Read from here, Copy) on one row: they
+         share the width, at the small size, rather than wrapping into a second row of the card */
+      "@media (max-width:560px){",
+      "  #dictCard .foot{flex-wrap:nowrap;}",
+      "  #dictCard .foot .act{flex:1 1 auto; min-width:0; justify-content:center; padding:0 8px; font-size:var(--fs-small); white-space:nowrap;}",
+      "}",
       /* the selection pill: Define / Explain and Highlight, a small popover above the selection */
       "#dictPill{",
-      "  position:fixed; z-index:58; display:none; padding:3px; border-radius:999px;",
-      "  border:1px solid var(--line); background:var(--panel); color:var(--ink);",
-      "  font-family:var(--ui-font); font-size:0.8125rem; font-weight:600;",
-      "  box-shadow:0 10px 30px rgba(0,0,0,.18);",
+      "  position:fixed; z-index:58; display:none; padding:4px; border-radius:999px;",
+      "  border:var(--bw) solid var(--line); background:var(--raise); color:var(--ink);",
+      "  font-family:var(--ui-font); font-size:var(--fs-body); font-weight:600;",
+      "  box-shadow:var(--shadow-2);",
       "}",
       "#dictPill.on{display:flex;}",
       "#dictPill button{",
-      "  display:flex; align-items:center; gap:6px; height:32px; padding:0 12px; position:relative;",
+      "  display:flex; align-items:center; gap:8px; height:40px; padding:0 14px; position:relative;",
       "  border:0; border-radius:999px; background:transparent; color:inherit; font:inherit; cursor:pointer;",
       "}",
       "#dictPill button + button{margin-left:3px;}",
       "#dictPill button + button::before{content:\"\"; position:absolute; left:-2px; top:8px; bottom:8px; width:1px; background:var(--line);}",
-      "#dictPill button svg{color:var(--accent);}",
-      "#dictPill button:hover{background:color-mix(in srgb, var(--accent) 10%, transparent);}",
+      "#dictPill button svg{color:var(--lamp); stroke-width:2;}",
+      "#dictPill button:hover{background:var(--accent-soft);}",
       "#dictPill button:active{transform:scale(.97);}",
       /* wider screens: a floating card by the bottom-right corner, no scrim */
       "@media (min-width:561px){",
@@ -10469,13 +11039,13 @@
       "  #dictCard{",
       "    left:auto; right:22px; bottom:calc(var(--dockH, 0px) + 22px); width:460px; max-width:calc(100vw - 44px);",
       "    max-height:min(72vh, calc(100vh - var(--headH, 0px) - var(--dockH, 0px) - 44px));",
-      "    border:1px solid var(--line); border-radius:12px; box-shadow:0 2px 14px rgba(0,0,0,.12);",
+      "    border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-2);",
       "    transform:translateY(12px); opacity:0;",
-      "    transition:transform .22s ease, opacity .22s ease, visibility 0s linear .22s;",
+      "    transition:transform var(--t-fade) var(--ease-in), opacity var(--t-fade) ease, visibility 0s linear var(--t-fade);",
       "  }",
-      "  #dictCard.open{transform:none; opacity:1; transition:transform .22s ease, opacity .22s ease, visibility 0s;}",
+      "  #dictCard.open{transform:none; opacity:1; transition:transform var(--t-sheet) var(--ease-out), opacity var(--t-fade) ease, visibility 0s;}",
       "  #dictCard .grab{display:none;}",
-      "  #dictCard .head{padding-top:14px;}",
+      "  #dictCard .head{padding-top:10px;}",
       "  #dictCard .foot{padding-bottom:12px;}",
       "}",
       "@media (forced-colors: active){",
@@ -10537,6 +11107,7 @@
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
     scrim.addEventListener("click", function(){ if (Date.now() - openedAt > 400) closeCard(); });
     card.querySelector(".grab").addEventListener("click", closeCard);
+    dragToClose(card, [card], closeCard, function(){ return card.classList.contains("open"); }, ".grab, .head");
     /* the card sits over the side panel and the sheet, so while it is open it takes Escape first
        (capture phase) and the layers under it stay as they are */
     document.addEventListener("keydown", function(e){
@@ -11309,7 +11880,21 @@
 
     function wordAt(x, y){
       var r = rangeAt(x, y);
-      return r ? wordInNode(r.startContainer, r.startOffset) : null;
+      var w = r ? wordInNode(r.startContainer, r.startOffset) : null;
+      if (!w) return null;
+      /* the caret lands on the nearest text even from blank space (between two paragraphs, past the
+         end of a short line): only a word under the finger is looked up — a tap on the blank is the
+         page's (in Pages flow the middle of the page shows or hides the bars) */
+      try {
+        var wr = document.createRange(), pad = 6, rects;
+        wr.setStart(w.node, w.s); wr.setEnd(w.node, w.e);
+        rects = wr.getClientRects();
+        for (var i = 0; i < rects.length; i++){
+          var b = rects[i];
+          if (x >= b.left - pad && x <= b.right + pad && y >= b.top - pad && y <= b.bottom + pad) return w;
+        }
+        return rects.length ? null : w;
+      } catch(_){ return w; }
     }
     /* the word around character `offset` of text node `n` inside the document (a tap, or the caret) */
     function wordInNode(n, offset){
@@ -11410,10 +11995,12 @@
 
     var tStart = 0, tX = 0, tY = 0, held = false, holdTimer = null, moved = false;
 
-    function inMiddleBand(x){
+    function inMiddleBand(x, y){
       if (!document.body.classList.contains("paged")) return true;
       var r = $("#docView").getBoundingClientRect();      /* the strip itself is scrolled sideways */
       var f = (x - r.left) / r.width;
+      /* the top and bottom strips of the page show and hide the bars instead (tapNav) */
+      if (typeof y === "number" && state.eink !== true && inBarStrip(y, $("#docView"))) return false;
       return f >= 0.35 && f <= 0.65;
     }
     function selectionText(){
@@ -11458,7 +12045,7 @@
         if (moved) return;
         if (e.target.closest && (e.target.closest("a") || e.target.closest("mark.ll-mark"))) return;
         if (selectionText()) return;              /* a drag-selection is handled by the pill */
-        if (!inMiddleBand(e.clientX)) return;
+        if (!inMiddleBand(e.clientX, e.clientY)) return;
         var w = wordAt(e.clientX, e.clientY);
         if (!w) return;
         e.stopPropagation();
@@ -11712,7 +12299,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, Dim: Dim, Eink: Eink, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset,
+  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, Dim: Dim, Eink: Eink, PhoneBar: PhoneBar, SheetTabs: SheetTabs, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset,
                  /* Pages flow: lay the columns out again after the text changed, landing on the same text (translate.js) */
                  relayoutPages: function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); } };
   window.Search = Search;
@@ -11745,6 +12332,7 @@
   show("empty");
   /* the sheet's section strip, now that every group is in place */
   SheetTabs.build();
+  SheetTabs.applies();
   if (!Speak.supported) $("#speakBtn").hidden = true;
   syncSpeakBtn();
   Launch.boot();

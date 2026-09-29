@@ -72,13 +72,13 @@ const SPEECH_STUB = `(() => {
     await page.evaluate(() => { const h = Array.from(document.querySelectorAll("#doc h1, #doc h2")).find((x) => /Chapter 2/.test(x.textContent)); window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - 40); });
     await page.waitForTimeout(900);
     const sec = await page.$eval("#fname", (f) => ({ text: f.textContent, sec: f.dataset.sec, after: getComputedStyle(f, "::after").content }));
-    R.check("#fname shows \u00B7 Chapter 2 after scrolling into chapter 2, the title text itself untouched", sec.text === "sample.md" && sec.sec === "Chapter 2" && /Chapter 2/.test(sec.after), JSON.stringify(sec));
+    R.check("#fname shows the book's title (its first heading) and \u00B7 Chapter 2 after scrolling into chapter 2, the title text itself untouched", sec.text === "The Lamp" && sec.sec === "Chapter 2" && /Chapter 2/.test(sec.after), JSON.stringify(sec));
     await page.keyboard.press("p"); await page.waitForTimeout(500);
     await page.keyboard.press("Home"); await page.waitForTimeout(700);
     const sec1 = await page.$eval("#fname", (f) => f.dataset.sec);
     await page.keyboard.press("End"); await page.waitForTimeout(700);
     const secN = await page.$eval("#fname", (f) => f.dataset.sec);
-    R.check("in Pages flow the section follows the page: the title on the first page, the last chapter on the last", sec1 === "The Lamp" && /Chapter \d/.test(secN) && secN !== "Chapter 1", sec1 + " / " + secN);
+    R.check("in Pages flow the section follows the page: none on the first page (its heading is the title, not said twice), the last chapter on the last", !sec1 && /Chapter \d/.test(secN) && secN !== "Chapter 1", sec1 + " / " + secN);
     await page.keyboard.press("p"); await page.waitForTimeout(400);
     const bad = await unnamed(page);
     R.check("all visible buttons have a name (document open)", bad.length === 0, bad.join(","));
@@ -289,9 +289,9 @@ const SPEECH_STUB = `(() => {
     await page.keyboard.press("h"); await page.waitForTimeout(400);
     R.check("with a library: the hero is gone, the Continue card and Recent show, tips stay hidden", !(await visible(page, "#empty .hero")) && (await visible(page, "#continueCard")) && (await visible(page, "#library")) && !(await visible(page, "#tips")));
     const cc = await page.$eval("#continueCard", (c) => ({ title: c.querySelector(".cc-title").textContent, ring: c.querySelector(".cc-ring").style.getPropertyValue("--p"), go: c.querySelector(".cc-go").textContent.trim(), badge: c.querySelector(".lib-type").textContent }));
-    R.check("the Continue card names the last book with a progress ring, badge and Continue", cc.title === "sample.txt" && /%$/.test(cc.ring) && cc.go === "Continue" && cc.badge === "TXT", JSON.stringify(cc));
+    R.check("the Continue card names the last book with a progress ring, badge and Continue", cc.title === "sample" && /%$/.test(cc.ring) && cc.go === "Continue" && cc.badge === "TXT", JSON.stringify(cc));
     const items = await page.$$eval("#libList .lib-item", (els) => els.map((e) => ({ name: e.querySelector(".lib-name").textContent, meta: e.querySelector(".lib-meta").textContent, x: e.querySelector(".lib-x svg") ? "svg" : "text" })));
-    R.check("Recent lists both files with a percentage and an icon to remove", items.length === 2 && items.some((i) => i.name === "sample.md" && /\d+%/.test(i.meta)) && items.every((i) => i.x === "svg"), JSON.stringify(items));
+    R.check("Recent lists both files with a percentage and an icon to remove", items.length === 2 && items.some((i) => i.name === "The Lamp" && /\d+%/.test(i.meta)) && items.every((i) => i.x === "svg"), JSON.stringify(items));
     R.check("the count and the Open another file button are there", (await page.$eval("#libCount", (c) => c.textContent)) === "2" && (await visible(page, "#libOpen")));
     await page.click("#continueCard");
     await page.waitForFunction(() => document.getElementById("docView").style.display === "block", null, { timeout: 15000 });
@@ -323,7 +323,7 @@ const SPEECH_STUB = `(() => {
       xHidden: Array.from(document.querySelectorAll("#tabs .tab-x")).every((x) => x.getAttribute("aria-hidden") === "true" && x.querySelector("svg")), xSize: Math.round(document.querySelector("#tabs .tab-x").getBoundingClientRect().width), title: document.title }));
     R.check("three tabs are three buttons with one Tab stop, the close a hidden 28px mark with the shared icon", t.stops === 1 && t.buttons === 3 && t.nested === 0 && t.xHidden && t.xSize === 28, JSON.stringify(t));
     const name = await page.evaluate(() => { const on = document.querySelector("#tabs .tab.on"); return on.getAttribute("aria-label") || on.textContent.trim(); });
-    R.check("a tab's name is the file name alone (no Close in it)", name === "sample.md", name);
+    R.check("a tab's name is the book's title alone (no Close in it)", name === "The Lamp", name);
     await page.focus("#tabs .tab.on"); await page.keyboard.press("ArrowRight"); await page.waitForTimeout(900);
     R.check("ArrowRight opens the next document and keeps focus in the strip", /sample\.txt/.test(await page.title()) && (await page.evaluate(() => document.activeElement.closest("#tabs") && document.activeElement.classList.contains("on"))), await page.title());
     await page.keyboard.press("Delete"); await page.waitForTimeout(900);
@@ -362,13 +362,13 @@ const SPEECH_STUB = `(() => {
     const s0 = await page.evaluate(() => window.__ll.state.size), sr = await rect(page, "#qSize");
     await touchDrag(page, sr.left + 8 + (sr.width - 16) * ((s0 - 14) / 14), sr.top + sr.height / 2, sr.right - 4, sr.top + sr.height / 2 + 10);
     R.check("a sideways drag on the Size slider still changes the size", (await page.evaluate(() => window.__ll.state.size)) > s0 && (await popOpen(page)), String(await page.evaluate(() => window.__ll.state.size)));
-    /* near the top: the popover is a bottom sheet and may stand up to 70vh tall, so the middle
+    /* near the top: the popover is a bottom sheet and may stand up to 85vh tall, so the middle
        of the scrim is behind it */
     await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(400);
     R.check("the scrim closes it", !(await popOpen(page)) && !(await page.$eval("#popScrim", (s) => s.classList.contains("on"))));
     await page.tap("#lamp"); await page.waitForTimeout(400);
     const t = await rect(page, "#pop");
-    R.check("the theme popover is a bottom sheet too", (await page.evaluate(() => window.llPop.is("theme"))) && Math.abs(t.bottom - 844) <= 1 && t.height <= 844 * 0.7 + 1, JSON.stringify(t));
+    R.check("the theme popover is a bottom sheet too", (await page.evaluate(() => window.llPop.is("theme"))) && Math.abs(t.bottom - 844) <= 1 && t.height <= 844 * 0.85 + 1, JSON.stringify(t));
     await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(300);
     /* the side panel's scrim holds the page too */
     await page.tap("#tocBtn"); await page.waitForTimeout(400);

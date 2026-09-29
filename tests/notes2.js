@@ -126,8 +126,8 @@ async function openNotes(page){
   const md = fs.readFileSync(await dl.path(), "utf8");
   R.check("the file is named after the book", dl.suggestedFilename() === "sample.md", dl.suggestedFilename());
   R.check("YAML front matter with the title, the source, a date and the tags",
-    /^---\ntitle: "sample\.md"\nsource: Lamplight\ndate: \d{4}-\d\d-\d\d\ntags: \[reading, vocab, science, question\]\n---\n/.test(md), md.slice(0, 200));
-  R.check("an H1 with the title", /\n# sample\.md\n/.test(md), md.slice(0, 260));
+    /^---\ntitle: "The Lamp"\nsource: Lamplight\ndate: \d{4}-\d\d-\d\d\ntags: \[reading, vocab, science, question\]\n---\n/.test(md), md.slice(0, 200));
+  R.check("an H1 with the title (the book's own, from its first heading)", /\n# The Lamp\n/.test(md), md.slice(0, 260));
   R.check("the colour meanings come first, as a Legend callout",
     /> \[!note\] Legend\n> - Default — Plain\n> - Yellow — Key idea\n> - Green — Vocabulary\n> - Pink — Question\n/.test(md), (md.match(/> \[!note\][\s\S]{0,120}/) || [""])[0]);
   R.check("an H2 per chapter, from the document's headings", /\n## Chapter 1\n/.test(md) && /\n## Chapter 2\n/.test(md), (md.match(/^## .*/gm) || []).join(" | "));
@@ -138,7 +138,7 @@ async function openNotes(page){
 
   /* the older exports are untouched */
   const plain = await page.evaluate(() => window.__ll.Marks.toMarkdown());
-  R.check("Export Markdown is unchanged", /^# sample\.md\n\n_Exported from Lamplight on /.test(plain) && /## Bookmarks/.test(plain) &&
+  R.check("Export Markdown is unchanged (headed by the book's title)", /^# The Lamp\n\n_Exported from Lamplight on /.test(plain) && /## Bookmarks/.test(plain) &&
     /## Highlights/.test(plain) && /<sub>\d+%<\/sub>/.test(plain) && !/\[!note\]/.test(plain) && !/^---$/m.test(plain), plain.slice(0, 120).replace(/\n/g, " | "));
   const json = JSON.parse(await page.evaluate(() => window.__ll.Marks.toJSON()));
   R.check("Export JSON is unchanged", json.document.name === "sample.md" && json.marks.length === 4 &&

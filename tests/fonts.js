@@ -27,6 +27,10 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     return page;
   }
   const woff = (page) => page._reqs.filter((u) => /\.woff2(\?|$)/.test(u)).map((u) => u.split("/").pop());
+  /* the interface's own title face ('LL Title' in app.css: Literata, precached by the worker) is
+     part of the shell and loads with it; every reading font waits until it is chosen */
+  const TITLE_FACE = /^literata-latin-wght-(normal|italic)\.woff2$/;
+  const readingWoff = (page) => woff(page).filter((f) => !TITLE_FACE.test(f));
   const family = (page, sel) => page.$eval(sel, (el) => getComputedStyle(el).fontFamily);
   const loaded = (page, id) => page.waitForFunction((i) => window.llFonts && window.llFonts.loaded(i), id, { timeout: 15000 }).then(() => true, () => false);
   const errors = (page, label) => R.check(label + ": no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -36,10 +40,10 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
   const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, serviceWorkers: "block" });
   let page = await open(ctx);
   try {
-    /* 1. the initial load fetches no font file at all */
+    /* 1. the initial load fetches no reading font (only the interface's title face) */
     await openFixture(page, "sample.md");
     await page.waitForTimeout(700);                       /* the idle warm-up runs in here */
-    R.check("initial load fetches no font file", woff(page).length === 0, woff(page).join(", "));
+    R.check("initial load fetches no font file", readingWoff(page).length === 0, woff(page).join(", "));
     const groups = await page.$$eval("#fontSel optgroup", (g) => g.map((x) => x.label));
     R.check("the font menu is grouped", groups.join("|") === "Easy reading|Serif|Sans|Mono", groups.join("|"));
     const options = await page.$$eval("#fontSel option", (o) => o.map((x) => x.value));
@@ -60,7 +64,7 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     await page.selectOption("#fontSel", "dyslexic");
     await loaded(page, "dyslexic");
     R.check("selecting OpenDyslexic fetches its regular face", woff(page).indexOf("opendyslexic-latin-400-normal.woff2") >= 0, woff(page).join(", "));
-    R.check("nothing but OpenDyslexic was fetched", woff(page).every((f) => /^opendyslexic-/.test(f)), woff(page).join(", "));
+    R.check("nothing but OpenDyslexic was fetched", readingWoff(page).every((f) => /^opendyslexic-/.test(f)), woff(page).join(", "));
     R.check("document.fonts.check sees OpenDyslexic", await page.evaluate(() => document.fonts.check("16px OpenDyslexic")));
     R.check("the OpenDyslexic face is loaded", await page.evaluate(() => window.llFonts.loaded("dyslexic")));
     R.check("#doc is set in OpenDyslexic", starts("OpenDyslexic").test(await family(page, "#doc")), await family(page, "#doc"));

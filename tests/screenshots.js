@@ -112,6 +112,8 @@ const STATS = (() => {
     await theme(page, "midnight");
     await page.evaluate(() => window.llThemes.create());
     await page.waitForTimeout(400);
+    /* the whole editor in one picture: the sheet's own cap (78vh, 900px) lifted, as themes-browser.js does */
+    await page.addStyleTag({ content: "#sheet{max-height:none !important;}" });
     await page.evaluate(() => window.llPop.sheetAt("#themeGroup"));
     await page.waitForTimeout(900);
     const box = await page.evaluate(() => { const a = document.getElementById("themeChips").getBoundingClientRect(), m = document.getElementById("cPrev").getBoundingClientRect();

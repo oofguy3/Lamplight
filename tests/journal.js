@@ -91,7 +91,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   es = await entries(page);
   R.check("Save: one entry with its stars, note, date finished and the day it was first opened",
     es.length === 1 && es[0].stars === 4 && es[0].note === "Loved the ending" && es[0].finished === "2026-09-15" && es[0].started === "2026-09-16" &&
-    es[0].book && es[0].title === "sample" && es[0].created > 0 && !(await cardOn(page)), JSON.stringify(es));
+    es[0].book && es[0].title === "The Lamp" && es[0].created > 0 && !(await cardOn(page)), JSON.stringify(es));
   /* once per reading */
   await page.evaluate(() => { window.scrollBy(0, -300); window.dispatchEvent(new Event("scroll")); });   /* a look back, not a new start */
   await page.clock.runFor(1000);
@@ -115,7 +115,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await page.waitForTimeout(100);
   text = await bodyText(page);
   R.check("j opens the journal: a year with its count, then the row", (await title(page)) === "Reading journal" && /2026 · 1 book/i.test(text) &&
-    /sample\nLoved the ending\nFinished 15 Sep 2026/.test(text) && await page.$eval(".jr-row [role=img]", (s) => s.getAttribute("aria-label")) === "4 of 5 stars", text);
+    /The Lamp\nLoved the ending\nFinished 15 Sep 2026/.test(text) && await page.$eval(".jr-row [role=img]", (s) => s.getAttribute("aria-label")) === "4 of 5 stars", text);
   await page.click(".jr-row");
   st = await page.evaluate(() => ({ exp: document.querySelector(".jr-row").getAttribute("aria-expanded"), open: !!document.querySelector('[data-jr="open"]'), del: !!document.querySelector('[data-jr="del"]'), focus: document.activeElement.className }));
   R.check("a row opens to edit, with Open book and Delete; the focus stays on it", st.exp === "true" && st.open && st.del && st.focus === "jr-row", JSON.stringify(st));
@@ -132,7 +132,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   const [dl] = await Promise.all([page.waitForEvent("download"), page.click('#sideFoot [data-jr="export"]')]);
   const md = fs.readFileSync(await dl.path(), "utf8");
   R.check("Export saves Markdown: a heading per year, a line per book", dl.suggestedFilename() === "lamplight-journal.md" && /^# Reading journal/.test(md) &&
-    /^## 2025$/m.test(md) && /^- \*\*sample\*\* · ★★☆☆☆ · finished 30 Dec 2025 · Changed my mind$/m.test(md), md);
+    /^## 2025$/m.test(md) && /^- \*\*The Lamp\*\* · ★★☆☆☆ · finished 30 Dec 2025 · Changed my mind$/m.test(md), md);
   await page.keyboard.press("Escape");
   /* the library and the stats */
   await page.click("#wordmark");
@@ -157,7 +157,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   R.check("Open book is not offered once the book has left the library", !(await page.$('[data-jr="open"]')));
   await page.click('[data-jr="del"]');
   await page.waitForTimeout(100);
-  R.check("Delete, and the empty state", (await entries(page)).length === 0 && /Books you finish will appear here\./.test(await bodyText(page)) &&
+  R.check("Delete, and the empty state", (await entries(page)).length === 0 && /Books you finish appear here/.test(await bodyText(page)) &&
     await page.evaluate(() => document.activeElement.id === "sideClose"));
   st = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open("lamplight"); r.onsuccess = () => { const d = r.result, s = d.transaction("journal").objectStore("journal"); res({ v: d.version, key: s.keyPath, idx: Array.from(s.indexNames) }); d.close(); }; }));
   R.check("IndexedDB: version 5, a journal store keyed by id with a book index", st.v === 5 && st.key === "id" && st.idx.join() === "book", JSON.stringify(st));
@@ -226,7 +226,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await page.keyboard.press("j");
   await page.click('#sideFoot [data-jr="clear"]');
   await page.waitForTimeout(100);
-  R.check("Clear journal empties it", (await entries(page)).length === 0 && /Books you finish will appear here\./.test(await bodyText(page)));
+  R.check("Clear journal empties it", (await entries(page)).length === 0 && /Books you finish appear here/.test(await bodyText(page)));
   noteErrors(page, "B");
   await B.close();
 

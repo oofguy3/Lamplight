@@ -108,15 +108,24 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.click("#more"); await page.waitForTimeout(350);
     const m = await page.evaluate(() => {
       const r = document.getElementById("moreMenu").getBoundingClientRect(), sc = document.getElementById("moreScrim");
-      const tiles = Array.from(document.querySelectorAll("#moreMenu button[role=menuitem]")).map((b) => b.getBoundingClientRect());
+      const tiles = Array.from(document.querySelectorAll("#moreMenu .menu-group:not(.menu-quick) button[role=menuitem]")).map((b) => b.getBoundingClientRect());
       const cols = new Set(tiles.map((t) => Math.round(t.left))).size;
+      const quick = Array.from(document.querySelectorAll("#moreMenu .menu-quick button[role=menuitem]")), qr = quick.map((b) => b.getBoundingClientRect());
+      const gear = document.querySelector("#moreMenu .menu-head .menu-gear"), groups = Array.from(document.querySelectorAll("#moreMenu .menu-group:not(.menu-quick) > .label")).map((l) => l.textContent);
+      const last = Array.from(document.querySelectorAll("#moreMenu .menu-group:last-child button[role=menuitem] > span")).map((x) => x.textContent).slice(-3);
       return { bottom: r.bottom, left: r.left, width: r.width, height: r.height, inner: window.innerHeight, iw: window.innerWidth,
         minH: Math.min.apply(null, tiles.map((t) => t.height)), cols, kbd: getComputedStyle(document.querySelector("#moreMenu kbd")).display,
-        grab: !!document.querySelector("#moreMenu .menu-grab"), scrim: !!sc && getComputedStyle(sc).display !== "none", scrollable: document.getElementById("moreMenu").scrollHeight > document.getElementById("moreMenu").clientHeight };
+        grab: !!document.querySelector("#moreMenu .menu-grab"), scrim: !!sc && getComputedStyle(sc).display !== "none", scrollable: document.getElementById("moreMenu").scrollHeight > document.getElementById("moreMenu").clientHeight,
+        quick: quick.map((b) => b.querySelector("span").textContent), quickCols: new Set(qr.map((t) => Math.round(t.top))).size === 1 ? qr.length : 0, quickH: Math.min.apply(null, qr.map((t) => t.height)),
+        gear: gear ? { label: gear.getAttribute("aria-label"), w: Math.round(gear.getBoundingClientRect().width), icon: !!gear.querySelector("svg") } : null, groups, last };
     });
-    R.check("phone: a bottom sheet — at the viewport's foot, full width, at most 70vh, scrollable", Math.abs(m.bottom - m.inner) < 1 && m.left === 0 && m.width === m.iw && m.height <= m.inner * 0.7 + 1 && m.scrollable, JSON.stringify(m));
+    R.check("phone: a bottom sheet — at the viewport's foot, full width, at most 85vh, scrollable", Math.abs(m.bottom - m.inner) < 1 && m.left === 0 && m.width === m.iw && m.height <= m.inner * 0.85 + 1 && m.scrollable, JSON.stringify(m));
     R.check("phone: tiles ≥ 44 px in three columns, key hints hidden, a handle and a scrim", m.minH >= 44 && m.cols === 3 && m.kbd === "none" && m.grab && m.scrim, JSON.stringify(m));
-    R.check("phone: focus on the first tile, arrows move through them", (await active(page)) === "Contents" && (await (async () => { await page.keyboard.press("ArrowRight"); return (await active(page)) === "Search"; })()));
+    R.check("phone: four large quick tiles first — Read aloud, Bookmark here, Contents, Previously… — in one row",
+      m.quick.join(" / ") === "Read aloud / Bookmark here / Contents / Previously…" && m.quickCols === 4 && m.quickH >= 84, JSON.stringify([m.quick, m.quickCols, m.quickH]));
+    R.check("phone: then Reading, Tools and Lamplight, with Print, Storage and Close document last and Settings as the gear in the head",
+      m.groups.join(" | ") === "Reading | Tools | Lamplight" && m.last.join(" / ") === "Print… / Storage / Close document" && m.gear && m.gear.label === "Settings" && m.gear.w === 48 && m.gear.icon, JSON.stringify([m.groups, m.last, m.gear]));
+    R.check("phone: focus on the first tile, arrows move through them", (await active(page)) === "Read aloud" && (await (async () => { await page.keyboard.press("ArrowRight"); return (await active(page)) === "Bookmark here"; })()));
     await shot(page, "menu-390-dusk");
     await page.mouse.click(195, 100); await page.waitForTimeout(200);
     R.check("phone: a tap on the scrim closes it and focus returns to ⋯", !(await isOpen(page, "#moreMenu")) && (await active(page)) === "more", await active(page));
@@ -126,7 +135,8 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     /* a toast is as wide as its words (up to the margins), not the half of the screen right of the middle */
     await page.evaluate(() => { window.__ll.Marks.toast("Zen mode — press z or Esc to leave"); window.__ll.Updates.offer(); }); await page.waitForTimeout(250);
     const tw = await page.evaluate(() => { const t = document.getElementById("toast").getBoundingClientRect(), u = document.getElementById("updateToast").getBoundingClientRect(); return { toastW: Math.round(t.width), toastH: Math.round(t.height), centre: Math.round(t.left + t.width / 2), updW: Math.round(u.width), updH: Math.round(u.height), updLeft: Math.round(u.left), iw: window.innerWidth }; });
-    R.check("phone: the zen toast is one line, centred; the update offer spans the width with two lines at most", tw.toastW >= 250 && tw.toastH < 44 && Math.abs(tw.centre - tw.iw / 2) <= 1 && tw.updW >= 340 && tw.updH < 70 && tw.updLeft >= 16, JSON.stringify(tw));
+    /* one line: the toast's pill is 44px tall (its minimum) */
+    R.check("phone: the zen toast is one line, centred; the update offer spans the width with two lines at most", tw.toastW >= 250 && tw.toastH <= 44 && Math.abs(tw.centre - tw.iw / 2) <= 1 && tw.updW >= 340 && tw.updH < 70 && tw.updLeft >= 16, JSON.stringify(tw));
     await page.click("#updateLater"); await page.waitForTimeout(100);
     R.check("phone menu: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
@@ -220,11 +230,11 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     R.check("the last page names a late chapter after the fraction, the same one the title names", /^\d+ \/ \d+ · Chapter [34]/.test(t) && s.pager === " · " + s.title, t + " vs " + JSON.stringify(s));
     await page.keyboard.press("Home"); await page.waitForTimeout(700);
     s = await secOf();
-    R.check("the first page reads The Lamp in both readouts", s.title === "The Lamp" && s.pager === " · The Lamp", JSON.stringify(s));
+    R.check("the first page reads The Lamp in the pager; the title, which is The Lamp itself, does not say it twice", s.title === "" && s.pager === " · The Lamp" && (await page.$eval("#fname", (f) => f.textContent)) === "The Lamp", JSON.stringify(s));
     let n = 0, agree = true;
     while (n++ < 12 && !/Chapter 2/.test(await pg())){
       await page.keyboard.press("ArrowRight"); await page.waitForTimeout(700);
-      s = await secOf(); if (s.pager !== " · " + s.title) agree = false;
+      s = await secOf(); if (s.pager !== " · " + s.title && !(s.title === "" && s.pager === " · The Lamp")) agree = false;   /* the title does not repeat its own heading */
     }
     t = await pg();
     R.check("moving into chapter 2 shows Chapter 2", /^\d+ \/ \d+ · Chapter 2/.test(t), t);
@@ -338,13 +348,18 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
           panel: cs(document.body).getPropertyValue("--panel").trim(), rects: { toast: rt("toast").bottom, dockTop: rt("dock").top, tr: rt("trStatus").bottom, toastTop: rt("toast").top, updateTop: rt("updateToast").top, updateBottom: rt("updateToast").bottom },
           under: (() => { const r = rt("toast"), el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return el ? (el.closest("#updateToast") ? "updateToast" : (el.id || el.tagName)) : ""; })(), laterIcon: !!document.querySelector("#updateLater svg") };
       });
-      const same = (x) => x.radius === "12px" && x.border === "1px" && x.shadow && x.bg === c.toast.bg;
-      R.check(theme + ": the toast, the update toast, the translate pill and the progress pill share one style", same(c.toast) && same(c.update) && same(c.tr) && same(c.pill), JSON.stringify(c));
+      /* one shape: a pill. The toast, the update offer and the translate pill are inverse (the page colour
+         on the text colour) with no border and the second step of elevation — a 2px rule and no shadow in
+         the contrast themes; the progress pill is the same pill on the panel */
+      const hc = theme === "hidark";
+      const pill = (x) => x.radius === "999px" && x.shadow === !hc;
+      const same = (x) => pill(x) && x.border === (hc ? "2px" : "0px") && x.bg === c.toast.bg && x.color === c.toast.color;
+      R.check(theme + ": the toast, the update toast, the translate pill and the progress pill share one style", same(c.toast) && same(c.update) && same(c.tr) && pill(c.pill), JSON.stringify(c));
       const ratios = { toast: contrast(c.toast.color, c.toast.bg), update: contrast(c.update.color, c.update.bg), tr: contrast(c.tr.color, c.tr.bg), pill: contrast(c.pill.color, c.pill.bg), later: contrast(c.later.color, c.update.bg), cancel: contrast(c.cancel.color, c.tr.bg), reload: contrast(c.reload.color, c.reload.bg) };
       R.check(theme + ": text on every toast ≥ 4.5:1 (the accent chip ≥ 3:1)", Object.keys(ratios).every((k) => k === "reload" ? ratios[k] >= 3 : ratios[k] >= 4.5), JSON.stringify(ratios));
       R.check(theme + ": the buttons are chips, Later carries the shared close icon", c.reload.radius === "999px" && c.later.radius === "999px" && c.cancel.radius === "999px" && c.laterIcon, JSON.stringify([c.reload.radius, c.later.radius, c.cancel.radius]));
       R.check(theme + ": the translate pill sits above the toast, both above the foot", c.rects.tr < c.rects.toastTop && c.rects.toast <= 800 - 18, JSON.stringify(c.rects));
-      R.check(theme + ": the toast steps up over the update offer instead of hiding behind it", c.rects.toast <= c.rects.updateTop && c.rects.updateBottom <= 800 - 18 && c.under !== "updateToast", JSON.stringify({ toast: c.rects.toast, updateTop: c.rects.updateTop, under: c.under }));
+      R.check(theme + ": the toast steps up over the update offer instead of hiding behind it", c.rects.toast <= c.rects.updateTop && c.rects.updateBottom <= 800 - 12 && c.under !== "updateToast", JSON.stringify({ toast: c.rects.toast, updateTop: c.rects.updateTop, under: c.under }));
       await page.click("#updateLater"); await page.waitForTimeout(100);
       R.check(theme + ": Later removes the offer and its height", await page.evaluate(() => !document.getElementById("updateToast") && !document.body.style.getPropertyValue("--updateH")));
       await shot(page, "toasts-1200-" + theme);

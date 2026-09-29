@@ -190,7 +190,7 @@ async function panel(page){
     name: e.querySelector(".st-book-n").textContent, meta: e.querySelector(".st-book-m").textContent,
     left: (e.querySelector(".st-book-f") || {}).textContent || "" })));
   R.check("the Books section lists the most recent books with time read and progress", books.length === 2 &&
-    books[0].name === "sample.txt" && /^\d+% · \d+ min read$/.test(books[0].meta.trim()), JSON.stringify(books));
+    books[0].name === "sample" && /^\d+% · \d+ min read$/.test(books[0].meta.trim()), JSON.stringify(books));
   R.check("each carries the shared finish forecast", /^about .+ left/.test(books[0].left), books.map((x) => x.left).join(" | "));
   R.check("a forecast is also what the library asks Stats for",
     /^about .+ left/.test(await page.evaluate(() => window.llStats.forecast({ id: "x" }, { mode: "doc", total: 60000, frac: 0.25 }))),

@@ -308,11 +308,13 @@ const CONTRAST = `(el, behind) => {
         tabW: tabs.map((t) => Math.round(t.width)), tabH: tabs.map((t) => Math.round(t.height)), scrim: getComputedStyle(document.getElementById("dictScrim")).backgroundColor,
         footH: c.querySelector(".foot").getBoundingClientRect().height, overflow: c.scrollWidth > c.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth + 1 };
     });
-    R.check("phone: the card is a bottom sheet with a grab handle", sheet.left === 0 && Math.round(sheet.right) === 390 && Math.round(sheet.bottom) === 844 && sheet.radius === "16px" && sheet.grab && sheet.height <= 844 * 0.66 + 1, JSON.stringify(sheet));
+    /* the sheet's corners are the design's --r-xl (24px) */
+    R.check("phone: the card is a bottom sheet with a grab handle", sheet.left === 0 && Math.round(sheet.right) === 390 && Math.round(sheet.bottom) === 844 && sheet.radius === "24px" && sheet.grab && sheet.height <= 844 * 0.66 + 1, JSON.stringify(sheet));
     R.check("phone: tabs are equal width and 44px tall", Math.max.apply(null, sheet.tabW) - Math.min.apply(null, sheet.tabW) <= 1 && sheet.tabH.every((h) => h === 44), JSON.stringify({ w: sheet.tabW, h: sheet.tabH }));
-    R.check("phone: a scrim dims the page; the footer fits in one row; nothing overflows sideways", /0\.18\)$/.test(sheet.scrim) && sheet.footH < 64 && !sheet.overflow, JSON.stringify({ scrim: sheet.scrim, footH: sheet.footH, overflow: sheet.overflow }));
+    /* the scrim is the shared --scrim token: the text colour at 30% on a light page (a see-through colour) */
+    R.check("phone: a scrim dims the page; the footer fits in one row; nothing overflows sideways", /\/ 0\.3\)$|, 0\.3\)$/.test(sheet.scrim) && sheet.footH < 64 && !sheet.overflow, JSON.stringify({ scrim: sheet.scrim, footH: sheet.footH, overflow: sheet.overflow }));
     const small = await page.evaluate(() => Array.from(document.querySelectorAll("#dictCard button")).filter((x) => x.getClientRects().length && x.getBoundingClientRect().height < 40).map((x) => x.className + ":" + Math.round(x.getBoundingClientRect().height)));
-    R.check("phone: every button in the card is at least 40px tall (the close 44)", small.length === 0 && (await page.$eval("#dictCard .x", (x) => Math.round(x.getBoundingClientRect().height) === 44)), small.join(","));
+    R.check("phone: every button in the card is at least 40px tall (the close 48)", small.length === 0 && (await page.$eval("#dictCard .x", (x) => Math.round(x.getBoundingClientRect().height) === 48)), small.join(","));
     /* a finger drag on the scrim neither scrolls the page nor closes the card */
     const y0 = await page.evaluate(() => window.scrollY);
     const cdp = await page.context().newCDPSession(page), pt = (x, y) => ({ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 });

@@ -26,8 +26,10 @@ const STORAGE_STUB = `(function(){
   } catch(e){}
 })();`;
 
+/* a card names its book by the book's own title; the file it came from is the book button's tooltip */
 const cards = (page) => page.$$eval("#libList .lib-item", (els) => els.map((e) => ({
-  name: e.querySelector(".lib-name").textContent,
+  name: e.querySelector(".lib-open").getAttribute("title"),
+  shown: e.querySelector(".lib-name").textContent,
   pinned: e.classList.contains("pinned"),
   pressed: e.querySelector(".lib-pin").getAttribute("aria-pressed"),
   pinTitle: e.querySelector(".lib-pin").getAttribute("title"),
@@ -39,7 +41,7 @@ const headLabel = (page) => page.$eval("#library .lib-head .label", (e) => e.fir
 const cont = (page) => page.evaluate(() => {
   const c = document.getElementById("continueCard");
   if (!c) return null;
-  return { lead: c.querySelector(".label").textContent, title: c.querySelector(".cc-title").textContent,
+  return { lead: c.querySelector(".label").textContent, title: c.dataset.file, shown: c.querySelector(".cc-title").textContent,
            left: (c.querySelector(".cc-left") || {}).textContent || "", go: c.querySelector(".cc-go").textContent.trim() };
 });
 const panelText = (page) => page.$eval("#sideBody", (b) => b.innerText);
@@ -93,6 +95,8 @@ async function home(page){ await page.keyboard.press("h"); await page.waitForTim
   R.check("no group labels until something is pinned, the heading reads Recent", (await groups(page)).length === 0 && (await headLabel(page)) === "Recent");
   let c = await cont(page);
   R.check("the Continue card follows the book opened last", c && c.title === "sample.html" && c.lead === "Continue reading", JSON.stringify(c));
+  R.check("books are named by their own titles: a heading's, else the file name without its extension", c.shown === "The Lamp" &&
+    JSON.stringify(list.map((x) => x.name + "=" + x.shown).sort()) === JSON.stringify(["sample.html=The Lamp", "sample.md=The Lamp", "sample.txt=sample"]), JSON.stringify(list.map((x) => x.name + "=" + x.shown)));
 
   /* the forecast, from the saved position and the reader's pace */
   R.check("each card carries a finish forecast", list.every((x) => /^about .+ left · ≈ \d+ more evenings?$/.test(x.left)), JSON.stringify(list.map((x) => x.left)));

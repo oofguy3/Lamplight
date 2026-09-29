@@ -2783,7 +2783,9 @@
     if (!box) return;
     if (!list.length){
       whoStatus("");
-      box.innerHTML = '<div class="empty-note">No speaking characters found in this document.</div>';
+      /* an empty state (app.css .empty-state): the people icon, a title, one sentence */
+      box.innerHTML = '<div class="empty-note empty-state"><span class="es-icon" aria-hidden="true"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.3a3 3 0 0 1 0 5.4"/><path d="M17 14.3a5.5 5.5 0 0 1 3.5 5.7"/></svg></span>' +
+        '<div class="es-title">No characters yet</div><p class="es-text">No speaking characters found in this document.</p></div>';
       return;
     }
     whoStatus(list.length + (list.length === 1 ? " character" : " characters") +

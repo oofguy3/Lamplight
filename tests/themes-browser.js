@@ -50,10 +50,10 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     await page.evaluate(() => window.llThemes.select("day"));
     await page.click("#lamp"); await page.waitForTimeout(150);
     R.check("the lamp opens the theme popover", await page.evaluate(() => window.llPop.is("theme") && document.getElementById("pop").classList.contains("open") && document.getElementById("lamp").getAttribute("aria-expanded") === "true"));
-    const rows = await page.evaluate(() => ({ light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length,
+    const rows = await page.evaluate(() => ({ light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length, hi: document.querySelectorAll("#qHi .chip").length,
       on: Array.from(document.querySelectorAll("#pop .strip .chip[aria-pressed=true]")).map((c) => c.dataset.theme).join(",") }));
     const gs = await page.evaluate(() => window.llThemes.groups());
-    R.check("the popover lists the light and dark themes (the two high-contrast ones join their rows) with the current one marked", rows.light === gs[0].ids.length + 1 && rows.dark === gs[1].ids.length + 1 && rows.on === "day", JSON.stringify(rows));
+    R.check("the popover lists the light, dark and high-contrast themes, each in its row, with the current one marked", rows.light === gs[0].ids.length && rows.dark === gs[1].ids.length && rows.hi === gs[2].ids.length && rows.on === "day", JSON.stringify(rows));
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
     await page.keyboard.press("t");
     R.check("the t key goes to the night theme", (await state("theme")) === "dusk", await state("theme"));

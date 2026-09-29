@@ -105,19 +105,19 @@ const V = {
     await page.waitForFunction(() => document.getElementById("tts").classList.contains("on"), null, { timeout: 5000 });
     await page.waitForTimeout(200);
   }
-  /* the bar's controls in DOM order and in visual order (rows by vertical centre, then left to right) */
-  /* the bar's controls in DOM order and in visual order (rows by vertical centre, then left to
-     right). The mirror select is out of the flow, so only the buttons and the speed row count */
+  /* the bar's controls in DOM order and in visual order (rows by vertical centre, then left to right).
+     The mini player is one row: the voice, ‹ ▶ ›, the speed chip and ×. The mirror select, the speed
+     popover (closed) and the sleep timer's badge (it sits on the voice's corner) are out of the row */
   const layout = (page) => page.evaluate(() => {
-    const els = Array.from(document.querySelectorAll("#tts button:not([hidden]), #tts label"));
+    const els = Array.from(document.querySelectorAll("#tts button:not([hidden])")).filter((e) => e.id !== "ttsSleep" && !e.closest(".tts-pop") && e.getClientRects().length);
     const boxes = els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.id || e.tagName, cy: r.top + r.height / 2, x: r.left, h: r.height }; });
     const rows = [];
     boxes.slice().sort((a, b) => a.cy - b.cy).forEach((b) => { const r = rows[rows.length - 1]; if (r && Math.abs(r[0].cy - b.cy) < 12) r.push(b); else rows.push([b]); });
     const visual = []; rows.forEach((r) => r.sort((a, b) => a.x - b.x).forEach((b) => visual.push(b.id)));
-    const rateV = document.getElementById("ttsRateV").getBoundingClientRect(), vb = document.getElementById("ttsVoiceBtn").getBoundingClientRect();
+    const g = (id) => document.getElementById(id).getBoundingClientRect(), vb = g("ttsVoiceBtn"), prev = g("ttsPrev"), next = g("ttsNext"), sp = g("ttsSpeed"), play = g("ttsPlay"), bar = g("tts");
     return { dom: boxes.map((b) => b.id), visual, rows: rows.map((r) => r.map((b) => b.id)), minH: Math.min.apply(null, boxes.map((b) => b.h)),
-      overflow: document.documentElement.scrollWidth > window.innerWidth, gap: Math.round(vb.left - rateV.right), slider: Math.round(document.getElementById("ttsRate").getBoundingClientRect().width),
-      barH: document.getElementById("tts").getBoundingClientRect().height };
+      overflow: document.documentElement.scrollWidth > window.innerWidth, gap: Math.round(Math.min(prev.left - vb.right, sp.left - next.right)), speed: Math.round(sp.width),
+      centre: Math.round(Math.abs(play.left + play.width / 2 - (bar.left + bar.width / 2))), play: Math.round(play.width), barH: bar.height };
   });
   /* what the picker is showing right now */
   const panelState = (page) => page.evaluate(() => ({
@@ -329,8 +329,19 @@ const V = {
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     const desk = await layout(page);
     R.check("bar stays one row on desktop, controls ≥ 36 px, DOM order is the visual order", desk.barH < 70 && desk.minH >= 36 && desk.rows.length === 1 && JSON.stringify(desk.dom) === JSON.stringify(desk.visual) && desk.gap > 0, JSON.stringify(desk));
-    R.check("the bar reads ‹ ▶ › · Speed · [voice] · ×",
-      JSON.stringify(desk.visual) === JSON.stringify(["ttsPrev", "ttsPlay", "ttsNext", "LABEL", "ttsVoiceBtn", "ttsStop"]), JSON.stringify(desk.visual));
+    R.check("the bar reads [voice] · ‹ ▶ › · speed · ×, the play button in the middle",
+      JSON.stringify(desk.visual) === JSON.stringify(["ttsVoiceBtn", "ttsPrev", "ttsPlay", "ttsNext", "ttsSpeed", "ttsStop"]) && desk.centre <= 2, JSON.stringify(desk));
+    /* the speed chip: a popover with the slider and four presets */
+    await page.click("#ttsSpeed"); await page.waitForTimeout(150);
+    const sp0 = await page.evaluate(() => ({ open: !document.getElementById("ttsSpeedPop").hidden, expanded: document.getElementById("ttsSpeed").getAttribute("aria-expanded"), focus: document.activeElement.id,
+      presets: Array.from(document.querySelectorAll("#ttsPresets .chip")).map((c) => c.textContent + (c.getAttribute("aria-pressed") === "true" ? "*" : "")) }));
+    R.check("the speed chip opens its popover on the slider, the presets 0.8 / 1 / 1.25 / 1.5× with 1× pressed", sp0.open && sp0.expanded === "true" && sp0.focus === "ttsRate" && sp0.presets.join() === "0.8×,1×*,1.25×,1.5×", JSON.stringify(sp0));
+    await page.click('#ttsPresets .chip[data-rate="1.25"]'); await page.waitForTimeout(100);
+    const sp1 = await page.evaluate(() => ({ chip: document.getElementById("ttsRateV").textContent, rate: window.__ll.Speak.rate(), slider: document.getElementById("ttsRate").value, stored: localStorage.getItem("ll_tts_rate"), label: document.getElementById("ttsSpeed").getAttribute("aria-label") }));
+    R.check("a preset sets the speed: the chip reads 1.25×, the slider and the store follow", sp1.chip === "1.25×" && sp1.rate === 1.25 && sp1.slider === "1.25" && sp1.stored === "1.25" && /1\.25×/.test(sp1.label), JSON.stringify(sp1));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(100);
+    R.check("Escape closes the popover and hands focus back to the chip", await page.evaluate(() => document.getElementById("ttsSpeedPop").hidden && document.activeElement.id === "ttsSpeed" && document.getElementById("tts").classList.contains("on")));
+    await page.$eval("#ttsRate", (el) => { el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); });
     await shot(page, "bar-1200-day");
 
     /* a change in the breath after a sentence is picked up by the next one, not by replaying the last */
@@ -367,8 +378,8 @@ const V = {
       return { title: m && m.title, artist: m && m.artist, album: m && m.album, art: m && m.artwork.map((x) => x.sizes + " " + x.src.replace(/^.*\//, "")), handlers: Object.keys(window.__media.handlers).sort(),
         audio: !!a, loop: a && a.loop, volume: a && a.volume, src: a && a.src.slice(0, 22), plays: window.__media.play, state: navigator.mediaSession.playbackState, albums: window.__media.meta.map((x) => x && x.album) };
     });
-    R.check("reading sets Media Session metadata: file name, Lamplight, the current chapter, both icons",
-      ms1.title === "sample.md" && ms1.artist === "Lamplight" && ms1.album === "Chapter 1" && JSON.stringify(ms1.art) === JSON.stringify(["192x192 icon-192.png", "512x512 icon-512.png"]) && JSON.stringify(ms1.albums) === JSON.stringify(["The Lamp", "Chapter 1"]), JSON.stringify(ms1));
+    R.check("reading sets Media Session metadata: the book's title, Lamplight, the current chapter, both icons",
+      ms1.title === "The Lamp" && ms1.artist === "Lamplight" && ms1.album === "Chapter 1" && JSON.stringify(ms1.art) === JSON.stringify(["192x192 icon-192.png", "512x512 icon-512.png"]) && JSON.stringify(ms1.albums) === JSON.stringify(["The Lamp", "Chapter 1"]), JSON.stringify(ms1));
     R.check("play, pause, stop, previous/next track and seek handlers are registered; playbackState is playing",
       ["play", "pause", "stop", "previoustrack", "nexttrack", "seekbackward", "seekforward"].every((h) => ms1.handlers.indexOf(h) >= 0) && ms1.state === "playing", JSON.stringify(ms1.handlers) + " " + ms1.state);
     R.check("a hidden silent <audio loop> at a whisper of volume was started with the reading", ms1.audio && ms1.loop === true && near(ms1.volume, 0.01) && ms1.src === "data:audio/wav;base64," && ms1.plays >= 1, JSON.stringify(ms1));
@@ -650,15 +661,15 @@ const V = {
   } catch (err){ R.check("sleep timer (exception)", false, String(err).split("\n")[0]); }
   await clockCtx.close();
 
-  /* ---- phone width: two rows in DOM order, panel as a bottom sheet, the compact chip ---- */
+  /* ---- phone width: one row in DOM order, panel as a bottom sheet, the timer a badge ---- */
   const phone = await context(390, 844);
   try {
     const page = await newPage(phone, url);
     await openFixture(page, "sample.md");
     await startBar(page);
     const rows = await layout(page);
-    R.check("phone: two rows, the buttons then speed, voice and ×, controls ≥ 36 px, no horizontal scroll",
-      rows.rows.length === 2 && rows.rows[0].indexOf("ttsPlay") >= 0 && rows.rows[1].indexOf("ttsVoiceBtn") >= 0 && rows.rows[1].indexOf("ttsStop") >= 0 && rows.minH >= 36 && !rows.overflow, JSON.stringify(rows));
+    R.check("phone: one row — the voice, ‹ ▶ ›, the speed and × — a centred 56px play, controls ≥ 36 px, no horizontal scroll",
+      rows.rows.length === 1 && JSON.stringify(rows.visual) === JSON.stringify(["ttsVoiceBtn", "ttsPrev", "ttsPlay", "ttsNext", "ttsSpeed", "ttsStop"]) && rows.play === 56 && rows.centre <= 2 && rows.gap >= 0 && rows.minH >= 36 && !rows.overflow && rows.barH < 90, JSON.stringify(rows));
     R.check("phone: the focus order is the visual order", JSON.stringify(rows.dom) === JSON.stringify(rows.visual), JSON.stringify(rows.dom) + " vs " + JSON.stringify(rows.visual));
     await readFrom(page, "He asked, “Are you coming?”", 2);
     await page.evaluate(() => window.__ll.Speak.pause());
@@ -681,8 +692,10 @@ const V = {
     await shot(page, "sleep-panel-390-day");
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     const pc = await sleepChip(page), prow = await layout(page);
-    R.check("phone: the chip reads “15 min” with the full sentence as its name, on the first row, still two rows",
-      !pc.hidden && !pc.prefixShown && pc.label === "Stops in 15 min — sleep timer" && prow.rows.length === 2 && prow.rows[0].indexOf("ttsSleep") >= 0 && JSON.stringify(prow.dom) === JSON.stringify(prow.visual) && !prow.overflow, JSON.stringify([pc, prow.rows]));
+    const badge = await page.evaluate(() => { const s = document.getElementById("ttsSleep").getBoundingClientRect(), v = document.getElementById("ttsVoiceBtn").getBoundingClientRect();
+      return { on: s.left < v.right && s.right > v.left && s.top < v.top && s.bottom > v.top, inside: s.left >= 0 && s.right <= window.innerWidth }; });
+    R.check("phone: the timer is a badge on the voice reading “15 min”, the full sentence its name; still one row",
+      !pc.hidden && !pc.prefixShown && pc.text === "15 min" && pc.label === "Stops in 15 min — sleep timer" && badge.on && badge.inside && prow.rows.length === 1 && JSON.stringify(prow.dom) === JSON.stringify(prow.visual) && !prow.overflow, JSON.stringify([pc, badge, prow.rows]));
     await shot(page, "sleep-bar-390-day");
     await setTheme(page, "dusk");
     await shot(page, "sleep-bar-390-dusk");
@@ -699,7 +712,7 @@ const V = {
   } catch (err){ R.check("phone (exception)", false, String(err).split("\n")[0]); }
   await phone.close();
 
-  /* ---- the widths between phone and desktop: no overlap of the speed value and the voice select ---- */
+  /* ---- the widths between phone and desktop: one row, nothing overlapping ---- */
   for (const wpx of [600, 640, 740, 800]){
     const mid = await context(wpx, 800);
     try {
@@ -707,16 +720,16 @@ const V = {
       await openFixture(page, "sample.md");
       await startBar(page);
       const a = await layout(page);
-      const wantRows = wpx <= 720 ? 2 : 1;
-      R.check(wpx + " px: " + wantRows + " row(s), speed value clear of the voice button, focus order is the visual order",
-        a.rows.length === wantRows && a.gap >= 4 && a.slider >= 60 && JSON.stringify(a.dom) === JSON.stringify(a.visual) && !a.overflow, JSON.stringify(a));
+      const wantRows = 1;
+      R.check(wpx + " px: " + wantRows + " row, the voice clear of ‹ and the speed clear of ›, focus order is the visual order",
+        a.rows.length === wantRows && a.gap >= 4 && a.speed >= 44 && a.centre <= 2 && JSON.stringify(a.dom) === JSON.stringify(a.visual) && !a.overflow, JSON.stringify(a));
       if (wpx === 640) await shot(page, "bar-640-day");
       /* the compact bar has room for the timer chip too: it never overlaps and never grows a row
          it does not need (with the long voice select on the bar, 740 and 800 px both wrapped) */
       await page.evaluate(() => window.llSpeak.setSleep(15));
       const t = await layout(page);
-      R.check(wpx + " px with the timer chip: still " + wantRows + " row(s), no overlap, DOM order kept",
-        t.gap >= 4 && t.slider >= 60 && JSON.stringify(t.dom) === JSON.stringify(t.visual) && !t.overflow && t.rows.length === wantRows, JSON.stringify(t));
+      R.check(wpx + " px with the timer badge: still " + wantRows + " row, no overlap, DOM order kept",
+        t.gap >= 4 && t.speed >= 44 && JSON.stringify(t.dom) === JSON.stringify(t.visual) && !t.overflow && t.rows.length === wantRows, JSON.stringify(t));
       if (wpx === 740) await shot(page, "sleep-bar-740-day");
       await page.close();
     } catch (err){ R.check(wpx + " px (exception)", false, String(err).split("\n")[0]); }

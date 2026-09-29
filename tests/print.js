@@ -66,7 +66,7 @@ const layout = (page) => page.evaluate(() => {
   R.check("print: the title line is empty and hidden until beforeprint", p.head.text === "" && p.head.display === "none");
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
   const bp = await layout(page);
-  R.check("beforeprint: #printHead shows the file name", bp.head.text === "sample.md" && bp.head.display === "block", JSON.stringify(bp.head));
+  R.check("beforeprint: #printHead shows the book's title (its first heading)", bp.head.text === "The Lamp" && bp.head.display === "block", JSON.stringify(bp.head));
   R.check("beforeprint: body.printing in Pages flow", bp.printing);
   await page.screenshot({ path: path.join(SHOTS, "print-desktop-day.png") });
   /* a dark theme prints the same */
@@ -132,7 +132,7 @@ const layout = (page) => page.evaluate(() => {
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
   await page.waitForTimeout(200);
   const ph = await layout(page);
-  R.check("phone print: one column, black on white, title line", ph.columns === "auto" && ph.bodyBg === "rgb(255, 255, 255)" && ph.head.text === "sample.md" && !ph.wide, JSON.stringify({ columns: ph.columns, bg: ph.bodyBg, head: ph.head, wide: ph.wide }));
+  R.check("phone print: one column, black on white, title line", ph.columns === "auto" && ph.bodyBg === "rgb(255, 255, 255)" && ph.head.text === "The Lamp" && !ph.wide, JSON.stringify({ columns: ph.columns, bg: ph.bodyBg, head: ph.head, wide: ph.wide }));
   await page.screenshot({ path: path.join(SHOTS, "print-phone-day.png") });
   await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
   await page.waitForTimeout(450);
