@@ -1,12 +1,16 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.29-32";
+const VERSION = "2026.09.29-33";
 const CACHE = "lamplight-" + VERSION;
-/* caches that outlive a release: shared files on their way in, and the natural voices — Best (the Kokoro model
+/* caches that outlive a release: shared files on their way in, the natural voices — Best (the Kokoro model
    and its voice files, kept there by kokoro-js, 95 MB) and Fast (the Piper model and its config, kept there by
-   workers/piper-worker.js, 78 MB): downloads that must not go with every update */
-const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices"];
+   workers/piper-worker.js, 78 MB) — and the Dutch ↔ English pack (the Bergamot runtime and its two models, kept
+   there by workers/mt-worker.js, 49 MB): downloads that must not go with every update */
+const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices", "bergamot-models"];
+/* the pack's files (vendor/bergamot/*, models/bergamot/*) go straight to the network: the worker keeps them in
+   "bergamot-models" itself, so they are neither precached nor copied into this version's cache */
+const PACK = /\/(vendor|models)\/bergamot\//;
 /* cross-origin isolation for the pages this worker serves: GitHub Pages cannot send these headers, and
    without them WebAssembly threads (SharedArrayBuffer) are off, so the natural voices run single-threaded.
    "credentialless" keeps cross-origin fetches (the online dictionary, ElevenLabs, huggingface.co) working;
@@ -33,6 +37,7 @@ const ASSETS = [
   "./vendor/purify.min.js",
   "./vendor/jszip.min.js",
   "./workers/docx-worker.js",
+  "./workers/mt-worker.js",
   "./fonts/AtkinsonHyperlegible-Regular.woff2",
   "./fonts/AtkinsonHyperlegible-Bold.woff2",
   "./fonts/AtkinsonHyperlegible-Italic.woff2",
@@ -130,8 +135,10 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   /* only our own files: the online dictionary, MyMemory, api.elevenlabs.io and huggingface.co (the natural voices'
-     models, which kokoro-js and the Piper worker cache themselves) go straight to the network */
+     models, which kokoro-js and the Piper worker cache themselves) go straight to the network, and so do the
+     Dutch ↔ English pack's files (PACK above) */
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
+  if (PACK.test(url.pathname)) return;
   const isPage =
     e.request.mode === "navigate" ||
     url.pathname.endsWith("/") ||

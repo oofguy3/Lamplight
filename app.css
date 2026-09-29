@@ -1392,8 +1392,21 @@
   #trGroup .rowline .sel{max-width:100%;}
   #trGroup .hint{line-height:1.45;}
   #trGroup .hint .tr-status{display:block; color:var(--ink); margin-bottom:2px;}
+  /* the Dutch ↔ English pack's row: what is on the device, download / remove, the download's progress */
+  #trGroup .k-state{font-size:0.8125rem; color:var(--muted); flex:1 1 auto; min-width:0; line-height:1.4;}
+  #trGroup .k-progress{width:100%; height:8px; accent-color:var(--accent);}
+  #trGroup .k-progress[hidden], #trGroup .chip[hidden]{display:none;}
   /* bilingual printing: the translations keep a readable grey on paper */
-  @media print{ .ll-tr{color:#333;} }
+  @media print{ .ll-tr{color:#333;} .ll-tr.only{color:inherit;} }
+  /* "Translation only" (translate.js): a translated block's original keeps its place in the text — every offset,
+     highlight, search hit and read-aloud unit still points into it, and it is still laid out, so each has a spot
+     on the page — but it takes no room and is not painted; the translation after it stands in. A tap or a hold on
+     that translation shows the original above it (.ll-trpeek). A plain-text paragraph is wrapped in a span for it. */
+  #doc .ll-trsrc:not(.ll-trpeek){height:0; min-height:0; overflow:hidden; visibility:hidden; margin:0 !important; padding:0 !important; border:0 !important;}
+  #doc span.ll-trsrc{display:block;}
+  #doc .ll-trsrc.ll-trpeek{color:var(--muted);}
+  #doc.justify .ll-tr.only{text-align:justify;}
+  #doc.hyphens .ll-tr.only{-webkit-hyphens:auto; hyphens:auto;}
 
   /* ---------- toasts and status pills ---------- */
   /* one style — the panel colour, a hairline, the text colour — floating above the dock:

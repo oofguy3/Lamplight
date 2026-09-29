@@ -30,6 +30,7 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8')); JSON.parse(require('fs').readFileSync('dict-index.json','utf8')); console.log('json ok')"
           cp workers/kokoro-worker.js "$RUNNER_TEMP/kokoro-worker.mjs" && node --check "$RUNNER_TEMP/kokoro-worker.mjs" && echo 'module worker parses'
           cp workers/piper-worker.js "$RUNNER_TEMP/piper-worker.mjs" && node --check "$RUNNER_TEMP/piper-worker.mjs" && echo 'piper worker parses'
+          cp workers/mt-worker.js "$RUNNER_TEMP/mt-worker.mjs" && node --check "$RUNNER_TEMP/mt-worker.mjs" && echo 'translation worker parses'
       - name: Stage the site (everything except repo housekeeping)
         run: |
           mkdir -p _site

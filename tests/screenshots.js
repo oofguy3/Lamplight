@@ -251,7 +251,8 @@ const STATS = (() => {
         value: { availability: async () => "available", create: async () => ({ translate: async (s) => ES[s] || s, destroy(){} }) } });
       Object.defineProperty(window, "LanguageDetector", { configurable: true, writable: true,
         value: { create: async () => ({ detect: async () => [{ detectedLanguage: "en", confidence: 0.9 }] }) } });
-      localStorage.setItem("ll_tr_to", "es");
+      localStorage.setItem("ll_tr_to", "es"); localStorage.setItem("ll_tr_v", "2");
+      localStorage.setItem("ll_tr_view", "both");      /* the bilingual view: each translation under its paragraph */
     }, ES);
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");

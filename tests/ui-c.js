@@ -1,6 +1,6 @@
-/* UI-C — the understanding card: one tabbed card for words (Meaning · Parts · Translate) and
-   sentences (Explain · Simpler · Translate) with a footer of actions on the passage, and a
-   two-button selection pill. Roles and keys, lazy panels, the badge and the dot, Copy and
+/* UI-C — the understanding card: one tabbed card for words (Meaning · Parts) and sentences
+   (Explain · Simpler), the translation under the word or the quote, a footer of actions on the
+   passage, and a two-button selection pill. Roles and keys, lazy panels, the badge and the dot, Copy and
    Say it, contrast of the new tints on the hardest themes, the bottom sheet on a phone.
    Screenshots of every tab at 1200×800 and 390×844 in Day, Dusk, Newsprint and Terminal go
    to $LL_SHOTS (default: the OS temp dir).
@@ -10,8 +10,9 @@ const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-ui-c");
 fs.mkdirSync(SHOTS, { recursive: true });
 
-/* the browser's translator (ready, on-device) and a speech engine that logs every utterance */
+/* the browser's translator (ready, on-device; into Spanish, chosen in the settings) and a speech engine that logs every utterance */
 const STUB = `(() => {
+  if (!sessionStorage.getItem("__trSet")){ sessionStorage.setItem("__trSet", "1"); localStorage.setItem("ll_tr_to", "es"); localStorage.setItem("ll_tr_v", "2"); }
   window.Translator = { availability: async () => "available",
     create: async (a) => ({ translate: async (s) => { await new Promise((r) => setTimeout(r, 3)); return "[" + a.targetLanguage + "] " + s; }, destroy(){} }) };
   window.LanguageDetector = { create: async () => ({ detect: async () => [{ detectedLanguage: "en", confidence: 0.9 }] }) };
@@ -96,29 +97,25 @@ const CONTRAST = `(el, behind) => {
     /* the word card */
     await tapWord(page, "unexpected");
     let tabs = await tabState(page);
-    R.check("word card: Meaning · Parts · Translate tabs in a tablist", tabs.map((t) => t.label).join("·") === "Meaning·Parts·Translate" && (await page.$eval("#dictCard [role=tablist]", (l) => l.getAttribute("aria-label"))) === "Word", JSON.stringify(tabs));
-    R.check("Meaning is selected, its panel shown, the others hidden (tabpanels labelled by their tabs)", tabs[0].selected === "true" && !tabs[0].panelHidden && tabs[1].panelHidden && tabs[2].panelHidden &&
+    R.check("word card: Meaning · Parts tabs in a tablist", tabs.map((t) => t.label).join("·") === "Meaning·Parts" && (await page.$eval("#dictCard [role=tablist]", (l) => l.getAttribute("aria-label"))) === "Word", JSON.stringify(tabs));
+    R.check("Meaning is selected, its panel shown, the other hidden (tabpanels labelled by their tabs)", tabs[0].selected === "true" && !tabs[0].panelHidden && tabs[1].panelHidden &&
       (await page.evaluate(() => Array.from(document.querySelectorAll("#dictCard .panel")).every((p) => p.getAttribute("role") === "tabpanel" && document.getElementById(p.getAttribute("aria-labelledby"))))), JSON.stringify(tabs));
-    R.check("only the selected tab is in the tab order (roving tabindex)", tabs.map((t) => t.tabindex).join(",") === "0,-1,-1", tabs.map((t) => t.tabindex).join(","));
+    R.check("only the selected tab is in the tab order (roving tabindex)", tabs.map((t) => t.tabindex).join(",") === "0,-1", tabs.map((t) => t.tabindex).join(","));
     await page.waitForFunction((sel) => document.querySelector(sel).getAttribute("aria-disabled") !== "true", tab("parts"), { timeout: 30000 });
-    await page.waitForFunction(() => document.querySelector('#dictCard .tr-slot[data-kind="word"] .tr-out'), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('#dictTr .tr-slot[data-kind="word"] .tr-out'), null, { timeout: 15000 });
     tabs = await tabState(page);
     R.check("Parts lights up with a badge of 3 once the analysis arrives", !tabs[1].disabled && tabs[1].badge === "3", JSON.stringify(tabs[1]));
-    R.check("Translate fills by itself and shows a dot", tabs[2].dot && (await page.evaluate(() => document.querySelector("#dictCard .tr-out").textContent)) === "[es] unexpected", JSON.stringify(tabs[2]));
+    R.check("the translation comes by itself, under the word", (await page.evaluate(() => { const l = document.getElementById("dictTr"), o = l.querySelector(".tr-out"); return !l.hidden && !!o.offsetParent && o.textContent; })) === "[es] unexpected");
     R.check("the definition is there meanwhile", /adjective/.test(await page.$eval('#dictPanel-meaning', (p) => p.textContent)));
     R.check("footer: Highlight · Copy · Say it", (await footer(page)).join(",") === "hl:Highlight,copy:Copy,say:Say it", (await footer(page)).join(","));
     await page.click(tab("parts"));
     const parts = await page.evaluate(() => ({ visible: !document.getElementById("dictPanel-parts").hidden && !!document.querySelector("#dictCard .wordparts").offsetParent, n: document.querySelectorAll("#dictCard .wordparts .part").length }));
     R.check("the Parts tab shows the three tiles", parts.visible && parts.n === 3, JSON.stringify(parts));
-    await page.click(tab("translate"));
-    tabs = await tabState(page);
-    R.check("the Translate tab shows the translation and its dot is gone", tabs[2].selected === "true" && !tabs[2].dot && (await page.$eval("#dictCard .tr-out", (e) => !!e.offsetParent && e.textContent === "[es] unexpected")), JSON.stringify(tabs[2]));
-    await page.click("#dictMarkActs [data-m=copy]"); await page.waitForTimeout(250);
-    const clipTr = await page.evaluate(() => navigator.clipboard.readText().catch(() => "")).catch(() => "");
+    R.check("…and it stays there on every tab", await page.$eval("#dictTr .tr-out", (e) => !!e.offsetParent && e.textContent === "[es] unexpected"));
     await page.click(tab("meaning"));
     await page.click("#dictMarkActs [data-m=copy]"); await page.waitForTimeout(250);
     const clipWord = await page.evaluate(() => navigator.clipboard.readText().catch(() => "")).catch(() => "");
-    R.check("Copy takes what the open tab shows: the translation, then the word", clipTr === "[es] unexpected" && clipWord === "unexpected", JSON.stringify({ clipTr, clipWord }));
+    R.check("Copy takes the word", clipWord === "unexpected", JSON.stringify({ clipWord }));
     await page.click("#dictMarkActs [data-m=say]"); await page.waitForTimeout(150);
     const spoken = await page.evaluate(() => window.__spoken.slice());
     R.check("Say it speaks the word in the narrator's voice", spoken.length === 1 && spoken[0].text === "unexpected" && spoken[0].voice === "Daniel", JSON.stringify(spoken));
@@ -128,12 +125,10 @@ const CONTRAST = `(el, behind) => {
     let t1 = await tabState(page);
     await page.keyboard.press("ArrowRight");
     let t2 = await tabState(page);
-    await page.keyboard.press("ArrowRight");
-    let t3 = await tabState(page);
-    R.check("arrow keys move and select: Parts, Translate, then round to Meaning", t1[1].selected === "true" && t1[1].focused && t2[2].selected === "true" && t2[2].focused && t3[0].selected === "true" && t3[0].focused);
+    R.check("arrow keys move and select: Parts, then round to Meaning", t1[1].selected === "true" && t1[1].focused && t2[0].selected === "true" && t2[0].focused);
     await page.keyboard.press("End"); const tEnd = await tabState(page);
     await page.keyboard.press("Home"); const tHome = await tabState(page);
-    R.check("End and Home jump to the last and first tab", tEnd[2].selected === "true" && tHome[0].selected === "true");
+    R.check("End and Home jump to the last and first tab", tEnd[1].selected === "true" && tHome[0].selected === "true");
     /* highlight from the footer */
     await page.click("#dictMarkActs [data-m=hl]"); await page.waitForTimeout(300);
     const hl = await page.evaluate(() => ({ marks: Array.from(document.querySelectorAll("#doc mark.ll-mark")).map((m) => m.textContent), open: document.getElementById("dictCard").classList.contains("open"), hit: !!document.querySelector("#doc .ll-hit") }));
@@ -144,14 +139,14 @@ const CONTRAST = `(el, behind) => {
     tabs = await tabState(page);
     await page.focus(tab("meaning")); await page.keyboard.press("ArrowRight");
     const skip = await tabState(page);
-    R.check("a plain word: Parts stays dim, and the arrow keys skip it", tabs[1].disabled && !tabs[1].badge && skip[2].selected === "true", JSON.stringify(tabs[1]) + " -> " + skip.map((t) => t.selected).join(","));
+    R.check("a plain word: Parts stays dim, and the arrow keys skip it", tabs[1].disabled && !tabs[1].badge && skip[0].selected === "true" && skip[1].selected === "false", JSON.stringify(tabs[1]) + " -> " + skip.map((t) => t.selected).join(","));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
     /* the sentence card */
     await holdSentence(page, "Nobody could have");
     tabs = await tabState(page);
     const head = await page.evaluate(() => ({ title: document.querySelector("#dictCard .term").textContent, quote: document.querySelector("#dictCard .quote").textContent, label: document.getElementById("dictCard").getAttribute("aria-label") }));
-    R.check("sentence card: Explain · Simpler · Translate over the quoted sentence", tabs.map((t) => t.label).join("·") === "Explain·Simpler·Translate" && head.title === "This sentence" && head.quote === SENTENCE, JSON.stringify(head));
+    R.check("sentence card: Explain · Simpler over the quoted sentence", tabs.map((t) => t.label).join("·") === "Explain·Simpler" && head.title === "This sentence" && head.quote === SENTENCE, JSON.stringify(head));
     R.check("the Simpler tab carries data-m=simplify", await page.$eval('#dictCard [role=tab][data-m="simplify"]', (b) => b.dataset.tab === "simpler"));
     await page.waitForFunction(() => /main clause/.test(document.getElementById("dictExpl").textContent), null, { timeout: 20000 });
     R.check("Explain is drawn at once", await page.evaluate(() => /main clause/.test(document.getElementById("dictExpl").textContent)));
@@ -161,9 +156,8 @@ const CONTRAST = `(el, behind) => {
     await page.waitForSelector("#dictCard .simple", { timeout: 30000 });
     const simp = await page.evaluate(() => ({ text: document.querySelector("#dictCard .simple").textContent, chg: document.querySelectorAll("#dictCard .chg").length, acts: Array.from(document.querySelectorAll("#simpActs button")).map((b) => b.textContent.trim()) }));
     R.check("the Simpler tab renders the plainer sentence with its changes and Read aloud", /unusual/.test(simp.text) && simp.chg >= 1 && simp.acts.join("|") === "Read aloud", JSON.stringify(simp));
-    await page.click(tab("translate"));
-    await page.waitForSelector('#dictCard .tr-slot[data-kind="sentence"] .tr-out', { timeout: 15000 });
-    R.check("the Translate tab shows the sentence translation", /^\[es\] Nobody/.test(await page.$eval("#dictCard .tr-out", (e) => e.textContent)));
+    await page.waitForSelector('#dictTr .tr-slot[data-kind="sentence"] .tr-out', { timeout: 15000 });
+    R.check("the sentence's translation is under the quote", /^\[es\] Nobody/.test(await page.$eval("#dictTr .tr-out", (e) => e.offsetParent ? e.textContent : "")));
     const named = await page.evaluate(() => Array.from(document.querySelectorAll("#dictCard button, #dictPill button")).filter((x) => x.offsetParent !== null && !(x.textContent.trim() || x.getAttribute("aria-label"))).length);
     R.check("every visible button in the card has a name", named === 0, String(named));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
@@ -348,7 +342,6 @@ const CONTRAST = `(el, behind) => {
         await page.waitForFunction(() => document.querySelector("#dictCard .tr-out"), null, { timeout: 15000 });
         await page.waitForTimeout(300); await shot("word-meaning");
         await page.click(tab("parts")); await page.waitForTimeout(200); await shot("word-parts");
-        await page.click(tab("translate")); await page.waitForTimeout(200); await shot("word-translate");
         await page.keyboard.press("Escape"); await page.waitForTimeout(300);
         await holdSentence(page, "Nobody could have");
         await page.waitForFunction(() => /main clause/.test(document.getElementById("dictExpl").textContent), null, { timeout: 20000 });
@@ -356,7 +349,6 @@ const CONTRAST = `(el, behind) => {
         await page.waitForTimeout(300); await shot("sentence-explain");
         await page.click('#dictCard [data-m="simplify"]');
         await page.waitForSelector("#dictCard .simple", { timeout: 30000 }); await page.waitForTimeout(200); await shot("sentence-simpler");
-        await page.click(tab("translate")); await page.waitForTimeout(200); await shot("sentence-translate");
         await page.keyboard.press("Escape"); await page.waitForTimeout(300);
         if (!view.mobile){
           await selectPhrase(page, "extraordinary consequences");
@@ -368,7 +360,7 @@ const CONTRAST = `(el, behind) => {
       }
       await ctx.close();
     }
-    R.check("screenshots taken", fs.readdirSync(SHOTS).filter((f) => /\.png$/.test(f)).length >= 52, String(fs.readdirSync(SHOTS).length));
+    R.check("screenshots taken", fs.readdirSync(SHOTS).filter((f) => /\.png$/.test(f)).length >= 36, String(fs.readdirSync(SHOTS).length));
   });
 
   console.log("screenshots in " + SHOTS);

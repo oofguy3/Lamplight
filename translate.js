@@ -1,14 +1,21 @@
-/* Lamplight — Translate: the tapped word, a selected sentence or the whole document, into a
-   language the reader chooses. Two engines, in order of preference: the browser's built-in
-   on-device translator (Chrome / Edge, private and free, works offline once its language pack
-   is downloaded), and MyMemory (a free web service) for words and sentences only. Everything
-   translated is cached on the device, so a translated book reopens translated, offline.
+/* Lamplight — Translate: the tapped word, a selected sentence or the whole book, into the reader's language.
+   Three engines, in order of preference: the Dutch ↔ English pack (Firefox Translations / Bergamot in
+   workers/mt-worker.js: downloaded once from this site, then on the device and offline — for Dutch and English
+   it is preferred over everything else), the browser's built-in on-device translator (Chrome / Edge, where it
+   exists), and MyMemory (a free web service) for words and sentences only. Everything translated is cached on
+   the device, so a translated book reopens translated, offline.
 
-   Loaded on demand by app.js (see LIBS there), which owns the settings group, the menu entry
-   and the card; this file talks to the reader through window.__ll and fills the card's
-   .tr-slot elements. Whole-document translations are shown under each block in a shadow root,
-   so #doc's own text nodes are untouched and every character offset (positions, highlights,
-   search, read aloud) keeps working. */
+   Into what: the reader's own language (the device's, navigator.language) for a book in another language; a
+   book already in that language gets no translation line when a word is tapped, and Translate book turns a
+   Dutch book into English and an English book into Dutch. A language chosen under Translation in the settings
+   goes first.
+
+   Loaded on demand by app.js (see LIBS there), which owns the settings group, the menu entries and the card;
+   this file talks to the reader through window.__ll and fills the card's .tr-slot. Whole-book translations are
+   shown under each block in a shadow root, so #doc's own text nodes are untouched and every character offset
+   (positions, highlights, search, read aloud) keeps working. "Translation only" hides each translated block's
+   original without taking it out of the text (it keeps its place and its offsets, and takes no room); the
+   translation stands in, and a tap or a hold on it shows the original again. */
 (function(){
   "use strict";
   var L = window.__ll || {};
@@ -18,22 +25,23 @@
     set: function(k, v){ try { localStorage.setItem(k, v); } catch(_){} },
     remove: function(k){ try { localStorage.removeItem(k); } catch(_){} }
   };
-  var KEY_TO = "ll_tr_to", KEY_FROM = "ll_tr_from", KEY_ON = "ll_tr_on";
+  /* ll_tr_to: "auto" or a chosen language; ll_tr_view: "only" | "both"; ll_mt_offer: the card offered the pack once */
+  var KEY_TO = "ll_tr_to", KEY_FROM = "ll_tr_from", KEY_ON = "ll_tr_on", KEY_VIEW = "ll_tr_view", KEY_OFFER = "ll_mt_offer";
   var RTL = { ar: 1, he: 1, fa: 1, ur: 1 };
   var MM_CODES = { zh: "zh-CN", "zh-Hant": "zh-TW" };   /* MyMemory's names for the two Chinese scripts */
   var SENTENCE_CAP = 2000;                                 /* cached word / sentence records kept */
-  var PRIVACY = "The built-in translator runs on your device. MyMemory is a free web service that receives the words or sentence you translate.";
+  var PRIVACY = "The Dutch ↔ English pack and the built-in translator run on your device and send nothing anywhere; the pack is downloaded once from this site. " +
+                "MyMemory, a free web service, receives the word or sentence you tap when neither of them can translate it.";
 
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
   function norm(s){ return String(s || "").replace(/\s+/g, " ").trim(); }
   function toast(msg){ if (L.Marks && L.Marks.toast) L.Marks.toast(msg); }
   function online(){ return navigator.onLine !== false; }
+  function noop(){}
   /* Library.tx hands back the request itself when a get() found nothing */
   function unwrap(r){ return (r && typeof r === "object" && typeof IDBRequest !== "undefined" && r instanceof IDBRequest) ? null : (r || null); }
 
   /* ---------- languages: the table lives in the settings select that app.js built ---------- */
-  function to(){ return Store.get(KEY_TO) || "es"; }
-  function fromPref(){ return Store.get(KEY_FROM) || "auto"; }
   function nameOf(code){
     var o = document.querySelector('#trLang option[value="' + String(code).replace(/"/g, "") + '"]');
     return o ? o.textContent.split(" · ")[0] : String(code);
@@ -42,26 +50,89 @@
   /* en-US and en are the same language; the two Chinese scripts are not */
   function same(a, b){ return base(a) === base(b) && !(base(a) === "zh" && a !== b); }
   function dirOf(code){ return RTL[base(code)] ? "rtl" : "ltr"; }
+  function known(code){
+    var sel = $("#trLang");
+    return !sel || !!sel.querySelector('option[value="' + String(code).replace(/"/g, "") + '"]');
+  }
+  /* the reader's language: the device's, when the table has it; else English */
+  function readerLang(){
+    var nav = String((navigator.languages && navigator.languages[0]) || navigator.language || "en"), b = base(nav);
+    if (b === "zh") return /hant|tw|hk|mo/i.test(nav) ? "zh-Hant" : "zh";
+    if (b === "nb" || b === "nn") b = "no";
+    return known(b) ? b : "en";
+  }
+  /* a language chosen in the settings (null: automatic) */
+  function picked(){
+    var v = Store.get(KEY_TO);
+    return v && v !== "auto" && known(v) ? v : null;
+  }
+  /* what a tapped word or a selected sentence is translated into; null: nothing (the text is in the reader's language) */
+  function targetFor(src){
+    var p = picked(), me = readerLang();
+    if (p && !same(src, p)) return p;
+    if (!same(src, me)) return me;
+    return null;
+  }
+  /* what Translate book translates into: as above, and a book in the reader's own language into the other
+     side of Dutch ↔ English */
+  function bookTarget(src){
+    return targetFor(src) || (base(src) === "en" ? "nl" : "en");
+  }
+  function fromPref(){ return Store.get(KEY_FROM) || "auto"; }
 
-  /* ---------- source language: the setting, or the built-in detector on a sample ---------- */
+  /* ---------- source language: the setting, or a detector on a sample of the book ---------- */
+  /* the commonest little words of a few languages: enough to tell a book's language where the browser has no
+     detector of its own (Chrome on Android, mostly) */
+  var STOP = {
+    en: "the and of to in that is was he it for with as his on be at by had not but her she you they this which from have were been",
+    nl: "de het een en van ik te dat die in is niet zijn op aan met voor er maar om hij zij ze was als bij ook naar dan wat nog haar hem wel geen zich",
+    de: "der die und das ist nicht ein eine zu den mit sich auf für von dem des im auch es war sie er ich nicht wie",
+    fr: "le la les et des un une est que qui dans pas pour sur au ne se il elle je vous ce du avec",
+    es: "el la los las y que en un una es por con no se lo para del al su como más pero",
+    it: "il la le e di che un una non per con del della sono è si gli ma come anche",
+    pt: "o a os as e que em um uma não para com do da se é por mais como mas ao",
+    sv: "och att det som en är på för med av till den har inte jag var om",
+    da: "og at det som en er på for med af til den har ikke jeg var om",
+    pl: "i w nie na z się że do to jest jak ale po co tak"
+  };
+  var STOPSET = {};
+  Object.keys(STOP).forEach(function(l){ var s = {}; STOP[l].split(" ").forEach(function(w){ s[w] = 1; }); STOPSET[l] = s; });
+  function guess(sample){
+    var words = String(sample || "").toLowerCase().match(/[a-zà-öø-ÿąćęłńśźż]+/g) || [];
+    if (words.length < 8) return null;
+    var score = {};
+    words.forEach(function(w){ for (var l in STOPSET) if (STOPSET[l][w]) score[l] = (score[l] || 0) + 1; });
+    var ranked = Object.keys(score).sort(function(a, b){ return score[b] - score[a]; });
+    var a = score[ranked[0]] || 0, b = score[ranked[1]] || 0;
+    return a >= 4 && a >= b * 1.3 ? ranked[0] : null;
+  }
   var detected = {};
   function detect(sample){
-    sample = String(sample || "").slice(0, 2000);
+    sample = String(sample || "").slice(0, 2400);
     if (!sample.trim()) return Promise.resolve("en");
     if (detected[sample] !== undefined) return Promise.resolve(detected[sample]);
-    if (!(window.LanguageDetector && typeof window.LanguageDetector.create === "function")) return Promise.resolve("en");
+    var g = guess(sample);
+    if (!(window.LanguageDetector && typeof window.LanguageDetector.create === "function")){ detected[sample] = g || "en"; return Promise.resolve(detected[sample]); }
     return Promise.resolve().then(function(){ return window.LanguageDetector.create(); }).then(function(d){
       return Promise.resolve(d.detect(sample)).then(function(list){ try { if (d.destroy) d.destroy(); } catch(_){} return list; });
     }).then(function(list){
       var best = list && list[0];
       var ok = best && best.detectedLanguage && best.detectedLanguage !== "und" && (best.confidence === undefined || best.confidence >= 0.4);
-      detected[sample] = ok ? best.detectedLanguage : "en";
+      detected[sample] = ok ? best.detectedLanguage : (g || "en");
       return detected[sample];
-    }).catch(function(){ return "en"; });
+    }).catch(function(){ return g || "en"; });
   }
+  /* a sample from inside the book, not its start: a Project Gutenberg book in Dutch opens with an English licence */
+  var sampled = { key: null, text: "" };
   function docSample(){
     var d = $("#doc");
-    return (L.state && L.state.mode === "doc" && d) ? d.textContent.slice(0, 2000) : "";
+    if (!(L.state && L.state.mode === "doc" && d)) return "";
+    var key = docId();
+    if (sampled.key === key && sampled.text) return sampled.text;
+    var s = d.textContent, n = s.length, out = s;
+    if (n > 4000) out = [0.2, 0.45, 0.7].map(function(f){ var a = Math.floor(n * f); return s.slice(a, a + 800); }).join(" ");
+    sampled = { key: key, text: out };
+    return out;
   }
   /* a word or sentence from the open document is in the document's language */
   function resolveFrom(text){
@@ -70,7 +141,157 @@
     return detect(docSample() || text);
   }
 
-  /* ---------- engine 1: the browser's built-in translator ---------- */
+  /* ---------- engine 1: the Dutch ↔ English pack (workers/mt-worker.js) ----------
+     One worker, one direction at a time; one paragraph per message, a tapped word or sentence ahead of the
+     book's paragraphs. The worker is ended after a while idle, and when the other direction is wanted. */
+  var Pack = (function(){
+    var CACHE = "bergamot-models", IDLE_MS = 120000, MB = 50;
+    var FILES = ["vendor/bergamot/bergamot-translator-worker.js", "vendor/bergamot/bergamot-translator-worker.wasm",
+                 "models/bergamot/vocab.nlen.spm.gz", "models/bergamot/nlen/model.nlen.intgemm.alphas.bin.gz",
+                 "models/bergamot/ennl/model.ennl.intgemm.alphas.bin.gz"];
+    var SIMD = [0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11];
+    var st = { have: null, dl: null, err: "", broken: "" };
+    var w = null, wPair = "", jobs = [], cur = null, seq = 0, idle = null, dl = null, listeners = [], simd = null;
+    function supported(){
+      if (simd === null){
+        try { simd = typeof WebAssembly === "object" && WebAssembly.validate(new Uint8Array(SIMD)); } catch(_){ simd = false; }
+      }
+      return !!(simd && typeof Worker === "function" && typeof DecompressionStream === "function" && window.caches && window.caches.open);
+    }
+    function pairOf(src, t){
+      var a = base(src), b = base(t);
+      return a === "nl" && b === "en" ? "nlen" : a === "en" && b === "nl" ? "ennl" : "";
+    }
+    function covers(src, t){ return !!pairOf(src, t); }
+    function abs(f){ return new URL(f, document.baseURI).href; }
+    /* on this device: all five files in the pack's cache */
+    function check(){
+      if (!(window.caches && caches.has)) return Promise.resolve(false);
+      return caches.has(CACHE).then(function(yes){
+        if (!yes) return false;
+        return caches.open(CACHE).then(function(c){
+          return Promise.all(FILES.map(function(f){ return c.match(abs(f)); }));
+        }).then(function(list){ return list.every(Boolean); });
+      }).then(function(h){ st.have = h; return h; }, function(){ return false; });
+    }
+    function available(src, t){
+      if (!covers(src, t) || !supported() || st.broken) return Promise.resolve("no");
+      return check().then(function(h){ return h ? "ready" : "no"; });
+    }
+    function notify(){ listeners.forEach(function(fn){ try { fn(st); } catch(_){} }); }
+    function on(fn){ listeners.push(fn); }
+    function spawn(){
+      w = new Worker("./workers/mt-worker.js", { type: "module" });
+      w.onmessage = onMsg;
+      w.onerror = function(e){
+        if (e && e.preventDefault) e.preventDefault();
+        fail("couldn’t start (" + ((e && e.message) || "worker error") + ")");
+      };
+    }
+    function end(){
+      clearTimeout(idle);
+      if (w){ try { w.terminate(); } catch(_){} }
+      w = null; wPair = "";
+    }
+    function sleepSoon(){
+      clearTimeout(idle);
+      idle = setTimeout(function(){ if (!cur && !jobs.length && !dl) end(); }, IDLE_MS);
+    }
+    function fatalErr(msg){ var e = new Error(msg); e.fatal = true; return e; }
+    /* the pack cannot run here: everything waiting goes back to the caller, which moves on to the next engine */
+    function fail(msg){
+      st.broken = msg || "couldn’t run";
+      var all = (cur ? [cur] : []).concat(jobs);
+      cur = null; jobs = [];
+      end();
+      all.forEach(function(j){ j.reject(fatalErr(st.broken)); });
+      if (dl){ var d = dl; dl = null; st.dl = null; d.reject(fatalErr(st.broken)); }
+      notify();
+    }
+    function pump(){
+      clearTimeout(idle);
+      if (cur) return;
+      if (!jobs.length){ sleepSoon(); return; }
+      var k = 0;
+      for (var i = 1; i < jobs.length; i++) if (jobs[i].prio < jobs[k].prio) k = i;
+      var next = jobs.splice(k, 1)[0];
+      /* one direction per worker: the other one's half a gigabyte goes with it */
+      if (w && wPair && wPair !== next.pair && !dl) end();
+      if (!w){ try { spawn(); } catch(err){ jobs.unshift(next); fail("couldn’t start"); return; } }
+      cur = next; wPair = next.pair;
+      w.postMessage({ type: "translate", id: cur.id, pair: cur.pair, text: cur.text });
+    }
+    function onMsg(e){
+      var m = e.data || {};
+      if (m.type === "progress"){
+        if (dl){ st.dl = m.total ? Math.max(0, Math.min(1, m.loaded / m.total)) : 0; notify(); }
+        return;
+      }
+      if (m.type === "downloaded" || (m.type === "error" && m.op === "download")){
+        var d = dl; dl = null; st.dl = null;
+        if (m.type === "downloaded"){ st.have = true; st.err = ""; notify(); if (d) d.resolve(true); }
+        else { st.err = m.message || "the download failed"; notify(); if (d) d.reject(new Error(st.err)); }
+        pump();
+        return;
+      }
+      if (!cur || m.id !== cur.id) return;
+      var j = cur; cur = null;
+      if (m.type === "result"){ j.resolve(typeof m.text === "string" ? m.text : ""); pump(); return; }
+      if (m.type === "error"){
+        if (m.fatal){ jobs.unshift(j); fail(m.message); return; }
+        if (/one direction/.test(m.message || "")){ jobs.unshift(j); end(); pump(); return; }
+        j.reject(new Error(m.message || "no translation")); pump();
+      }
+    }
+    function request(pair, text, prio){
+      if (st.broken) return Promise.reject(fatalErr(st.broken));
+      return new Promise(function(resolve, reject){
+        jobs.push({ id: ++seq, pair: pair, text: text, prio: prio, resolve: resolve, reject: reject });
+        pump();
+      });
+    }
+    /* the engines' shape: items one by one, hooks.onItem(k, text | null); a fatal error rejects the whole run */
+    function translate(items, src, t, hooks){
+      var pair = pairOf(src, t), prio = hooks.prio === undefined ? 1 : hooks.prio, i = 0;
+      return (function next(){
+        if (i >= items.length || !hooks.live()) return Promise.resolve();
+        var k = i++;
+        return request(pair, items[k], prio).then(function(out){ hooks.onItem(k, out); }, function(err){
+          if (err && err.fatal) throw err;
+          hooks.onItem(k, null);
+        }).then(next);
+      })();
+    }
+    function download(){
+      if (dl) return dl.promise;
+      if (!supported()) return Promise.reject(new Error("this browser can’t run the pack"));
+      var d = {};
+      d.promise = new Promise(function(resolve, reject){ d.resolve = resolve; d.reject = reject; });
+      dl = d; st.dl = 0; st.err = ""; st.broken = "";
+      notify();
+      clearTimeout(idle);
+      try {
+        if (!w) spawn();
+        w.postMessage({ type: "download" });
+      } catch(err){ dl = null; st.dl = null; st.err = "couldn’t start"; notify(); return Promise.reject(err); }
+      return d.promise;
+    }
+    function remove(){
+      if (dl){ var d = dl; dl = null; d.reject(new Error("removed")); }
+      var all = (cur ? [cur] : []).concat(jobs);
+      cur = null; jobs = [];
+      end();
+      all.forEach(function(j){ j.reject(fatalErr("the pack was removed")); });
+      st.have = false; st.dl = null; st.err = ""; st.broken = "";
+      return (window.caches ? caches.delete(CACHE).catch(noop) : Promise.resolve()).then(function(){ st.have = false; notify(); });
+    }
+    function info(){ return { worker: !!w, pair: wPair, queued: jobs.length, busy: !!cur, have: st.have, dl: st.dl, err: st.err, broken: st.broken, supported: supported() }; }
+    return { id: "pack", cache: CACHE, mb: MB, files: FILES, state: st, supported: supported, covers: covers, pairOf: pairOf, check: check,
+             available: available, translate: translate, download: download, remove: remove, on: on, stop: end, info: info,
+             idle: function(ms){ IDLE_MS = ms; } };
+  })();
+
+  /* ---------- engine 2: the browser's built-in translator ---------- */
   var Builtin = (function(){
     var pool = {};   /* "src|to" → Promise<translator>, kept for the session */
     function ok(){ return !!(window.Translator && typeof window.Translator.availability === "function" && typeof window.Translator.create === "function"); }
@@ -121,7 +342,7 @@
     return { id: "builtin", ok: ok, available: available, translate: translate, destroyAll: destroyAll };
   })();
 
-  /* ---------- engine 2: MyMemory, for words and sentences ---------- */
+  /* ---------- engine 3: MyMemory, for words and sentences ---------- */
   var MyMemory = (function(){
     var MAX = 480;
     function ok(){ return online(); }
@@ -162,34 +383,49 @@
     return { id: "mymemory", ok: ok, available: available, translate: translate };
   })();
 
-  var ENGINES = { builtin: Builtin, mymemory: MyMemory };
-  var LABEL = { builtin: "on-device", mymemory: "by MyMemory (free web service)" };
-  /* which engine handles a job: built-in (ready, or after its download) → MyMemory for short texts */
+  var ENGINES = { pack: Pack, builtin: Builtin, mymemory: MyMemory };
+  var LABEL = { pack: "on this device (Dutch ↔ English pack)", builtin: "on-device", mymemory: "by MyMemory (free web service)" };
+  /* which engine handles a job: the pack for Dutch ↔ English once it is here, then the built-in translator (for a
+     book also after its download, which the menu press allows), then MyMemory for words and sentences */
   function pick(kind, src, t){
-    return Builtin.available(src, t).then(function(a){
-      if (a !== "no") return { engine: Builtin, status: a };
-      if (kind === "short" && MyMemory.ok()) return { engine: MyMemory, status: "ready" };
-      return null;
+    return Pack.available(src, t).then(function(a){
+      if (a === "ready") return { engine: Pack, status: "ready" };
+      return Builtin.available(src, t).then(function(b){
+        if (b === "ready") return { engine: Builtin, status: "ready" };
+        if (kind === "short") return MyMemory.ok() ? { engine: MyMemory, status: "ready" } : null;
+        if (b === "download") return { engine: Builtin, status: "download" };
+        return null;
+      });
     });
   }
-  function noEngineNote(){
+  function packOffered(src, t){ return Pack.covers(src, t) && Pack.supported() && !Pack.state.broken; }
+  function noEngineNote(src, t){
+    if (packOffered(src, t)) return online() ? "Couldn’t reach a translator — download Dutch ↔ English under Translation in the settings to translate on this device."
+                                             : "Offline — download Dutch ↔ English under Translation in the settings to translate without a connection.";
     return online() ? "Nothing here can translate this — use Chrome or Edge for the built-in translator."
                     : "Offline — only cached translations are available.";
   }
 
-  /* ---------- the status line for the settings hint ---------- */
+  /* ---------- the settings: the status line, the pack's row, the two views ---------- */
   function describe(){
-    var t = to(), name = nameOf(t);
     return resolveFrom("").then(function(src){
-      return Builtin.available(same(src, t) ? (t === "en" ? "es" : "en") : src, t);
-    }).then(function(a){
-      if (a === "ready") return name + " · built-in translator ready";
-      if (a === "download" && online()) return name + " · built-in translator needs a download (about 30 MB) — the first translation starts it";
-      if (online()) return name + " · words and sentences via MyMemory; use Chrome / Edge for whole documents";
-      return name + " · offline — only cached translations";
+      var open = !!docSample();
+      var t = open ? bookTarget(src) : (picked() || readerLang());
+      var s = open ? src : (same(t, "en") ? "nl" : "en");
+      var name = nameOf(t);
+      return Promise.all([Pack.available(s, t), Builtin.available(s, t)]).then(function(r){
+        if (r[0] === "ready") return name + " · Dutch ↔ English pack ready — instant and offline";
+        if (r[1] === "ready") return name + " · built-in translator ready";
+        if (packOffered(s, t)) return name + (online() ? " · words and sentences via MyMemory; download Dutch ↔ English below for whole books, offline"
+                                                         : " · offline — only cached translations; download Dutch ↔ English below once you are online");
+        if (r[1] === "download" && online()) return name + " · built-in translator needs a download (about 30 MB) — Translate book starts it; words meanwhile via MyMemory";
+        if (online()) return name + " · words and sentences via MyMemory; use Chrome / Edge for whole documents";
+        return name + " · offline — only cached translations";
+      });
     });
   }
   function refreshHint(){
+    syncPack(); syncView();
     var h = $("#trHint");
     if (!h) return Promise.resolve();
     return describe().then(function(s){
@@ -198,15 +434,70 @@
       h.appendChild(b); h.appendChild(document.createTextNode(" " + PRIVACY));
     }).catch(function(){});
   }
-  function openSettings(){
+  /* focus: "pack" lands on the pack's download button (Translate book on Dutch or English with nothing to do it) */
+  function openSettings(focus){
     var sheet = $("#sheet"), P = window.llPop;
     if (sheet && !sheet.classList.contains("open") && P && P.sheet) P.sheet(true);
     refreshHint();
     setTimeout(function(){
-      var g = $("#trGroup"), s = $("#trLang");
+      var g = $("#trGroup"), s = $("#trLang"), d = $("#mtDl");
       if (g){ try { g.scrollIntoView({ block: "center" }); } catch(_){ g.scrollIntoView(); } }
-      if (s) s.focus({ preventScroll: true });
+      if (focus === "pack" && d && !d.hidden) d.focus({ preventScroll: true });
+      else if (s) s.focus({ preventScroll: true });
     }, 80);
+  }
+  function mb(n){ return Math.round(n) + " MB"; }
+  /* the pack's row under Translation (#mtState, #mtDl, #mtRm, #mtProgress, made by app.js) */
+  function syncPack(){
+    var st = $("#mtState"), dl = $("#mtDl"), rm = $("#mtRm"), pr = $("#mtProgress");
+    if (!st) return;
+    function show(text, canDl, canRm, pct){
+      if (st.textContent !== text) st.textContent = text;
+      if (dl) dl.hidden = !canDl;
+      if (rm) rm.hidden = !canRm;
+      if (pr){ pr.hidden = pct < 0; if (pct >= 0) pr.value = pct; }
+    }
+    var s = Pack.state;
+    if (!Pack.supported()){ show("Dutch ↔ English: this browser can’t run the pack (it needs WebAssembly SIMD — Chrome, Edge, Firefox or Safari 16.4 and newer)", false, false, -1); return; }
+    if (s.dl !== null){ var pct = Math.round(s.dl * 100); show("Downloading Dutch ↔ English… " + pct + " %", false, false, pct); return; }
+    Pack.check().then(function(have){
+      if (Pack.state.dl !== null) return;
+      if (have && Pack.state.broken) show("Dutch ↔ English: on this device, but it couldn’t run here (" + Pack.state.broken + ") — the other translators stand in", false, true, -1);
+      else if (have) show("Dutch ↔ English · ready, works offline · " + mb(Pack.mb) + " on this device", false, true, -1);
+      else if (Pack.state.err) show("Dutch ↔ English: the download stopped (" + Pack.state.err + ") — try again", true, false, -1);
+      else show(online() ? "Dutch ↔ English: not on this device yet" : "Dutch ↔ English: not on this device yet — needs a connection once", true, false, -1);
+    });
+  }
+  var wantBook = null;          /* Translate book waits for the pack: the document it was asked for */
+  function getPack(){
+    return Pack.download().then(function(){
+      toast("Dutch ↔ English is on this device — translations are instant, and work offline");
+      refreshHint();
+      if (wantBook && wantBook === docId() && L.state && L.state.mode === "doc" && !page.on){ wantBook = null; startPage(); }
+    }, function(err){
+      if (!(err && /removed/.test(err.message || ""))) toast("Dutch ↔ English didn’t download — " + ((err && err.message) || "no connection"));
+      refreshHint();
+    });
+  }
+  function removePack(){
+    wantBook = null;
+    return Pack.remove().then(function(){ toast("Dutch ↔ English removed from this device"); refreshHint(); });
+  }
+  Pack.on(function(){ syncPack(); syncOffers(); });
+
+  /* the two views of a translated book: "only" (the translation in place of the original) or "both" */
+  function view(){ return Store.get(KEY_VIEW) === "both" ? "both" : "only"; }
+  function syncView(){
+    var v = view();
+    Array.prototype.forEach.call(document.querySelectorAll("#trViewChips .chip"), function(c){
+      var on = c.dataset.trview === v; c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+    });
+  }
+  function setView(v){
+    if (v !== "only" && v !== "both") return;
+    Store.set(KEY_VIEW, v);
+    syncView();
+    applyView();
   }
 
   /* ---------- the cache: IndexedDB store "translations" (see Library.db in app.js) ---------- */
@@ -242,84 +533,100 @@
     if (Object.keys(m).length) Store.set(KEY_ON, JSON.stringify(m)); else Store.remove(KEY_ON);
   }
 
-  /* ---------- word and sentence: fill a .tr-slot in the card ---------- */
+  /* ---------- word and sentence: the card's translation line ----------
+     el is the card's .tr-slot; opts.box the line around it (hidden when there is nothing to translate into);
+     opts.onResult(text) is called when a translation is shown. It translates by itself, at once: a quiet
+     "translating…" meanwhile, and the dictionary beside it is never held up. */
   var memo = {}, slotGen = 0;
-  /* The slot is the card's Translate panel: the translation and its engine line; Copy and
-     Highlight are the card's own footer. opts: auto translates without a press whatever the
-     engine; onResult(text) is called when a translation is shown (the card marks the tab). */
   function slot(text, el, opts){
     opts = opts || {};
     text = norm(text);
     if (!text || !el) return;
-    var t = to(), name = nameOf(t), gen = ++slotGen;
+    var box = opts.box || el, gen = ++slotGen;
     el.dataset.gen = gen;
-    var src = null, picked = null;
     function live(){ return el.isConnected && el.dataset.gen === String(gen); }
-    function button(label){
-      el.innerHTML = '<div class="acts"><button type="button" class="act tr-go">' + esc(label) + '</button></div>';
-      el.querySelector(".tr-go").addEventListener("click", run);
-    }
-    function render(out, engineId){
-      el.innerHTML = '<div class="sec">In ' + esc(name) + '</div>' +
-        '<div class="tr-out" lang="' + esc(t) + '" dir="' + dirOf(t) + '"></div>' +
-        '<div class="tr-eng">Translated ' + esc(LABEL[engineId] || engineId) + '</div>';
+    function hide(){ box.hidden = true; el.innerHTML = ""; }
+    function note(msg){ box.hidden = false; el.innerHTML = '<div class="note">' + esc(msg) + '</div>'; }
+    function render(out, engineId, t){
+      box.hidden = false;
+      el.innerHTML = '<div class="tr-out" lang="' + esc(t) + '" dir="' + dirOf(t) + '"></div>' +
+        '<div class="tr-eng">' + esc(nameOf(t)) + ' · translated ' + esc(LABEL[engineId] || engineId) + '</div>';
       el.querySelector(".tr-out").textContent = out;
       if (opts.onResult) opts.onResult(out);
     }
-    function run(){
-      if (!src) return;
-      var key = src + "|" + t + "|" + text, result = null;
-      el.innerHTML = '<div class="note tr-wait">Translating…</div>';
-      (picked ? Promise.resolve(picked) : pick("short", src, t)).then(function(p){
+    function run(src, t, key, tries){
+      return pick("short", src, t).then(function(p){
         if (!live()) return;
-        if (!p){ el.innerHTML = '<div class="note">' + esc(noEngineNote()) + '</div>'; return; }
-        var hooks = {
-          live: live,
-          onDownload: function(f){ var w = el.querySelector(".tr-wait"); if (w) w.textContent = "Downloading the " + name + " translator… " + Math.round(f * 100) + " %"; },
-          onItem: function(k, out){ result = out; }
-        };
+        if (!p){ note(noEngineNote(src, t)); return; }
+        var result = null;
+        var hooks = { live: live, prio: 0, onItem: function(k, out){ result = out; } };
         return p.engine.translate([text], src, t, hooks).then(function(){
           if (!live()) return;
-          if (typeof result !== "string") throw new Error("no translation");
+          if (typeof result !== "string" || !result.trim()) throw new Error("no translation");
           memo[key] = { text: result, engine: p.engine.id };
           Cache.putSentence({ key: "s|" + key, text: result, engine: p.engine.id });
-          render(result, p.engine.id);
+          render(result, p.engine.id, t);
         });
       }).catch(function(err){
         if (!live()) return;
-        picked = null;
-        var gesture = err && err.name === "NotAllowedError";
-        el.innerHTML = '<div class="note">' + (gesture ? "The translator download needs a press." : "Couldn’t translate (" + esc((err && err.message) || "no connection") + ").") + '</div>';
+        /* the pack could not run here: the next engine, once */
+        if (err && err.fatal && !tries) return run(src, t, key, 1);
+        el.innerHTML = '<div class="note">Couldn’t translate (' + esc((err && err.message) || "no connection") + ').</div>';
         var b = document.createElement("div"); b.className = "acts";
-        b.innerHTML = '<button type="button" class="act tr-go">' + (gesture ? "Download the " + esc(name) + " translator" : "Try again") + '</button>';
-        b.querySelector(".tr-go").addEventListener("click", run);
+        b.innerHTML = '<button type="button" class="act tr-go">Try again</button>';
+        b.querySelector(".tr-go").addEventListener("click", function(){ el.innerHTML = '<div class="tr-wait">translating…</div>'; run(src, t, key, 0).then(function(){ offer(src, t); }); });
         el.appendChild(b);
       });
     }
-    button("Translate to " + name);
-    resolveFrom(text).then(function(s){
+    function offer(src, t){ if (live()) offerPack(el, src, t); }
+    box.hidden = true;
+    resolveFrom(text).then(function(src){
       if (!live()) return;
-      src = s;
-      if (same(src, t)){ el.innerHTML = '<div class="note">This is already in ' + esc(name) + ' — choose another language under Translation in the settings.</div>'; return; }
+      var t = targetFor(src);
+      if (!t){ hide(); return; }
       var key = src + "|" + t + "|" + text;
-      if (memo[key]){ render(memo[key].text, memo[key].engine); return; }
+      if (memo[key]){ render(memo[key].text, memo[key].engine, t); offer(src, t); return; }
+      box.hidden = false;
+      el.innerHTML = '<div class="tr-wait">translating…</div>';
       return Cache.get("s|" + key).then(function(rec){
         if (!live()) return;
-        if (rec && typeof rec.text === "string"){ memo[key] = { text: rec.text, engine: rec.engine }; render(rec.text, rec.engine); return; }
-        return pick("short", src, t).then(function(p){
-          if (!live()) return;
-          picked = p;
-          if (!p){ el.innerHTML = '<div class="note">' + esc(noEngineNote()) + '</div>'; return; }
-          if (p.status === "download") button("Translate to " + name + " (downloads the translator)");
-          /* the on-device translator is private and free: no press needed once it is ready */
-          if (opts.auto || (p.engine === Builtin && p.status === "ready")) run();
-        });
+        if (rec && typeof rec.text === "string"){ memo[key] = { text: rec.text, engine: rec.engine }; render(rec.text, rec.engine, t); offer(src, t); return; }
+        return run(src, t, key, 0).then(function(){ offer(src, t); });
       });
-    }).catch(function(err){ if (live()) el.innerHTML = '<div class="note">Couldn’t translate (' + esc((err && err.message) || "no connection") + ').</div>'; });
+    }).catch(function(err){ if (live()) note("Couldn’t translate (" + ((err && err.message) || "no connection") + ")."); });
+  }
+  /* the pack is offered in the card once, the first time Dutch or English is translated without it */
+  function offerPack(el, src, t){
+    if (!packOffered(src, t) || Pack.state.dl !== null || Store.get(KEY_OFFER) || el.querySelector(".tr-offer")) return;
+    Pack.check().then(function(have){
+      if (have || !el.isConnected || Store.get(KEY_OFFER) || el.querySelector(".tr-offer")) return;
+      Store.set(KEY_OFFER, "1");
+      var o = document.createElement("div");
+      o.className = "tr-offer"; o.setAttribute("role", "group"); o.setAttribute("aria-label", "Dutch ↔ English pack");
+      o.innerHTML = '<div class="note tr-offer-msg">Download Dutch ↔ English for instant offline translation (≈ ' + Pack.mb + ' MB, once).</div>' +
+        '<div class="acts"><button type="button" class="act go" data-mt="get">Download</button><button type="button" class="act" data-mt="later">Not now</button></div>';
+      o.addEventListener("click", function(e){
+        var b = e.target.closest && e.target.closest("button[data-mt]");
+        if (!b) return;
+        if (b.dataset.mt === "later"){ o.remove(); return; }
+        getPack();
+        syncOffers();
+      });
+      el.appendChild(o);
+    });
+  }
+  function syncOffers(){
+    Array.prototype.forEach.call(document.querySelectorAll("#dictCard .tr-offer"), function(o){
+      var msg = o.querySelector(".tr-offer-msg"), acts = o.querySelector(".acts"), s = Pack.state;
+      if (s.dl !== null){ msg.textContent = "Downloading Dutch ↔ English… " + Math.round(s.dl * 100) + " %"; if (acts) acts.hidden = true; }
+      else if (s.have){ msg.textContent = "Dutch ↔ English is ready — instant, and offline."; if (acts) acts.hidden = true; }
+      else if (s.err){ msg.textContent = "The download stopped (" + s.err + ")."; if (acts) acts.hidden = false; }
+    });
   }
 
-  /* ---------- the whole document ---------- */
+  /* ---------- the whole book ---------- */
   var SEL = "p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, dd, dt, figcaption, div.plain";
+  var HIDEABLE = /^(P|H[1-6]|LI|BLOCKQUOTE|DD|DT|FIGCAPTION|DIV)$/;   /* a table cell keeps its original beside the translation */
   var SEP = /\r?\n[ \t\r]*\n/g;
   var LETTER;
   try { LETTER = new RegExp("\\p{L}", "gu"); } catch(_){ LETTER = /[A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/g; }
@@ -357,26 +664,53 @@
     if (b.off === undefined){ var o = L.Anchor ? L.Anchor.offsetOf(b.first, 0) : null; b.off = o === null ? 0 : o + b.rel; }
     return b.off;
   }
-  /* the block being read first, then onward, then what came before */
-  function order(blocks, idx){
-    var top = null;
-    try { top = L.Library && L.Library.topCharOffset ? L.Library.topCharOffset() : null; } catch(_){ top = null; }
-    if (top === null || top === undefined) return idx.slice();
-    var k = 0;
-    while (k < idx.length && offsetOf(blocks[idx[k]]) < top) k++;
-    var start = Math.max(0, k - 1);
-    return idx.slice(start).concat(idx.slice(0, start).reverse());
+  function spanOf(b){ return b.plain ? b.at - b.rel : b.el.textContent.length; }
+  /* many paragraphs of a plain-text file about to get their translations (a book reopened translated): its div is
+     cut first, in one pass, where each translation goes (and, in "Translation only", where each original starts),
+     rather than cutting the book's one big text node again for each (every cut copies what is left of it). Only
+     where something is put in at once, in the same task: text nodes left side by side would be merged back by the
+     next normalize() (a highlight redrawn, a tapped word let go), which on a whole book takes minutes. */
+  function presplit(blocks, only){
+    var divs = [], cuts = [];
+    blocks.forEach(function(b){
+      if (!b.plain) return;
+      var i = divs.indexOf(b.el);
+      if (i < 0){ i = divs.length; divs.push(b.el); cuts.push([]); }
+      cuts[i].push(b.at);
+      if (only) cuts[i].push(b.rel);
+    });
+    divs.forEach(function(div, i){
+      var cs = cuts[i].sort(function(a, b){ return a - b; }), list = [], w = document.createTreeWalker(div, NodeFilter.SHOW_TEXT), n, sum = 0, ci = 0;
+      while ((n = w.nextNode())) list.push(n);
+      list.forEach(function(node){
+        var s = sum, len = node.length, inner = [];
+        sum += len;
+        while (ci < cs.length && cs[ci] <= s) ci++;
+        for (var j = ci; j < cs.length && cs[j] < s + len; j++) if (!inner.length || inner[inner.length - 1] !== cs[j] - s) inner.push(cs[j] - s);
+        if (!inner.length) return;
+        var data = node.data, frag = document.createDocumentFragment(), pos = inner[0];
+        inner.concat([len]).slice(1).forEach(function(k){ if (k > pos){ frag.appendChild(document.createTextNode(data.slice(pos, k))); pos = k; } });
+        node.data = data.slice(0, inner[0]);
+        node.parentNode.insertBefore(frag, node.nextSibling);
+      });
+    });
+  }
+  function topOffset(){
+    try { var t = L.Library && L.Library.topCharOffset ? L.Library.topCharOffset() : null; return typeof t === "number" ? t : null; } catch(_){ return null; }
   }
 
   /* the translation under a block: a host element whose content lives in a shadow root — readable
-     and selectable, but not part of #doc's text nodes */
+     and selectable, but not part of #doc's text nodes. In "Translation only" (.only) it reads as the text itself. */
   var HOST_CSS =
     ":host{display:block; margin:-0.6em 0 1em; padding:.35em 0 .1em .75em; border-left:2px solid var(--accent); color:var(--muted);" +
     " font-style:italic; font-size:.95em; line-height:1.55; white-space:normal; -webkit-hyphens:manual; hyphens:manual; text-align:start;}" +
     ":host([dir=rtl]){padding:.35em .75em .1em 0; border-left:0; border-right:2px solid var(--accent);}" +
     ":host(.txt){margin:.15em 0 0;}" +
     ":host(.li){margin:-0.1em 0 .45em;}" +
+    ":host(.only){margin:0 0 var(--pgap, 1em); padding:0; border:0; color:inherit; font-style:normal; font-size:1em; line-height:inherit;}" +
+    ":host(.only.txt){margin:0;}" +
     ":host(.h){font-style:normal; font-weight:700; line-height:1.3; margin:-0.35em 0 .9em;}" +
+    ":host(.only.h){margin:1.4em 0 .55em;}" +
     ":host(.h1){font-size:1.4em;} :host(.h2){font-size:1.2em;} :host(.h3){font-size:1.06em;}" +
     ":host(.miss){font-style:normal; font-size:.72em; letter-spacing:.06em; text-transform:uppercase; border-left-style:dotted; border-right-style:dotted; padding-top:.15em;}" +
     ".t{overflow-wrap:break-word;}";
@@ -386,16 +720,27 @@
     if (sheet && "adoptedStyleSheets" in root){ try { root.adoptedStyleSheets = [sheet]; return; } catch(_){} }
     var st = document.createElement("style"); st.textContent = HOST_CSS; root.appendChild(st);
   }
-  function insertHost(b, el){
+  /* a place among a plain-text div's text nodes: { div, node, sum } — a text node and the offset it starts at. Many
+     blocks handled in reading order (a book reopened translated, a change of view) each start where the last one
+     left off, not at the top: a whole book in one div is thousands of nodes. Splitting a node or wrapping it in a
+     span leaves it where it starts, so a cursor stays good while the text itself is untouched. */
+  function walkFrom(div, cur, pos){
+    var w = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+    if (cur && cur.div === div && cur.node && cur.sum <= pos && div.contains(cur.node)){ w.currentNode = cur.node; return { w: w, n: cur.node, sum: cur.sum }; }
+    return { w: w, n: w.nextNode(), sum: 0 };
+  }
+  function keep(cur, div, node, sum){ if (cur){ cur.div = div; cur.node = node; cur.sum = sum; } }
+  function insertHost(b, el, cur){
     if (!b.plain){ b.el.parentNode.insertBefore(el, b.el.nextSibling); return; }
     /* a plain-text file is one text node: it is split after the newline that ends the paragraph
        so the host can sit between paragraphs — the concatenated text, and with it every
        character offset, is exactly what it was */
-    var w = document.createTreeWalker(b.el, NodeFilter.SHOW_TEXT), n, sum = 0, at = b.at;
-    while ((n = w.nextNode())){
+    var at = b.at, p = walkFrom(b.el, cur, at), w = p.w, n = p.n, sum = p.sum;
+    while (n){
       var len = n.length;
       if (at <= sum + len){
         var k = at - sum, top = n;
+        keep(cur, b.el, n, sum);
         while (top.parentNode && top.parentNode !== b.el) top = top.parentNode;   /* inside a highlight: go after it */
         if (top !== n){ b.el.insertBefore(el, top.nextSibling); return; }
         if (k <= 0){ b.el.insertBefore(el, n); return; }
@@ -404,10 +749,12 @@
         return;
       }
       sum += len;
+      n = w.nextNode();
     }
     b.el.appendChild(el);
   }
-  function host(b, text, lang, miss){
+  /* cur: a cursor (see walkFrom) when blocks come in reading order, many at once */
+  function host(b, text, lang, miss, cur){
     var el = b.host;
     if (!el || !el.isConnected){
       el = document.createElement("div");
@@ -419,18 +766,153 @@
       if (b.plain) el.classList.add("txt");      /* not "plain": that would make it a block of its own */
       if (tag === "li") el.classList.add("li");
       if (/^h[1-6]$/.test(tag)){ el.classList.add("h"); el.classList.add(tag); }
-      insertHost(b, el);
+      /* where its original starts and how long it is: app.js reads the reading position off a translation
+         standing in for its original (Library.topCharOffset) */
+      el.setAttribute("data-ll-off", String(offsetOf(b)));
+      el.setAttribute("data-ll-len", String(spanOf(b)));
+      el._llBlock = b;
+      var c0 = cur ? { div: cur.div, node: cur.node, sum: cur.sum } : null;
+      insertHost(b, el, c0);
       b.host = el; page.hosts.push(el);
     }
+    b.ok = !miss;
     el.classList.toggle("miss", !!miss);
     el.setAttribute("lang", miss ? "en" : lang);
     el.setAttribute("dir", miss ? "ltr" : dirOf(lang));
     el.shadowRoot.querySelector(".t").textContent = miss ? "couldn’t translate" : text;
+    shown(b, cur);
+    if (cur && c0 && c0.node && !b.hidden) keep(cur, c0.div, c0.node, c0.sum);
     return el;
   }
 
+  /* ---- "Translation only": a translated block's original is kept where it is but hidden (.ll-trsrc in app.css:
+     no room, not painted, still laid out, so every offset still has a place on the page); a plain-text
+     paragraph's text nodes are wrapped in spans for it — the text itself is not touched ---- */
+  function hideable(b){ return b.plain || HIDEABLE.test(b.tag); }
+  function hideSrc(b, cur){
+    if (b.hidden || !hideable(b)) return;
+    b.hidden = true;
+    if (!b.plain){ b.el.classList.add("ll-trsrc"); return; }
+    var p = walkFrom(b.el, cur, b.rel), w = p.w, n = p.n, sum = p.sum, list = [], spans = [];
+    while (n && sum < b.at){ list.push([n, sum]); sum += n.length; n = w.nextNode(); }
+    list.forEach(function(x){
+      var node = x[0], s = x[1], e = s + node.length;
+      if (e <= b.rel || s >= b.at) return;
+      keep(cur, b.el, x[0], s);
+      var a = Math.max(b.rel, s) - s, z = Math.min(b.at, e) - s;
+      if (z <= a) return;
+      if (a > 0) node = node.splitText(a);
+      if (z - a < node.length) node.splitText(z - a);
+      var sp = document.createElement("span");
+      sp.className = "ll-trsrc";
+      node.parentNode.insertBefore(sp, node); sp.appendChild(node);
+      spans.push(sp);
+    });
+    b.spans = spans;
+  }
+  /* true when a plain-text paragraph was unwrapped: its div's text nodes are merged again by the caller, once */
+  function showSrc(b){
+    if (!b.hidden) return false;
+    b.hidden = false; b.peek = false;
+    if (!b.plain){ b.el.classList.remove("ll-trsrc"); b.el.classList.remove("ll-trpeek"); return false; }
+    (b.spans || []).forEach(function(sp){
+      var p = sp.parentNode; if (!p) return;
+      while (sp.firstChild) p.insertBefore(sp.firstChild, sp);
+      p.removeChild(sp);
+    });
+    b.spans = null;
+    return true;
+  }
+  /* adjacent text nodes made one again, in one pass: normalize() copies the growing text at every merge, which
+     for a whole book in one plain-text div takes minutes */
+  function mergeIn(el){
+    var k = el.firstChild;
+    while (k){
+      if (k.nodeType === 3){
+        var run = [k], n = k.nextSibling;
+        while (n && n.nodeType === 3){ run.push(n); n = n.nextSibling; }
+        if (run.length > 1){
+          k.data = run.map(function(x){ return x.data; }).join("");
+          for (var i = 1; i < run.length; i++) el.removeChild(run[i]);
+        } else if (!k.length) el.removeChild(k);
+        k = n;
+      } else {
+        if (k.nodeType === 1 && !(k.classList && k.classList.contains("ll-tr"))) mergeIn(k);
+        k = k.nextSibling;
+      }
+    }
+  }
+  function mergeText(list){
+    var seen = [];
+    list.forEach(function(el){ if (el && seen.indexOf(el) < 0){ seen.push(el); mergeIn(el); } });
+  }
+  /* a block as the view wants it */
+  function shown(b, cur){
+    var only = page.on && view() === "only" && b.ok && b.host && b.host.isConnected, merged = false;
+    if (only) hideSrc(b, cur); else merged = showSrc(b);
+    if (b.host) b.host.classList.toggle("only", !!(only && b.hidden));
+    return merged;
+  }
+  function applyView(){
+    if (!page.blocks || !page.on) return;
+    var top = L.state && L.state.flow !== "pages" ? topOffset() : null;
+    var plain = [], cur = {};
+    page.blocks.forEach(function(b){ if (b.host && shown(b, cur)) plain.push(b.el); });
+    mergeText(plain);
+    relayout();
+    if (typeof top === "number" && L.revealOffset) L.revealOffset(top);
+  }
+  /* a tap or a hold on a translation standing in for its original shows the original above it (and hides it again) */
+  function peek(h){
+    var b = h && h._llBlock;
+    if (!b || !b.hidden) return;
+    b.peek = !b.peek;
+    if (b.plain) (b.spans || []).forEach(function(sp){ sp.classList.toggle("ll-trpeek", b.peek); });
+    else b.el.classList.toggle("ll-trpeek", b.peek);
+    relayoutSoon();
+  }
+  function dictMode(){ return Store.get("ll_dictmode") || "tap"; }
+  function onlyHost(e){ var t = e.target; return t && t.closest ? t.closest("#doc .ll-tr.only") : null; }
+  function middle(x){
+    if (!document.body.classList.contains("paged")) return true;
+    var v = $("#docView"); if (!v) return true;
+    var r = v.getBoundingClientRect(), f = (x - r.left) / r.width;
+    return f >= 0.35 && f <= 0.65;
+  }
+  var heldAt = 0, holdTimer = null, holdX = 0, holdY = 0;
+  document.addEventListener("click", function(e){
+    /* the click a hold leaves behind lands on the original it just showed: not a tap on a word */
+    if (Date.now() - heldAt < 800 && e.target && e.target.closest && e.target.closest("#doc")){ heldAt = 0; e.stopPropagation(); e.preventDefault(); return; }
+    var h = onlyHost(e);
+    if (!h) return;
+    if (dictMode() !== "tap" || !middle(e.clientX)) return;
+    var sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+    e.stopPropagation();
+    peek(h);
+  }, true);
+  document.addEventListener("touchstart", function(e){
+    clearTimeout(holdTimer);
+    var h = onlyHost(e);
+    if (!h || dictMode() === "off" || e.touches.length > 1) return;
+    holdX = e.touches[0].clientX; holdY = e.touches[0].clientY;
+    holdTimer = setTimeout(function(){ heldAt = Date.now(); if (navigator.vibrate) navigator.vibrate(12); peek(h); }, 480);
+  }, { passive: true });
+  document.addEventListener("touchmove", function(e){
+    if (e.touches.length && (Math.abs(e.touches[0].clientX - holdX) > 12 || Math.abs(e.touches[0].clientY - holdY) > 12)) clearTimeout(holdTimer);
+  }, { passive: true });
+  document.addEventListener("touchend", function(){ clearTimeout(holdTimer); }, { passive: true });
+  document.addEventListener("contextmenu", function(e){
+    var h = onlyHost(e);
+    if (!h || dictMode() === "off") return;
+    if (Date.now() - heldAt < 800){ e.preventDefault(); return; }
+    e.preventDefault();
+    peek(h);
+  });
+
   var page = { on: false, running: false, gen: 0, key: null, docKey: null, pair: null, blocks: null, hosts: [], missing: [],
-               done: 0, total: 0, engine: null, record: null, download: null };
+               done: 0, total: 0, engine: null, record: null, download: null, job: null, held: false, failed: {},
+               rate: null, leftChars: 0, cur: 0, curAt: 0 };
   function docId(){
     var id = L.Library && L.Library.currentId ? L.Library.currentId() : null;
     return id || ("t-" + (($("#fname") || {}).textContent || "") + "-" + (L.Anchor ? L.Anchor.textLength() : 0));
@@ -438,20 +920,34 @@
   function isOn(){ return !!page.on && !!L.state && L.state.mode === "doc"; }
   function isPartial(){ return isOn() && !page.running && page.missing.length > 0; }
 
-  /* ---- the status pill ---- */
+  /* ---- the status pill: how far, and how long is left ---- */
   var statusEl = null;
+  function eta(){
+    var r = page.rate;
+    if (!r || r.ms < 2500 || r.chars < 300 || !page.leftChars) return "";
+    var min = Math.round(page.leftChars / (r.chars / r.ms) / 60000);
+    if (min < 1) return "less than a minute left";
+    if (min < 90) return "about " + min + " min left";
+    var h = Math.floor(min / 60), m = Math.round((min - h * 60) / 5) * 5;
+    return "about " + h + " h" + (m ? " " + m + " min" : "") + " left";
+  }
   function status(){
     if (!statusEl){
       statusEl = document.createElement("div");
       statusEl.id = "trStatus"; statusEl.setAttribute("role", "status"); statusEl.setAttribute("aria-live", "polite");
-      statusEl.innerHTML = '<span class="tr-msg"></span><button type="button" class="tr-x">Cancel</button>';
+      statusEl.innerHTML = '<span class="tr-msg"></span><button type="button" class="tr-x">Pause</button>';
       statusEl.querySelector(".tr-x").addEventListener("click", cancel);
       document.body.appendChild(statusEl);
     }
-    var msg = (page.download !== null && page.download !== undefined)
-      ? "Downloading the " + nameOf(to()) + " translator… " + Math.round(page.download * 100) + " %"
-      : "Translating… " + page.done + " of " + page.total;
-    statusEl.querySelector(".tr-msg").textContent = msg;
+    var msg;
+    if (page.download !== null && page.download !== undefined) msg = "Downloading the " + nameOf(page.pair.split("|")[1]) + " translator… " + Math.round(page.download * 100) + " %";
+    else {
+      var left = eta();
+      msg = "Translating… " + (page.total ? Math.floor(page.done / page.total * 100) : 0) + " %" + (left ? " · " + left : "");
+    }
+    var m = statusEl.querySelector(".tr-msg");
+    if (m.textContent !== msg) m.textContent = msg;
+    statusEl.title = page.done + " of " + page.total + " paragraphs translated";
     statusEl.classList.add("on");
   }
   function hideStatus(){ if (statusEl) statusEl.classList.remove("on"); }
@@ -475,104 +971,164 @@
   /* what the cache holds goes in at once; the rest is listed for the engines */
   function applyRecord(rec, t){
     page.record = rec && rec.blocks ? rec : { key: page.key, blocks: {}, engine: "", n: page.total };
-    var missing = [];
+    var missing = [], left = 0, cur = {};
+    presplit(page.blocks.filter(function(b, i){ return typeof page.record.blocks[String(i)] === "string" && !b.host; }), view() === "only");
     page.blocks.forEach(function(b, i){
       var x = page.record.blocks[String(i)];
-      if (typeof x === "string"){ host(b, x, t); page.done++; } else missing.push(i);
+      if (typeof x === "string"){ host(b, x, t, false, cur); page.done++; } else { missing.push(i); left += b.text.length; }
     });
-    page.missing = missing;
+    page.missing = missing; page.leftChars = left;
     relayout();
   }
-  function begin(id, pair, t){
+  function begin(id, pair){
     page.blocks = collect();
     if (!page.blocks.length) return false;
+    page.blocks.forEach(offsetOf);                  /* one pass over the text nodes, while nothing has moved */
     page.pair = pair; page.docKey = id; page.key = id + "|" + pair;
-    page.on = true; page.running = false; page.missing = []; page.done = 0; page.total = page.blocks.length; page.engine = null; page.download = null;
+    page.on = true; page.running = false; page.held = false; page.missing = []; page.done = 0; page.total = page.blocks.length;
+    page.engine = null; page.download = null; page.failed = {}; page.rate = null; page.leftChars = 0; page.curAt = 0;
     return true;
   }
   function startPage(){
-    var gen = ++page.gen, t = to();
+    var gen = ++page.gen;
     return resolveFrom(docSample()).then(function(src){
       if (gen !== page.gen) return;
+      var t = bookTarget(src);
       if (same(src, t)){ toast("This document is already in " + nameOf(t) + "."); return; }
       var pair = src + "|" + t;
-      if (!begin(docId(), pair, t)){ toast("Nothing to translate here."); return; }
+      if (!begin(docId(), pair)){ toast("Nothing to translate here."); return; }
       return Cache.get(page.key).then(function(rec){
         if (gen !== page.gen) return;
         applyRecord(rec, t);
         setOn(page.docKey, pair);
         if (!page.missing.length){ toast("Translated into " + nameOf(t) + " — from the cache"); return; }
-        return translateMissing();
+        return translateMissing(false);
       });
     });
   }
-  function translateMissing(){
-    var gen = page.gen, t = to(), src = page.pair.split("|")[0];
-    var idx = order(page.blocks, page.missing);
-    if (!idx.length) return Promise.resolve();
+  /* the block at the top of the screen (by its start offset) */
+  function readingBlock(){
+    var top = topOffset(), bl = page.blocks;
+    if (top === null || !bl || !bl.length) return page.cur || 0;
+    var lo = 0, hi = bl.length - 1;
+    while (lo < hi){ var mid = (lo + hi + 1) >> 1; if (offsetOf(bl[mid]) <= top) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
+  /* what to translate next: from the paragraph being read onward, then back from it — looked at again every few
+     seconds, so a jump to another chapter is followed */
+  function nextBatch(n){
+    var now = Date.now();
+    if (!page.curAt || now - page.curAt > 2500){ page.cur = readingBlock(); page.curAt = now; }
+    var miss = page.missing, out = [], lo = 0, hi = miss.length, j;
+    while (lo < hi){ var mid = (lo + hi) >> 1; if (miss[mid] < page.cur) lo = mid + 1; else hi = mid; }
+    for (j = lo; j < miss.length && out.length < n; j++) if (!page.failed[miss[j]]) out.push(miss[j]);
+    for (j = lo - 1; j >= 0 && out.length < n; j--) if (!page.failed[miss[j]]) out.push(miss[j]);
+    return out;
+  }
+  /* auto: carrying on by itself (the book reopened mid-way): only with an engine that needs no download */
+  function translateMissing(auto){
+    var gen = page.gen, parts = page.pair.split("|"), src = parts[0], t = parts[1];
+    if (!page.missing.length) return Promise.resolve();
     return pick("page", src, t).then(function(p){
       if (gen !== page.gen) return;
-      if (!p){
+      if (!p || (auto && p.status !== "ready")){
+        if (auto) return;
         if (page.done) toast(online() ? "No translator for the rest — see Translation in the settings" : "Offline — showing the cached translation");
-        else { showOriginal(); openSettings(); }
+        else {
+          showOriginal();
+          if (packOffered(src, t)){ wantBook = docId(); toast("Download Dutch ↔ English to translate this book on this device"); openSettings("pack"); }
+          else openSettings();
+        }
         return;
       }
-      page.running = true; page.engine = p.engine.id; page.download = p.status === "download" ? 0 : null;
+      page.running = true; page.held = false; page.failed = {}; page.engine = p.engine.id; page.download = p.status === "download" ? 0 : null;
+      page.rate = { chars: 0, ms: 0 }; page.curAt = 0;
+      page.record.job = "on"; saveSoon();
       status();
       if (!page.done) toast("Translating into " + nameOf(t) + "…");
-      var items = idx.map(function(i){ return page.blocks[i].text; });
-      var hooks = {
-        live: function(){ return gen === page.gen && page.running; },
-        onDownload: function(f){ if (gen === page.gen && page.running){ page.download = f; status(); } },
-        onItem: function(k, text){
-          if (gen !== page.gen) return;                    /* what arrives after a cancel is still kept */
-          var i = idx[k];
-          page.download = null;
-          if (typeof text === "string"){
-            host(page.blocks[i], text, t);
-            page.record.blocks[String(i)] = text;
-            page.done++;
-            page.missing = page.missing.filter(function(x){ return x !== i; });
-          } else host(page.blocks[i], "", t, true);
-          if (page.running) status();
-          relayoutSoon(); saveSoon();
-        }
-      };
-      return p.engine.translate(items, src, t, hooks).then(function(){ finish(gen, null); }, function(err){ finish(gen, err); });
+      return new Promise(function(resolve){
+        page.job = { gen: gen, engine: p.engine, src: src, t: t, busy: false, resolve: resolve };
+        step(page.job);
+      });
     });
   }
-  function finish(gen, err){
-    if (gen !== page.gen) return;
+  function step(job){
+    job = job || page.job;
+    if (!job || page.job !== job || job.busy) return;
+    if (job.gen !== page.gen || !page.running){ finish(job, null); return; }
+    /* the page is hidden: the work waits for it to come back (see visibilitychange below) */
+    if (document.visibilityState === "hidden"){ page.held = true; save(); return; }
+    page.held = false;
+    var idx = nextBatch(job.engine === Pack ? 1 : 8);
+    if (!idx.length){ finish(job, null); return; }
+    var items = idx.map(function(i){ return page.blocks[i].text; });
+    var chars = items.reduce(function(a, s){ return a + s.length; }, 0), t0 = Date.now(), gen = job.gen;
+    var hooks = {
+      prio: 1,
+      live: function(){ return gen === page.gen && page.running; },
+      onDownload: function(f){ if (gen === page.gen && page.running){ page.download = f; status(); } },
+      onItem: function(k, text){
+        if (gen !== page.gen) return;                    /* what arrives after a pause is still kept */
+        var i = idx[k], b = page.blocks[i];
+        page.download = null;
+        if (typeof text === "string" && text.trim()){
+          page.record.blocks[String(i)] = text;
+          host(b, text, job.t);
+          page.done++;
+          page.leftChars = Math.max(0, page.leftChars - b.text.length);
+          page.missing = page.missing.filter(function(x){ return x !== i; });
+        } else { host(b, "", job.t, true); page.failed[i] = true; }
+        if (page.running) status();
+        relayoutSoon(); saveSoon();
+      }
+    };
+    job.busy = true;
+    job.engine.translate(items, job.src, job.t, hooks).then(function(){
+      job.busy = false;
+      var ms = Date.now() - t0;
+      if (page.rate && ms < 60000){ page.rate.ms += ms; page.rate.chars += chars; }   /* a batch that sat out a sleep says nothing about speed */
+      step(job);
+    }, function(err){ job.busy = false; finish(job, err || new Error("stopped")); });
+  }
+  function finish(job, err){
+    if (page.job !== job) return;
+    page.job = null;
+    if (job.gen !== page.gen){ job.resolve(); return; }
     var cancelled = !page.running;
-    page.running = false; page.download = null;
+    page.running = false; page.held = false; page.download = null;
+    if (page.record) page.record.job = page.missing.length ? "paused" : "done";
     hideStatus(); save();
-    var name = nameOf(to());
+    var name = nameOf(job.t);
     if (err){
       console.warn("translate: paused", err);
-      toast(!online() || !err.status ? "Translation paused — no connection" : "Translation paused — " + err.message);
-    } else if (cancelled) toast("Translation stopped — what arrived stays");
+      toast("Translation paused — " + (err.fatal ? "the Dutch ↔ English pack couldn’t run here (" + err.message + ")" : !online() ? "no connection" : (err.message || "something went wrong")));
+    } else if (cancelled) toast("Translation paused — what arrived stays; Translate the rest carries on");
     else if (page.missing.length) toast("Translated into " + name + " · " + page.missing.length + (page.missing.length === 1 ? " block" : " blocks") + " couldn’t be translated");
     else toast("Translated into " + name);
+    job.resolve();
   }
-  function cancel(){ if (page.running){ page.running = false; hideStatus(); } }
+  function cancel(){ if (page.running){ page.running = false; hideStatus(); if (page.job && !page.job.busy) step(page.job); } }
   function removeHosts(){
     var parents = [];
+    (page.blocks || []).forEach(function(b){ if (showSrc(b) && parents.indexOf(b.el) < 0) parents.push(b.el); });
     page.hosts.forEach(function(h){
       var p = h.parentNode; if (!p) return;
       p.removeChild(h);
       if (p.classList && p.classList.contains("plain") && parents.indexOf(p) < 0) parents.push(p);
     });
-    parents.forEach(function(p){ p.normalize(); });
+    mergeText(parents);
     page.hosts = [];
     if (L.Anchor) L.Anchor.invalidate();
   }
   function showOriginal(){
-    page.gen++; page.running = false; page.download = null;
+    var top = L.state && L.state.flow !== "pages" && page.on && view() === "only" ? topOffset() : null;
+    page.gen++; page.running = false; page.download = null; page.held = false;
     hideStatus(); save();
     removeHosts();
     if (page.docKey) setOn(page.docKey, null);
     page.on = false; page.blocks = null; page.missing = []; page.record = null; page.key = null;
     relayout();
+    if (typeof top === "number" && L.revealOffset) L.revealOffset(top);
   }
   function togglePage(){
     if (!L.state || L.state.mode !== "doc"){
@@ -581,26 +1137,27 @@
     }
     if (page.on){
       if (page.running || !page.missing.length){ showOriginal(); return Promise.resolve(); }
-      return translateMissing();                                             /* "Translate the rest" */
+      return translateMissing(false);                                        /* "Translate the rest" */
     }
     return startPage();
   }
 
-  /* ---- a document left translated comes back translated, from the cache, offline too ---- */
+  /* ---- a document left translated comes back translated, from the cache, offline too; a translation that was
+     still under way when the book was closed carries on ---- */
   var watchTimer = null;
   function restore(id, pair){
-    var t = pair.split("|")[1];
-    if (t !== to()) return;                     /* the reader chose another language since */
+    var parts = pair.split("|"), t = parts[1];
+    if (t !== bookTarget(parts[0])) return;           /* the reader chose another language since */
     var gen = ++page.gen;
-    if (!begin(id, pair, t)) return;
+    if (!begin(id, pair)) return;
     Cache.get(page.key).then(function(rec){
       if (gen !== page.gen) return;
       if (!rec || !rec.blocks){ page.on = false; setOn(id, null); return; }
-      var top = null;
-      try { top = L.Library.topCharOffset(); } catch(_){}
+      var top = topOffset();
       applyRecord(rec, t);
       /* the translations above the reading spot pushed it down: put it back */
       if (typeof top === "number" && L.revealOffset && !(L.state.flow === "pages")) L.revealOffset(top);
+      if (rec.job === "on" && page.missing.length) translateMissing(true);
     });
   }
   /* the document is in when the library says so (it restores the reading position then); until
@@ -629,32 +1186,47 @@
     watchTimer = setTimeout(poll, 50);
   }
   function docChanged(){
-    page.gen++; page.running = false; page.download = null;
+    save();
+    page.gen++; page.running = false; page.download = null; page.held = false;
     hideStatus();
     removeHosts();
     page.on = false; page.blocks = null; page.missing = []; page.record = null; page.key = null; page.docKey = null;
-    Builtin.destroyAll(); detected = {};
+    Builtin.destroyAll(); detected = {}; sampled = { key: null, text: "" }; wantBook = null;
     watchOpen();
   }
   function onSettings(){
     refreshHint();
-    if (isOn()){ showOriginal(); startPage(); }       /* translated already: into the new language, cache first */
+    if (!isOn()) return;
+    /* translated already: into the new language, cache first */
+    resolveFrom(docSample()).then(function(src){
+      if (isOn() && src + "|" + bookTarget(src) !== page.pair){ showOriginal(); startPage(); }
+    });
   }
 
   document.addEventListener("ll:fileopened", docChanged);
   window.addEventListener("online", function(){ if ($("#trHint .tr-status")) refreshHint(); });
   window.addEventListener("offline", function(){ if ($("#trHint .tr-status")) refreshHint(); });
-  /* going home hides the document: stop any work in flight, keep what arrived */
-  var view = $("#docView");
-  if (view && window.MutationObserver) new MutationObserver(function(){
-    if (view.style.display === "none" && (page.running || page.on)){ page.gen++; page.running = false; page.download = null; hideStatus(); save(); }
-  }).observe(view, { attributes: true, attributeFilter: ["style"] });
+  /* the work rests while the page is hidden and carries on when it is back */
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible" && page.held && page.running && page.job){ page.curAt = 0; step(page.job); }
+  });
+  /* going home hides the document: stop any work in flight, keep what arrived (a translation under way carries on
+     when the book is opened again) */
+  var docView = $("#docView");
+  if (docView && window.MutationObserver) new MutationObserver(function(){
+    if (docView.style.display === "none" && (page.running || page.on)){ page.gen++; page.running = false; page.download = null; page.held = false; hideStatus(); save(); }
+  }).observe(docView, { attributes: true, attributeFilter: ["style"] });
   watchOpen();
 
   window.llTranslate = {
     slot: slot, togglePage: togglePage, showOriginal: showOriginal, cancel: cancel, isOn: isOn, isPartial: isPartial,
     describe: describe, refreshHint: refreshHint, onSettings: onSettings, docChanged: docChanged, openSettings: openSettings,
-    collect: collect, pick: pick, detect: detect, nameOf: nameOf, engines: ENGINES, cache: Cache,
-    status: function(){ return { on: page.on, running: page.running, done: page.done, total: page.total, missing: page.missing.slice(), engine: page.engine, pair: page.pair, key: page.key, download: page.download }; }
+    collect: collect, pick: pick, detect: detect, guess: guess, nameOf: nameOf, engines: ENGINES, cache: Cache,
+    readerLang: readerLang, targetFor: targetFor, bookTarget: bookTarget, view: view, setView: setView,
+    pack: { download: getPack, remove: removePack, state: function(){ return Pack.info(); }, check: Pack.check, supported: Pack.supported,
+            covers: Pack.covers, stop: Pack.stop, idle: Pack.idle, sync: syncPack },
+    status: function(){ return { on: page.on, running: page.running, done: page.done, total: page.total, missing: page.missing.slice(), engine: page.engine,
+      pair: page.pair, key: page.key, download: page.download, view: view(), held: page.held, eta: eta(),
+      rate: page.rate ? { chars: page.rate.chars, ms: page.rate.ms } : null, hidden: page.blocks ? page.blocks.filter(function(b){ return b.hidden; }).length : 0 }; }
   };
 })();

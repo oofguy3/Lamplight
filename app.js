@@ -2526,6 +2526,14 @@
           if (off !== null) return off;
         }
       }
+      /* no text of #doc up there: a translation (translate.js) may be standing in for its hidden original — it
+         carries where that original starts and how long it is, and the spot is read off in proportion */
+      for (var dy2 = 0; dy2 < 60; dy2 += 12){
+        var hit = document.elementFromPoint(xs[1], y0 + dy2), h = hit && hit.closest ? hit.closest("#doc .ll-tr[data-ll-off]") : null;
+        if (!h) continue;
+        var hb = h.getBoundingClientRect(), f = hb.height ? Math.max(0, Math.min(1, (y0 + dy2 - hb.top) / hb.height)) : 0;
+        return (+h.getAttribute("data-ll-off") || 0) + Math.floor(f * (+h.getAttribute("data-ll-len") || 0));
+      }
       return null;
     }
     function currentPdfPage(){
@@ -9899,7 +9907,7 @@
       "  font-size:0.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;",
       "  color:var(--muted); margin:14px 0 6px;",
       "}",
-      "#dictCard .panel > .sec:first-child, #dictCard .tr-slot > .sec:first-child{margin-top:0;}",
+      "#dictCard .panel > .sec:first-child{margin-top:0;}",
       "#dictCard .brk{display:grid; gap:7px; margin-top:2px;}",
       "#dictCard .brk div{font-size:0.875rem; line-height:1.45;}",
       "#dictCard .brk b{font-weight:600;}",
@@ -9921,10 +9929,22 @@
       "#dictCard .part .pm{font-size:0.7812rem; line-height:1.35; margin-top:2px;}",
       "#dictCard .part .po{font-size:0.7812rem; line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
       "#dictCard .gloss{font-style:italic; font-size:0.875rem; line-height:1.45; margin:2px 0 4px;}",
-      /* translation (filled by translate.js): the translation in the reader font, an engine line */
-      "#dictCard .tr-out{font-family:var(--reader-font); font-size:0.9688rem; line-height:1.55; padding:2px 0 4px; overflow-wrap:break-word;}",
+      /* the translation line (filled by translate.js): under the word, lined up with it, or under the quoted
+         sentence; the translation in the reader font, a quiet engine line, a "translating…" while it comes */
+      "#dictCard .trline{flex:none; margin:6px 16px 0; min-width:0;}",
+      "#dictCard .trline[hidden]{display:none;}",
+      "#dictCard .trline[data-kind=word]{padding-left:48px;}",
+      "#dictCard .trline[data-kind=sentence]{padding:2px 12px 0 15px;}",
+      "#dictCard .tr-out{font-family:var(--reader-font); font-size:1rem; line-height:1.5; overflow-wrap:break-word;}",
+      "#dictCard .trline[data-kind=sentence] .tr-out{font-size:0.9375rem;}",
+      "#dictCard .trline.clamp .tr-out{display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;}",
       "#dictCard .tr-out[dir=rtl]{text-align:right;}",
-      "#dictCard .tr-eng{color:var(--muted); font-size:0.78rem; padding:0 0 4px;}",
+      "#dictCard .tr-eng{color:var(--muted); font-size:0.72rem; line-height:1.4; padding:1px 0 0;}",
+      "#dictCard .tr-wait{color:var(--muted); font-size:0.8125rem; font-style:italic; line-height:1.5;}",
+      "#dictCard .trline .note{padding:0;}",
+      "#dictCard .trline .acts{margin:6px 0 0;}",
+      "#dictCard .tr-offer{margin:8px 0 2px; padding:8px 10px; border:1px solid var(--line); border-radius:10px;}",
+      "#dictCard .tr-offer .acts[hidden]{display:none;}",
       /* simpler: how plain to make it, then the plainer text with each change dotted in the
          accent colour and a tap-to-show note */
       "#dictCard .lvl{margin:0 0 12px;}",
@@ -10111,7 +10131,6 @@
     var TABS = {
       meaning:   { label: "Meaning",   icon: "meaning" },
       parts:     { label: "Parts",     icon: "parts" },
-      translate: { label: "Translate", icon: "translate" },
       explain:   { label: "Explain",   icon: "explain" },
       simpler:   { label: "Simpler",   icon: "simpler", attr: ' data-m="simplify"' }
     };
@@ -10122,8 +10141,12 @@
       var h = '<div class="head"><div class="mark">' + icon(o.icon, 20) + '</div><div class="hw">' +
               '<div class="term">' + esc(o.title) + '</div>' + (o.ipa ? '<div class="ipa">' + esc(o.ipa) + '</div>' : '') + '</div>' +
               '<button type="button" class="x" aria-label="Close" title="Close">' + icon("close", 20) + '</button></div>';
-      if (o.quote) h += '<div class="quote clamp" id="dictQuote">' + esc(o.quote) + '</div>' +
-                        '<button type="button" class="more" hidden aria-expanded="false" aria-controls="dictQuote">Show all</button>';
+      /* the translation line (filled by translate.js): under the word, or under the sentence it translates */
+      var trl = o.tr ? '<div class="trline' + (o.quote ? ' clamp' : '') + '" id="dictTr" data-kind="' + o.tr + '" hidden>' +
+                       '<div class="tr-slot" data-kind="' + o.tr + '" aria-live="polite"></div></div>' : '';
+      if (o.quote) h += '<div class="quote clamp" id="dictQuote">' + esc(o.quote) + '</div>' + trl +
+                        '<button type="button" class="more" hidden aria-expanded="false" aria-controls="dictQuote' + (o.tr ? ' dictTr' : '') + '">Show all</button>';
+      else h += trl;
       /* one tab needs no strip (the lookup field): its panel is a plain region then */
       var tabbed = o.tabs.length > 1;
       if (tabbed){
@@ -10153,7 +10176,8 @@
       inner.querySelector(".x").addEventListener("click", closeCard);
       var more = inner.querySelector(".more");
       if (more) more.addEventListener("click", function(){
-        var open = !inner.querySelector("#dictQuote").classList.toggle("clamp");
+        var open = !inner.querySelector("#dictQuote").classList.toggle("clamp"), trl = inner.querySelector("#dictTr");
+        if (trl) trl.classList.toggle("clamp", !open);
         more.textContent = open ? "Show less" : "Show all";
         more.setAttribute("aria-expanded", open ? "true" : "false");
       });
@@ -10177,7 +10201,13 @@
       var foot = inner.querySelector(".foot");
       if (foot) foot.addEventListener("click", function(e){ var b = e.target.closest("button"); if (b) footAct(b); });
       select(o.active);
-      if (more){ var q = inner.querySelector("#dictQuote"); if (q.scrollHeight > q.clientHeight + 2) more.hidden = false; }
+      refreshMore();
+    }
+    /* "Show all" is there while the quote, or the translation under it, is cut short */
+    function refreshMore(){
+      var more = inner.querySelector(".more"), q = inner.querySelector("#dictQuote"), t = inner.querySelector("#dictTr .tr-out");
+      if (!more || !q || !more.hidden) return;
+      if (q.scrollHeight > q.clientHeight + 2 || (t && t.scrollHeight > t.clientHeight + 2)) more.hidden = false;
     }
     function tabButtons(){ return Array.prototype.slice.call(inner.querySelectorAll("[role=tab]")); }
     function tabEl(t){ return inner.querySelector('[role=tab][data-tab="' + t + '"]'); }
@@ -10221,9 +10251,7 @@
       else if (mk) L.Marks.toast("Highlighted");
     }
     function copyText(){
-      var p = panelEl(cur.active), out;
       if (cur.active === "simpler" && cur.simple) return cur.simple;
-      if (cur.active === "translate" && p && (out = p.querySelector(".tr-out"))) return out.textContent;
       return cur.kind === "word" ? cur.title : cur.sentence;
     }
     function copyPlain(s){
@@ -10505,15 +10533,15 @@
       }).catch(function(err){ console.warn("Word parts unavailable", err); });
     }
 
-    /* the Translate panel is handed to translate.js as soon as the card is built: the on-device
-       translator fills it by itself and the tab gets a dot; other engines wait for a press */
-    function runTranslate(text, span){
-      var p = panelEl("translate"), el = p && p.querySelector(".tr-slot"), my = cur.gen;
+    /* the translation line is handed to translate.js as soon as the card is built: it translates at once when the
+       text is in another language than the reader's (a quiet "translating…" meanwhile) and stays hidden otherwise */
+    function runTranslate(text){
+      var line = inner.querySelector("#dictTr"), el = line && line.querySelector(".tr-slot"), my = cur.gen;
       if (!el) return;
-      Translate.slot(text, el, { span: span, onResult: function(){ if (cur && cur.gen === my) markTab("translate", "dot"); } });
+      Translate.slot(text, el, { box: line, onResult: function(){ if (cur && cur.gen === my) refreshMore(); } });
     }
 
-    /* the word card: Meaning at once, Parts when the analyser answers, Translate when it can;
+    /* the word card: Meaning at once, Parts when the analyser answers, the translation under the word;
        hit = the word's character span in #doc, when it was tapped in the text */
     function defineWord(term, hit){
       var foot = [];
@@ -10521,11 +10549,10 @@
       foot.push({ m: "copy", label: "Copy" });
       if ("speechSynthesis" in window) foot.push({ m: "say", label: "Say it", id: "dictSay", pressed: true });
       buildCard({ kind: "word", term: term, title: term, icon: "meaning", dialogLabel: "Dictionary", tabsLabel: "Word",
-        tabs: ["meaning", "parts", "translate"], off: { parts: true }, active: "meaning", span: hit || null, foot: foot,
-        panels: { meaning: '<div class="note">Looking up “' + esc(term) + '”…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>',
-                  translate: '<div class="tr-slot" data-kind="word"></div>' } });
+        tabs: ["meaning", "parts"], off: { parts: true }, active: "meaning", span: hit || null, foot: foot, tr: "word",
+        panels: { meaning: '<div class="note">Looking up “' + esc(term) + '”…' + (dictReady() ? '' : '<br>Getting the dictionary ready — this only happens once.') + '</div>' } });
       openCard();
-      runTranslate(term, null);
+      runTranslate(term);
       var my = cur.gen;
       lookupLocal(term).then(function(res){
         if (!cur || cur.gen !== my) return;
@@ -10683,9 +10710,9 @@
       });
     }
 
-    /* the sentence card: Explain, Simpler and Translate over one quoted sentence. Explain is
+    /* the sentence card: Explain and Simpler over one quoted sentence, its translation under the quote. Explain is
        drawn when its tab is open (at once, from a hold or a right-click), Simpler the first time
-       its tab opens, Translate as soon as the on-device translator can (a press otherwise). */
+       its tab opens, the translation at once (see runTranslate). */
     function validSpan(span){
       return (span && typeof span.start === "number" && typeof span.end === "number" && span.end > span.start) ? span : null;
     }
@@ -10700,14 +10727,13 @@
       if (sp) foot.push({ m: "hl", label: "Highlight" }, { m: "note", label: "Note…" }, { m: "read", label: "Read from here" });
       foot.push({ m: "copy", label: "Copy" });
       buildCard({ kind: "sentence", sentence: text, title: /\s/.test(text) ? "This sentence" : "This word", icon: "explain",
-        dialogLabel: "Sentence", tabsLabel: "Sentence", quote: text, tabs: ["explain", "simpler", "translate"], active: tab || "explain",
-        span: sp, foot: foot,
+        dialogLabel: "Sentence", tabsLabel: "Sentence", quote: text, tabs: ["explain", "simpler"], active: tab === "simpler" ? "simpler" : "explain",
+        span: sp, foot: foot, tr: "sentence",
         panels: { explain: '<div id="dictExpl"></div>',
-                  simpler: '<div class="lvl" id="simpLevel"></div><div id="simpBody"></div>',
-                  translate: '<div class="tr-slot" data-kind="sentence"></div>' },
+                  simpler: '<div class="lvl" id="simpLevel"></div><div id="simpBody"></div>' },
         lazy: { explain: function(){ runExplain(text); }, simpler: function(){ runSimplify(text); } } });
       openCard();
-      runTranslate(text, sp);
+      runTranslate(text);
     }
     function explainSentence(sentence, span){ openSentence(sentence, span, "explain"); }
 
@@ -10979,9 +11005,12 @@
     }
 
     if (doc){
+      /* a translation (translate.js) is not text of #doc: a hold or a right-click on it is translate.js's (it shows the original) */
+      var onTranslation = function(e){ return !!(e.target && e.target.closest && e.target.closest(".ll-tr")); };
       doc.addEventListener("touchstart", function(e){
         if (dictMode === "off" || e.touches.length > 1) return;
         tStart = Date.now(); moved = false; held = false;
+        if (onTranslation(e)){ clearTimeout(holdTimer); return; }
         tX = e.touches[0].clientX; tY = e.touches[0].clientY;
         clearTimeout(holdTimer);
         holdTimer = setTimeout(function(){
@@ -11019,7 +11048,7 @@
 
       /* desktop: long-press equivalent is a right-click (on a selection, or on the sentence under the pointer) */
       doc.addEventListener("contextmenu", function(e){
-        if (dictMode === "off") return;
+        if (dictMode === "off" || onTranslation(e)) return;
         var sel = selectionText();
         if (sel){ e.preventDefault(); lookupText(sel, window.Marks_selectionOffsets ? window.Marks_selectionOffsets() : null); return; }
         var s = sentenceAt(e.clientX, e.clientY);
@@ -11146,45 +11175,86 @@
     }
 
     /* ---------- translation ----------
-       The engines, the cache and the page translator live in translate.js, fetched the first
-       time a Translate button is pressed or the Translation group scrolls into view. The card
-       slots, the settings group and the menu entry are made here so they exist before that. */
+       The engines, the cache and the book translator live in translate.js, fetched the first
+       time a card is opened or the Translation group scrolls into view. The card's translation
+       line, the settings group and the menu entries are made here so they exist before that. */
     var Translate = {
       load: function(){ return need(["translate"]).then(function(){ return window.llTranslate; }); },
       slot: function(text, el, opts){
         if (!el) return;
-        Translate.load().then(function(T){ T.slot(text, el, opts); }, function(){ el.innerHTML = '<div class="note">Couldn’t load the translator.</div>'; });
+        Translate.load().then(function(T){ T.slot(text, el, opts); }, function(){
+          if (opts && opts.box) opts.box.hidden = false;
+          el.innerHTML = '<div class="note">Couldn’t load the translator.</div>';
+        });
       },
-      /* opens the sentence card on its Translate tab */
-      show: function(text, span){ openSentence(text, span, "translate"); }
+      /* opens the sentence card (its translation is under the quote) */
+      show: function(text, span){ openSentence(text, span, "explain"); }
     };
     /* target languages: BCP-47 code, English name, native name */
     var TR_LANGS = [["es","Spanish","Español"],["fr","French","Français"],["de","German","Deutsch"],["it","Italian","Italiano"],["pt","Portuguese","Português"],["nl","Dutch","Nederlands"],["sv","Swedish","Svenska"],["da","Danish","Dansk"],["no","Norwegian","Norsk"],["fi","Finnish","Suomi"],["pl","Polish","Polski"],["cs","Czech","Čeština"],["sk","Slovak","Slovenčina"],["hu","Hungarian","Magyar"],["ro","Romanian","Română"],["el","Greek","Ελληνικά"],["tr","Turkish","Türkçe"],["ru","Russian","Русский"],["uk","Ukrainian","Українська"],["ar","Arabic","العربية"],["he","Hebrew","עברית"],["fa","Persian","فارسی"],["hi","Hindi","हिन्दी"],["bn","Bengali","বাংলা"],["ur","Urdu","اردو"],["id","Indonesian","Bahasa Indonesia"],["ms","Malay","Bahasa Melayu"],["vi","Vietnamese","Tiếng Việt"],["th","Thai","ไทย"],["zh","Chinese (Simplified)","简体中文"],["zh-Hant","Chinese (Traditional)","繁體中文"],["ja","Japanese","日本語"],["ko","Korean","한국어"],["sw","Swahili","Kiswahili"],["ca","Catalan","Català"],["en","English","English"]];
-    /* the browser's own language when it is not English (and is in the table), else Spanish */
-    function trDefaultTo(){
+    /* the reader's language: the device's, when the table has it; else English (translate.js reads it the same way) */
+    function trReader(){
       var nav = String((navigator.languages && navigator.languages[0]) || navigator.language || "").toLowerCase(), b = nav.split("-")[0];
       if (b === "zh") return /hant|tw|hk|mo/.test(nav) ? "zh-Hant" : "zh";
-      return b !== "en" && TR_LANGS.some(function(l){ return l[0] === b; }) ? b : "es";
+      if (b === "nb" || b === "nn") b = "no";
+      return TR_LANGS.some(function(l){ return l[0] === b; }) ? b : "en";
     }
+    function trName(code){ for (var i = 0; i < TR_LANGS.length; i++) if (TR_LANGS[i][0] === code) return TR_LANGS[i][1]; return code; }
+    /* what older versions set by themselves on first run (the device's language, or Spanish): read as Automatic */
+    function trOldDefault(){ var r = trReader(); return r === "en" ? "es" : r; }
     if (sheet){
       var tg = document.createElement("div");
       tg.className = "group"; tg.id = "trGroup";
       var trOpts = TR_LANGS.map(function(l){ return '<option value="' + l[0] + '">' + esc(l[1]) + (l[2] !== l[1] ? ' · ' + esc(l[2]) : '') + '</option>'; }).join("");
+      var me = trName(trReader());
       tg.innerHTML =
         '<div class="label">Translation</div>' +
-        '<div class="rowline"><label for="trLang">Into</label><select id="trLang" class="sel">' + trOpts + '</select>' +
+        '<div class="rowline"><label for="trLang">Into</label><select id="trLang" class="sel"><option value="auto">Automatic · ' + esc(me) + '</option>' + trOpts + '</select>' +
         '<label for="trFrom">From</label><select id="trFrom" class="sel"><option value="auto">Auto-detect</option>' + trOpts + '</select></div>' +
-        '<div class="hint" id="trHint">Tap a word or select a sentence for a translation; the menu translates the whole document, shown under each paragraph.</div>';
+        '<p class="hint" id="trAutoHint">Automatic: a book in another language is translated into ' + esc(me) + ', your device’s language. A book already in ' + esc(me) +
+          ' shows no translation when you tap a word; Translate book turns it into ' + esc(trReader() === "en" ? "Dutch" : "English") + '.</p>' +
+        /* the Dutch ↔ English pack (translate.js fills the row): download once, then instant and offline */
+        '<div class="rowline" id="mtRow"><span class="k-state" id="mtState" aria-live="polite">Dutch ↔ English</span>' +
+          '<button type="button" class="chip" id="mtDl" hidden>Dutch ↔ English (≈ 50 MB, once)</button>' +
+          '<button type="button" class="chip" id="mtRm" hidden>Remove</button></div>' +
+        '<progress id="mtProgress" class="k-progress" max="100" value="0" aria-label="Downloading Dutch ↔ English" hidden></progress>' +
+        '<div class="rowline"><label id="trViewL">Translated book</label><div class="chips seg" role="radiogroup" aria-labelledby="trViewL" id="trViewChips">' +
+          '<button type="button" class="chip" role="radio" aria-checked="false" data-trview="only">Translation only</button>' +
+          '<button type="button" class="chip" role="radio" aria-checked="false" data-trview="both">Both</button></div></div>' +
+        '<p class="hint" id="trViewHint">Translate book (in the menu) translates the whole book. Translation only shows the translation in place of the original — tap or hold a paragraph to see its original; Both shows the translation under each paragraph.</p>' +
+        '<div class="hint" id="trHint">Tap a word or select a sentence and its translation is in the card.</div>';
       sheet.appendChild(tg);
       var trTo = tg.querySelector("#trLang"), trFrom = tg.querySelector("#trFrom");
-      if (!Store.get("ll_tr_to")) Store.set("ll_tr_to", trDefaultTo());
-      trTo.value = Store.get("ll_tr_to"); if (!trTo.value){ trTo.value = "es"; Store.set("ll_tr_to", "es"); }
+      /* once: what an older version set by itself becomes Automatic; a language chosen since stays */
+      if (Store.get("ll_tr_v") !== "2"){
+        var trSaved = Store.get("ll_tr_to");
+        if (!trSaved || trSaved === trOldDefault()) Store.set("ll_tr_to", "auto");
+        Store.set("ll_tr_v", "2");
+      }
+      trTo.value = Store.get("ll_tr_to"); if (!trTo.value){ trTo.value = "auto"; Store.set("ll_tr_to", "auto"); }
       trFrom.value = Store.get("ll_tr_from") || "auto"; if (!trFrom.value) trFrom.value = "auto";
       var trChanged = function(){
         Store.set("ll_tr_to", trTo.value); Store.set("ll_tr_from", trFrom.value);
         Translate.load().then(function(T){ T.onSettings(); }).catch(function(){});
       };
       trTo.addEventListener("change", trChanged); trFrom.addEventListener("change", trChanged);
+      var trView = function(){ return Store.get("ll_tr_view") === "both" ? "both" : "only"; };
+      var syncTrView = function(){
+        Array.prototype.forEach.call(tg.querySelectorAll("#trViewChips .chip"), function(c){
+          var on = c.dataset.trview === trView(); c.classList.toggle("on", on); c.setAttribute("aria-checked", on ? "true" : "false");
+        });
+      };
+      syncTrView();
+      tg.addEventListener("click", function(e){
+        var b = e.target.closest && e.target.closest("button");
+        if (!b) return;
+        if (b.dataset.trview){
+          Store.set("ll_tr_view", b.dataset.trview); syncTrView();
+          if (window.llTranslate) window.llTranslate.setView(b.dataset.trview);
+        } else if (b.id === "mtDl" || b.id === "mtRm"){
+          Translate.load().then(function(T){ if (b.id === "mtDl") T.pack.download(); else T.pack.remove(); }, function(){ Marks.toast("Couldn’t load the translator"); });
+        }
+      });
       /* the engines' status line comes with the script, fetched once the group is on screen */
       var trSeen = function(){ Translate.load().then(function(T){ T.refreshHint(); }).catch(function(){}); };
       if (window.IntersectionObserver){
@@ -11195,12 +11265,17 @@
       } else $("#gear").addEventListener("click", trSeen, { once: true });
     }
     Menu.add({ order: 62, key: "", group: "tools", icon: icon("translate", 20),
-      label: function(){ var T = window.llTranslate; return T && T.isOn() ? (T.isPartial() ? "Translate the rest" : "Show original") : "Translate this document…"; },
+      label: function(){ var T = window.llTranslate; return T && T.isOn() ? (T.isPartial() ? "Translate the rest" : "Show original") : "Translate book…"; },
       run: function(){ Translate.load().then(function(T){ T.togglePage(); }, function(){ Marks.toast("Couldn’t load the translator"); }); },
       show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     /* only while a translation is incomplete does "Translate the rest" take the entry above */
     Menu.add({ order: 63, group: "tools", icon: icon("translate", 20), label: "Show original", run: function(){ Translate.load().then(function(T){ T.showOriginal(); }); },
       show: function(){ var T = window.llTranslate; return !!(T && T.isOn() && T.isPartial()); } });
+    /* a translated book: the translation alone, or both languages */
+    Menu.add({ order: 64, group: "tools", icon: icon("translate", 20),
+      label: function(){ var T = window.llTranslate; return T && T.view() === "both" ? "Show translation only" : "Show both languages"; },
+      run: function(){ var T = window.llTranslate; if (T) T.setView(T.view() === "both" ? "only" : "both"); if (typeof syncTrView === "function") syncTrView(); },
+      show: function(){ var T = window.llTranslate; return !!(T && T.isOn()); } });
     /* a document left translated comes back translated: the script is wanted as soon as it opens */
     document.addEventListener("ll:fileopened", function(){
       var on = Store.get("ll_tr_on");

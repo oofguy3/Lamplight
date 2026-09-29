@@ -138,7 +138,7 @@ async function openSimpler(page){
     await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open") && document.getElementById("dictMarkActs"), null, { timeout: 20000 });
     const tabs = await page.$$eval("#dictCard [role=tab]", (bs) => bs.map((b) => b.dataset.tab + (b.dataset.m ? ":" + b.dataset.m : "")));
     const acts = await page.$$eval("#dictMarkActs button", (bs) => bs.map((b) => b.dataset.m));
-    R.check("explain card: Explain · Simpler · Translate tabs, Highlight in the footer", tabs.join(",") === "explain,simpler:simplify,translate" && acts.indexOf("hl") >= 0, tabs.join(",") + " / " + acts.join(","));
+    R.check("explain card: Explain · Simpler tabs (the translation sits under the quote), Highlight in the footer", tabs.join(",") === "explain,simpler:simplify" && acts.indexOf("hl") >= 0, tabs.join(",") + " / " + acts.join(","));
     await page.click('#dictCard [data-m="simplify"]');
     await cardOpen(page);
     info = await cardInfo(page);
