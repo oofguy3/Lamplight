@@ -5128,7 +5128,99 @@
       }
       return spans;
     }
-    function unitsFromText(text, base, out, meta){
+    /* dialogue written with dashes, as Dutch, French, Spanish and Russian books often do:
+         — Kom je mee? vroeg Anna.            – Nee, zei Tom, ik blijf hier.
+         — Ik weet het niet — antwoordde ze — misschien morgen.
+       A paragraph that opens with a dash (—, – or a spaced -) is speech up to its speech tag ("vroeg Anna", "zei hij",
+       "she said"), which is narration, or up to a closing dash; after the tag or the next dash the speech goes on to the
+       paragraph's end, unless the tag's sentence is followed by narration ("…, zei Tom. Hij draaide zich om."). A dash
+       anywhere else (an aside — like this — in the narration) stays narration, a dash-led list is not speech, and a
+       document is read this way only when enough of its dash paragraphs read like speech (dashStyle). */
+    var DASH_OPEN = /^\s*(?:[—–]|-(?=\s))/;
+    var DASH_V = "zei|zegt|zeiden|vroeg|vraagt|vroegen|riep|roept|riepen|antwoordde|antwoordt|fluisterde|fluistert|mompelde|mompelt|zuchtte|zucht|" +
+      "lachte|schreeuwde|snauwde|stamelde|herhaalde|vervolgde|sprak|bromde|gilde|snikte|grinnikte|hijgde|smeekte|beval|protesteerde|kreunde|" +
+      "jammerde|merkte|voegde|vulde|ging|dacht|" +
+      "said|says|asked|asks|replied|answered|cried|called|whispered|shouted|muttered|murmured|exclaimed|added|continued|laughed|sighed|snapped|" +
+      "repeated|insisted|demanded|suggested|remarked|protested|agreed|admitted|began|went on|told|thought|interrupted|retorted|groaned|yelled|explained";
+    /* who says it: a pronoun, a name (with a title), or "de dokter", "haar moeder", "the old man" */
+    var DASH_WHO = "(?:hij|zij|ze|ik|wij|we|he|she|I|they|" +
+      "(?:(?:[Mm]eneer|[Mm]evrouw|[Jj]uffrouw|[Dd]okter|[Tt]ante|[Oo]om|Mr|Mrs|Ms|Dr|Miss)\\.?\\s+)?[A-Z][a-zà-ɏ'’-]*[a-zà-ɏ](?:\\s+[A-Z][a-zà-ɏ'’-]*[a-zà-ɏ])?|" +
+      "(?:de|het|zijn|haar|mijn|hun|the|his|her|my|their)\\s+(?:[a-zà-ɏ]+\\s+){0,2}?[a-zà-ɏ]+)";
+    /* a tag: "zei Anna", "said the captain"; or "Anna said", "she asked softly" when nothing follows it but punctuation */
+    var DASH_TAG = new RegExp("^(?:(?:" + DASH_V + ")\\s+" + DASH_WHO + "(?![A-Za-zà-ɏ'’])|" + DASH_WHO + "\\s+(?:[a-z]+ly\\s+)?(?:" + DASH_V + ")(?:\\s+[a-z]+ly)?(?=\\s*(?:[,.!?…;:—–]|-\\s|$)))");
+    /* narration after a tag: someone (not I, not you) doing something in the past tense ("Hij draaide zich om.", "She turned.") */
+    var DASH_ACT = /^(?!(?:Ik|I|Je|Jij|U|You|We|Wij|Het|Dat|Dit|Die|Er|Daar|Toen|En|Maar|Dan|Nu|Ja|Nee|It|That|This|There|Then|And|But|So|Yes|No)\s)(?:[Hh]ij|[Zz]ij|[Zz]e|[Hh]e|[Ss]he|[Tt]hey|[A-Z][a-zà-ɏ]+)\s+(?:[a-z]+ly\s+)?(?:[a-zà-ɏ]{2,}(?:de|te|ed)|stond|zat|liep|keek|ging|kwam|zag|nam|gaf|bleef|werd|trok|sloot|hield|greep|schudde|took|went|stood|sat|ran|came|gave|held|shook|looked|turned)(?![a-zà-ɏ])/;
+    /* "zei hij, en hij zette zijn tas neer": after these the narration goes on */
+    var DASH_CONJ = /^(?:en|maar|terwijl|toen|die|dat|waarna|want|met|zonder|and|but|while|as|who|which|with|without|then)(?![a-zà-ɏ])/;
+    function dashAt(seg, i){
+      var c = seg.charAt(i);
+      return c === "—" || c === "–" || (c === "-" && (i === 0 || /\s/.test(seg.charAt(i - 1))) && /\s/.test(seg.charAt(i + 1)));
+    }
+    /* the speech of a paragraph that opens with a dash, as [open, close] pairs like quoteSpans gives (the characters
+       at open and close are left out: the dash, the comma or space before a tag) */
+    function dashSpans(seg){
+      var spans = [], m = DASH_OPEN.exec(seg);
+      if (!m) return spans;
+      /* a list ("- melk\n- brood"), or a line that does not end like a sentence, is not speech */
+      var lines = seg.replace(/\s+$/, "").split(/\n/);
+      if (lines.length > 1 && lines.every(function(l){ return DASH_OPEN.test(l) && !/[.!?…]["”’»]?\s*$/.test(l); })) return spans;
+      if (!/[.!?…,;:—–\-"”’»)]\s*$/.test(seg) && !/[?!]/.test(seg)) return spans;
+      var n = seg.length, open = m[0].length - 1, i = open + 1, c, w, head, held = false;
+      function skip(k){ while (k < n && /\s/.test(seg.charAt(k))) k++; return k; }
+      while (i < n){
+        c = seg.charAt(i);
+        if (open >= 0){
+          /* in speech: a tag after a comma, ? or ! ("Nee, zei Tom", "Kom je? vroeg ze", and any lower-case word after ? or !) */
+          if (/[,;:?!…]/.test(c) && /\s/.test(seg.charAt(i + 1))){
+            w = skip(i + 1); head = seg.substr(w, 80);
+            if (DASH_TAG.test(head) || (/[?!]/.test(c) && /^[a-zà-ɏ]/.test(head))){ spans.push([open, w - 1]); open = -1; held = false; i = w; continue; }
+          } else if (dashAt(seg, i)){
+            /* a closing dash: a tag ("— antwoordde ze —") or someone acting between two dashes ("— ze ging zitten —") */
+            w = skip(i + 1); head = seg.substr(w, 120);
+            if (DASH_TAG.test(head) || (DASH_ACT.test(head) && /\s(?:[—–]|-\s)/.test(head))){ spans.push([open, i]); open = -1; held = false; i = w; continue; }
+          }
+          i++;
+          continue;
+        }
+        /* in narration (a tag): speech again after a dash, a comma, or the tag's sentence, unless narration follows it */
+        if (!held && dashAt(seg, i)){ open = i; i++; continue; }
+        if (!held && c === "," && /\s/.test(seg.charAt(i + 1))){
+          w = skip(i + 1);
+          if (DASH_CONJ.test(seg.substr(w, 12))) held = true;
+          else { open = i; i = w; continue; }
+        }
+        if (/[.!?…]/.test(c) && (i + 1 >= n || /\s/.test(seg.charAt(i + 1)))){
+          w = skip(i + 1);
+          if (w >= n) break;
+          if (dashAt(seg, w)){ open = w; held = false; i = w + 1; continue; }
+          if (!held){
+            if (DASH_ACT.test(seg.substr(w, 60))) held = true;
+            else { open = i + 1; i = w; continue; }
+          }
+        }
+        i++;
+      }
+      if (open >= 0) spans.push([open, n]);
+      return spans.filter(function(s){ return /[A-Za-z0-9À-ɏ]/.test(seg.slice(s[0] + 1, s[1])) && seg.slice(s[0] + 1, s[1]).trim().length >= 2; });
+    }
+    /* whether texts (a document's blocks, or one plain text) write their dialogue with dashes: at least two dash
+       paragraphs that read like speech (a question, an exclamation, a tag), and they are a third of all the dash paragraphs */
+    var DASH_SAID = new RegExp("[,?!…—–-]\\s*(?:" + DASH_V + ")\\s+\\S");
+    function dashStyle(texts){
+      var all = 0, talk = 0;
+      (texts || []).forEach(function(t){
+        String(t || "").split(/\r?\n[ \t]*\r?\n/).forEach(function(p){
+          if (!DASH_OPEN.test(p)) return;
+          all++;
+          var head = p.slice(0, 400);
+          if (dashSpans(head).length && (/[?!]/.test(head) || DASH_SAID.test(head))) talk++;
+        });
+      });
+      return talk >= 2 && talk * 3 >= all;
+    }
+    /* text: a block or a plain-text document; dashes: whether the document writes dialogue with dashes (dashStyle),
+       left out to decide it from this text alone */
+    function unitsFromText(text, base, out, meta, dashes){
       /* paragraphs (blank lines, CRLF too), then sentences, then the quoted speech cut out of each
          sentence as its own unit (dialogue: true, quote marks left out of the text). Offsets are
          relative to base and exact, so highlighting and "read from here" line up. */
@@ -5136,8 +5228,10 @@
       var paras = [];
       while ((m = re.exec(text))){ paras.push([last, m.index]); last = m.index + m[0].length; }
       paras.push([last, text.length]);
+      if (dashes === undefined) dashes = dashStyle([text]);
       paras.forEach(function(p){
-        var seg = text.slice(p[0], p[1]), quotes = quoteSpans(seg), parens = parenSpans(seg), before = out.length;
+        var seg = text.slice(p[0], p[1]), dash = dashes && DASH_OPEN.test(seg) ? dashSpans(seg) : null;
+        var quotes = dash && dash.length ? dash : quoteSpans(seg), parens = parenSpans(seg), before = out.length;
         /* both span lists are sorted and sentences only move forward, so a cursor into each
            replaces a rescan per sentence (a plain-text book can be one paragraph) */
         var qi = 0, pi = 0;
@@ -5178,14 +5272,20 @@
       if (!blocks.length) blocks = [doc];
       var nodes = Anchor.textNodes(), offsetOfNode = new Map(), sum = 0;
       nodes.forEach(function(n){ offsetOfNode.set(n, sum); sum += n.length; });
+      var got = [];
       blocks.forEach(function(b){
         var w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT), n, first = null, text = "";
         while ((n = w.nextNode())){ if (!first) first = n; text += n.textContent; }
         if (!first || !text.trim()) return;
         var base = offsetOfNode.get(first);
         if (base === undefined) return;
-        var h = /^H[1-4]$/.test(b.tagName);
-        unitsFromText(text, base, out, h ? { heading: true, level: +b.tagName.charAt(1) } : { heading: false });
+        got.push({ b: b, text: text, base: base });
+      });
+      /* dialogue dashes are decided over the whole document, not block by block */
+      var dashes = dashStyle(got.map(function(g){ return g.text; }));
+      got.forEach(function(g){
+        var h = /^H[1-4]$/.test(g.b.tagName);
+        unitsFromText(g.text, g.base, out, h ? { heading: true, level: +g.b.tagName.charAt(1) } : { heading: false }, dashes);
       });
       return out;
     }
@@ -5754,7 +5854,9 @@
                 hint: _t("Runs on this device. Nothing is sent anywhere. Slower than reading on most phones: press Prepare book first, then listen with no pauses."),
                 prep: _t("Keep Lamplight open (plugging in helps); it carries on where it left off.") }
     };
-    function naturalText(){ return NATURAL[engineName === "kokoro" ? "kokoro" : "piper"]; }
+    /* Fast on a Dutch book: its Dutch voices, a pack of their own (audiobook.js keeps these rows in step with the book) */
+    NATURAL.piperNl = { dl: _t("Download Dutch voices (≈ {mb} MB, once)", { mb: 77 }), narr: ["nl:14", "Eva"], hint: NATURAL.piper.hint, prep: NATURAL.piper.prep };
+    function naturalText(){ return NATURAL[engineName === "kokoro" ? "kokoro" : docLang() === "nl" ? "piperNl" : "piper"]; }
     function castChips(){
       return [["off", _t("One voice")], ["on", _t("A voice per character")]].map(function(c){
         var on = (castOn ? "on" : "off") === c[0];
@@ -6161,7 +6263,7 @@
       setGender: function(id, g){ var v = findVoice(id); if (v){ setGender(v, g); syncPanel(); syncBar(); } },
       setHidden: function(id, on){ var v = findVoice(id); if (v) setHidden(v, on); },
       currentVoice: currentVoice, setVoice: setVoice, setDialogue: setDialogue, preview: preview,
-      plan: function(text){ var out = []; unitsFromText(String(text || ""), 0, out); return out; },
+      plan: function(text, dashes){ var out = []; unitsFromText(String(text || ""), 0, out, null, dashes); return out; }, dashStyle: dashStyle,
       settings: function(){ return { voice: voiceName, dialogue: dialogueName, expr: expr, pitch: pitchPref, rate: rate }; },
       lang: docLang, setDocLang: setDocLang, detect: detectFrom, ramp: RAMP.slice(),
       openPanel: openPanel, sample: sample, sampleText: SAMPLE, previewText: PREVIEW,
@@ -9475,9 +9577,11 @@
     function unitsOf(blocks){
       var S = window.llSpeak, out = [];
       if (!S || !S.plan) return out;
+      /* dialogue written with dashes is decided over the span, as Speak decides it over the document */
+      var dashes = S.dashStyle ? S.dashStyle(blocks.map(function(bk){ return bk.text; })) : undefined;
       blocks.forEach(function(bk){
         if (bk.heading) return;
-        S.plan(bk.text).forEach(function(u){
+        S.plan(bk.text, dashes).forEach(function(u){
           u.start += bk.start; u.end += bk.start; u.para = (u.para || 0) + bk.start;
           if (bk.page) u.page = bk.page;
           out.push(u);

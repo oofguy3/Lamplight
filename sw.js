@@ -1,20 +1,26 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.30-37";
+const VERSION = "2026.09.30-38";
 const CACHE = "lamplight-" + VERSION;
 /* the natural voices' runtime (vendor/kokoro/: kokoro-js and the 21.6 MB ONNX runtime both models run on;
    vendor/piper/: the Piper runtime and the phonemizer), kept apart from this version's cache so that it outlives a
    release as the models do: without it, a model on the device cannot run offline after an update. The files keep
-   their names, so this number goes up whenever one of them changes, or the old copy would be served for ever */
+   their names, so this number goes up whenever one of them changes, or the old copy would be served for ever —
+   or the changed file gets a new name (RENAMED below), so the other 24 MB are not downloaded again */
 const RUNTIME = "natural-runtime-1";
 const RUNTIME_PATH = /\/vendor\/(kokoro|piper)\//;
 /* caches that outlive a release: shared files on their way in, the natural voices — Best (the Kokoro model
-   and its voice files, kept there by kokoro-js, ≈ 105 MB) and Fast (the Piper model and its config, kept there by
-   workers/piper-worker.js, 78 MB), and the runtime they run on (RUNTIME above) — and the Dutch ↔ English pack (the
+   and its voice files, kept there by kokoro-js, ≈ 105 MB) and Fast (the Piper models and their configs, kept there by
+   workers/piper-worker.js: English 78 MB, and Dutch 77 MB once a Dutch book asked for it), and the runtime they run on
+   (RUNTIME above) — and the Dutch ↔ English pack (the
    Bergamot runtime and its two models, kept there by workers/mt-worker.js, 49 MB): downloads that must not go with
    every update */
 const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices", "bergamot-models", RUNTIME];
+/* runtime files a release renamed [old, new]: a reader who has the old one in RUNTIME gets the new one while this
+   version installs (so the voices on the device keep working offline after the update), and the old one goes once this
+   version is active. vendor/piper/phonemizer.js became phonemizer-en-nl.js when it learnt Dutch */
+const RENAMED = [["./vendor/piper/phonemizer.js", "./vendor/piper/phonemizer-en-nl.js"]];
 /* the pack's files (vendor/bergamot/*, models/bergamot/*) go straight to the network: the worker keeps them in
    "bergamot-models" itself, so they are neither precached nor copied into this version's cache */
 const PACK = /\/(vendor|models)\/bergamot\//;
@@ -132,9 +138,23 @@ self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE).then((c) =>
       c.addAll(ASSETS.map(fresh)).then(() => Promise.all(DICTS.concat(FONTS).map((d) => keepOrFetch(c, d).catch(() => null))))
-    )
+    ).then(() => renamedIn().catch(() => null))
   );
 });
+async function renamedIn() {
+  if (!(await caches.has(RUNTIME))) return;
+  const rt = await caches.open(RUNTIME);
+  for (const [was, now] of RENAMED) {
+    if (!(await rt.match(was, { ignoreSearch: true })) || (await rt.match(now, { ignoreSearch: true }))) continue;
+    const res = await fetch(now, { cache: "no-cache" });
+    if (res.ok) await rt.put(now, res);
+  }
+}
+async function renamedOut() {
+  if (!(await caches.has(RUNTIME))) return;
+  const rt = await caches.open(RUNTIME);
+  for (const [was] of RENAMED) await rt.delete(was, { ignoreSearch: true });
+}
 
 /* the app asks the waiting worker to take over once the reader is ready to reload */
 self.addEventListener("message", (e) => {
@@ -166,6 +186,7 @@ self.addEventListener("activate", (e) => {
         const old = keys.filter((k) => k !== CACHE && !KEEP.includes(k));
         await keepRuntime(old).catch(() => null);
         await Promise.all(old.map((k) => caches.delete(k)));
+        await renamedOut().catch(() => null);
       })
       .then(() => self.clients.claim())
   );
