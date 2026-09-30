@@ -217,55 +217,63 @@
     }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
-  /* Built-in themes. Every pair the reader meets (text, secondary text, the accent and the lamp
-     on the page and on the panel) is at least 4.5:1 — tests/themes.js audits this table.
-     `lamp` is the warm "light, brand and now" colour (the progress line, the wordmark, the primary
-     buttons, the stars): a deep brass on the light pages, honey on the dark ones, and the theme's
-     own accent where that is already warm or where the colour is the theme's whole character. */
+  /* Built-in themes. Every pair the reader meets is at least 4.5:1 — tests/themes.js audits this
+     table: text, secondary text, the accent and the lamp on the page, the panel and the raised
+     surface; the panel colour on a lamp or accent fill; the text on the soft lamp and accent tints.
+     `panel` is the bars and sheets, `raise` the cards and sheets on top of them (a touch brighter on
+     a light page, a lift in the theme's own hue on a dark one). `line` is a decorative divider only:
+     a boundary that carries meaning is drawn in --edge (the secondary text colour) or the accent.
+     `lamp` is the "light, brand and now" colour (the progress line, the wordmark, the primary
+     buttons, the stars) and it belongs to the theme: brass or honey in the warm family, the theme's
+     own hue in the cool one (sky is blue, forest green, plum purple), the one signal colour of a
+     neutral one (paper's red ink, terminal's phosphor). `family` (warm, cool, neutral) records which;
+     a custom theme's lamp is its accent. */
   var THEMES = {
     /* light */
-    day:   {name:"Day",    bg:"#EDEDE6", ink:"#1F2323", muted:"#646B68", panel:"#F5F5EF", line:"#D8D9CF", accent:"#2F6D5B", lamp:"#955F0F"},
-    sepia: {name:"Sepia",  bg:"#E9DDC5", ink:"#40331F", muted:"#6E5F42", panel:"#F0E7D2", line:"#D6C7A4", accent:"#86551A", lamp:"#86551A"},
-    mist:  {name:"Mist",   bg:"#E7EBEE", ink:"#25303A", muted:"#5D6A76", panel:"#F0F3F5", line:"#D1D9DF", accent:"#3C6E93", lamp:"#905C0E"},
-    rose:  {name:"Rose",   bg:"#F4E7E3", ink:"#44302D", muted:"#7C625A", panel:"#F9EFEC", line:"#E3CFC9", accent:"#A8495A", lamp:"#905C0E"},
-    paper:     {name:"Paper",     bg:"#FAFAF7", ink:"#141414", muted:"#5C5C58", panel:"#FFFFFF", line:"#E1E1DA", accent:"#BE2A24", lamp:"#9E6510"},
-    parchment: {name:"Parchment", bg:"#F1E4C6", ink:"#2C2114", muted:"#67563A", panel:"#F7ECD4", line:"#DCCBA3", accent:"#8B2F2A", lamp:"#8B590E"},
-    linen:     {name:"Linen",     bg:"#F3EFE6", ink:"#2B2A26", muted:"#65625A", panel:"#FAF8F1", line:"#DDD8CB", accent:"#5A6828", lamp:"#955F0F"},
-    sage:      {name:"Sage",      bg:"#E3EADD", ink:"#1F2A22", muted:"#556358", panel:"#EDF2E8", line:"#CAD5C3", accent:"#A2502E", lamp:"#905C0E"},
-    lavender:  {name:"Lavender",  bg:"#ECE7F4", ink:"#29233A", muted:"#605876", panel:"#F4F1FA", line:"#D6CFE4", accent:"#6A4DB5", lamp:"#905C0E"},
-    sky:       {name:"Sky",       bg:"#E2EDF7", ink:"#17293A", muted:"#4F6274", panel:"#EEF5FB", line:"#C7D8E7", accent:"#2068A8", lamp:"#955F0F"},
-    peach:     {name:"Peach",     bg:"#FBE7DA", ink:"#3B2A21", muted:"#765A4D", panel:"#FDF1E8", line:"#EBD1C0", accent:"#146C72", lamp:"#905C0E"},
-    newsprint: {name:"Newsprint", bg:"#E3E2DC", ink:"#2B2B2B", muted:"#5E5E5B", panel:"#EBEAE5", line:"#CDCCC5", accent:"#A82424", lamp:"#8B590E"},
-    mint:      {name:"Mint",      bg:"#DEF2E8", ink:"#153128", muted:"#48685C", panel:"#EAF7F0", line:"#C1DFD1", accent:"#0D7566", lamp:"#955F0F"},
+    day:       {name:"Day",           family:"warm",    bg:"#EDEDE6", panel:"#F5F5EF", raise:"#FBFBF7", ink:"#1F2323", muted:"#5E6562", line:"#D8D9CF", accent:"#2F6D5B", lamp:"#955F0F"},
+    sepia:     {name:"Sepia",         family:"warm",    bg:"#E9DDC5", panel:"#F0E7D2", raise:"#F6EFDF", ink:"#40331F", muted:"#6A5B3F", line:"#D6C7A4", accent:"#86551A", lamp:"#86551A"},
+    parchment: {name:"Parchment",     family:"warm",    bg:"#F1E4C6", panel:"#F7ECD4", raise:"#FBF3E2", ink:"#2C2114", muted:"#67563A", line:"#DCCBA3", accent:"#8B2F2A", lamp:"#8B590E"},
+    linen:     {name:"Linen",         family:"warm",    bg:"#F3EFE6", panel:"#FAF8F1", raise:"#FDFCF8", ink:"#2B2A26", muted:"#625F57", line:"#DDD8CB", accent:"#5A6828", lamp:"#955F0F"},
+    peach:     {name:"Peach",         family:"warm",    bg:"#FBE7DA", panel:"#FDF1E8", raise:"#FFF8F3", ink:"#3B2A21", muted:"#72574A", line:"#EBD1C0", accent:"#146C72", lamp:"#A0461D"},
+    rose:      {name:"Rose",          family:"warm",    bg:"#F4E7E3", panel:"#F9EFEC", raise:"#FDF7F5", ink:"#44302D", muted:"#775D56", line:"#E3CFC9", accent:"#A8495A", lamp:"#A13F52"},
+    paper:     {name:"Paper",         family:"neutral", bg:"#FAFAF7", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#141414", muted:"#5C5C58", line:"#E1E1DA", accent:"#BE2A24", lamp:"#B3261E"},
+    newsprint: {name:"Newsprint",     family:"neutral", bg:"#E3E2DC", panel:"#EBEAE5", raise:"#F2F1ED", ink:"#2B2B2B", muted:"#5A5A57", line:"#CDCCC5", accent:"#A82424", lamp:"#9E2020"},
+    mist:      {name:"Mist",          family:"cool",    bg:"#E7EBEE", panel:"#F0F3F5", raise:"#F7F9FA", ink:"#25303A", muted:"#5A6773", line:"#D1D9DF", accent:"#3C6E93", lamp:"#2F6388"},
+    sky:       {name:"Sky",           family:"cool",    bg:"#E2EDF7", panel:"#EEF5FB", raise:"#F7FAFD", ink:"#17293A", muted:"#4C5F71", line:"#C7D8E7", accent:"#2068A8", lamp:"#1D5F9C"},
+    lavender:  {name:"Lavender",      family:"cool",    bg:"#ECE7F4", panel:"#F4F1FA", raise:"#FAF8FD", ink:"#29233A", muted:"#5D5573", line:"#D6CFE4", accent:"#6A4DB5", lamp:"#6446AE"},
+    mint:      {name:"Mint",          family:"cool",    bg:"#DEF2E8", panel:"#EAF7F0", raise:"#F5FBF8", ink:"#153128", muted:"#45655A", line:"#C1DFD1", accent:"#0D7566", lamp:"#0B6E60"},
+    sage:      {name:"Sage",          family:"cool",    bg:"#E3EADD", panel:"#EDF2E8", raise:"#F6F9F3", ink:"#1F2A22", muted:"#526055", line:"#CAD5C3", accent:"#A2502E", lamp:"#3E6A44"},
     /* dark */
-    dusk:  {name:"Dusk",   bg:"#14161B", ink:"#D6D3C8", muted:"#8E9088", panel:"#1B1E25", line:"#2A2E37", accent:"#D8A24A", lamp:"#D8A24A"},
-    forest:{name:"Forest", bg:"#101711", ink:"#CDD8C6", muted:"#83907E", panel:"#161F17", line:"#263223", accent:"#7FB069", lamp:"#E3931C"},
-    ocean: {name:"Ocean",  bg:"#0D141E", ink:"#CBD5E1", muted:"#7E8CA0", panel:"#131C29", line:"#223042", accent:"#5C9CD6", lamp:"#E3931C"},
-    plum:  {name:"Plum",   bg:"#17101F", ink:"#D8CDE3", muted:"#91849F", panel:"#1E1628", line:"#2F2440", accent:"#A97FD6", lamp:"#E3931C"},
-    ink:   {name:"Ink",    bg:"#050506", ink:"#C7C3B6", muted:"#7F7C72", panel:"#0E0E11", line:"#1E1E23", accent:"#C08D3F", lamp:"#C08D3F"},
-    midnight:  {name:"Midnight",  bg:"#0B1126", ink:"#D8DDEE", muted:"#8F9AB9", panel:"#111A36", line:"#20294B", accent:"#9DB4FF", lamp:"#E3931C"},
-    graphite:  {name:"Graphite",  bg:"#1E1F22", ink:"#D8D8D5", muted:"#9A9A96", panel:"#26272B", line:"#36373C", accent:"#74D0B8", lamp:"#E3931C"},
-    ember:     {name:"Ember",     bg:"#1A1210", ink:"#EBDACD", muted:"#A68F80", panel:"#221815", line:"#3B2A22", accent:"#F2812E", lamp:"#F2812E"},
-    moss:      {name:"Moss",      bg:"#161A10", ink:"#D7DBC2", muted:"#949B7F", panel:"#1D2215", line:"#303826", accent:"#B7C86A", lamp:"#E3931C"},
-    cocoa:     {name:"Cocoa",     bg:"#1B1411", ink:"#E9DBCF", muted:"#A6958A", panel:"#241B17", line:"#3A2D27", accent:"#D8A067", lamp:"#D8A067"},
-    slate:     {name:"Slate",     bg:"#1C2229", ink:"#D5DBE1", muted:"#8F9BA7", panel:"#242B33", line:"#353E48", accent:"#EF8C76", lamp:"#E3931C"},
-    /* dim: for reading in the dark without a black screen */
-    candle:    {name:"Candle",    bg:"#2A1D14", ink:"#F0DDB4", muted:"#B39F80", panel:"#33251A", line:"#4C3A2A", accent:"#E9C46A", lamp:"#E9C46A"},
-    /* phosphor screens and pure black */
-    terminal:  {name:"Terminal",  bg:"#050805", ink:"#3FE86F", muted:"#2FA354", panel:"#0A110A", line:"#183018", accent:"#D9FF6E", lamp:"#D9FF6E"},
-    amber:     {name:"Amber",     bg:"#0F0A03", ink:"#FFB000", muted:"#B98319", panel:"#17100A", line:"#302311", accent:"#FFDF70", lamp:"#FFDF70"},
-    noir:      {name:"Noir",      bg:"#000000", ink:"#C6C6C6", muted:"#8E8E8E", panel:"#0B0B0B", line:"#242424", accent:"#EDEDED", lamp:"#EDEDED"},
+    dusk:      {name:"Dusk",          family:"warm",    bg:"#14161B", panel:"#1B1E25", raise:"#25262B", ink:"#D6D3C8", muted:"#8E9088", line:"#33343A", accent:"#D8A24A", lamp:"#D8A24A"},
+    ink:       {name:"Ink",           family:"warm",    bg:"#050506", panel:"#0E0E11", raise:"#17171B", ink:"#C7C3B6", muted:"#86837A", line:"#24242A", accent:"#C08D3F", lamp:"#C08D3F"},
+    cocoa:     {name:"Cocoa",         family:"warm",    bg:"#1B1411", panel:"#241B17", raise:"#2D221D", ink:"#E9DBCF", muted:"#A6958A", line:"#3F312A", accent:"#D8A067", lamp:"#D8A067"},
+    ember:     {name:"Ember",         family:"warm",    bg:"#1A1210", panel:"#221815", raise:"#2B1F1B", ink:"#EBDACD", muted:"#A68F80", line:"#3F2D25", accent:"#F2812E", lamp:"#F2812E"},
+    candle:    {name:"Candle",        family:"warm",    bg:"#2A1D14", panel:"#33251A", raise:"#3B2B1F", ink:"#F0DDB4", muted:"#B8A485", line:"#4C3A2A", accent:"#E9C46A", lamp:"#E9C46A"},
+    amber:     {name:"Amber",         family:"warm",    bg:"#0F0A03", panel:"#17100A", raise:"#20170E", ink:"#FFB000", muted:"#B98319", line:"#302311", accent:"#FFDF70", lamp:"#FFDF70"},
+    forest:    {name:"Forest",        family:"cool",    bg:"#101711", panel:"#161F17", raise:"#1C271D", ink:"#CDD8C6", muted:"#86937F", line:"#2A3727", accent:"#7FB069", lamp:"#8FC274"},
+    moss:      {name:"Moss",          family:"cool",    bg:"#161A10", panel:"#1D2215", raise:"#242A1B", ink:"#D7DBC2", muted:"#959C80", line:"#343C29", accent:"#B7C86A", lamp:"#B7C86A"},
+    ocean:     {name:"Ocean",         family:"cool",    bg:"#0D141E", panel:"#131C29", raise:"#1A2533", ink:"#CBD5E1", muted:"#8190A4", line:"#26354A", accent:"#5C9CD6", lamp:"#6AAAE6"},
+    midnight:  {name:"Midnight",      family:"cool",    bg:"#0B1126", panel:"#111A36", raise:"#172142", ink:"#D8DDEE", muted:"#95A0BF", line:"#243056", accent:"#9DB4FF", lamp:"#9DB4FF"},
+    plum:      {name:"Plum",          family:"cool",    bg:"#17101F", panel:"#1E1628", raise:"#261D32", ink:"#D8CDE3", muted:"#958AA3", line:"#342846", accent:"#A97FD6", lamp:"#B78DE6"},
+    slate:     {name:"Slate",         family:"cool",    bg:"#1C2229", panel:"#242B33", raise:"#2B333C", ink:"#D5DBE1", muted:"#97A3AE", line:"#39434E", accent:"#EF8C76", lamp:"#EF8C76"},
+    graphite:  {name:"Graphite",      family:"neutral", bg:"#1E1F22", panel:"#26272B", raise:"#2D2E33", ink:"#D8D8D5", muted:"#A0A09C", line:"#3A3B41", accent:"#74D0B8", lamp:"#74D0B8"},
+    noir:      {name:"Noir",          family:"neutral", bg:"#000000", panel:"#0B0B0B", raise:"#141414", ink:"#C6C6C6", muted:"#8E8E8E", line:"#262626", accent:"#EDEDED", lamp:"#EDEDED"},
+    terminal:  {name:"Terminal",      family:"neutral", bg:"#050805", panel:"#0A110A", raise:"#0F190F", ink:"#3FE86F", muted:"#2FA354", line:"#183018", accent:"#D9FF6E", lamp:"#D9FF6E"},
     /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
-    hicon: {name:"Contrast",      bg:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", panel:"#FFFFFF", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
-    hidark:{name:"Contrast dark", bg:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", panel:"#000000", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
+    hicon:     {name:"Contrast",      family:"neutral", bg:"#FFFFFF", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
+    hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
   };
-  /* the chips and the day / night lists show the built-ins in three groups; the lamp cycles
-     them in the same order: lights, then darks, then high contrast */
+  /* the picker shows the built-ins in four groups (display only: the tone still comes from the
+     page colour), and the lamp cycles them in the same order */
   var HICON = ["hicon", "hidark"];
+  var THEME_GROUPS = {
+    light:  ["day", "paper", "sepia", "parchment", "linen", "newsprint", "mist"],
+    dark:   ["dusk", "ink", "graphite", "cocoa", "slate", "noir", "candle"],
+    colour: ["rose", "peach", "sage", "mint", "sky", "lavender", "forest", "moss", "ocean", "midnight", "plum", "ember", "terminal", "amber"]
+  };
   function themeGroups(){
-    var light = [], dark = [];
-    Object.keys(THEMES).forEach(function(k){ if (HICON.indexOf(k) < 0) (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
-    return [{ id: "light", name: _t("Light"), ids: light }, { id: "dark", name: _t("Dark"), ids: dark }, { id: "hicon", name: _t("High contrast"), ids: HICON }];
+    return [{ id: "light", name: _t("Light"), ids: THEME_GROUPS.light.slice() }, { id: "dark", name: _t("Dark"), ids: THEME_GROUPS.dark.slice() },
+      { id: "colour", name: _t("Colour"), ids: THEME_GROUPS.colour.slice() }, { id: "hicon", name: _t("High contrast"), ids: HICON.slice() }];
   }
   var CYCLE = themeGroups().reduce(function(all, g){ return all.concat(g.ids); }, []);
   /* a theme's name on screen: a built-in's in the interface's language (the table above keeps the
@@ -531,16 +539,26 @@
     return null;
   }
   /* a custom theme's six colours: panel and secondary text are derived from the background and
-     the text unless the user picked them; the hairline always is */
+     the text unless the user picked them; the hairline always is. Its lamp is its accent, and its
+     raised surface is the panel on a light page; on a dark one, the panel 6 % towards the text
+     and 3 % towards the accent (a lift in the theme's own hue), kept only while the secondary text
+     still reads on it */
   function customColors(c){
     var ink = c.autoInk ? deriveInk(c.bg) : c.ink;
     var panel = c.panel || mix(c.bg, ink, 0.05);
-    return {
-      name: c.name, bg: c.bg, ink: ink, accent: c.accent,
+    var t = {
+      name: c.name, bg: c.bg, ink: ink, accent: c.accent, lamp: c.accent,
       panel: panel,
       line:  mix(c.bg, ink, 0.15),
       muted: c.muted || deriveMuted(ink, c.bg, panel)
     };
+    t.raise = customRaise(t);
+    return t;
+  }
+  function customRaise(t){
+    if (!isDarkColor(t.bg)) return t.panel;
+    var r = mix(mix(t.panel, t.ink, 0.06), t.accent, 0.03);
+    return contrast(t.muted, r) < 4.5 ? t.panel : r;
   }
   /* secondary text: the text mixed towards the background, but no further than still reads on it
      and on the panel (the sheet, the bars; the subtle surface lies between the two) */
@@ -570,18 +588,46 @@
   }
 
   /* ---------- theme + type ---------- */
-  /* a chip's swatch: the theme's page colour with its accent as the lamp in the middle */
-  function swatchHtml(t){ return '<i style="--sw-bg:' + t.bg + ';--sw-acc:' + t.accent + '" aria-hidden="true"></i>'; }
-  function chipHtml(theme, t){ return '<button class="chip" data-theme="' + theme + '">' + swatchHtml(t) + escapeHtml(isBuiltIn(theme) ? _tc("theme", t.name) : t.name) + '</button>'; }
+  /* a theme's preview tile, the one picker drawing (the lamp's popover, its Recent row and the
+     settings sheet): a small page in the theme's colours — "Aa" in its text colour, two lines of
+     secondary text, the panel as a strip along the bottom with the lamp as a button on it — and
+     the name under it. The one on screen is pressed: a ring and a check (tileMark). "Aa" is drawn
+     by the stylesheet, so the button's text is the name alone. */
+  function tileVars(t){
+    return "--sw-bg:" + t.bg + ";--sw-ink:" + t.ink + ";--sw-mut:" + t.muted + ";--sw-pan:" + t.panel + ";--sw-acc:" + (t.lamp || t.accent);
+  }
+  function tileSwatch(t, cls){ return '<i' + (cls ? ' class="' + cls + '"' : "") + ' style="' + tileVars(t) + '" aria-hidden="true"><b></b><s></s><s></s></i>'; }
+  function tileHtml(id, t){
+    return '<button type="button" class="chip tile" data-theme="' + id + '" aria-pressed="false">' + tileSwatch(t) +
+      '<span class="tile-n">' + escapeHtml(themeName(id)) + '</span></button>';
+  }
+  /* marks the tiles under `root` for the theme on screen, and brings a custom tile's colours up
+     to date while it is being edited */
+  function tileMark(root, t){
+    var custom = customById(state.theme);
+    Array.prototype.forEach.call(root.querySelectorAll(".chip[data-theme]"), function(ch){
+      var on = ch.dataset.theme === state.theme;
+      ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
+      if (on) ch.setAttribute("aria-label", _t("{name}, current theme", { name: themeName(state.theme) })); else ch.removeAttribute("aria-label");
+      if (on && custom && t){ var sw = ch.querySelector("i"); if (sw) sw.setAttribute("style", tileVars(t)); }
+    });
+  }
+  /* the picker's groups for display: the built-in groups (themeGroups), with each saved theme in
+     the light or the dark one by its page colour */
+  function pickerGroups(){
+    var g = themeGroups();
+    state.customs.forEach(function(c){ g[isDarkColor(c.bg) ? 1 : 0].ids.push("c:" + c.id); });
+    return g;
+  }
   function buildThemeChips(){
     var html = "";
     themeGroups().forEach(function(g){
-      html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="chips">' +
-        g.ids.map(function(k){ return chipHtml(k, THEMES[k]); }).join("") + '</div></div>';
+      html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="tiles">' +
+        g.ids.map(function(k){ return tileHtml(k, THEMES[k]); }).join("") + '</div></div>';
     });
-    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Custom") + '</div><div class="chips">' +
-      state.customs.map(function(c){ return chipHtml("c:" + c.id, customColors(c)); }).join("") +
-      '<button class="chip chip-new" data-new="1" title="' + _t("Start a custom theme from the colours on screen") + '">' + _t("New…") + '</button></div></div>';
+    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Custom") + '</div><div class="tiles">' +
+      state.customs.map(function(c){ return tileHtml("c:" + c.id, customColors(c)); }).join("") +
+      '<button type="button" class="chip tile chip-new" data-new="1" title="' + _t("Start a custom theme from the colours on screen") + '"><i aria-hidden="true"></i><span class="tile-n">' + _t("New theme") + '</span></button></div></div>';
     $("#themeChips").innerHTML = html;
   }
   function buildCustomUI(){
@@ -704,26 +750,20 @@
     r.setProperty("--bg", c.bg);      r.setProperty("--ink", c.ink);
     r.setProperty("--muted", c.muted);r.setProperty("--panel", c.panel);
     r.setProperty("--line", c.line);  r.setProperty("--accent", c.accent);
-    /* the design tokens app.css builds on: the lamp (a custom theme's accent), the tone that picks
-       the elevation style — shadows on a light page, lifted surfaces on a dark one, borders only
-       in the two high-contrast themes (e-ink is "light"; body.eink's own rules win) — and the
-       raised surface of a dark tone's cards and sheets, kept only while secondary text reads on it */
+    /* the design tokens app.css builds on: the lamp (a custom theme's accent), the raised surface
+       of cards and sheets (the table's, or customRaise's), and the tone that picks the elevation
+       style — shadows on a light page, lifted surfaces on a dark one, borders only in the two
+       high-contrast themes (e-ink is "light"; body.eink's own rules win) */
     var tone = eink ? "light" : HICON.indexOf(state.theme) >= 0 ? "contrast" : dark ? "dark" : "light";
-    var raise = c.panel;
-    if (tone === "dark"){ raise = mix(c.panel, c.ink, 0.05); if (contrast(c.muted, raise) < 4.5) raise = c.panel; }
     r.setProperty("--lamp", eink ? "#000000" : (t.lamp || t.accent));
-    r.setProperty("--raise", raise);
+    r.setProperty("--raise", eink ? c.panel : (t.raise || c.panel));
     root.setAttribute("data-tone", tone);
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
     /* the installed app's title bar takes the panel colour */
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", c.panel);
-    document.querySelectorAll("#themeChips .chip[data-theme]").forEach(function(ch){
-      var on = ch.dataset.theme === state.theme;
-      ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
-      if (on && custom){ var sw = ch.querySelector("i"); sw.style.setProperty("--sw-bg", t.bg); sw.style.setProperty("--sw-acc", t.accent); }
-    });
+    tileMark($("#themeChips"), t);
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
     /* the evening tint blends differently on a light and a dark page, and its ceiling depends
@@ -780,7 +820,7 @@
       var n = isNight();
       $("#autoHint").textContent = n === null ? "" : [n ? _t("It\u2019s night now \u2014 using the night theme.") : _t("It\u2019s day now \u2014 using the day theme."),
         state.auto === "system" ? _t("Follows your device\u2019s light / dark setting.") : "",
-        n ? _t("Picking a theme above changes the night theme.") : _t("Picking a theme above changes the day theme.")].filter(Boolean).join(" ");
+        n ? _t("Picking a theme below changes the night theme.") : _t("Picking a theme below changes the day theme.")].filter(Boolean).join(" ");
     }
     /* the user picked a theme by hand: keep auto on, but remember it for the current period */
     function userPicked(theme){
@@ -1321,14 +1361,11 @@
       document.documentElement.classList.add("lock-pop");
       btn.setAttribute("aria-expanded", "true");
       place();
-      /* the chosen theme scrolls into view only now that the popover has a layout (while it was
-         display:none scrollIntoView had nothing to measure); after place(), so "nearest" never
-         nudges the window */
-      if (id === "theme") showCurrent();
       rebase();
-      /* focus lands on the first control: the size (zoom) slider, or the chosen theme */
+      /* focus lands on the first control: the size (zoom) slider, or the chosen theme's tile (its
+         group is the one showing) */
       var first = id === "type" ? (panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
-                                : (panes.theme.querySelector(".strip .chip.on") || panes.theme.querySelector(".strip .chip"));
+                                : (panes.theme.querySelector(".tiles:not([hidden]) .chip.on") || panes.theme.querySelector(".tiles:not([hidden]) .chip"));
       (first || el).focus({ preventScroll: true });
     }
     function close(quiet){
@@ -1387,64 +1424,87 @@
     /* the footer link: the sheet opens at the group, and Escape there hands focus back to the bar button */
     $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#textGroup", a); });
 
-    /* ---- the theme pane: a strip of light themes, one of dark, and the auto choice ---- */
-    function chip(k){
-      var t = resolveTheme(k);
-      return t ? '<button type="button" class="chip" data-theme="' + k + '" aria-pressed="false">' + swatchHtml(t) + escapeHtml(themeName(k)) + '</button>' : "";
+    /* ---- the theme pane: Day / Night, switching by itself, the last few used, then one group of
+       tiles at a time behind a Light | Dark | Colour | High contrast switch. It opens on the group
+       of the theme on screen (so the pair at the top stays in view: nothing scrolls to it), and a
+       tile applies its theme and leaves the popover open ---- */
+    var qGroup = "light";
+    var GROUP_PANES = { light: "#qLight", dark: "#qDark", colour: "#qColour", hicon: "#qHi" };
+    function tile(k){ var t = resolveTheme(k); return t ? tileHtml(k, t) : ""; }
+    function groupOf(k){
+      var g = pickerGroups();
+      for (var i = 0; i < g.length; i++) if (g[i].ids.indexOf(k) >= 0) return g[i].id;
+      return "light";
+    }
+    function showGroup(id){
+      qGroup = GROUP_PANES[id] ? id : "light";
+      Array.prototype.forEach.call(panes.theme.querySelectorAll("#qGroups [role=tab]"), function(b){
+        var on = b.dataset.g === qGroup;
+        b.setAttribute("aria-selected", on ? "true" : "false"); b.classList.toggle("on", on); b.tabIndex = on ? 0 : -1;
+      });
+      Object.keys(GROUP_PANES).forEach(function(k){ $(GROUP_PANES[k]).hidden = k !== qGroup; });
     }
     function renderTheme(){
-      var groups = themeGroups(), light = groups[0].ids.slice(), dark = groups[1].ids.slice();
-      /* the saved themes join the row of their lightness; the two high-contrast ones have a row of their own */
-      state.customs.forEach(function(c){ (isDarkColor(c.bg) ? dark : light).push("c:" + c.id); });
-      $("#qLight").innerHTML = light.map(chip).join("");
-      $("#qDark").innerHTML = dark.map(chip).join("");
-      $("#qHi").innerHTML = HICON.map(chip).join("");
-      /* the last few used, the one on screen left out (it is marked in its own row) */
-      var recent = recentThemes().filter(function(k){ return k !== state.theme && resolveTheme(k); }).slice(0, 3);
-      $("#qRecent").innerHTML = recent.map(chip).join("");
+      var groups = pickerGroups();
+      groups.forEach(function(g){ $(GROUP_PANES[g.id]).innerHTML = g.ids.map(tile).join(""); });
+      /* the last few used, the one on screen left out (it is marked in its own group); a row of
+         four, and only when it offers a real choice (two or more) */
+      var recent = recentThemes().filter(function(k){ return k !== state.theme && resolveTheme(k); }).slice(0, 4);
+      if (recent.length < 2) recent = [];
+      $("#qRecent").innerHTML = recent.map(tile).join("");
       $("#qRecentSec").hidden = !recent.length;
+      showGroup(groupOf(state.theme));
     }
+    /* a Day / Night button's small page, in the colours of the theme it goes to */
+    function dnSwatch(b, k){ var t = resolveTheme(k), i = b.querySelector(".dn-sw"); if (t && i) i.setAttribute("style", tileVars(t)); }
     function syncTheme(){
-      var t = currentTheme(), custom = customById(state.theme);
-      /* the Day and Night buttons name the pair they go to, and the one on screen is pressed */
-      $("#qDayName").textContent = themeName(resolveTheme(state.autoDay) ? state.autoDay : "day");
-      $("#qNightName").textContent = themeName(resolveTheme(state.autoNight) ? state.autoNight : "dusk");
+      var t = currentTheme();
+      /* the Day and Night buttons name the pair they go to and show it, and the one on screen is
+         pressed; where a theme's name is the button's own word (Day on the Day button) the name
+         steps back and a pressed button says "Current" instead */
+      var day = resolveTheme(state.autoDay) ? state.autoDay : "day", night = resolveTheme(state.autoNight) ? state.autoNight : "dusk";
+      $("#qDayName").textContent = themeName(day);
+      $("#qNightName").textContent = themeName(night);
       Array.prototype.forEach.call(panes.theme.querySelectorAll(".dn"), function(b){
-        var on = state.theme === (b.dataset.dn === "day" ? state.autoDay : state.autoNight);
+        var k = b.dataset.dn === "day" ? day : night, on = state.theme === k;
         b.setAttribute("aria-pressed", on ? "true" : "false"); b.classList.toggle("on", on);
+        b.classList.toggle("same", b.querySelector(".dn-t").textContent.trim().toLowerCase() === themeName(k).trim().toLowerCase());
+        dnSwatch(b, k);
       });
-      Array.prototype.forEach.call(panes.theme.querySelectorAll(".strip .chip"), function(ch){
-        var on = ch.dataset.theme === state.theme;
-        ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
-        if (on && custom){ var sw = ch.querySelector("i"); sw.style.setProperty("--sw-bg", t.bg); sw.style.setProperty("--sw-acc", t.accent); }
-      });
+      tileMark(panes.theme, t);
       Array.prototype.forEach.call(panes.theme.querySelectorAll("#qAuto .chip"), function(ch){
         var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
       });
-    }
-    function showCurrent(){
-      var on = panes.theme.querySelector(".strip .chip.on");
-      if (on && on.scrollIntoView) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "instant" });
+      $("#qTimes").hidden = state.auto !== "time";
+      if (document.activeElement !== $("#qFrom")) $("#qFrom").value = state.nightFrom;
+      if (document.activeElement !== $("#qTo")) $("#qTo").value = state.nightTo;
     }
     panes.theme.addEventListener("click", function(e){
-      var ch = e.target.closest(".strip .chip");
-      if (ch){ selectTheme(ch.dataset.theme); showCurrent(); return; }
+      var tab = e.target.closest("#qGroups [role=tab]");
+      if (tab){ showGroup(tab.dataset.g); return; }
+      var ch = e.target.closest(".tiles .chip[data-theme]");
+      if (ch){ selectTheme(ch.dataset.theme); return; }
       var dn = e.target.closest(".dn");
       if (dn){
         var to = dn.dataset.dn === "day" ? state.autoDay : state.autoNight;
-        selectTheme(resolveTheme(to) ? to : (dn.dataset.dn === "day" ? "day" : "dusk")); showCurrent(); return;
+        to = resolveTheme(to) ? to : (dn.dataset.dn === "day" ? "day" : "dusk");
+        selectTheme(to); showGroup(groupOf(to)); return;
       }
       var a = e.target.closest("#qAuto .chip");
       if (a){ state.auto = a.dataset.auto; Prefs.save(); AutoTheme.apply(); syncTheme(); }
     });
-    /* the strips have no scrollbar: a mouse wheel over one moves it sideways instead of scrolling
-       the page away (which would also close the popover) */
-    Array.prototype.forEach.call(panes.theme.querySelectorAll(".strip"), function(s){
-      s.addEventListener("wheel", function(e){
-        if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || s.scrollWidth <= s.clientWidth) return;
-        e.preventDefault(); s.scrollLeft += e.deltaY;
-      }, { passive: false });
+    /* the group switch is a tab list: the arrow keys, Home and End move along it */
+    $("#qGroups").addEventListener("keydown", function(e){
+      var tabs = Array.prototype.slice.call(this.querySelectorAll("[role=tab]")), i = tabs.indexOf(document.activeElement), n = tabs.length, j = -1;
+      if (i < 0) return;
+      if (e.key === "ArrowRight") j = (i + 1) % n; else if (e.key === "ArrowLeft") j = (i + n - 1) % n;
+      else if (e.key === "Home") j = 0; else if (e.key === "End") j = n - 1;
+      if (j < 0) return;
+      e.preventDefault(); showGroup(tabs[j].dataset.g); tabs[j].focus();
     });
+    /* the night hours, the same as the sheet's (By time) */
+    $("#qFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); AutoTheme.apply(); });
+    $("#qTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); AutoTheme.apply(); });
     $("#themeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#themeGroup", a); });
 
     /* the open pane follows the state (applyType / applyTheme call this), and the page's height
@@ -1463,7 +1523,8 @@
       var top = g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop - (strip ? strip.offsetHeight : 0) - 2;
       if (SheetTabs) SheetTabs.mark(g.id, 700);
       sheet.scrollTo({ top: Math.max(0, top), behavior: noMotion() ? "auto" : "smooth" });
-      var first = g.querySelector("input, select, button");
+      /* the theme group: the pressed tile, where a keyboard picks up from */
+      var first = (sel === "#themeGroup" && g.querySelector('#themeChips .chip[aria-pressed="true"]')) || g.querySelector("input, select, button");
       if (first) first.focus({ preventScroll: true });
     }
 
@@ -10672,7 +10733,7 @@
   });
   $("#cFix").addEventListener("click", fixContrast);
   /* exposed for tests (not a public API) */
-  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
+  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, pickerGroups: pickerGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
     customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast };
 
   $("#flowChips").addEventListener("click", function(e){
@@ -10941,6 +11002,8 @@
       "  }",
       "}",
       ".ll-hit{background:var(--accent); color:var(--bg); border-radius:3px;}",
+      /* on a dark page the accent at full strength, dimmed under the scrim, turns murky: a tint with the text colour on it */
+      ":root[data-tone=dark] .ll-hit{background:color-mix(in oklab, var(--accent) 35%, transparent); color:var(--ink);}",
       /* text for screen readers only (the pill's announcement) */
       ".ll-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}",
       "#dictScrim{position:fixed; inset:0; z-index:59; background:var(--scrim); display:none; touch-action:none;}",
@@ -10960,7 +11023,7 @@
       "#dictCard:focus{outline:none;}",
       "#dictCard:focus-visible{outline:var(--ring) solid var(--accent); outline-offset:-2px;}",
       /* the handle: a 36 × 4 pill in a 24px grab zone */
-      "#dictCard .grab{flex:none; width:36px; height:4px; border-radius:999px; background:color-mix(in srgb, var(--ink) 22%, transparent); margin:10px auto;}",
+      "#dictCard .grab{flex:none; width:36px; height:4px; border-radius:999px; background:color-mix(in oklab, var(--hair), var(--ink) 40%); margin:10px auto;}",
       "#dictCard .inner{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}",
       /* head: the mark (a lamp-tinted round), the word or “This sentence” in the title face, a round close */
       "#dictCard .head{flex:none; display:flex; align-items:center; gap:12px; padding:4px 8px 0 16px; min-height:56px;}",
@@ -11126,7 +11189,7 @@
       "  display:inline-block; padding:2px 9px; border-radius:999px; flex:none;",
       "  font-size:var(--fs-small); line-height:1.55; white-space:nowrap; border:1px solid var(--line);",
       "}",
-      "#dictCard .pill.ink{background:color-mix(in srgb, var(--ink) 6%, transparent); color:var(--ink);}",
+      "#dictCard .pill.ink{background:var(--lamp-soft); color:var(--ink);}",
       "#dictCard .pill.acc{background:var(--accent-soft); border-color:var(--accent); color:var(--ink);}",
       "#dictCard .reg{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px;}",
       "#dictCard .reg .rnote{color:var(--muted); font-size:var(--fs-small); line-height:1.45;}",
@@ -11154,8 +11217,10 @@
       "  font:inherit; font-size:var(--fs-body); font-weight:600; cursor:pointer; transition:background-color var(--t-fade), border-color var(--t-fade), transform var(--t-press) var(--ease-out);",
       "}",
       "#dictCard .act svg{width:18px; height:18px; stroke-width:2;}",
-      "#dictCard .foot .act{background:var(--accent-soft); border-color:transparent;}",
-      "#dictCard .act:hover, #dictCard .foot .act:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);}",
+      "#dictCard .foot .act{background:var(--accent-soft); border-color:transparent; color:var(--ink);}",
+      /* the dark tone: the card's dividers and inner boxes in --hair (app.css), which stays visible on the raised surface */
+      ":root[data-tone=dark] #dictCard :is(.tabs, .foot, .tr-offer, .clause){border-color:var(--hair);}",
+      "@media (hover:hover){ #dictCard .act:hover, #dictCard .foot .act:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);} }",
       "#dictCard .act:active{transform:scale(.97);}",
       "#dictCard .act[aria-pressed=true]{background:var(--accent-soft); border-color:var(--accent);}",
       "#dictCard .act.go, #dictCard .act.go:hover{background:var(--lamp); border-color:var(--lamp); color:var(--on-fill);}",

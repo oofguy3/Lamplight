@@ -30,14 +30,15 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     let applied = 0, wrong = [];
     for (const id of ids){
       await page.evaluate((id) => window.llThemes.select(id), id);
-      if ((await cssVar("--bg")) === THEMES[id].bg.toLowerCase() && (await cssVar("--panel")) === THEMES[id].panel.toLowerCase()) applied++; else wrong.push(id);
+      if ((await cssVar("--bg")) === THEMES[id].bg.toLowerCase() && (await cssVar("--panel")) === THEMES[id].panel.toLowerCase() &&
+          (await cssVar("--raise")).toLowerCase() === THEMES[id].raise.toLowerCase() && (await cssVar("--lamp")).toLowerCase() === THEMES[id].lamp.toLowerCase()) applied++; else wrong.push(id);
     }
-    R.check("every built-in theme applies (" + applied + " of " + ids.length + ")", applied === ids.length && ids.length >= 25, wrong.join(","));
+    R.check("every built-in theme applies, its raised surface and lamp too (" + applied + " of " + ids.length + ")", applied === ids.length && ids.length >= 25, wrong.join(","));
     const groups = await page.evaluate(() => window.llThemes.groups().map((g) => g.name + ":" + g.ids.length).join(","));
-    R.check("built-ins are grouped light / dark / high contrast", /^Light:\d+,Dark:\d+,High contrast:2$/.test(groups), groups);
+    R.check("built-ins are grouped light / dark / colour / high contrast", /^Light:\d+,Dark:\d+,Colour:\d+,High contrast:2$/.test(groups), groups);
     await openSheet();
     const labels = await page.$$eval("#themeChips .chip-group-label", (els) => els.map((e) => e.textContent).join("|"));
-    R.check("chip groups are labelled", labels === "Light|Dark|High contrast|Custom", labels);
+    R.check("chip groups are labelled", labels === "Light|Dark|Colour|High contrast|Custom", labels);
     const chips = await page.$$eval("#themeChips .chip[data-theme]", (els) => els.length);
     R.check("one chip per built-in theme", chips === ids.length, String(chips));
     const sw = await page.$eval('#themeChips .chip[data-theme="ember"] i', (i) => getComputedStyle(i).backgroundColor + " / " + getComputedStyle(i, "::after").backgroundColor);
@@ -50,10 +51,12 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     await page.evaluate(() => window.llThemes.select("day"));
     await page.click("#lamp"); await page.waitForTimeout(150);
     R.check("the lamp opens the theme popover", await page.evaluate(() => window.llPop.is("theme") && document.getElementById("pop").classList.contains("open") && document.getElementById("lamp").getAttribute("aria-expanded") === "true"));
-    const rows = await page.evaluate(() => ({ light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length, hi: document.querySelectorAll("#qHi .chip").length,
+    const rows = await page.evaluate(() => ({ light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length, colour: document.querySelectorAll("#qColour .chip").length, hi: document.querySelectorAll("#qHi .chip").length,
       on: Array.from(document.querySelectorAll("#pop .strip .chip[aria-pressed=true]")).map((c) => c.dataset.theme).join(",") }));
-    const gs = await page.evaluate(() => window.llThemes.groups());
-    R.check("the popover lists the light, dark and high-contrast themes, each in its row, with the current one marked", rows.light === gs[0].ids.length && rows.dark === gs[1].ids.length && rows.hi === gs[2].ids.length && rows.on === "day", JSON.stringify(rows));
+    const gs = await page.evaluate(() => window.llThemes.pickerGroups());
+    R.check("the popover lists the light, dark, colour and high-contrast themes, each in its pane, with the current one marked", rows.light === gs[0].ids.length && rows.dark === gs[1].ids.length && rows.colour === gs[2].ids.length && rows.hi === gs[3].ids.length && rows.on === "day", JSON.stringify(rows));
+    const panes = await page.evaluate(() => ["qLight", "qDark", "qColour", "qHi"].map((id) => id + ":" + (document.getElementById(id).hidden ? "hidden" : "shown")).join(",") + " / " + document.querySelector("#qGroups [aria-selected=true]").id);
+    R.check("the popover opens on the current theme's group, the others hidden", panes === "qLight:shown,qDark:hidden,qColour:hidden,qHi:hidden / qTabLight", panes);
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
     await page.keyboard.press("t");
     R.check("the t key goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
@@ -63,7 +66,7 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     await page.keyboard.press("t");
     R.check("from a light theme that is neither, t goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
     const order = await page.evaluate(() => window.llThemes.groups().reduce((a, g) => a.concat(g.ids), []).join(","));
-    R.check("the theme order is lights, then darks, then high contrast", CYCLE.join(",") === order && CYCLE[0] === "day" && CYCLE[CYCLE.length - 1] === "hidark" && CYCLE.indexOf("dusk") > CYCLE.indexOf("mint"), CYCLE.join(","));
+    R.check("the theme order is lights, then darks, then colours, then high contrast", CYCLE.join(",") === order && CYCLE[0] === "day" && CYCLE[CYCLE.length - 1] === "hidark" && CYCLE.indexOf("dusk") > CYCLE.indexOf("mist") && CYCLE.indexOf("rose") > CYCLE.indexOf("candle"), CYCLE.join(","));
 
     /* 7. theme-color meta */
     await page.evaluate(() => window.llThemes.select("dusk"));
@@ -151,7 +154,7 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     /* 6. the day / night lists */
     await page.click('#autoChips .chip[data-auto="time"]');
     const opts = await page.$$eval("#autoDay optgroup", (gs) => gs.map((g) => g.label + ":" + g.querySelectorAll("option").length).join(","));
-    R.check("the day list is grouped and lists the saved themes", /^Light:\d+,Dark:\d+,High contrast:2,Custom:2$/.test(opts), opts);
+    R.check("the day list is grouped and lists the saved themes", /^Light:\d+,Dark:\d+,Colour:\d+,High contrast:2,Custom:2$/.test(opts), opts);
     const night = await page.$eval("#autoNight", (s, id) => { const o = s.querySelector('option[value="c:' + id + '"]'); return o && o.textContent; }, list[0].id);
     R.check("the night list has the saved theme by name", night === "Night reading", String(night));
     await page.selectOption("#autoNight", "c:" + list[0].id);

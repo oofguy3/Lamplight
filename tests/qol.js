@@ -163,11 +163,16 @@ const STUB = `(() => {
     await page.tap("#lamp"); await page.waitForTimeout(400);
     const tp = await page.evaluate(() => ({ dn: Array.from(document.querySelectorAll("#qDayNight .dn")).map((x) => x.querySelector(".dn-t").textContent + ":" + x.querySelector(".dn-n").textContent + (x.getAttribute("aria-pressed") === "true" ? "*" : "")),
       hi: Array.from(document.querySelectorAll("#qHi .chip")).map((x) => x.dataset.theme), recent: Array.from(document.querySelectorAll("#qRecent .chip")).map((x) => x.dataset.theme),
-      sw: Math.round(document.querySelector("#qLight .chip i").getBoundingClientRect().width), round: getComputedStyle(document.querySelector("#qLight .chip i")).borderRadius,
-      grid: getComputedStyle(document.getElementById("qLight")).display, nameUnder: (() => { const c = document.querySelector("#qLight .chip"), i = c.querySelector("i").getBoundingClientRect(), r = c.getBoundingClientRect(); return r.bottom - i.bottom > 10; })() }));
-    R.check("the theme popover leads with Day ⇄ Night (the pair it goes to, the one on screen pressed), then recent themes and a high-contrast row",
-      tp.dn.join() === "Day:Day*,Night:Dusk" && tp.hi.join() === "hicon,hidark" && tp.recent.join() === "dusk", JSON.stringify(tp));
-    R.check("phone: every theme in a wrapping grid of 44px round swatches with the name under each", tp.grid === "grid" && tp.sw === 44 && tp.round === "50%" && tp.nameUnder, JSON.stringify(tp));
+      tileH: Math.round(document.querySelector("#qLight .chip").getBoundingClientRect().height), cols: getComputedStyle(document.getElementById("qLight")).gridTemplateColumns.split(" ").length,
+      grid: getComputedStyle(document.getElementById("qLight")).display, nameUnder: (() => { const c = document.querySelector("#qLight .chip"), i = c.querySelector("i").getBoundingClientRect(), n = c.querySelector(".tile-n").getBoundingClientRect(); return n.top >= i.bottom && n.height > 10; })(),
+      badge: (() => { const on = document.querySelector('#qLight .chip[aria-pressed="true"]'); if (!on) return ""; const b = getComputedStyle(on, "::before"); return b.content + " " + b.width + " " + b.backgroundColor; })(),
+      accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
+    /* one recent theme is no choice: the Recent row waits for two */
+    R.check("the theme popover leads with Day ⇄ Night (the pair it goes to, the one on screen pressed), a high-contrast group, and no Recent row for a single theme",
+      tp.dn.join() === "Day:Day*,Night:Dusk" && tp.hi.join() === "hicon,hidark" && tp.recent.join() === "", JSON.stringify(tp));
+    const hex = (h) => "rgb(" + [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ") + ")";
+    R.check("phone: the themes as a grid of preview tiles at least 44px tall, four to a row, the name under each and a check badge on the one on screen",
+      tp.grid === "grid" && tp.cols === 4 && tp.tileH >= 44 && tp.nameUnder && /^"(\\2713|\u2713)" 20px /.test(tp.badge) && tp.badge.endsWith(hex(tp.accent)), JSON.stringify(tp));
     await page.tap('#qDayNight .dn[data-dn="night"]'); await page.waitForTimeout(200);
     R.check("Night is one tap", (await page.evaluate(() => window.__ll.state.theme)) === "dusk" && (await page.$eval('#qDayNight .dn[data-dn="night"]', (x) => x.getAttribute("aria-pressed"))) === "true");
     await page.tap('#qDayNight .dn[data-dn="day"]'); await page.waitForTimeout(200);

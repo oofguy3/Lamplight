@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.30-36";
+const VERSION = "2026.09.30-37";
 const CACHE = "lamplight-" + VERSION;
 /* the natural voices' runtime (vendor/kokoro/: kokoro-js and the 21.6 MB ONNX runtime both models run on;
    vendor/piper/: the Piper runtime and the phonemizer), kept apart from this version's cache so that it outlives a

@@ -1,9 +1,9 @@
   :root{
-    --bg:#EDEDE6; --ink:#1F2323; --muted:#646B68; --panel:#F5F5EF;
+    --bg:#EDEDE6; --ink:#1F2323; --muted:#5E6562; --panel:#F5F5EF;
     --line:#D8D9CF; --accent:#2F6D5B;
     /* the theme's lamp and raised surface (applyTheme sets both, with data-tone on this element;
        these are Day's until it runs) */
-    --lamp:#955F0F; --raise:#F5F5EF;
+    --lamp:#955F0F; --raise:#FBFBF7;
     --fsN:19; --fs:calc(var(--fsN) * 1rem / 16); --lh:1.75; --w:720px; --margin:0px;
     /* typography set in applyType: text weight, the heading and bold weights derived from it,
        letter and word spacing in em, and the gap under a paragraph */
@@ -14,15 +14,19 @@
     --title-font: 'LL Title', Georgia, 'Iowan Old Style', serif;
 
     /* ---- design tokens: "a lamp-lit book, a modern app" ----
-       Colours are only ever derived from the theme's six plus the lamp, so every built-in theme,
-       every custom one and e-ink mode (body.eink below) get their own. --accent is "chosen /
-       interactive" (a selected chip, a switch that is on, a slider's fill, links, the focus ring);
-       --lamp is "light, brand and now" (the progress line, the wordmark, primary actions, the
-       stars, the progress rings). Text on an accent or lamp fill is --on-fill (the panel colour:
-       both pairs are audited at 4.5:1 in tests/themes.js). */
+       Colours are only ever derived from the theme's six plus the lamp and the raised surface, so
+       every built-in theme, every custom one and e-ink mode (body.eink below) get their own.
+       --accent is "chosen / interactive" (a selected chip, a switch that is on, a slider's fill,
+       links, the focus ring); --lamp is "light, brand and now" (the progress line, the wordmark,
+       primary actions, the stars, the progress rings) and is the theme's own: brass in the warm
+       themes, blue in Sky, green in Forest. Text on an accent or lamp fill is --on-fill (the panel
+       colour); text on a --lamp-soft or --accent-soft tint is --ink, never the lamp or --muted
+       (lamp on lamp-soft is only about 4.2:1 on a light page). --line is a decorative divider only;
+       a boundary that carries meaning is --edge or the accent. tests/themes.js audits every pair. */
     --lamp-soft: color-mix(in srgb, var(--lamp) 14%, var(--panel));
     --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
     --glow: color-mix(in srgb, var(--lamp) 30%, transparent);           /* halos only; never carries meaning */
+    --hair: var(--line);                                                /* a card's edge and a divider on a raised surface (the dark tone makes it visible) */
     --edge: var(--muted);                                               /* the outline of a control whose boundary is the information */
     --ctl-line: color-mix(in srgb, var(--edge) 45%, var(--line));       /* a secondary button's, a chip's, a select's border */
     --well: color-mix(in srgb, var(--panel) 50%, var(--bg));            /* the sunken track of a segmented control, a select, a field */
@@ -47,14 +51,21 @@
     --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
     --ring: 2px;
   }
-  /* dark tone: depth from the surface, not from shadow — cards and sheets on the raised colour,
-     a hairline of light along their top edge */
+  /* dark tone: depth from the surface, not from shadow — cards and sheets on the raised colour
+     (the table's `raise`: a lift in the theme's own hue), their edges and dividers in --hair (the
+     text 16 % into the raised surface, about 1.5:1, so a card on a sheet keeps its outline), the
+     tints mixed in oklab (an sRGB mix of a saturated hue into near-black turns olive or brown),
+     and a real shadow under what floats */
   :root[data-tone="dark"]{
-    --scrim: color-mix(in srgb, var(--bg) 65%, transparent);
+    --hair: color-mix(in oklab, var(--ink) 16%, var(--raise));
+    --accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
+    --lamp-soft: color-mix(in oklab, var(--lamp) 16%, var(--raise));
+    --glow: color-mix(in oklab, var(--lamp) 26%, transparent);
+    --scrim: color-mix(in srgb, #000 55%, transparent);
     --shadow-1: none;
-    --shadow-2: 0 10px 28px -10px color-mix(in srgb, var(--bg) 90%, transparent), inset 0 1px 0 color-mix(in srgb, var(--ink) 7%, transparent);
-    --shadow-3: 0 -10px 28px -10px color-mix(in srgb, var(--bg) 90%, transparent), inset 0 1px 0 color-mix(in srgb, var(--ink) 7%, transparent);
-    --shadow-side: -10px 0 28px -10px color-mix(in srgb, var(--bg) 90%, transparent), inset 1px 0 0 color-mix(in srgb, var(--ink) 7%, transparent);
+    --shadow-2: 0 12px 32px -8px rgb(0 0 0 / .55), 0 0 0 1px var(--hair);
+    --shadow-3: 0 -16px 40px -8px rgb(0 0 0 / .6);
+    --shadow-side: -16px 0 40px -8px rgb(0 0 0 / .6);
     --ring: 3px;
   }
   /* contrast tone (Contrast, Contrast dark): no shadows, no tints; 2px borders in the text colour,
@@ -171,20 +182,20 @@
     transition:border-color var(--t-fade), background-color var(--t-fade), color var(--t-fade), transform var(--t-press) var(--ease-out);
   }
   .ctl[hidden]{display:none;}
-  .ctl:hover{background:var(--accent-soft);}
+  @media (hover:hover){ .ctl:hover{background:var(--accent-soft);} }
   .ctl:active{transform:scale(.97);}
   .ctl svg{width:20px; height:20px; flex:none;}
   .ctl.primary{background:var(--lamp); border-color:var(--lamp); color:var(--on-fill);}
-  .ctl.primary:hover{background:var(--lamp); box-shadow:0 0 0 4px var(--glow);}
+  @media (hover:hover){ .ctl.primary:hover{background:var(--lamp); box-shadow:0 0 0 4px var(--glow);} }
   .ctl.primary svg{width:20px; height:20px;}
-  .ctl.tonal{background:var(--accent-soft); border-color:transparent;}
-  .ctl.tonal:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);}
+  .ctl.tonal{background:var(--accent-soft); border-color:transparent; color:var(--ink);}
+  @media (hover:hover){ .ctl.tonal:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);} }
   /* in the bar the icon buttons are quiet: no border, a 22px icon, a tint while hovered, the
      accent's tint while their popover or menu is open */
   .bar .ctl{height:40px; min-width:40px;}
   .bar .ctl:not(.primary){border-color:transparent; padding:0; width:40px;}
   .bar .ctl svg{width:var(--icon-md); height:var(--icon-md);}
-  .bar .ctl:not(.primary):hover{background:color-mix(in srgb, var(--ink) 7%, transparent); border-color:transparent;}
+  @media (hover:hover){ .bar .ctl:not(.primary):hover{background:color-mix(in srgb, var(--ink) 7%, transparent); border-color:transparent;} }
   .bar .ctl[aria-expanded="true"], .bar .ctl[aria-expanded="true"]:hover{background:var(--accent-soft); border-color:transparent;}
   :root[data-tone="contrast"] .bar .ctl[aria-expanded="true"]{border-color:var(--accent);}
   /* "Aa" in the title face says "type" better than any icon */
@@ -223,7 +234,7 @@
     transition:border-color var(--t-fade), background-color var(--t-fade), color var(--t-fade);
     -webkit-appearance:none; appearance:none;
   }
-  .tab:hover{color:var(--ink); background:var(--accent-soft);}
+  @media (hover:hover){ .tab:hover{color:var(--ink); background:var(--accent-soft);} }
   .tab.on{color:var(--ink); border:var(--bw-sel) solid var(--accent); background:var(--accent-soft); font-weight:600;}
   .tab:focus-visible{outline-offset:2px;}
   .tab .tab-name{overflow:hidden; text-overflow:ellipsis; max-width:170px;}
@@ -232,7 +243,7 @@
   }
   .tab .tab-x svg{width:16px; height:16px; stroke-width:2;}
   .tab .tab-x:hover, .tab.on .tab-x, .tab:hover .tab-x{color:var(--ink);}
-  .tab .tab-x:hover{background:color-mix(in srgb, var(--ink) 10%, transparent);}
+  @media (hover:hover){ .tab .tab-x:hover{background:color-mix(in srgb, var(--ink) 10%, transparent);} }
   @media (pointer: coarse){
     .tab{height:40px; font-size:var(--fs-body);}
     .tab .tab-x{width:40px; height:40px; margin-right:0;}
@@ -284,7 +295,7 @@
   /* the handle and the title belong to a phone's bottom sheet (below) */
   .sheet-tabs .sheet-grab, .sheet-tabs .sheet-title{display:none;}
   #sheetScrim{position:fixed; inset:0; z-index:29; background:var(--scrim); display:none; touch-action:none;}
-  .sheet-tabs button:hover{color:var(--ink); background:var(--accent-soft);}
+  @media (hover:hover){ .sheet-tabs button:hover{color:var(--ink); background:var(--accent-soft);} }
   .sheet-tabs button.on{color:var(--ink); background:var(--accent-soft); border-color:var(--accent);}
   .sheet-tabs .sheet-x{flex:none; width:44px; height:44px; padding:0; display:inline-flex; align-items:center; justify-content:center; color:var(--ink); border-radius:50%;}
   .sheet-tabs .sheet-x svg{width:var(--icon-md); height:var(--icon-md);}
@@ -304,7 +315,7 @@
     .sheet-inner{padding:0 16px max(24px, env(safe-area-inset-bottom));}
     .sheet-tabs{grid-template-columns:minmax(0, 1fr) auto; grid-template-areas:"grab grab" "title x" "row row"; gap:0 4px; padding:0 0 10px; margin:0 -16px -8px; padding-left:16px; padding-right:12px;}
     .sheet-tabs .sheet-grab{display:flex; grid-area:grab; justify-content:center; align-items:center; height:22px; cursor:pointer;}
-    .sheet-tabs .sheet-grab::before{content:""; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in srgb, var(--ink) 22%, transparent);}
+    .sheet-tabs .sheet-grab::before{content:""; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in oklab, var(--hair), var(--ink) 40%);}
     .sheet-tabs .sheet-title{display:block; grid-area:title; align-self:center; padding:0 2px; font-family:var(--title-font); font-size:var(--fs-title); font-weight:600; line-height:1.3; color:var(--ink);}
     .sheet-tabs .sheet-x{grid-area:x; width:48px; height:48px;}
     .sheet-tabs-row{grid-area:row; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; overflow:visible; padding:6px 4px 0 0; -webkit-mask:none; mask:none;}
@@ -340,7 +351,7 @@
     transition:border-color var(--t-fade), background-color var(--t-fade), transform var(--t-press) var(--ease-out);
   }
   .chip svg{width:var(--icon-sm); height:var(--icon-sm); flex:none; stroke-width:2;}
-  .chip:hover{background:var(--accent-soft);}
+  @media (hover:hover){ .chip:hover{background:var(--accent-soft);} }
   .chip:active{transform:scale(.97);}
   .chip.on, .chip[aria-pressed="true"]{background:var(--accent-soft); border:var(--bw-sel) solid var(--accent); color:var(--ink); font-weight:600;}
   .chip.on:not(:has(> i))::before, .chip[aria-pressed="true"]:not(:has(> i))::before{
@@ -349,13 +360,13 @@
             mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
   }
   /* a tonal action: the accent's tint, no border (Swap the two, Export, Highlight, Copy…) */
-  .chip.tonal{background:var(--accent-soft); border-color:transparent;}
-  .chip.tonal:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);}
+  .chip.tonal{background:var(--accent-soft); border-color:transparent; color:var(--ink);}
+  @media (hover:hover){ .chip.tonal:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);} }
   :root[data-tone="contrast"] .chip.tonal{border-color:var(--line);}
   /* the contrast themes draw every control's edge at 2px in the text colour */
   :root[data-tone="contrast"] :is(.chip, .ctl, .sel, .tab, .jr-in, .v-filter, .find-row input, .toc-goto input, .cpick .hex, .mark-item textarea, .st-yg-in, .st-year-goal button){border-width:2px;}
   .chip:disabled{cursor:default; border-style:dashed;}
-  .chip:disabled:hover{background:transparent;}
+  @media (hover:hover){ .chip:disabled:hover{background:transparent;} }
   /* segmented control: a sunken pill holding its options; the chosen one is lifted onto the
      surface, with the accent's border */
   .seg{
@@ -365,7 +376,7 @@
   }
   .seg::-webkit-scrollbar{display:none;}
   .seg .chip{border-color:transparent; min-height:36px; padding:4px 16px; font-weight:500; flex:none;}
-  .seg .chip:hover{border-color:transparent; background:color-mix(in srgb, var(--ink) 6%, transparent);}
+  @media (hover:hover){ .seg .chip:hover{border-color:transparent; background:color-mix(in srgb, var(--ink) 6%, transparent);} }
   .seg .chip.on, .seg .chip[aria-pressed="true"]{background:var(--raise); border-color:var(--accent); font-weight:600; box-shadow:var(--shadow-1);}
   .seg .chip.on::before, .seg .chip[aria-pressed="true"]::before{display:none;}
   /* theme swatch: the theme's page colour with its accent as the lamp in the middle; the colours
@@ -560,7 +571,7 @@
     font-size:var(--fs-body); font-weight:600; min-height:40px; padding:6px 10px; margin-left:-10px; border-radius:var(--r-sm); cursor:pointer;
     text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:3px;
   }
-  .link-btn:hover{background:var(--accent-soft);}
+  @media (hover:hover){ .link-btn:hover{background:var(--accent-soft);} }
   /* a family with only two weights: the slider still picks between them, but it says so and
      steps back visually. Only the control fades — the words keep their full contrast. */
   .rowline.two-weights input[type=range], .prow.two-weights input[type=range]{opacity:.55;}
@@ -660,34 +671,109 @@
   #typePop.pdf #qSize, #typePop.pdf .doc-row{display:none;}
   #typePop.pdf #qZoom{display:block;}
   #typePop.pdf .pdf-row{display:flex;}
-  /* Day ⇄ Night: two large buttons for the Auto pair, the one on screen pressed, the theme each goes to under its word */
+  /* Day ⇄ Night: two large buttons for the Auto pair, each with a small page of the theme it goes
+     to, its word, and the theme's name under it; the one on screen is pressed. Where the name is
+     the word itself (the Day theme on the Day button) the name steps back, and the pressed one
+     says "Current" instead */
   .dn-pair{display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:var(--sp-2); margin-bottom:var(--sp-1);}
   .dn{
-    position:relative; display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto; align-items:center; column-gap:10px; row-gap:1px;
-    min-height:60px; padding:8px 14px; text-align:left; border:1.5px solid var(--ctl-line); border-radius:var(--r-lg); background:transparent; color:var(--ink);
+    position:relative; display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto; align-content:center; align-items:center; column-gap:12px; row-gap:1px;
+    min-height:56px; padding:6px 12px 6px 8px; text-align:left; border:1.5px solid var(--ctl-line); border-radius:var(--r-lg); background:transparent; color:var(--ink);
     font-family:var(--ui-font); cursor:pointer; transition:background-color var(--t-fade), border-color var(--t-fade), transform var(--t-press) var(--ease-out);
   }
-  .dn svg{grid-row:1 / span 2; width:var(--icon-lg); height:var(--icon-lg); color:var(--lamp);}
+  .dn .dn-sw{grid-row:1 / span 2;}
   .dn-t{font-size:var(--fs-body); font-weight:700; line-height:1.2;}
-  .dn-n{font-size:var(--fs-small); color:var(--muted); line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .dn:hover{background:var(--accent-soft);}
+  .dn-n, .dn-cur{font-size:var(--fs-small); color:var(--muted); line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .dn-cur, .dn.same .dn-n{display:none;}
+  .dn.same[aria-pressed="true"] .dn-cur{display:block;}
+  .dn.same:not([aria-pressed="true"]) .dn-t{grid-row:1 / span 2;}
+  @media (hover:hover){ .dn:hover{background:var(--accent-soft);} .dn:hover .dn-n{color:var(--ink);} }
   .dn:active{transform:scale(.98);}
   .dn[aria-pressed="true"]{background:var(--accent-soft); border:var(--bw-sel) solid var(--accent);}
-  .dn[aria-pressed="true"] .dn-n, .dn:hover .dn-n{color:var(--ink);}      /* the secondary colour on the tint can slip under 4.5:1 */
+  .dn[aria-pressed="true"] :is(.dn-n, .dn-cur){color:var(--ink);}      /* the secondary colour on the tint can slip under 4.5:1 */
   :root[data-tone="contrast"] .dn{border-width:2px;}
   #qRecentSec[hidden]{display:none;}
-  /* the theme rows: one scrolling strip of swatches each */
   .pop-sec{display:grid; gap:var(--sp-2);}
   .plabel{font-size:var(--fs-body); color:var(--ink);}
-  .pop-sec .plabel{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
-  .strip{
-    display:flex; gap:var(--sp-2); overflow-x:auto; scrollbar-width:none; padding:3px 24px 4px 3px; margin:0 -3px;
-    scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch;
-    /* the row fades out at its end: there is more to the right */
-    -webkit-mask:linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask:linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  .pop-sec .plabel, .sub-label{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+  .sub-label{margin:var(--sp-1) 0 calc(-1 * var(--sp-1));}
+  /* the theme group's column never grows past the sheet (a segment's max-content would widen it, and the tiles with it) */
+  #themeGroup{grid-template-columns:minmax(0, 1fr);}
+  /* switching by itself: the label over its three choices, the hours under them while By time is on */
+  #themePop .q-auto{display:grid; grid-template-columns:minmax(0, 1fr); gap:2px; min-height:0;}
+  #themePop .q-auto > .plabel{width:auto; font-size:var(--fs-small); color:var(--muted);}
+  #themePop .q-auto .seg{max-width:100%;}
+  #themePop .q-times{flex-wrap:nowrap; gap:var(--sp-2);}
+  #themePop .q-times[hidden]{display:none;}
+  #themePop .q-times > label{width:auto; flex:none; font-size:var(--fs-small);}
+  #themePop .q-times .sel{flex:1 1 0; min-width:0; min-height:40px; padding:0 10px; background-image:none;}
+  /* the group switch: one segmented row across the popover, its four options sharing the width */
+  .q-groups{display:grid; grid-template-columns:repeat(4, auto); width:100%; margin-top:var(--sp-1);}
+  #themePop .pop-head{min-height:32px; padding-bottom:0;}
+  #themePop{row-gap:6px;}
+  .q-groups .chip, .q-groups .chip.chip{min-height:36px;}
+  .q-groups .chip{padding:4px 8px; min-width:0; font-size:var(--fs-small); white-space:nowrap;}
+  /* ---- theme tiles: a small page of each theme — its page colour, "Aa" in its text colour, two
+     lines of secondary text, the panel as a strip along the bottom with the lamp as a button on
+     it — and the name under it. Four to a row in the popover, three in the sheet on a phone. The
+     edge is the theme's own text colour faded into its page, so a dark page on a dark sheet (or a
+     light one on a light sheet) always has one. The one on screen: an accent ring set off by a gap,
+     and a check in the corner, so it is marked by more than colour ---- */
+  .tiles{display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px 8px; padding:6px 2px 2px;}
+  .tiles[hidden]{display:none;}
+  .chip.tile{
+    display:grid; grid-template-columns:minmax(0, 1fr); align-content:start; gap:6px; min-width:0; min-height:0; padding:0;
+    border:0; border-radius:var(--r-md); background:transparent; text-align:center; font-weight:500;
   }
-  .strip::-webkit-scrollbar{display:none;}
-  .strip .chip{flex:none; scroll-snap-align:start; padding:4px 16px 4px 14px;}
+  :is(.chip.tile > i, .dn-sw){
+    position:relative; display:block; margin:0; overflow:hidden; forced-color-adjust:none;
+    background:var(--sw-bg, var(--bg)); border:1px solid color-mix(in oklab, var(--sw-ink, var(--ink)) 22%, var(--sw-bg, var(--bg)));
+    box-shadow:none; transition:box-shadow var(--t-fade);
+  }
+  .chip.tile > i{width:100%; height:52px; border-radius:12px;}
+  .dn-sw{width:44px; height:40px; border-radius:9px;}
+  /* "Aa" in the theme's text colour and title face */
+  :is(.chip.tile > i, .dn-sw) > b::before{content:"Aa";}
+  :is(.chip.tile > i, .dn-sw) > b{position:absolute; left:7px; top:4px; font-family:var(--title-font); font-weight:600; font-size:20px; line-height:1; color:var(--sw-ink, var(--ink));}
+  .dn-sw > b{left:5px; top:3px; font-size:14px;}
+  /* two lines of secondary text */
+  :is(.chip.tile > i, .dn-sw) > s{position:absolute; height:3px; border-radius:2px; background:var(--sw-mut, var(--muted)); left:36px; right:8px; top:9px;}
+  :is(.chip.tile > i, .dn-sw) > s + s{top:17px; right:16px;}
+  .dn-sw > s{left:24px; right:5px; top:6px; height:2px;}
+  .dn-sw > s + s{top:11px; right:9px;}
+  /* the panel strip, and the lamp as a button on it */
+  :is(.chip.tile > i, .dn-sw)::before{content:""; position:absolute; left:0; right:0; bottom:0; height:16px; background:var(--sw-pan, var(--panel));}
+  .chip.tile > i::after, .dn-sw::after{content:""; position:absolute; inset:auto 7px 3px auto; width:26px; height:10px; border-radius:var(--r-pill); background:var(--sw-acc, var(--accent));}
+  .dn-sw::before{height:13px;}
+  .dn-sw::after{inset:auto 5px 3px auto; width:16px; height:7px;}
+  .tile-n{display:block; min-width:0; font-size:13px; line-height:1.25; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  @media (hover:hover){
+    .chip.tile:hover{background:transparent;}
+    .chip.tile:hover > i{box-shadow:0 0 0 2px var(--raise), 0 0 0 4px var(--ctl-line);}
+  }
+  .chip.tile:active{transform:scale(.97);}
+  .chip.tile.on, .chip.tile[aria-pressed="true"]{background:transparent; border:0; font-weight:700;}
+  .chip.tile:is(.on, [aria-pressed="true"]) > i{box-shadow:0 0 0 2px var(--raise), 0 0 0 5px var(--accent);}
+  .chip.tile:is(.on, [aria-pressed="true"])::before{
+    content:"\2713"; position:absolute; z-index:1; top:-7px; right:-7px; width:20px; height:20px; margin:0; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; background:var(--accent); color:var(--on-fill);
+    font-size:12px; font-weight:800; line-height:1; -webkit-mask:none; mask:none; box-shadow:0 0 0 2px var(--raise);
+  }
+  .chip.tile:focus-visible{outline:none;}
+  .chip.tile:focus-visible > i{outline:var(--ring) solid var(--accent); outline-offset:4px;}
+  /* New theme: a dashed empty page with a plus */
+  .chip-new.tile > i{background:transparent; border:1.5px dashed var(--ctl-line);}
+  .chip-new.tile > i::before{display:none;}
+  .chip-new.tile > i::after{content:"+"; inset:0; width:auto; height:auto; border-radius:0; background:none; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:300; line-height:1; color:var(--muted);}
+  /* the sheet: three to a row on a phone, as many as fit on a wider screen */
+  #themeChips .tiles{grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:14px 10px;}
+  @media (max-width:560px){ #themeChips .tiles{grid-template-columns:repeat(3, minmax(0, 1fr));} }
+  :root[data-tone="contrast"] :is(.chip.tile > i, .dn-sw){border-width:2px; border-color:var(--ink);}
+  body.eink .chip.tile:is(.on, [aria-pressed="true"]){background:transparent !important; color:#000 !important; --ink:#000; --accent:#000; --on-fill:#fff; --raise:#fff;}
+  @media (forced-colors: active){
+    :is(.chip.tile > i, .dn-sw){outline:1px solid ButtonText; outline-offset:1px;}
+    .chip.tile:is(.on, [aria-pressed="true"]) > i{outline:3px solid Highlight; outline-offset:2px;}
+  }
   /* a step in from the popover: the rows most readers set once (weight, letter and word spacing) */
   .pop-more{border:1px solid var(--line); border-radius:var(--r-md); padding:0 var(--sp-3);}
   .pop-more summary, .cst-adv summary{list-style:none;}
@@ -710,26 +796,9 @@
     content:""; position:absolute; z-index:-1; top:0; bottom:0; left:calc(-1 * var(--sp-4)); right:calc(-1 * var(--sp-4));
     border-top:1px solid var(--line); border-radius:0 0 var(--r-lg) var(--r-lg); transition:background-color var(--t-fade);
   }
-  .pop-link:hover::before{background:var(--accent-soft);}
+  @media (hover:hover){ .pop-link:hover::before{background:var(--accent-soft);} }
   .pop-link:focus-visible{outline-offset:-2px;}
   .pop-link svg{width:var(--icon-sm); height:var(--icon-sm); stroke-width:2; flex:none;}
-  /* phones: every theme at once — a wrapping grid of 44px round swatches, each with its name under it */
-  @media (max-width:560px){
-    #themePop .strip{
-      display:grid; grid-template-columns:repeat(auto-fill, minmax(66px, 1fr)); gap:10px 2px; overflow:visible; padding:4px 0 2px; margin:0;
-      -webkit-mask:none; mask:none; scroll-snap-type:none;
-    }
-    #themePop .strip .chip{
-      flex-direction:column; justify-content:flex-start; gap:6px; min-height:0; padding:4px 2px; border:0; border-radius:var(--r-md);
-      background:transparent; font-size:var(--fs-eyebrow); line-height:1.2; text-align:center; font-weight:500;
-    }
-    #themePop .strip .chip i{width:44px; height:44px; margin:0; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ink) 28%, transparent);}
-    #themePop .strip .chip i::after{inset:14px;}
-    #themePop .strip .chip:hover{background:var(--accent-soft);}
-    #themePop .strip .chip.on, #themePop .strip .chip[aria-pressed="true"]{background:transparent; border:0; font-weight:700;}
-    #themePop .strip .chip.on i, #themePop .strip .chip[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--raise), 0 0 0 4px var(--accent);}
-    #themePop .strip .chip::after{inset:0;}
-  }
   @media (max-width:560px){
     #pop{
       display:block; left:0; right:0; bottom:0; top:auto !important; width:auto; max-width:none;
@@ -741,7 +810,7 @@
     }
     #pop.open{animation:none; transform:none; visibility:visible; transition:transform var(--t-sheet) var(--ease-out), visibility 0s, background var(--t-theme) ease;}
     /* the handle: a 36 × 4 pill in a 24px grab zone */
-    .pop-handle{display:block; position:relative; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in srgb, var(--ink) 22%, transparent); margin:10px auto 10px; cursor:pointer;}
+    .pop-handle{display:block; position:relative; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in oklab, var(--hair), var(--ink) 40%); margin:10px auto 10px; cursor:pointer;}
     .pop-handle::after{content:""; position:absolute; inset:-10px -40px;}
     .prow{min-height:48px;}
     .pop-link{margin-bottom:0;}
@@ -765,7 +834,7 @@
     display:block; width:100%; min-height:48px; text-align:left; padding:10px 12px; border:var(--bw-sel) solid transparent; border-radius:var(--r-md);
     background:transparent; color:var(--ink); cursor:pointer; font-family:var(--ui-font);
   }
-  .font-item:hover{background:var(--accent-soft);}
+  @media (hover:hover){ .font-item:hover{background:var(--accent-soft);} }
   .font-item[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-soft);}
   .font-item .font-name{display:block; font-size:1.1875rem; line-height:1.3;}
   .font-item[aria-pressed="true"] .font-name::after{content:"\2713"; font-family:var(--ui-font); font-size:.8em; color:var(--ink); margin-left:8px;}
@@ -882,11 +951,12 @@
   .lib-count{font-weight:600; letter-spacing:0; margin-left:4px;}
   .lib-count:empty{display:none;}
   /* the journal: a tonal button with its icon; Clear library is apart, after the list (.lib-danger) */
-  .lib-head #libJournal{min-height:40px; padding:4px 14px 4px 12px; gap:6px; font-size:var(--fs-small); font-weight:600; color:var(--ink);}
+  .lib-head #libJournal{min-height:40px; padding:4px 14px 4px 12px; gap:6px; font-size:var(--fs-small); font-weight:600; color:var(--ink); background:var(--lamp-soft);}
+  @media (hover:hover){ .lib-head #libJournal:hover{background:color-mix(in oklab, var(--lamp) 26%, var(--raise));} }
   .lib-head #libJournal svg{width:var(--icon-sm); height:var(--icon-sm); color:var(--lamp); stroke-width:2;}
   .lib-danger{display:flex; justify-content:center; margin-top:var(--sp-8); padding-top:var(--sp-3); border-top:1px solid var(--line);}
   .link-btn.danger{margin-left:0; color:var(--muted); font-weight:500; font-size:var(--fs-small);}
-  .link-btn.danger:hover{color:var(--ink); background:color-mix(in srgb, var(--ink) 6%, transparent);}
+  @media (hover:hover){ .link-btn.danger:hover{color:var(--ink); background:color-mix(in srgb, var(--ink) 6%, transparent);} }
   .lib-list{display:grid; gap:var(--sp-3);}
   /* "Pinned" and "Recent" over the two halves of the list; only drawn once something is pinned */
   .lib-group{margin:var(--sp-2) 4px 0;}
@@ -1223,12 +1293,12 @@
      title face, the section and the time left under it */
   #pager{
     display:none; align-items:center; justify-content:space-between; gap:var(--sp-3);
-    background:var(--raise); border-top:1px solid var(--line);
+    background:var(--panel); border-top:1px solid var(--line);
     padding:8px 16px calc(8px + env(safe-area-inset-bottom));
     transition:background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
   #pager .ctl{width:48px; height:48px; min-width:48px; padding:0; border-radius:50%; border-color:transparent; background:var(--accent-soft);}
-  #pager .ctl:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);}
+  @media (hover:hover){ #pager .ctl:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);} }
   :root[data-tone="contrast"] #pager .ctl{border-color:var(--line);}
   #pgInfo{
     display:flex; flex-wrap:wrap; align-items:baseline; justify-content:center; flex:0 1 auto; min-width:0; max-width:100%;
@@ -1281,7 +1351,7 @@
   body.phonebar #actRow{
     display:flex; align-items:center; justify-content:space-around; gap:var(--sp-1);
     min-height:60px; padding:6px 8px calc(6px + env(safe-area-inset-bottom));
-    background:var(--raise); border-top:1px solid var(--line);
+    background:var(--panel); border-top:1px solid var(--line);
     transition:background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
   body.phonebar #tts.on ~ #actRow, body.phonebar.paged #pager ~ #actRow{border-top-color:color-mix(in srgb, var(--line) 60%, transparent);}
@@ -1339,10 +1409,10 @@
     border:0; border-radius:var(--r-sm); background:transparent; color:var(--ink); text-align:left;
     font-family:var(--ui-font); font-size:var(--fs-body); cursor:pointer; transition:background-color var(--t-press);
   }
-  #moreMenu button:hover{background:var(--accent-soft);}
+  @media (hover:hover){ #moreMenu button:hover{background:var(--accent-soft);} }
   #moreMenu button:focus-visible{outline-offset:-2px;}
   #moreMenu button[disabled]{opacity:.4; cursor:default;}
-  #moreMenu button[disabled]:hover{background:transparent;}
+  @media (hover:hover){ #moreMenu button[disabled]:hover{background:transparent;} }
   #moreMenu .mi{flex:none; width:var(--icon-md); height:var(--icon-md); display:flex; color:var(--muted);}
   #moreMenu .mi svg{width:var(--icon-md); height:var(--icon-md);}
   #moreMenu button:hover .mi, #moreMenu button.on .mi{color:var(--ink);}
@@ -1361,7 +1431,7 @@
     }
     #moreMenu.open{animation:rise var(--t-sheet) var(--ease-out);}
     #moreMenu .menu-grab{display:flex; justify-content:center; align-items:center; height:24px; margin-bottom:4px; cursor:pointer;}
-    #moreMenu .menu-grab::before{content:""; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in srgb, var(--ink) 22%, transparent);}
+    #moreMenu .menu-grab::before{content:""; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in oklab, var(--hair), var(--ink) 40%);}
     #moreMenu .menu-group{padding:6px 0 var(--sp-4);}
     #moreMenu .menu-group + .menu-group{margin-top:0; padding-top:var(--sp-4);}
     #moreMenu .label{padding:0 2px var(--sp-2);}
@@ -1374,7 +1444,7 @@
       border:1px solid var(--line); border-radius:var(--r-md); background:var(--raise); text-align:center; font-size:var(--fs-small); line-height:1.25;
       box-shadow:var(--shadow-1);
     }
-    #moreMenu button:hover{background:var(--accent-soft);}
+    @media (hover:hover){ #moreMenu button:hover{background:var(--accent-soft);} }
     #moreMenu button > span{flex:none; white-space:normal; overflow:visible; text-overflow:clip;}
     #moreMenu .mi{color:var(--ink); width:var(--icon-lg); height:var(--icon-lg);}
     #moreMenu .mi svg{width:var(--icon-lg); height:var(--icon-lg);}
@@ -1463,7 +1533,7 @@
   #side .side-foot{display:flex; gap:var(--sp-2); flex-wrap:wrap; padding:var(--sp-3) var(--sp-4) max(12px, env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:var(--raise);}
   /* the foot's actions are tonal: the accent's tint, no border */
   #side .side-foot .chip:not(.on):not([aria-pressed="true"]){background:var(--accent-soft); border-color:transparent; font-weight:600;}
-  #side .side-foot .chip:not(.on):not([aria-pressed="true"]):hover{background:color-mix(in srgb, var(--accent) 24%, transparent);}
+  @media (hover:hover){ #side .side-foot .chip:not(.on):not([aria-pressed="true"]):hover{background:color-mix(in srgb, var(--accent) 24%, transparent);} }
   :root[data-tone="contrast"] #side .side-foot .chip{border-color:var(--line) !important;}
   #side .empty-note{color:var(--muted); font-size:var(--fs-body); padding:var(--sp-6) var(--sp-2); text-align:center; line-height:1.5;}
   /* an empty state: a lamp-tinted round with a line icon, a title, one sentence */
@@ -1484,7 +1554,7 @@
     #side{top:auto; left:0; width:100%; max-height:85vh; border-left:0; border-top:1px solid var(--line); border-radius:var(--r-xl) var(--r-xl) 0 0;
       box-shadow:var(--shadow-3); transform:translateY(105%);}
     #side .side-grab{display:flex; justify-content:center; align-items:center; height:24px; cursor:pointer;}
-    #side .side-grab::before{content:""; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in srgb, var(--ink) 22%, transparent);}
+    #side .side-grab::before{content:""; width:36px; height:4px; border-radius:var(--r-pill); background:color-mix(in oklab, var(--hair), var(--ink) 40%);}
     #side .side-head{min-height:56px; padding-top:0;}
   }
   @media (max-width:400px){
@@ -1567,7 +1637,7 @@
      Three columns, the outer two equal, so the play button is always in the middle */
   #tts{
     display:none; position:relative; grid-template-columns:minmax(0, 1fr) auto auto auto minmax(0, 1fr); align-items:center; gap:var(--sp-1);
-    background:var(--raise); border-top:1px solid var(--line); padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    background:var(--panel); border-top:1px solid var(--line); padding:8px 12px calc(8px + env(safe-area-inset-bottom));
     transition:background var(--t-theme) ease, border-color var(--t-theme) ease; font-family:var(--ui-font);
   }
   #tts.on{display:grid;}
@@ -1806,7 +1876,9 @@
   @media (forced-colors: active){
     .v-tag, .v-card, .v-play{border-color:ButtonText;}
   }
-  ::highlight(ll-speak){background:color-mix(in srgb, var(--lamp) 24%, transparent); color:inherit;}
+  ::highlight(ll-speak){background:color-mix(in oklab, var(--lamp) 24%, transparent); color:inherit;}
+  /* on a dark page a lighter band and a line under it: the sentence reads as marked without a slab of colour */
+  :root[data-tone="dark"] ::highlight(ll-speak){background:color-mix(in oklab, var(--lamp) 18%, transparent); text-decoration:underline 2px color-mix(in oklab, var(--lamp) 70%, transparent); text-underline-offset:3px;}
   ::highlight(ll-speak-dialogue){background:color-mix(in srgb, var(--lamp) 12%, transparent); color:inherit; text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--lamp) 65%, transparent);}
 
   /* search */
@@ -1829,6 +1901,23 @@
   .find-item.cur b{color:var(--ink); text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:2px;}
   ::highlight(ll-find){background:color-mix(in srgb, var(--accent) 28%, transparent); color:inherit;}
   ::highlight(ll-find-cur){background:var(--accent); color:var(--bg);}
+
+  /* ---------- the dark tone's surfaces and edges ----------
+     What floats (the sheet, the popover, the menu, the side panel, the word card) is --raise with
+     a visible --hair rim along its top; the bars stay the panel colour. A card, tile or divider on
+     a raised surface is drawn in --hair, which stays visible where --line (made for the page) melts
+     into the lifted colour. The contrast tone and e-ink keep their own rules (neither is "dark"). */
+  :root[data-tone="dark"] :is(#sheet, #pop, #moreMenu, #side, #dictCard){border-color:var(--hair);}
+  :root[data-tone="dark"] :is(.card, .lib-item, #continueCard, #tips, .v-card, .jr-item, .bk-row, .about-tile, .about-level, .st-widget, .mark-item,
+    .pop-more, .cst-adv, .sheet-tabs, .group + .group, .cst-head, #side .side-top, #side .side-foot, #moreMenu .menu-group + .menu-group, #moreMenu .menu-col + .menu-col,
+    .st-sec, .st-book, .v-row + .v-row, .v-item + .v-item, .cast-row){border-color:var(--hair);}
+  :root[data-tone="dark"] #moreMenu button:not(.on):not(.menu-gear){border-color:var(--hair);}
+  :root[data-tone="dark"] #moreMenu .menu-quick button:not(.on){border-color:transparent;}
+  @media (hover:hover){
+    :root[data-tone="dark"] :is(.lib-item, #continueCard, .jr-item, .st-widget, .mark-item):hover{border-color:var(--ctl-line);}
+  }
+  /* a segmented control's chosen option: a lift of the text colour (the dark tone has no shadow to lift it with) */
+  :root[data-tone="dark"] .seg .chip:is(.on, [aria-pressed="true"]){background:color-mix(in oklab, var(--ink) 10%, var(--raise)); border-color:var(--accent); box-shadow:none;}
 
   /* table of contents */
   /* contents: the chapter being read is marked by the lamp's bar and the text's weight */
