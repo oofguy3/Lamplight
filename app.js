@@ -259,6 +259,30 @@
     graphite:  {name:"Graphite",      family:"neutral", bg:"#1E1F22", panel:"#26272B", raise:"#2D2E33", ink:"#D8D8D5", muted:"#A0A09C", line:"#3A3B41", accent:"#74D0B8", lamp:"#74D0B8"},
     noir:      {name:"Noir",          family:"neutral", bg:"#000000", panel:"#0B0B0B", raise:"#141414", ink:"#C6C6C6", muted:"#8E8E8E", line:"#262626", accent:"#EDEDED", lamp:"#EDEDED"},
     terminal:  {name:"Terminal",      family:"neutral", bg:"#050805", panel:"#0A110A", raise:"#0F190F", ink:"#3FE86F", muted:"#2FA354", line:"#183018", accent:"#D9FF6E", lamp:"#D9FF6E"},
+    /* Dutch: Delft blue, Vermeer, Rembrandt, the tulip fields, the polder and the canals at dusk */
+    delft:      {name:"Delft blue",  family:"cool",   bg:"#F2F4F3", panel:"#F8F9F8", raise:"#FFFFFF", ink:"#13285A", muted:"#4A5878", line:"#D2D9E6", accent:"#2350B0", lamp:"#1A3E8E"},
+    vermeer:    {name:"Vermeer",     family:"cool",   bg:"#11131B", panel:"#181B26", raise:"#202432", ink:"#ECE6D8", muted:"#A3A099", line:"#2D3243", accent:"#8EA6F0", lamp:"#F0D04C"},
+    rembrandt:  {name:"Rembrandt",   family:"warm",   bg:"#16140C", panel:"#1E1B11", raise:"#272317", ink:"#EBD9A8", muted:"#A99A76", line:"#383120", accent:"#DE8A55", lamp:"#F0B93A"},
+    tulips:     {name:"Tulip field", family:"warm",   bg:"#FBF2E4", panel:"#FDF7EE", raise:"#FFFCF7", ink:"#2E1E1A", muted:"#6E5650", line:"#ECDCC6", accent:"#2E6A3A", lamp:"#C0263A"},
+    polder:     {name:"Polder",      family:"cool",   bg:"#E2E5E4", panel:"#EBEDEC", raise:"#F3F4F4", ink:"#22282A", muted:"#565E61", line:"#CBD1D1", accent:"#2D5F7F", lamp:"#2E6B1F"},
+    canals:     {name:"Canals",      family:"cool",   bg:"#0E1F22", panel:"#13292D", raise:"#193337", ink:"#DCE6E2", muted:"#93A8A6", line:"#24403F", accent:"#E58E6C", lamp:"#F2C66B"},
+    /* nature and the seasons */
+    autumn:     {name:"Autumn wood", family:"warm",   bg:"#1E2316", panel:"#252B1C", raise:"#2D3422", ink:"#EDE3CC", muted:"#ABA58C", line:"#3A4229", accent:"#E8A04A", lamp:"#F08A4B"},
+    winter:     {name:"Winter morning", family:"cool",   bg:"#ECEFF4", panel:"#F4F6F9", raise:"#FAFBFD", ink:"#1B2733", muted:"#536070", line:"#D3D9E3", accent:"#2C5F8A", lamp:"#A93F55"},
+    aurora:     {name:"Northern lights", family:"cool",   bg:"#0A1218", panel:"#0F1A22", raise:"#15222C", ink:"#D5E4E6", muted:"#8CA3A8", line:"#1F3340", accent:"#5EE0A5", lamp:"#C49BFF"},
+    seaair:     {name:"Sea air",     family:"cool",   bg:"#E3EEF1", panel:"#EDF5F7", raise:"#F6FAFB", ink:"#12302F", muted:"#476663", line:"#C4DCE0", accent:"#0F5F7A", lamp:"#A6421B"},
+    blossom:    {name:"Cherry blossom", family:"warm",   bg:"#FBEDF1", panel:"#FDF5F7", raise:"#FFFAFB", ink:"#3A2229", muted:"#78545E", line:"#EFD5DC", accent:"#5A3A33", lamp:"#B3366A"},
+    /* cozy rooms */
+    coffee:     {name:"Coffee house", family:"warm",   bg:"#E6D5C3", panel:"#EEE2D5", raise:"#F6EFE7", ink:"#2E2018", muted:"#654F40", line:"#D5C0AA", accent:"#8A3B22", lamp:"#84490F"},
+    library:    {name:"Old library", family:"warm",   bg:"#0F231B", panel:"#152B22", raise:"#1B3429", ink:"#E8DFC6", muted:"#A7A38C", line:"#26402F", accent:"#E0947F", lamp:"#D6B05A"},
+    rain:       {name:"Rainy evening", family:"cool",   bg:"#151C26", panel:"#1B2430", raise:"#222C3A", ink:"#D3D9E0", muted:"#929BA6", line:"#323C4A", accent:"#9CC0E6", lamp:"#F3A04A"},
+    cabin:      {name:"Candle cabin", family:"warm",   bg:"#3A2516", panel:"#432C1C", raise:"#4C3322", ink:"#FBE9CC", muted:"#D0B698", line:"#5A4030", accent:"#F7A891", lamp:"#FFD27A"},
+    nighttrain: {name:"Night train", family:"warm",   bg:"#1A0F14", panel:"#22141B", raise:"#2B1A22", ink:"#EADBD8", muted:"#AE959B", line:"#3D2530", accent:"#9DBDF0", lamp:"#F2B45A"},
+    /* textured: a faint paper or cloth surface behind the text (app.css [data-texture]; off in e-ink, high contrast and with Plain background) */
+    handmade:   {name:"Handmade paper", family:"neutral",bg:"#F1EEE7", panel:"#F7F5F0", raise:"#FCFBF8", ink:"#222120", muted:"#5D5A55", line:"#DCD8CE", accent:"#24508F", lamp:"#8A5A14", texture:"grain"},
+    bookcloth:  {name:"Book cloth",  family:"cool",   bg:"#E4E6DE", panel:"#ECEEE7", raise:"#F4F5F1", ink:"#23261F", muted:"#565B51", line:"#CDD1C4", accent:"#3F5D7A", lamp:"#7A4E1C", texture:"linen"},
+    laid:       {name:"Laid paper",  family:"warm",   bg:"#EEEBDC", panel:"#F5F3E8", raise:"#FBFAF4", ink:"#26251C", muted:"#5E5B4A", line:"#D9D5C0", accent:"#6B3F86", lamp:"#8C5A12", texture:"laid"},
+    vellum:     {name:"Vellum",      family:"warm",   bg:"#F2E9DE", panel:"#F8F2EA", raise:"#FCF9F5", ink:"#2A2019", muted:"#66584C", line:"#E0D2C0", accent:"#2B4C9A", lamp:"#A3361C", texture:"vellum"},
     /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
     hicon:     {name:"Contrast",      family:"neutral", bg:"#FFFFFF", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
     hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
@@ -269,11 +293,20 @@
   var THEME_GROUPS = {
     light:  ["day", "paper", "sepia", "parchment", "linen", "newsprint", "mist"],
     dark:   ["dusk", "ink", "graphite", "cocoa", "slate", "noir", "candle"],
-    colour: ["rose", "peach", "sage", "mint", "sky", "lavender", "forest", "moss", "ocean", "midnight", "plum", "ember", "terminal", "amber"]
+    colour: ["rose", "peach", "sage", "mint", "sky", "lavender", "forest", "moss", "ocean", "midnight", "plum", "ember", "terminal", "amber"],
+    /* the four collections: one Collections tab in the picker, a labelled section each */
+    dutch:   ["delft", "vermeer", "rembrandt", "tulips", "polder", "canals"],
+    nature:  ["autumn", "winter", "aurora", "seaair", "blossom"],
+    cozy:    ["coffee", "library", "rain", "cabin", "nighttrain"],
+    texture: ["handmade", "bookcloth", "laid", "vellum"]
   };
+  var COLLECTIONS = ["dutch", "nature", "cozy", "texture"];
   function themeGroups(){
     return [{ id: "light", name: _t("Light"), ids: THEME_GROUPS.light.slice() }, { id: "dark", name: _t("Dark"), ids: THEME_GROUPS.dark.slice() },
-      { id: "colour", name: _t("Colour"), ids: THEME_GROUPS.colour.slice() }, { id: "hicon", name: _t("High contrast"), ids: HICON.slice() }];
+      { id: "colour", name: _t("Colour"), ids: THEME_GROUPS.colour.slice() },
+      { id: "dutch", name: _tc("theme group", "Dutch"), ids: THEME_GROUPS.dutch.slice() }, { id: "nature", name: _t("Nature and seasons"), ids: THEME_GROUPS.nature.slice() },
+      { id: "cozy", name: _t("Cozy"), ids: THEME_GROUPS.cozy.slice() }, { id: "texture", name: _t("Textured"), ids: THEME_GROUPS.texture.slice() },
+      { id: "hicon", name: _t("High contrast"), ids: HICON.slice() }];
   }
   var CYCLE = themeGroups().reduce(function(all, g){ return all.concat(g.ids); }, []);
   /* a theme's name on screen: a built-in's in the interface's language (the table above keeps the
@@ -373,7 +406,7 @@
        flow to go back to when it is turned off, einkAsked that a slow screen was offered it (see Eink) */
     dim:false, dimLevel:40, dimNight:false, eink:null, einkFlow:null, einkAsked:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
-    zoom:1, soften:true,
+    zoom:1, soften:true, plainBg:false,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
     mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
   };
@@ -381,7 +414,7 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "plainBg", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked"];
     var loading = false;
     /* a number inside its range, or the default when the stored value is nonsense */
     function num(v, lo, hi, dflt){
@@ -460,6 +493,7 @@
       state.eink = state.eink === true ? true : state.eink === false ? false : null;
       if (state.einkFlow !== "scroll" && state.einkFlow !== "pages") state.einkFlow = null;
       state.einkAsked = state.einkAsked === true;
+      state.plainBg = state.plainBg === true;
       /* e-ink mode keeps the Pages flow */
       if (state.eink) state.flow = "pages";
       loading = false;
@@ -556,8 +590,8 @@
     return t;
   }
   function customRaise(t){
-    if (!isDarkColor(t.bg)) return t.panel;
-    var r = mix(mix(t.panel, t.ink, 0.06), t.accent, 0.03);
+    /* a light page: cards and sheets a touch brighter than the panel, like the built-ins */
+    var r = isDarkColor(t.bg) ? mix(mix(t.panel, t.ink, 0.06), t.accent, 0.03) : mix(t.panel, "#ffffff", 0.5);
     return contrast(t.muted, r) < 4.5 ? t.panel : r;
   }
   /* secondary text: the text mixed towards the background, but no further than still reads on it
@@ -612,12 +646,19 @@
       if (on && custom && t){ var sw = ch.querySelector("i"); if (sw) sw.setAttribute("style", tileVars(t)); }
     });
   }
-  /* the picker's groups for display: the built-in groups (themeGroups), with each saved theme in
-     the light or the dark one by its page colour */
+  /* the picker's groups for display: the built-in groups (themeGroups), then the reader's own
+     saved themes in a group of their own (Mine) */
   function pickerGroups(){
     var g = themeGroups();
-    state.customs.forEach(function(c){ g[isDarkColor(c.bg) ? 1 : 0].ids.push("c:" + c.id); });
+    g.push({ id: "mine", name: _t("Mine"), ids: state.customs.map(function(c){ return "c:" + c.id; }) });
     return g;
+  }
+  /* <option>s for a day / night theme list: every group, the reader's own last */
+  function themeOptions(){
+    return pickerGroups().map(function(g){
+      if (!g.ids.length) return "";
+      return '<optgroup label="' + escapeHtml(g.name) + '">' + g.ids.map(function(k){ return '<option value="' + k + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
+    }).join("");
   }
   function buildThemeChips(){
     var html = "";
@@ -625,9 +666,9 @@
       html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="tiles">' +
         g.ids.map(function(k){ return tileHtml(k, THEMES[k]); }).join("") + '</div></div>';
     });
-    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Custom") + '</div><div class="tiles">' +
+    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Mine") + '</div><div class="tiles">' +
       state.customs.map(function(c){ return tileHtml("c:" + c.id, customColors(c)); }).join("") +
-      '<button type="button" class="chip tile chip-new" data-new="1" title="' + _t("Start a custom theme from the colours on screen") + '"><i aria-hidden="true"></i><span class="tile-n">' + _t("New theme") + '</span></button></div></div>';
+      '<button type="button" class="chip tile chip-new" data-new="1" title="' + _t("Make my own from this one") + '"><i aria-hidden="true"></i><span class="tile-n">' + _t("New theme") + '</span></button></div></div>';
     $("#themeChips").innerHTML = html;
   }
   function buildCustomUI(){
@@ -741,8 +782,10 @@
   /* e-ink mode's colours, whatever the theme: pure black on pure white (body.eink in app.css
      holds the same values for everything drawn inside the page) */
   var EINK_COLORS = { bg: "#FFFFFF", ink: "#000000", muted: "#000000", panel: "#FFFFFF", line: "#000000", accent: "#000000" };
+  /* the maker's draft, shown on every screen while it is open (Maker); null otherwise */
+  var themeDraft = null;
   function applyTheme(){
-    var t = currentTheme(), custom = customById(state.theme);
+    var t = themeDraft || currentTheme(), custom = themeDraft ? null : customById(state.theme);
     /* e-ink mode is black on white whatever the theme: light controls, no softened PDF pages, a
        white title bar; the theme itself stays chosen for when the mode is turned off */
     var eink = state.eink === true, dark = isDarkColor(t.bg) && !eink, c = eink ? EINK_COLORS : t;
@@ -754,18 +797,22 @@
        of cards and sheets (the table's, or customRaise's), and the tone that picks the elevation
        style — shadows on a light page, lifted surfaces on a dark one, borders only in the two
        high-contrast themes (e-ink is "light"; body.eink's own rules win) */
-    var tone = eink ? "light" : HICON.indexOf(state.theme) >= 0 ? "contrast" : dark ? "dark" : "light";
+    var tone = eink ? "light" : HICON.indexOf(state.theme) >= 0 && !themeDraft ? "contrast" : dark ? "dark" : "light";
     r.setProperty("--lamp", eink ? "#000000" : (t.lamp || t.accent));
     r.setProperty("--raise", eink ? c.panel : (t.raise || c.panel));
     root.setAttribute("data-tone", tone);
+    /* a textured theme's faint paper or cloth behind the text (app.css); none in e-ink mode, in the
+       high-contrast themes or with Plain background */
+    if (t.texture && !eink && tone !== "contrast" && !state.plainBg) root.setAttribute("data-texture", t.texture); else root.removeAttribute("data-texture");
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
     /* the installed app's title bar takes the panel colour */
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", c.panel);
-    tileMark($("#themeChips"), t);
+    tileMark($("#themeChips"), themeDraft ? null : t);
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
+    if (themeDraft) return;
     /* the evening tint blends differently on a light and a dark page, and its ceiling depends
        on how much contrast this theme has to spare */
     if (Warmth) Warmth.apply();
@@ -798,11 +845,34 @@
       return null;
     }
     function wanted(){ var n = isNight(); return n === null ? null : (n ? state.autoNight : state.autoDay); }
-    function apply(){
+    /* fade: a switch while the page is in view (the hour came round, the phone went dark)
+       cross-fades; at start-up it is simply there */
+    function apply(fade){
       var t = wanted();
-      if (t && t !== state.theme){ state.theme = t; applyTheme(); }
+      if (t && t !== state.theme && resolveTheme(t)){
+        if (fade === true) crossFade(function(){ state.theme = t; applyTheme(); syncUI(); });
+        else { state.theme = t; applyTheme(); }
+      }
       syncUI();
+      arm();
       if (Dim) Dim.apply();   /* the night window may have moved, or been crossed */
+    }
+    /* On a schedule: a timer for the next boundary, so the switch comes on the minute even
+       while reading (the half-minute check below stays as a backstop) */
+    var boundary = null;
+    function arm(){
+      clearTimeout(boundary); boundary = null;
+      if (state.auto !== "time") return;
+      var d = new Date(), now = d.getHours() * 60 + d.getMinutes(), best = 1440;
+      [minutes(state.nightFrom), minutes(state.nightTo)].forEach(function(m){ var w = (m - now + 1440) % 1440 || 1440; if (w < best) best = w; });
+      boundary = setTimeout(function(){ apply(true); }, Math.max(1000, best * 60000 - d.getSeconds() * 1000 - d.getMilliseconds() + 500));
+    }
+    /* one line on what happens now: "Now: Dusk until 07:00" */
+    function nowLine(){
+      var name = themeName(state.theme) || currentTheme().name;
+      if (state.auto === "time") return _t("Now: {name} until {time}", { name: name, time: inWindow() ? state.nightTo : state.nightFrom });
+      if (state.auto === "system") return mq && mq.matches ? _t("Now: {name}, while your phone is set to dark", { name: name }) : _t("Now: {name}, while your phone is set to light", { name: name });
+      return _t("Now: {name}, day and night", { name: name });
     }
     function syncUI(){
       document.querySelectorAll("#autoChips .chip").forEach(function(ch){
@@ -810,17 +880,13 @@
       });
       $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
-      var opts = themeGroups().map(function(g){
-        return '<optgroup label="' + g.name + '">' + g.ids.map(function(k){ return '<option value="' + k + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
-      }).join("");
-      if (state.customs.length) opts += '<optgroup label="' + _t("Custom") + '">' + state.customs.map(function(c){ return '<option value="c:' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join("") + '</optgroup>';
-      if ($("#autoDay").innerHTML !== opts){ $("#autoDay").innerHTML = opts; $("#autoNight").innerHTML = opts; }
+      var opts = themeOptions();
+      ["#autoDay", "#autoNight", "#qDaySel", "#qNightSel"].forEach(function(sel){ var el = $(sel); if (el && el.getAttribute("data-opts") !== opts){ el.innerHTML = opts; el.setAttribute("data-opts", opts); } });
       $("#autoDay").value = state.autoDay; $("#autoNight").value = state.autoNight;
+      $("#qDaySel").value = state.autoDay; $("#qNightSel").value = state.autoNight;
       $("#nightFrom").value = state.nightFrom; $("#nightTo").value = state.nightTo;
-      var n = isNight();
-      $("#autoHint").textContent = n === null ? "" : [n ? _t("It\u2019s night now \u2014 using the night theme.") : _t("It\u2019s day now \u2014 using the day theme."),
-        state.auto === "system" ? _t("Follows your device\u2019s light / dark setting.") : "",
-        n ? _t("Picking a theme below changes the night theme.") : _t("Picking a theme below changes the day theme.")].filter(Boolean).join(" ");
+      $("#autoHint").textContent = nowLine();
+      $("#qNow").textContent = nowLine();
     }
     /* the user picked a theme by hand: keep auto on, but remember it for the current period */
     function userPicked(theme){
@@ -829,18 +895,32 @@
       if (n) state.autoNight = theme; else state.autoDay = theme;
       syncUI(); Prefs.save();
     }
-    if (mq){ (mq.addEventListener ? mq.addEventListener("change", apply) : mq.addListener(apply)); }
-    timer = setInterval(function(){ if (state.auto === "time") apply(); }, 30000);
+    function fadeApply(){ apply(true); }
+    if (mq){ (mq.addEventListener ? mq.addEventListener("change", fadeApply) : mq.addListener(fadeApply)); }
+    timer = setInterval(function(){ if (state.auto === "time") apply(true); }, 30000);
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") apply(); });
+    /* Off, Follow phone or On a schedule: turning it on asks again, once, when a theme is then picked by hand */
+    function setMode(a){
+      if (!/^(off|system|time)$/.test(a)) return;
+      if (a !== "off" && a !== state.auto) Store.set("ll_auto_asked", "0");
+      state.auto = a; Prefs.save(); apply(true);
+      if (Pop) Pop.sync();
+    }
+    function setPair(which, k){
+      if (!resolveTheme(k)) return;
+      if (which === "day") state.autoDay = k; else state.autoNight = k;
+      Prefs.save(); apply(true);
+      if (Pop) Pop.sync();
+    }
     $("#autoChips").addEventListener("click", function(e){
       var ch = e.target.closest(".chip"); if (!ch) return;
-      state.auto = ch.dataset.auto; Prefs.save(); apply();
+      setMode(ch.dataset.auto);
     });
-    $("#autoDay").addEventListener("change", function(e){ state.autoDay = e.target.value; Prefs.save(); apply(); });
-    $("#autoNight").addEventListener("change", function(e){ state.autoNight = e.target.value; Prefs.save(); apply(); });
+    $("#autoDay").addEventListener("change", function(e){ setPair("day", e.target.value); });
+    $("#autoNight").addEventListener("change", function(e){ setPair("night", e.target.value); });
     $("#nightFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); apply(); });
     $("#nightTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); apply(); });
-    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI };
+    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair };
   })();
 
   /* ---------- warmth: a warm film over the screen for the evening ----------
@@ -1424,16 +1504,23 @@
     /* the footer link: the sheet opens at the group, and Escape there hands focus back to the bar button */
     $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#textGroup", a); });
 
-    /* ---- the theme pane: Day / Night, switching by itself, the last few used, then one group of
-       tiles at a time behind a Light | Dark | Colour | High contrast switch. It opens on the group
-       of the theme on screen (so the pair at the top stays in view: nothing scrolls to it), and a
-       tile applies its theme and leaves the popover open ---- */
-    var qGroup = "light";
-    var GROUP_PANES = { light: "#qLight", dark: "#qDark", colour: "#qColour", hicon: "#qHi" };
+    /* ---- the theme pane: Previous, the last four used, then one group of tiles at a time behind
+       a Light | Dark | Colour | Collections | High contrast | Mine switch (Collections holds the four
+       collections, Dutch, Nature and seasons, Cozy and Textured, as labelled sections), "Make my own from this one", and Day
+       and night (Off, Follow phone, On a schedule; the two themes; what it does now). It opens on
+       the group of the theme on screen, and a tile applies its theme and leaves the popover open ---- */
+    var qGroup = "light", actsFor = null;
+    var GROUP_PANES = { light: "#qLight", dark: "#qDark", colour: "#qColour", coll: "#qColl", hicon: "#qHi", mine: "#qMine" };
+    function paneOf(id){ return COLLECTIONS.indexOf(id) >= 0 ? "coll" : id; }
     function tile(k){ var t = resolveTheme(k); return t ? tileHtml(k, t) : ""; }
+    /* an own theme's tile carries a ⋯ for its actions (a long press on the tile does the same) */
+    function mineTile(k){
+      var t = resolveTheme(k); if (!t) return "";
+      return '<div class="mine-t">' + tileHtml(k, t) + '<button type="button" class="mine-ed" data-acts="' + k + '" aria-label="' + escapeHtml(_t("Actions for {name}", { name: themeName(k) })) + '" title="' + escapeHtml(_t("Edit, rename, duplicate or delete")) + '">' + ICONS.more + '</button></div>';
+    }
     function groupOf(k){
       var g = pickerGroups();
-      for (var i = 0; i < g.length; i++) if (g[i].ids.indexOf(k) >= 0) return g[i].id;
+      for (var i = 0; i < g.length; i++) if (g[i].ids.indexOf(k) >= 0) return paneOf(g[i].id);
       return "light";
     }
     function showGroup(id){
@@ -1441,34 +1528,56 @@
       Array.prototype.forEach.call(panes.theme.querySelectorAll("#qGroups [role=tab]"), function(b){
         var on = b.dataset.g === qGroup;
         b.setAttribute("aria-selected", on ? "true" : "false"); b.classList.toggle("on", on); b.tabIndex = on ? 0 : -1;
+        /* six tabs scroll sideways on a phone: the chosen one is brought into view */
+        if (on){ var bar = b.parentNode, br = bar.getBoundingClientRect(), tr = b.getBoundingClientRect();
+          if (tr.left < br.left || tr.right > br.right) bar.scrollLeft += (tr.left + tr.right) / 2 - (br.left + br.right) / 2; }
       });
       Object.keys(GROUP_PANES).forEach(function(k){ $(GROUP_PANES[k]).hidden = k !== qGroup; });
+      if (qGroup !== "mine") showActs(null);
     }
-    function renderTheme(){
-      var groups = pickerGroups();
-      groups.forEach(function(g){ $(GROUP_PANES[g.id]).innerHTML = g.ids.map(tile).join(""); });
-      /* the last few used, the one on screen left out (it is marked in its own group); a row of
-         four, and only when it offers a real choice (two or more) */
-      var recent = recentThemes().filter(function(k){ return k !== state.theme && resolveTheme(k); }).slice(0, 4);
+    function renderTheme(keep){
+      var groups = pickerGroups(), coll = "";
+      groups.forEach(function(g){
+        if (paneOf(g.id) === "coll"){
+          coll += '<div class="q-coll" role="group" aria-labelledby="qc-' + g.id + '"><div class="plabel" id="qc-' + g.id + '">' + escapeHtml(g.name) + '</div><div class="tiles">' + g.ids.map(tile).join("") + '</div></div>';
+          return;
+        }
+        $(GROUP_PANES[g.id]).innerHTML = g.id === "mine"
+          ? g.ids.map(mineTile).join("") + '<button type="button" class="chip tile chip-new" data-new="1"><i aria-hidden="true"></i><span class="tile-n">' + escapeHtml(_t("New theme")) + '</span></button>'
+          : g.ids.map(tile).join("");
+      });
+      $("#qColl").innerHTML = coll;
+      /* the last four used, the one on screen first (and marked); only when it offers a choice */
+      var recent = [state.theme].concat(recentThemes()).filter(function(k, i, a){ return resolveTheme(k) && a.indexOf(k) === i; }).slice(0, 4);
       if (recent.length < 2) recent = [];
       $("#qRecent").innerHTML = recent.map(tile).join("");
       $("#qRecentSec").hidden = !recent.length;
-      showGroup(groupOf(state.theme));
+      showGroup(keep ? qGroup : groupOf(state.theme));
+      if (actsFor) showActs(customById(actsFor) ? actsFor : null);
     }
-    /* a Day / Night button's small page, in the colours of the theme it goes to */
+    /* the actions for one of the reader's own themes, in a row under the grid */
+    function showActs(k){
+      var box = $("#qActs");
+      actsFor = k && customById(k) ? k : null;
+      Array.prototype.forEach.call(panes.theme.querySelectorAll(".mine-ed"), function(b){ b.setAttribute("aria-expanded", b.dataset.acts === actsFor ? "true" : "false"); });
+      if (!actsFor){ box.hidden = true; box.innerHTML = ""; return; }
+      box.setAttribute("aria-label", _t("Actions for {name}", { name: themeName(actsFor) }));
+      box.innerHTML = '<span class="q-acts-n">' + escapeHtml(themeName(actsFor)) + '</span>' +
+        [["edit", _t("Edit")], ["rename", _t("Rename")], ["dup", _t("Duplicate")], ["del", _t("Delete")]].map(function(a){
+          return '<button type="button" class="chip' + (a[0] === "del" ? " danger" : "") + '" data-act="' + a[0] + '">' + escapeHtml(a[1]) + '</button>';
+        }).join("");
+      box.hidden = false;
+    }
+    /* a Day / Night picker's small page, in the colours of the theme it stands for */
     function dnSwatch(b, k){ var t = resolveTheme(k), i = b.querySelector(".dn-sw"); if (t && i) i.setAttribute("style", tileVars(t)); }
     function syncTheme(){
       var t = currentTheme();
-      /* the Day and Night buttons name the pair they go to and show it, and the one on screen is
-         pressed; where a theme's name is the button's own word (Day on the Day button) the name
-         steps back and a pressed button says "Current" instead */
       var day = resolveTheme(state.autoDay) ? state.autoDay : "day", night = resolveTheme(state.autoNight) ? state.autoNight : "dusk";
       $("#qDayName").textContent = themeName(day);
       $("#qNightName").textContent = themeName(night);
       Array.prototype.forEach.call(panes.theme.querySelectorAll(".dn"), function(b){
-        var k = b.dataset.dn === "day" ? day : night, on = state.theme === k;
-        b.setAttribute("aria-pressed", on ? "true" : "false"); b.classList.toggle("on", on);
-        b.classList.toggle("same", b.querySelector(".dn-t").textContent.trim().toLowerCase() === themeName(k).trim().toLowerCase());
+        var k = b.dataset.dn === "day" ? day : night;
+        b.classList.toggle("on", state.auto !== "off" && state.theme === k);
         dnSwatch(b, k);
       });
       tileMark(panes.theme, t);
@@ -1476,23 +1585,36 @@
         var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
       });
       $("#qTimes").hidden = state.auto !== "time";
+      $("#qDayNight").hidden = state.auto === "off";
       if (document.activeElement !== $("#qFrom")) $("#qFrom").value = state.nightFrom;
       if (document.activeElement !== $("#qTo")) $("#qTo").value = state.nightTo;
+      /* Previous: one step back to the theme before this one */
+      var prev = prevTheme();
+      $("#qPrev").hidden = !prev;
+      if (prev){ $("#qPrevN").textContent = _t("Back to {name}", { name: themeName(prev) }); $("#qPrev").title = _t("Previous theme"); }
+      $("#qNow").textContent = AutoTheme.nowLine();
     }
     panes.theme.addEventListener("click", function(e){
       var tab = e.target.closest("#qGroups [role=tab]");
       if (tab){ showGroup(tab.dataset.g); return; }
+      var ed = e.target.closest(".mine-ed");
+      if (ed){ showActs(actsFor === ed.dataset.acts ? null : ed.dataset.acts); return; }
+      var act = e.target.closest("#qActs [data-act]");
+      if (act){ var k = actsFor; if (k) themeAction(act.dataset.act, k); return; }
+      if (e.target.closest(".tiles .chip-new")){ Maker.open({ from: state.theme }); return; }
       var ch = e.target.closest(".tiles .chip[data-theme]");
-      if (ch){ selectTheme(ch.dataset.theme); return; }
-      var dn = e.target.closest(".dn");
-      if (dn){
-        var to = dn.dataset.dn === "day" ? state.autoDay : state.autoNight;
-        to = resolveTheme(to) ? to : (dn.dataset.dn === "day" ? "day" : "dusk");
-        selectTheme(to); showGroup(groupOf(to)); return;
-      }
+      if (ch){ pickTheme(ch.dataset.theme); return; }
+      if (e.target.closest("#qPrev")){ var p = prevTheme(); if (p) pickTheme(p); return; }
+      if (e.target.closest("#qMake")){ Maker.open({ from: state.theme }); return; }
       var a = e.target.closest("#qAuto .chip");
-      if (a){ state.auto = a.dataset.auto; Prefs.save(); AutoTheme.apply(); syncTheme(); }
+      if (a){ AutoTheme.setMode(a.dataset.auto); syncTheme(); }
     });
+    /* a long press on an own theme's tile opens its actions */
+    var pressed = null;
+    $("#qMine").addEventListener("pointerdown", function(e){ var ch = e.target.closest(".chip[data-theme]"); pressed = ch ? ch.dataset.theme : null; }, true);
+    longPress($("#qMine"), function(){ if (pressed && customById(pressed)) showActs(pressed); });
+    $("#qDaySel").addEventListener("change", function(e){ AutoTheme.setPair("day", e.target.value); });
+    $("#qNightSel").addEventListener("change", function(e){ AutoTheme.setPair("night", e.target.value); });
     /* the group switch is a tab list: the arrow keys, Home and End move along it */
     $("#qGroups").addEventListener("keydown", function(e){
       var tabs = Array.prototype.slice.call(this.querySelectorAll("[role=tab]")), i = tabs.indexOf(document.activeElement), n = tabs.length, j = -1;
@@ -1502,9 +1624,9 @@
       if (j < 0) return;
       e.preventDefault(); showGroup(tabs[j].dataset.g); tabs[j].focus();
     });
-    /* the night hours, the same as the sheet's (By time) */
-    $("#qFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); AutoTheme.apply(); });
-    $("#qTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); AutoTheme.apply(); });
+    /* the night hours, the same as the sheet's (On a schedule) */
+    $("#qFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
+    $("#qTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
     $("#themeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#themeGroup", a); });
 
     /* the open pane follows the state (applyType / applyTheme call this), and the page's height
@@ -1556,9 +1678,11 @@
     /* the bar buttons */
     $("#gear").addEventListener("click", function(e){ e.stopPropagation(); open("type", this, syncType); });
     $("#lamp").addEventListener("click", function(e){ e.stopPropagation(); open("theme", this, function(){ renderTheme(); syncTheme(); }); });
+    /* the reader's own themes changed (saved, renamed, copied, deleted): the open pane is redrawn in place */
+    function refreshThemes(){ if (current === "theme"){ renderTheme(true); syncTheme(); } }
 
     window.llPop = { open: open, close: close, is: is, sync: sync, sheet: setSheet, sheetAt: openSheetAt };
-    return { open: open, close: close, is: is, sync: sync, sheetAt: openSheetAt };
+    return { open: open, close: close, is: is, sync: sync, sheetAt: openSheetAt, refreshThemes: refreshThemes };
   })();
 
   /* ---------- view switching ---------- */
@@ -10719,7 +10843,7 @@
   $("#themeChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
     if (!ch) return;
-    if (ch.dataset.new) createCustom(); else selectTheme(ch.dataset.theme);
+    if (ch.dataset.new) Maker.open({ from: state.theme }); else pickTheme(ch.dataset.theme);
   });
   /* the themes picked by hand, the latest first: the theme popover shows the last few */
   function recentThemes(){ try { var a = JSON.parse(Store.get("ll_theme_recent") || "[]"); return Array.isArray(a) ? a : []; } catch(_){ return []; } }
@@ -10735,8 +10859,190 @@
     if (customById(theme)) syncCustomUI();
     applyTheme(); AutoTheme.userPicked(theme);
   }
-  /* the saved themes changed (new, renamed, copied or deleted): redraw the chips and the day / night lists */
-  function customsChanged(){ buildThemeChips(); AutoTheme.syncUI(); }
+  /* the theme before this one (Previous): the latest used that still exists */
+  function prevTheme(){
+    var a = recentThemes();
+    for (var i = 0; i < a.length; i++) if (a[i] !== state.theme && resolveTheme(a[i])) return a[i];
+    return null;
+  }
+  /* a short cross-fade from one theme to the next (the browser's view transition); none with
+     reduced motion, in e-ink mode, or where the browser has none */
+  function crossFade(fn){
+    if (!noMotion() && document.startViewTransition && document.visibilityState === "visible"){
+      try { document.startViewTransition(fn); return; } catch(_){}
+    }
+    fn();
+  }
+  /* a theme picked by hand in a picker: applied at once, with the fade. While day and night
+     switching is on it lasts until the next switch, and the first time that happens the toast
+     offers to turn switching off */
+  function pickTheme(theme, noFade){
+    if (!resolveTheme(theme) || theme === state.theme) return;
+    if (noFade) selectTheme(theme); else crossFade(function(){ selectTheme(theme); });
+    if (state.auto !== "off" && Store.get("ll_auto_asked") !== "1"){
+      Store.set("ll_auto_asked", "1");
+      Marks.toast(_t("Day and night is on: this theme lasts until the next switch."), { action: _t("Turn off"), ms: 7000, run: function(){
+        AutoTheme.setMode("off"); Marks.toast(_t("Day and night switching is off"));
+      } });
+    }
+  }
+  /* the saved themes changed (new, renamed, copied or deleted): redraw the chips, the day / night lists and the open popover */
+  function customsChanged(){ buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes(); }
+  /* Edit, Rename, Duplicate and Delete for one of the reader's own themes */
+  function themeAction(act, k){
+    var c = customById(k); if (!c) return;
+    if (act === "edit") Maker.open({ edit: c.id });
+    else if (act === "rename") renameCustom(c);
+    else if (act === "dup") dupCustom(c);
+    else if (act === "del") deleteCustom(c);
+  }
+  function renameCustom(c){
+    var name = prompt(_t("Name for this theme"), c.name);
+    if (name === null) return;
+    name = name.trim().slice(0, 60);
+    if (!name || name === c.name) return;
+    c.name = name; customsChanged(); syncCustomUI(); Prefs.save(); Pop.sync();
+  }
+  function dupCustom(c){
+    var d = copyCustom(c, customName(_t("{name} copy", { name: c.name })));
+    customsChanged(); Prefs.save();
+    Marks.toast(_t("Copied as \u201C{name}\u201D", { name: d.name }));
+    return d;
+  }
+  /* Delete asks first, then offers Undo; the theme in use gives way to the one before it */
+  function deleteCustom(c){
+    if (!c || !confirm(_t("Delete the theme \u201C{name}\u201D?", { name: c.name }))) return false;
+    var at = state.customs.indexOf(c), gone = "c:" + c.id, was = { theme: state.theme, day: state.autoDay, night: state.autoNight };
+    if (at < 0) return false;
+    state.customs.splice(at, 1);
+    if (state.autoDay === gone) state.autoDay = "day";
+    if (state.autoNight === gone) state.autoNight = "dusk";
+    customsChanged();
+    if (state.theme === gone) selectTheme(prevTheme() || (isDarkColor(c.bg) ? "dusk" : "day")); else Prefs.save();
+    Marks.toast(_t("Deleted \u201C{name}\u201D", { name: c.name }), { undo: function(){
+      if (customById(gone)) return;
+      state.customs.splice(Math.min(at, state.customs.length), 0, c);
+      state.autoDay = was.day; state.autoNight = was.night;
+      customsChanged();
+      if (was.theme === gone) selectTheme(gone); else Prefs.save();
+      AutoTheme.syncUI(); Pop.sync();
+    } });
+    return true;
+  }
+
+  /* ---- the maker: your own theme from three colours ----
+     Starts from any theme (Make my own from this one) or edits one of the reader's own. Background,
+     text and accent are picked; the panel, the raised surface, the secondary text, the hairline and
+     the lamp are derived from them (customColors), so a saved theme wears the same tokens as a
+     built-in on every screen. Text and accent are moved in lightness until they read at 4.5:1, and
+     a note says so. While it is open the draft is on screen everywhere (themeDraft); Cancel puts
+     the theme back. */
+  var Maker = (function(){
+    var d = null;
+    var INK = ["#141414", "#2B2A26", "#40331F", "#25303A", "#C7C3B6", "#E9DBCF", "#CBD5E1", "#FFFFFF"];
+    function esc(x){ return escapeHtml(String(x)); }
+    function derive(){
+      var bg = d.bg, ink = d.autoInk ? deriveInk(bg) : d.ink, fixed = false;
+      if (contrast(ink, bg) < 4.5){ ink = fixColor(ink, [bg]); fixed = true; }
+      var c = { name: d.name, bg: bg, ink: ink, autoInk: !!d.autoInk && !fixed, accent: d.accent };
+      if (d.panel) c.panel = d.panel;
+      if (d.muted) c.muted = d.muted;
+      var t = customColors(c);
+      if (c.panel && contrast(t.ink, t.panel) < 4.5){ delete c.panel; t = customColors(c); }
+      if (c.muted && (contrast(t.muted, t.bg) < 4.5 || contrast(t.muted, t.panel) < 4.5)){ delete c.muted; t = customColors(c); }
+      if (contrast(t.accent, t.bg) < 4.5 || contrast(t.accent, t.panel) < 4.5){ c.accent = fixColor(t.accent, [t.bg, t.panel]); fixed = true; t = customColors(c); }
+      return { c: c, t: t, fixed: fixed };
+    }
+    function row(kind, label, list){
+      return '<div class="mk-row"><div class="mk-l"><span class="mk-lt">' + esc(label) + '</span>' +
+        (kind === "ink" ? '<button type="button" class="chip mk-auto" id="mkAutoInk" aria-pressed="false">' + esc(_t("Automatic")) + '</button>' : '') +
+        '<input type="color" class="mk-pick" id="mk-' + kind + '" data-k="' + kind + '" aria-label="' + esc(_t("{what}: any colour", { what: label })) + '"></div>' +
+        '<div class="mk-sw" data-k="' + kind + '">' + list.map(function(c){
+          return '<button type="button" class="sw" data-c="' + c.toLowerCase() + '" style="background:' + c + '" aria-label="' + esc(label + " " + c) + '" aria-pressed="false"></button>';
+        }).join("") + '</div></div>';
+    }
+    function render(body, foot){
+      body.innerHTML = '<div class="mk">' +
+        '<div class="mk-prev" id="mkPrev" aria-hidden="true">' +
+          '<div class="mk-bar"><span class="mk-mark">lamp<b>light</b></span><span class="mk-bar-t">' + esc(_t("Chapter three \u00B7 12 min left")) + '</span></div>' +
+          '<div class="mk-page"><div class="mk-h">' + esc(_t("Chapter three")) + '</div>' +
+            '<p>' + esc(_t("The lamp hums quietly. One more chapter, she tells herself,")) + ' <span class="mk-link">' + esc(_t("just one more")) + '</span>.</p>' +
+            '<div class="mk-muted">' + esc(_t("Page 42 of 310")) + '</div>' +
+            '<div class="mk-acts"><span class="mk-btn">' + esc(_t("Keep reading")) + '</span><span class="mk-card">' + esc(_t("A note")) + '</span></div>' +
+          '</div></div>' +
+        '<p class="mk-note" id="mkNote" role="status" hidden>' + esc(_t("Adjusted for readability")) + '</p>' +
+        row("bg", _t("Background"), BG_SWATCHES) + row("ink", _t("Text"), INK) + row("acc", _t("Accent"), ACC_SWATCHES) +
+        '<label class="mk-name"><span class="mk-lt">' + esc(_t("Name")) + '</span><input type="text" id="mkName" class="sel" maxlength="60" autocomplete="off" spellcheck="false"></label>' +
+        '</div>';
+      foot.innerHTML = '<button type="button" class="chip" id="mkCancel">' + esc(_t("Cancel")) + '</button>' +
+        '<button type="button" class="chip mk-save" id="mkSave">' + esc(_t("Save")) + '</button>';
+    }
+    function update(){
+      if (!d) return;
+      var r = derive(), t = r.t, pv = $("#mkPrev");
+      themeDraft = t; applyTheme();
+      if (pv) pv.setAttribute("style", "--bg:" + t.bg + ";--ink:" + t.ink + ";--muted:" + t.muted + ";--panel:" + t.panel + ";--raise:" + t.raise +
+        ";--line:" + t.line + ";--accent:" + t.accent + ";--lamp:" + t.lamp);
+      $("#mkNote").hidden = !r.fixed;
+      var cur = { bg: d.bg, ink: d.autoInk ? r.c.ink : d.ink, acc: d.accent };
+      Object.keys(cur).forEach(function(k){
+        var p = $("#mk-" + k), v = String(cur[k]).toLowerCase();
+        if (p && document.activeElement !== p) p.value = v;
+        Array.prototype.forEach.call(Side.body.querySelectorAll('.mk-sw[data-k="' + k + '"] .sw'), function(b){
+          var on = b.dataset.c === v && !(k === "ink" && d.autoInk); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+      });
+      var a = $("#mkAutoInk"); if (a){ a.classList.toggle("on", !!d.autoInk); a.setAttribute("aria-pressed", d.autoInk ? "true" : "false"); }
+    }
+    function set(k, v){
+      v = normHex(v); if (!v || !d) return;
+      if (k === "bg") d.bg = v; else if (k === "ink"){ d.ink = v; d.autoInk = false; } else d.accent = v;
+      update();
+    }
+    function done(){ d = null; if (themeDraft){ themeDraft = null; applyTheme(); } }
+    function open(opts){
+      opts = opts || {};
+      var src = opts.edit ? customById("c:" + opts.edit) : null, fromId = resolveTheme(opts.from) ? opts.from : state.theme, from = resolveTheme(fromId) || currentTheme();
+      if (src) d = { editId: src.id, name: src.name, bg: src.bg, ink: src.autoInk ? deriveInk(src.bg) : src.ink, autoInk: !!src.autoInk, accent: src.accent, panel: src.panel, muted: src.muted };
+      else d = { name: customName(_t("My {name}", { name: themeName(fromId) || from.name })), bg: normHex(from.bg), ink: normHex(from.ink), autoInk: false, accent: normHex(from.accent) };
+      Side.open("maker", src ? _t("Edit theme") : _t("Your own theme"), render, done);
+      $("#mkName").value = d.name;
+      update();
+    }
+    function save(){
+      if (!d) return;
+      var r = derive(), name = ($("#mkName").value || "").trim().slice(0, 60) || d.name || customName(), c = d.editId ? customById("c:" + d.editId) : null;
+      if (c){
+        ["bg", "ink", "autoInk", "accent"].forEach(function(k){ c[k] = r.c[k]; });
+        if (r.c.panel) c.panel = r.c.panel; else delete c.panel;
+        if (r.c.muted) c.muted = r.c.muted; else delete c.muted;
+        c.name = name;
+      } else { r.c.name = name; c = addCustom(r.c); }
+      d = null; themeDraft = null;
+      Side.close();
+      customsChanged();
+      var id = "c:" + c.id;
+      if (state.theme === id){ syncCustomUI(); applyTheme(); } else pickTheme(id, true);
+      Marks.toast(_t("Saved \u201C{name}\u201D", { name: name }));
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("maker") || !d) return;
+      var sw = e.target.closest(".mk-sw .sw");
+      if (sw){ set(sw.parentNode.dataset.k, sw.dataset.c); return; }
+      if (e.target.closest("#mkAutoInk")){ if (d.autoInk){ d.ink = deriveInk(d.bg); d.autoInk = false; } else d.autoInk = true; update(); }
+    });
+    Side.body.addEventListener("input", function(e){
+      if (!Side.is("maker") || !d) return;
+      if (e.target.classList.contains("mk-pick")) set(e.target.dataset.k, e.target.value);
+      else if (e.target.id === "mkName") d.name = e.target.value;
+    });
+    Side.body.addEventListener("keydown", function(e){ if (Side.is("maker") && e.key === "Enter" && e.target.id === "mkName"){ e.preventDefault(); save(); } });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("maker")) return;
+      if (e.target.closest("#mkSave")) save(); else if (e.target.closest("#mkCancel")) Side.close();
+    });
+    return { open: open, save: save, draft: function(){ return d; } };
+  })();
   function focusChip(theme){ var ch = $('#themeChips .chip[data-theme="' + theme + '"]'); if (ch) ch.focus(); }
   /* New…: a saved theme that starts from the colours on screen */
   function createCustom(){
@@ -10749,14 +11055,7 @@
   /* ---- custom theme editor: every change applies at once and is saved with the theme ---- */
   function editing(){ return customById(state.theme); }
   function edited(){ syncCustomUI(); applyTheme(); }
-  $("#cRename").addEventListener("click", function(){
-    var c = editing(); if (!c) return;
-    var name = prompt(_t("Name for this theme"), c.name);
-    if (name === null) return;
-    name = name.trim().slice(0, 60);
-    if (!name || name === c.name) return;
-    c.name = name; customsChanged(); edited();
-  });
+  $("#cRename").addEventListener("click", function(){ var c = editing(); if (c) renameCustom(c); });
   $("#cDup").addEventListener("click", function(){
     var c = editing(); if (!c) return;
     var d = copyCustom(c, customName(_t("{name} copy", { name: c.name })));
@@ -10771,15 +11070,7 @@
     customsChanged(); selectTheme("c:" + d.id);
     Marks.toast(_t("Saved as “{name}”", { name: d.name }));
   });
-  $("#cDel").addEventListener("click", function(){
-    var c = editing(); if (!c) return;
-    if (!confirm(_t("Delete the theme “{name}”?", { name: c.name }))) return;
-    state.customs.splice(state.customs.indexOf(c), 1);
-    var gone = "c:" + c.id, fallback = isDarkColor(c.bg) ? "dusk" : "day";
-    if (state.autoDay === gone) state.autoDay = "day";
-    if (state.autoNight === gone) state.autoNight = "dusk";
-    customsChanged(); selectTheme(fallback); focusChip(fallback);
-  });
+  $("#cDel").addEventListener("click", function(){ var c = editing(); if (c && deleteCustom(c)) focusChip(state.theme); });
   /* background: quick swatches, the tint / brightness sliders, or any colour */
   $("#bgSwatches").addEventListener("click", function(e){
     var s = e.target.closest(".sw"), c = editing();
@@ -10838,7 +11129,8 @@
   $("#cFix").addEventListener("click", fixContrast);
   /* exposed for tests (not a public API) */
   window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, pickerGroups: pickerGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
-    customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast };
+    customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast,
+    pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker };
 
   $("#flowChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
@@ -10879,6 +11171,8 @@
     $("#vZoom").textContent = e.target.value + " %";
     queueRerender();
   });
+  /* Plain background: the textured themes without their paper or cloth */
+  $("#plainBg").addEventListener("change", function(e){ state.plainBg = e.target.checked; applyTheme(); });
   $("#softenPdf").addEventListener("change", function(e){
     state.soften = e.target.checked;
     applyTheme();
@@ -12702,6 +12996,7 @@
   buildCustomUI();
   syncCustomUI();
   $("#softenPdf").checked = !!state.soften;
+  $("#plainBg").checked = !!state.plainBg;
   document.querySelectorAll("#flowChips .chip").forEach(function(ch){
     var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
   });

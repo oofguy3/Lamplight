@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check the static files parse
         run: |
-          node -e "for (const f of ['i18n.js','app.js','explain.js','morph.js','translate.js','sw.js','audiobook.js','sounds.js','workers/docx-worker.js']) new Function(require('fs').readFileSync(f,'utf8')); console.log('scripts parse')"
+          node -e "for (const f of ['i18n.js','app.js','explain.js','morph.js','translate.js','sw.js','audiobook.js','bgfetch.js','sounds.js','workers/docx-worker.js']) new Function(require('fs').readFileSync(f,'utf8')); console.log('scripts parse')"
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8')); JSON.parse(require('fs').readFileSync('dict-index.json','utf8')); console.log('json ok')"
           cp workers/kokoro-worker.js "$RUNNER_TEMP/kokoro-worker.mjs" && node --check "$RUNNER_TEMP/kokoro-worker.mjs" && echo 'module worker parses'
           cp workers/piper-worker.js "$RUNNER_TEMP/piper-worker.mjs" && node --check "$RUNNER_TEMP/piper-worker.mjs" && echo 'piper worker parses'

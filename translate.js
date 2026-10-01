@@ -54,6 +54,18 @@
   }
   function online(){ return navigator.onLine !== false; }
   function noop(){}
+  /* bgfetch.js: downloads that carry on after Lamplight is closed (Background Fetch), shared with audiobook.js */
+  function bgNeed(){
+    if (window.llBgFetch) return Promise.resolve(window.llBgFetch);
+    if (!window.llBgFetchP) window.llBgFetchP = new Promise(function(res){
+      var s = document.createElement("script");
+      s.src = "./bgfetch.js";
+      s.onload = function(){ res(window.llBgFetch || null); };
+      s.onerror = function(){ window.llBgFetchP = null; res(null); };
+      document.head.appendChild(s);
+    });
+    return window.llBgFetchP;
+  }
   /* Library.tx hands back the request itself when a get() found nothing */
   function unwrap(r){ return (r && typeof r === "object" && typeof IDBRequest !== "undefined" && r instanceof IDBRequest) ? null : (r || null); }
 
@@ -177,7 +189,7 @@
                  "models/bergamot/vocab.nlen.spm.gz", "models/bergamot/nlen/model.nlen.intgemm.alphas.bin.gz",
                  "models/bergamot/ennl/model.ennl.intgemm.alphas.bin.gz"];
     var SIMD = [0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11];
-    var st = { have: null, dl: null, err: "", broken: "" };
+    var st = { have: null, dl: null, err: "", broken: "", stopped: false };
     var w = null, wPair = "", jobs = [], cur = null, seq = 0, idle = null, dl = null, listeners = [], simd = null;
     function supported(){
       if (simd === null){
@@ -302,21 +314,70 @@
         }).then(next);
       })();
     }
-    function download(){
-      if (dl) return dl.promise;
-      if (!supported()) return Promise.reject(new Error(_t("this browser can’t run the pack")));
+    /* where the browser has Background Fetch (Chrome), it downloads the five files itself, with its own notification,
+       and carries on when Lamplight is closed (bgfetch.js; sw.js stores them in "bergamot-models" under the URLs the
+       worker looks up); elsewhere the worker downloads them in the page, as before */
+    var BG_KEY = "ll-bergamot", BYTES = [80758, 5174294, 410222, 22647743, 23386633];
+    function bgFiles(){ return FILES.map(function(f, i){ return { url: f, cache: CACHE, bytes: BYTES[i] }; }); }
+    function deferred(){
       var d = {};
       d.promise = new Promise(function(resolve, reject){ d.resolve = resolve; d.reject = reject; });
-      dl = d; st.dl = 0; st.err = ""; st.broken = "";
-      notify();
-      clearTimeout(idle);
+      d.promise.catch(noop);
+      return d;
+    }
+    function bgOn(ev){
+      var d = dl;
+      if (ev.state === "progress"){ if (d){ st.dl = ev.pct >= 0 ? ev.pct / 100 : 0; notify(); } return; }
+      dl = null; st.dl = null;
+      if (ev.state === "done"){
+        st.have = true; st.err = ""; st.stopped = false; notify();
+        if (d && d.resumed) toast(_t("Dutch ↔ English is on this device — translations are instant, and work offline"));
+        if (d) d.resolve(true);
+      } else {
+        st.stopped = true; notify();
+        if (d){ var e = new Error(_t("Dutch ↔ English: download stopped — tap Download to resume")); e.stopped = true; d.reject(e); }
+      }
+    }
+    function inPage(d, note){
+      if (dl !== d) return;
+      if (note) toast(_t("Keep Lamplight open until it finishes"));
       try {
         if (!w) spawn();
         w.postMessage({ type: "download" });
-      } catch(err){ dl = null; st.dl = null; st.err = _t("couldn’t start"); notify(); return Promise.reject(err); }
+      } catch(err){ dl = null; st.dl = null; st.err = _t("couldn’t start"); notify(); d.reject(err); }
+    }
+    function download(){
+      if (dl) return dl.promise;
+      if (!supported()) return Promise.reject(new Error(_t("this browser can’t run the pack")));
+      var d = deferred();
+      dl = d; st.dl = 0; st.err = ""; st.broken = ""; st.stopped = false;
+      notify();
+      clearTimeout(idle);
+      bgNeed().then(function(bg){
+        if (dl !== d) return;
+        if (!(bg && bg.ok()) || !online()){ inPage(d, online()); return; }
+        bg.start(BG_KEY, bgFiles(), _t("Dutch ↔ English"), bgOn).then(function(how){
+          if (dl !== d) return;
+          if (how === "done") bgOn({ state: "done" });
+          else toast(_t("Downloading — this carries on if you close Lamplight"));
+        }, function(){ inPage(d, true); });
+      });
       return d.promise;
     }
+    /* the app was opened again: a download still under way in the browser shows its progress, one that stopped says so */
+    bgNeed().then(function(bg){
+      if (!(bg && bg.ok())) return;
+      var ended = false;
+      bg.resume(BG_KEY, bgFiles(), function(ev){ if (ev.state !== "progress") ended = true; bgOn(ev); }).then(function(how){
+        if (ended) return;
+        if (how === "running" && !dl){ dl = deferred(); dl.resumed = true; if (st.dl === null) st.dl = 0; notify(); }
+        else if (how === "stopped" && !dl){ st.stopped = true; notify(); }
+        else if (how === "done"){ st.have = true; notify(); }
+      });
+    });
     function remove(){
+      st.stopped = false;
+      bgNeed().then(function(bg){ if (bg) bg.cancel(BG_KEY); });
       if (dl){ var d = dl; dl = null; d.reject(new Error("removed")); }
       var all = (cur ? [cur] : []).concat(jobs);
       cur = null; jobs = [];
@@ -514,6 +575,7 @@
       if (Pack.state.dl !== null) return;
       if (have && Pack.state.broken) show(_t("Dutch ↔ English: on this device, but it couldn’t run here ({error}) — the other translators stand in", { error: Pack.state.broken }), false, true, -1);
       else if (have) show(_t("Dutch ↔ English · ready, works offline · {size} on this device", { size: mb(Pack.mb) }), false, true, -1);
+      else if (Pack.state.stopped) show(_t("Dutch ↔ English: download stopped — tap Download to resume"), true, false, -1);
       else if (Pack.state.err) show(_t("Dutch ↔ English: the download stopped ({error}) — try again", { error: Pack.state.err }), true, false, -1);
       else show(online() ? _t("Dutch ↔ English: not on this device yet") : _t("Dutch ↔ English: not on this device yet — needs a connection once"), true, false, -1);
     });
@@ -525,7 +587,8 @@
       refreshHint();
       if (wantBook && wantBook === docId() && L.state && L.state.mode === "doc" && !page.on){ wantBook = null; startPage(); }
     }, function(err){
-      if (!(err && /removed/.test(err.message || ""))) toast(_t("Dutch ↔ English didn’t download — {error}", { error: (err && err.message) || _t("no connection") }));
+      if (err && err.stopped) toast(err.message);
+      else if (!(err && /removed/.test(err.message || ""))) toast(_t("Dutch ↔ English didn’t download — {error}", { error: (err && err.message) || _t("no connection") }));
       refreshHint();
     });
   }
@@ -681,6 +744,7 @@
       } else {
         if (bar) bar.parentNode.removeChild(bar);
         if (s.have){ text = _t("Dutch ↔ English is ready — instant, and offline."); if (acts) acts.hidden = true; }
+        else if (s.stopped){ text = _t("Download stopped — tap Download to resume"); if (acts) acts.hidden = false; }
         else if (s.err){ text = _t("The download stopped ({error}).", { error: s.err }); if (acts) acts.hidden = false; }
       }
       if (text !== null && msg.textContent !== text) msg.textContent = text;

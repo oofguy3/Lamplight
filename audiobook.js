@@ -1944,13 +1944,97 @@
       return caches.match(new URL(f, document.baseURI).href).then(function(r){ return !!r; }, function(){ return false; });
     })).then(function(all){ return all.every(Boolean); });
   }
-  /* the Download button (Piper: the open document's pack) */
+  /* the Download button (Piper: the open document's pack). Where the browser has Background Fetch (Chrome), the browser
+     downloads the pack's files itself, with its own notification, and carries on when Lamplight is closed (bgfetch.js;
+     sw.js stores them under the keys the workers look up); elsewhere the worker downloads them in the page, as before */
   function natDownload(m){
-    if (m.load) return;
-    var dutch = !!natPack(m).dutch;
-    if (!navigator.onLine && !(m.have && m.have.ready)){ toast(_t("Connect to the internet once to download the natural voices")); return; }
-    natLoad(m).then(function(){ toast(dutch ? _t("The Dutch voices are ready") : _t("Natural voices are ready")); }, function(err){ toast((err && err.message) || _t("Couldn’t download the natural voices")); });
+    var pk = natPack(m), dutch = !!pk.dutch, here = !!(pk.have && pk.have.ready);
+    if (m.load || pk.bg) return;
+    if (!navigator.onLine && !here){ toast(_t("Connect to the internet once to download the natural voices")); return; }
+    function inPage(note){
+      if (note) toast(_t("Keep Lamplight open until it finishes"));
+      natLoad(m).then(function(){ toast(dutch ? _t("The Dutch voices are ready") : _t("Natural voices are ready")); }, function(err){ toast((err && err.message) || _t("Couldn’t download the natural voices")); });
+    }
+    bgNeed().then(function(bg){
+      if (here || !navigator.onLine || !(bg && bg.ok())){ inPage(!here && navigator.onLine); return; }
+      pk.bgStopped = false; pk.bg = { pct: -1 };
+      natSync();
+      bg.start(natBgKey(m, pk), natFiles(m, pk), natBgName(m, pk), natBgOn(m, pk)).then(function(how){
+        if (how === "done"){ pk.bg = null; inPage(false); }
+        else toast(_t("Downloading — this carries on if you close Lamplight"));
+      }, function(){ pk.bg = null; inPage(true); });
+    });
   }
+  /* ---- downloads that carry on after Lamplight is closed (bgfetch.js, loaded on demand and precached) ---- */
+  function bgNeed(){
+    if (window.llBgFetch) return Promise.resolve(window.llBgFetch);
+    if (!window.llBgFetchP) window.llBgFetchP = new Promise(function(res){
+      var s = document.createElement("script");
+      s.src = "./bgfetch.js";
+      s.onload = function(){ res(window.llBgFetch || null); };
+      s.onerror = function(){ window.llBgFetchP = null; res(null); };
+      document.head.appendChild(s);
+    });
+    return window.llBgFetchP;
+  }
+  /* each pack's files under the exact URLs its loader looks up: Kokoro's model, config and tokenizer as transformers.js
+     asks for them ("transformers-cache", q8 = onnx/model_quantized.onnx) and its 28 voice files as kokoro-js does
+     ("kokoro-voices"); a Piper voice's model and config as workers/piper-worker.js does ("piper-voices"); and the runtime
+     from vendor/ (sw.js keeps it in its runtime cache; the workers themselves are precached). Sizes as served */
+  var KHF = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/";
+  var PHF = "https://huggingface.co/rhasspy/piper-voices/resolve/main/";
+  var RT_BYTES = { "vendor/kokoro/kokoro.web.js": 2135315, "vendor/kokoro/ort-wasm-simd-threaded.jsep.mjs": 44484, "vendor/kokoro/ort-wasm-simd-threaded.jsep.wasm": 21596019,
+                   "vendor/piper/ort.min.mjs": 355020, "vendor/piper/phonemizer-en-nl.js": 1369616 };
+  function natFiles(m, pk){
+    var out = [];
+    if (m === NAT.kokoro){
+      [["config.json", 44], ["tokenizer.json", 3497], ["tokenizer_config.json", 113], ["onnx/model_quantized.onnx", 92361116]].forEach(function(f){
+        out.push({ url: KHF + f[0], cache: "transformers-cache", bytes: f[1] });
+      });
+      KOKORO_VOICES.forEach(function(v){ out.push({ url: KHF + "voices/" + v.id + ".bin", cache: "kokoro-voices", bytes: 522240 }); });
+    } else {
+      var f = pk.lang === "nl" ? ["nl/nl_NL/mls/medium/nl_NL-mls-medium.onnx", 76584246, 5856] : ["en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx", 78580914, 20123];
+      out.push({ url: PHF + f[0], cache: "piper-voices", bytes: f[1] }, { url: PHF + f[0] + ".json", cache: "piper-voices", bytes: f[2] });
+    }
+    m.need.forEach(function(f){ if (f.indexOf("vendor/") === 0) out.push({ url: f, bytes: RT_BYTES[f] || 1048576 }); });
+    return out;
+  }
+  function natBgKey(m, pk){ return m === NAT.kokoro ? "ll-kokoro" : "ll-piper-" + (pk.lang || "en"); }
+  function natBgName(m, pk){ return m === NAT.kokoro ? _t("Best natural voices") : pk.dutch ? _t("Dutch voices") : _t("Fast natural voices"); }
+  /* what the browser's download tells the page: progress on the Voices rows, then ready, or stopped (tap to resume) */
+  function natBgOn(m, pk){
+    return function(ev){
+      if (ev.state === "progress"){ pk.bg = { pct: ev.pct }; natBgShow(m, pk); return; }
+      pk.bg = null; pk.have = null;
+      if (ev.state === "done"){ pk.bgStopped = false; toast(pk.dutch ? _t("The Dutch voices are ready") : _t("Natural voices are ready")); }
+      else pk.bgStopped = true;
+      natSync();
+    };
+  }
+  function natBgText(m, pk){ return natHead(m) + (pk.bg.pct >= 0 ? _t("Downloading… {pct}% · carries on if you close Lamplight", { pct: pk.bg.pct }) : _t("Preparing…")); }
+  function natBgShow(m, pk){
+    if (typeof document === "undefined" || natCur() !== m || natPack(m) !== pk || m.load || !pk.bg) return;
+    var st = document.getElementById("kokoroState"), pr = document.getElementById("kokoroProgress"), dl = document.getElementById("kokoroDl"), rm = document.getElementById("kokoroRm"), text = natBgText(m, pk);
+    if (st && st.textContent !== text){ liveStep(st, pk.bg.pct); st.textContent = text; }
+    if (pr){ pr.hidden = pk.bg.pct < 0; if (pk.bg.pct >= 0) pr.value = pk.bg.pct; }
+    if (dl) dl.hidden = true;
+    if (rm) rm.hidden = true;
+  }
+  /* the app was opened again: a pack still downloading in the browser shows its progress, one that stopped says so,
+     and one that finished is simply on the device (natOnDevice) */
+  if (typeof document !== "undefined") bgNeed().then(function(bg){
+    if (!(bg && bg.ok())) return;
+    [[NAT.kokoro, NAT.kokoro], [NAT.piper, PIPER_PACKS.en], [NAT.piper, PIPER_PACKS.nl]].forEach(function(a){
+      var m = a[0], pk = a[1], on = natBgOn(m, pk), ended = false;
+      bg.resume(natBgKey(m, pk), natFiles(m, pk), function(ev){ if (ev.state !== "progress") ended = true; on(ev); }).then(function(how){
+        if (ended) return;
+        if (how === "running"){ if (!pk.bg) pk.bg = { pct: -1 }; }
+        else if (how === "stopped") pk.bgStopped = true;
+        else return;
+        pk.have = null; natSync();
+      });
+    });
+  });
   /* the Remove button: the model's caches, its runtime files (not the ONNX runtime the other model still uses, when that
      one is on the device), and the worker holding the model. Piper: the open document's pack only (the files of its
      model in "piper-voices", the cache itself once it is empty, the runtime only when no other pack is left), or every
@@ -1975,6 +2059,11 @@
     else if (m.packs) Object.keys(m.packs).forEach(function(k){ m.packs[k].have = none(); });
     else m.have = none();
     if (m.w){ try { m.w.terminate(); } catch(_){} m.w = null; }
+    /* a download the browser is still making for it stops, and is forgotten */
+    (pk ? [pk] : m.packs ? Object.keys(m.packs).map(function(k){ return m.packs[k]; }) : [m]).forEach(function(p){
+      p.bg = null; p.bgStopped = false;
+      bgNeed().then(function(bg){ if (bg) bg.cancel(natBgKey(m, p)); });
+    });
     var gone = new Error(_t("Natural voices were removed"));
     if (l) l.rej(gone);
     Object.keys(jobs).forEach(function(id){ jobs[id].rej(gone); });
@@ -2025,6 +2114,7 @@
     if (!natCan(m)){ toast(natNoLang(m, true)); return Promise.resolve(null); }
     var pk = natPack(m);
     if (natHeld(m)){ natTold(m); return Promise.resolve(true); }
+    if (pk.bg){ toast(_t("The natural voices are still downloading — the device voice reads until then")); return Promise.resolve(null); }
     if (m.load) return Promise.resolve(true);      /* on its way already (Download was pressed) */
     return natOnDevice(m).then(function(h){
       if (h.ready || (h.model && navigator.onLine)){ natTold(m); return true; }
@@ -2624,9 +2714,11 @@
       if (pr){ pr.hidden = pct < 0; if (pct >= 0) pr.value = pct; }
     }
     if (m.load){ show(natHead(m) + (m.pct >= 0 ? _t("Downloading… {pct}%", { pct: m.pct }) : _t("Preparing…")), false, false, m.pct); return; }
+    if (pk.bg){ show(natBgText(m, pk), false, false, pk.bg.pct); return; }
     var other = natOther(m), also = "", note = !natCan(m) && m === NAT.kokoro && NAT.piper.packs[docLang()] ? " · " + _t("English only — Fast has Dutch voices") : "";
     function have(h){
       /* also: " · " and a phrase of its own, the other quality's voices and the other pack's; note: Best on a Dutch book */
+      if (pk.bgStopped && !h.ready){ show(natHead(m) + _t("Download stopped — tap Download to resume") + note, true, h.model, -1); return; }
       if (h.ready) show(natHead(m) + _t("Ready · {size} on this device", { size: mb(h.bytes || m.mb * 1048576) }) + also + note, false, true, -1);
       else if (h.model) show(natHead(m) + (navigator.onLine ? _t("Almost ready — the voice engine still needs a connection once") : _t("Not ready — the voice engine needs a connection once")) + note, true, true, -1);
       else show(natHead(m, true) + (navigator.onLine ? _t("Not on this device yet") : _t("Not on this device yet — needs a connection once")) + also + note, true, false, -1);
@@ -2644,7 +2736,7 @@
                                               : _t("the English voices are here too ({size})", { size: mb(o.bytes || p.mb * 1048576) }));
       });
       return natOnDevice(m, pk);
-    }).then(function(h){ if (!m.load && natCur() === m && natPack(m) === pk && document.getElementById("kokoroState") === st) have(h); });
+    }).then(function(h){ if (!m.load && !pk.bg && natCur() === m && natPack(m) === pk && document.getElementById("kokoroState") === st) have(h); });
   }
 
   /* the panel is drawn afresh each time it opens, so its rows are handled from the document; the key link, the

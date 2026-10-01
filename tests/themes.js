@@ -11,7 +11,9 @@
    and the control edge (--edge, the secondary text) on the raised surface, which the muted/raise
    text pair already holds to 4.5:1.
    The table and the picker groups are read straight out of app.js; every theme needs a family
-   (warm, cool or neutral) and must sit in exactly one picker group. */
+   (warm, cool or neutral) and must sit in exactly one picker group: light, dark, colour, high
+   contrast, or one of the four collections (dutch, nature, cozy, texture). A textured theme names
+   one of the four textures app.css draws. */
 const fs = require("fs"), path = require("path");
 const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 const m = /var THEMES = (\{[\s\S]*?\n  \});/.exec(src);
@@ -43,6 +45,7 @@ const LABEL = { "panel/lamp": "onfill/lamp", "panel/accent": "onfill/acc", "acce
 const ORIGINAL = ["day", "sepia", "mist", "rose", "dusk", "forest", "ocean", "plum", "ink", "hicon", "hidark"];
 const FAMILIES = ["warm", "cool", "neutral"];
 const HEX = /^#[0-9a-f]{6}$/i;
+const COLLECTIONS = ["dutch", "nature", "cozy", "texture"], TEXTURES = ["grain", "linen", "laid", "vellum"];
 let failures = [], pairs = 0, low = 0;
 
 const head = PAIRS.map(([a, b, min]) => { const k = a + "/" + b; return (min === EDGE ? "edge " : "") + (LABEL[k] || k); });
@@ -51,6 +54,7 @@ for (const [id, t0] of Object.entries(THEMES)){
   for (const k of ["bg", "ink", "muted", "panel", "raise", "line", "accent", "lamp"]) if (!HEX.test(t0[k] || "")) failures.push(id + ": " + k + " is not a 6-digit hex colour (" + t0[k] + ")");
   if (typeof t0.name !== "string" || !t0.name.trim()) failures.push(id + ": no name");
   if (FAMILIES.indexOf(t0.family) < 0) failures.push(id + ": family is " + t0.family + " (warm, cool or neutral)");
+  if (t0.texture !== undefined && TEXTURES.indexOf(t0.texture) < 0) failures.push(id + ": texture is " + t0.texture + " (" + TEXTURES.join(", ") + ")");
   if (HICON.includes(id) && t0.raise !== t0.panel) failures.push(id + ": a high-contrast theme's raised surface is its panel");
   if (!HEX.test(t0.raise || "")) continue;
   /* the dark tone's tints are a little stronger and sit on the raised surface (app.css :root[data-tone="dark"]) */
@@ -70,7 +74,9 @@ if (ids.length < 25) failures.push("only " + ids.length + " themes (11 original 
 /* the picker: light, dark and colour groups (high contrast is HICON), each built-in in exactly one */
 if (!GROUPS) failures.push("the THEME_GROUPS table was not found in app.js");
 else {
-  const listed = [].concat(GROUPS.light || [], GROUPS.dark || [], GROUPS.colour || [], HICON);
+  const listed = [].concat(GROUPS.light || [], GROUPS.dark || [], GROUPS.colour || [], HICON, ...COLLECTIONS.map((c) => GROUPS[c] || []));
+  for (const c of COLLECTIONS) if (!(GROUPS[c] || []).length) failures.push("the " + c + " collection is empty or missing");
+  for (const id of GROUPS.texture || []) if (THEMES[id] && !THEMES[id].texture) failures.push(id + " is in the Textured collection but has no texture");
   for (const id of ids){ const n = listed.filter((x) => x === id).length; if (n !== 1) failures.push(id + " is in " + n + " picker groups (1 expected)"); }
   for (const id of listed) if (!THEMES[id]) failures.push("picker group lists “" + id + "”, which is not a built-in theme");
   for (const id of GROUPS.light || []) if (luminance(THEMES[id] ? THEMES[id].bg : "#000000") < 0.18) failures.push(id + " is in the Light group but has a dark page");

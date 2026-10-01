@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.09.30-38";
+const VERSION = "2026.10.01-40";
 const CACHE = "lamplight-" + VERSION;
 /* the natural voices' runtime (vendor/kokoro/: kokoro-js and the 21.6 MB ONNX runtime both models run on;
    vendor/piper/: the Piper runtime and the phonemizer), kept apart from this version's cache so that it outlives a
@@ -39,6 +39,7 @@ const ASSETS = [
   "./morph.js",
   "./translate.js",
   "./audiobook.js",
+  "./bgfetch.js",
   "./sounds.js",
   "./manifest.webmanifest",
   "./dict-index.json",
@@ -190,6 +191,75 @@ self.addEventListener("activate", (e) => {
       })
       .then(() => self.clients.claim())
   );
+});
+
+/* Background Fetch (bgfetch.js): the natural voices and the Dutch ↔ English pack, downloaded by the browser itself so
+   that closing Lamplight does not stop them. Each file goes into the cache, and under the key, its loader looks up:
+   the request's own URL — Piper's model and config in "piper-voices" (workers/piper-worker.js), Kokoro's voice files in
+   "kokoro-voices" (kokoro-js) and its model, config and tokenizer in "transformers-cache" (transformers.js), the
+   runtime from vendor/kokoro/ and vendor/piper/ in RUNTIME, the pack in "bergamot-models" (workers/mt-worker.js) */
+function bgCache(u) {
+  const url = new URL(u);
+  if (url.origin === "https://huggingface.co") {
+    if (url.pathname.startsWith("/rhasspy/piper-voices/")) return "piper-voices";
+    if (url.pathname.startsWith("/onnx-community/Kokoro-82M-v1.0-ONNX/")) return /\/resolve\/[^/]+\/voices\//.test(url.pathname) ? "kokoro-voices" : "transformers-cache";
+    return null;
+  }
+  if (url.origin !== self.location.origin) return null;
+  if (PACK.test(url.pathname)) return "bergamot-models";
+  if (RUNTIME_PATH.test(url.pathname)) return RUNTIME;
+  return null;
+}
+/* the id is key|title when finished|title when stopped, in the interface's language (bgfetch.js) */
+const bgTitles = (id) => {
+  const p = String(id).split("|");
+  return { key: p[0], done: p[1] || "Lamplight: download complete", stopped: p[2] || "Lamplight: download stopped" };
+};
+async function bgTell(id, state) {
+  const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const c of all) c.postMessage({ type: "BGFETCH", key: bgTitles(id).key, state });
+}
+/* all or nothing: every file is read and checked (a status of 200, and no shorter than its Content-Length) before any
+   is stored, so a pack is never left half on the device */
+self.addEventListener("backgroundfetchsuccess", (e) => {
+  const reg = e.registration, t = bgTitles(reg.id);
+  e.waitUntil((async () => {
+    let ok = true;
+    try {
+      const got = [];
+      for (const rec of await reg.matchAll()) {
+        const name = bgCache(rec.request.url), res = await rec.responseReady;
+        if (!name || !res || !res.ok) throw new Error("not stored: " + rec.request.url);
+        const blob = await res.blob(), want = +res.headers.get("content-length") || 0;
+        if (!blob.size || (want && blob.size < want)) throw new Error("cut short: " + rec.request.url);
+        got.push({ name, url: rec.request.url, blob, type: res.headers.get("content-type") || "application/octet-stream" });
+      }
+      for (const g of got) {
+        const c = await caches.open(g.name);
+        await c.put(g.url, new Response(g.blob, { headers: { "Content-Type": g.type, "Content-Length": String(g.blob.size) } }));
+      }
+    } catch (err) {
+      ok = false;
+    }
+    await e.updateUI({ title: ok ? t.done : t.stopped }).catch(() => null);
+    await bgTell(reg.id, ok ? "done" : "failed");
+  })());
+});
+/* stopped (no connection, no room, a file refused): nothing of it is kept; the app says "tap to resume" */
+self.addEventListener("backgroundfetchfail", (e) => {
+  e.waitUntil((async () => {
+    await e.updateUI({ title: bgTitles(e.registration.id).stopped }).catch(() => null);
+    await bgTell(e.registration.id, "failed");
+  })());
+});
+self.addEventListener("backgroundfetchabort", (e) => { e.waitUntil(bgTell(e.registration.id, "aborted")); });
+/* the notification tapped: Lamplight, open or opened */
+self.addEventListener("backgroundfetchclick", (e) => {
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of all) if ("focus" in c) return c.focus();
+    return self.clients.openWindow("./");
+  })());
 });
 
 self.addEventListener("fetch", (e) => {
