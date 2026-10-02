@@ -10727,8 +10727,10 @@
       tabs.splice(i, 1); save();
       if (wasActive) abandonOpen();
       if (wasActive){
-        if (tabs.length){ activate(tabs[Math.min(i, tabs.length - 1)].id); }
-        else { activeId = null; Library.home(); }
+        /* reading: the neighbour opens; on the library screen a closed tab just goes, nothing opens */
+        var reading = state.mode === "doc" || state.mode === "pdf";
+        if (tabs.length && reading){ activate(tabs[Math.min(i, tabs.length - 1)].id); }
+        else { activeId = null; if (reading) Library.home(); }
       }
       render();
       /* a keyboard close keeps focus in the strip (render moves it to the tab that is left), or
@@ -10775,6 +10777,12 @@
     });
     /* the × is hidden from assistive technology, so the menu carries the same action */
     Menu.add({ order: 3, porder: 92, group: "app", icon: ICONS.close, label: _t("Close document"), show: function(){ return !!activeId && (state.mode === "doc" || state.mode === "pdf"); }, run: function(){ if (activeId) close(activeId); } });
+    Menu.add({ order: 3.5, porder: 92.5, group: "app", icon: ICONS.close, label: _t("Close all tabs"), show: function(){ return tabs.length >= 2; }, run: function(){
+      var reading = state.mode === "doc" || state.mode === "pdf";
+      if (reading) abandonOpen();
+      tabs = []; activeId = null; save(); render();
+      if (reading) Library.home();
+    } });
     document.addEventListener("keydown", function(e){
       if ((e.ctrlKey || e.metaKey) && e.key === "Tab" && tabs.length > 1){
         e.preventDefault();

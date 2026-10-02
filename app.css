@@ -248,6 +248,7 @@
     .tab{height:40px; font-size:var(--fs-body);}
     .tab .tab-x{width:40px; height:40px; margin-right:0;}
     .tab::after{content:""; position:absolute; inset:-4px 0;}
+    .tab .tab-x{position:relative; z-index:1;}   /* above the enlarged tap area, so a tap on × closes instead of opening */
   }
 
   /* the lamp — the theme button */
