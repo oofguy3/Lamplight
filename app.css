@@ -2076,6 +2076,11 @@
   body.fin-on #toast, body.fin-on #einkToast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
   #trStatus.on{display:flex;}
   #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #trStatus .tr-hide{flex:none; width:36px; height:36px; margin-left:2px; border:0; border-radius:50%; background:transparent; color:var(--bg);
+    font-size:1.25rem; line-height:1; cursor:pointer;}
+  #trStatus .tr-hide:hover{background:color-mix(in srgb, var(--bg) 14%, transparent);}
+  #trStatus .tr-hide:focus-visible{outline-color:var(--bg);}
+  body.eink #trStatus .tr-hide{color:#fff;}
   /* their buttons are chips in the pill's own colours: an outlined one, the offer's yes filled with
      the page colour, the close a quiet round */
   #updateToast button, #trStatus .tr-x, #einkToast button{

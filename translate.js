@@ -1068,10 +1068,17 @@
     if (!statusEl){
       statusEl = document.createElement("div");
       statusEl.id = "trStatus"; statusEl.setAttribute("role", "group"); statusEl.setAttribute("aria-label", _t("Translation"));
-      statusEl.innerHTML = '<span class="tr-msg"></span><button type="button" class="tr-x">' + esc(_t("Pause")) + '</button>';
+      statusEl.innerHTML = '<span class="tr-msg"></span><button type="button" class="tr-x">' + esc(_t("Pause")) + '</button>' +
+        '<button type="button" class="tr-hide" aria-label="' + esc(_t("Hide")) + '" title="' + esc(_t("Hide")) + '">\u00d7</button>';
       statusEl.querySelector(".tr-x").addEventListener("click", cancel);
+      /* × only hides the pill: the download and the translation carry on, and a toast says when it is done */
+      statusEl.querySelector(".tr-hide").addEventListener("click", function(){
+        page.pillHidden = true; hideStatus();
+        toast(_t("This carries on in the background — you’ll see a message when it’s done"));
+      });
       document.body.appendChild(statusEl);
     }
+    if (page.pillHidden) return;
     var msg;
     if (page.download !== null && page.download !== undefined) msg = _t("Downloading the {lang} translator… {pct} %", { lang: nameOf(page.pair.split("|")[1]), pct: Math.round(page.download * 100) });
     else {
@@ -1177,6 +1184,7 @@
   }
   function startPage(){
     var gen = ++page.gen;
+    page.pillHidden = false;           /* asked again: the pill shows again */
     return resolveFrom(docSample()).then(function(src){
       if (gen !== page.gen) return;
       var t = bookTarget(src);

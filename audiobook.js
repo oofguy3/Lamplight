@@ -2124,7 +2124,11 @@
         toast(_t("The device voice reads. The natural voices can be downloaded in the Voices panel."));
         return null;     /* Speak falls back without a second toast */
       }
-      return true;
+      /* the download runs on its own (Background Fetch where Chrome has it, which carries on when Lamplight is
+         closed): nothing waits on it on screen, and the device voice reads until the voices are ready */
+      natDownload(m);
+      toast(_t("The voices download in the background — the device voice reads until they’re ready"));
+      return null;
     });
   }
   /* once, when the model is on the device: how the first sentence behaves */

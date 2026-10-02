@@ -2052,6 +2052,10 @@
     apply: apply, NL: NL, add: add, KEY: KEY,
     missing: function(){ return Object.keys(miss); }, scan: scan, check: check
   };
+  add({
+    "This carries on in the background — you’ll see a message when it’s done": "Dit gaat op de achtergrond verder — je krijgt een melding als het klaar is",
+    "The voices download in the background — the device voice reads until they’re ready": "De stemmen worden op de achtergrond gedownload — tot ze klaar zijn leest de apparaatstem"
+  });
   if (HAS_WIN) window.LL_I18N = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 
