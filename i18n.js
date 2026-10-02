@@ -1812,6 +1812,29 @@
     "My {name}": "Mijn {name}"
   });
 
+  /* ==== 10. songs in the book: the link in the text, the hold menu, Soundtrack ==== */
+  add({
+    "Soundtrack": "Muziek uit dit boek",
+    "Play in Spotify · hold for more": "Afspelen in Spotify · vasthouden voor meer",
+    "Play \u201C{title}\u201D": "\u201C{title}\u201D afspelen",
+    "Copy song name": "Titel en artiest kopiëren",
+    "Couldn’t open the music app": "De muziekapp openen lukte niet",
+    "No songs found in this book.": "Geen muziek gevonden in dit boek.",
+    "One song in this book. Tap it to play it in Spotify.": "Eén nummer in dit boek. Tik erop om het in Spotify af te spelen.",
+    "{n} songs, in the order of the book. Tap one to play it in Spotify.": "{n} nummers, in de volgorde van het boek. Tik op een nummer om het in Spotify af te spelen.",
+    "Play \u201C{title}\u201D by {artist} in Spotify": "\u201C{title}\u201D van {artist} afspelen in Spotify",
+    "Play \u201C{title}\u201D in Spotify": "\u201C{title}\u201D afspelen in Spotify",
+    "Go to the chapter": "Naar het hoofdstuk",
+    "Copy list": "Lijst kopiëren"
+  });
+
+  /* ==== 11. example sentences in the dictionary card (Tatoeba) ==== */
+  add({
+    "Example sentences": "Voorbeeldzinnen",
+    "Show example sentences (online)": "Voorbeeldzinnen tonen (online)",
+    "Sentences from Tatoeba under the meaning. The word you tap is sent to Tatoeba; sentences you have seen stay on this device.": "Zinnen van Tatoeba onder de betekenis. Het woord waarop je tikt, gaat naar Tatoeba; zinnen die je al zag, blijven op dit apparaat."
+  });
+
   /* ---------- the language in use ---------- */
   function norm(v){ return v === "nl" || v === "en" ? v : "auto"; }
   var choice = norm(get(KEY)), cur = "en", nl = false;

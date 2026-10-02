@@ -1243,6 +1243,24 @@
   #doc p{margin:0 0 var(--pgap);}
   #doc li{margin-bottom:var(--pgap);}
   #doc a{color:var(--accent);}
+  /* a song at a chapter's start (Songs in app.js): a soft pill with a play mark in front, a link that plays it.
+     The mark is the stylesheet's, not the text's (it is not read aloud, copied or counted). */
+  #doc a.ll-song{
+    color:inherit; text-decoration:none; cursor:pointer; border-radius:var(--r-pill);
+    background:var(--accent-soft); padding:.14em .62em .14em .5em;
+    -webkit-box-decoration-break:clone; box-decoration-break:clone;
+    -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none;
+    transition:background-color var(--t-press) var(--ease-out);
+  }
+  #doc a.ll-song::before{
+    content:""; display:inline-block; width:.82em; height:.82em; margin-right:.4em; vertical-align:-.06em;
+    background-color:var(--accent);
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM10 7.8v8.4l6.3-4.2z'/%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM10 7.8v8.4l6.3-4.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  #doc a.ll-song:active{background:color-mix(in srgb, var(--accent) 28%, transparent);}
+  @media (hover:hover){ #doc a.ll-song:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);} }
+  #doc a.ll-song:focus-visible{outline:var(--ring) solid var(--accent); outline-offset:2px;}
+  :root[data-tone="contrast"] #doc a.ll-song{text-decoration:underline; text-underline-offset:.2em;}
   #doc img{max-width:100%; height:auto; border-radius:6px;}
   #doc blockquote{margin:1.2em 0 var(--pgap); padding:.2em 0 .2em 1.1em; border-left:2.5px solid var(--accent); color:var(--muted);}
   #doc hr{border:none; border-top:1px solid var(--line); margin:2.2em auto; width:40%;}
@@ -2128,6 +2146,39 @@
   #markPop.wrapped{border-radius:var(--r-lg);}
   #markPop .dot{position:relative; width:32px; height:32px; min-height:0; margin:2px; border-radius:50%; border:1px solid var(--line); padding:0; cursor:pointer;}
   @media (pointer: coarse){ #markPop .dot{width:38px; height:38px;} #markPop .dot::after{content:""; position:absolute; inset:-5px;} }
+  /* a hold on a song: the apps that can play it, and its name to copy */
+  #songPop{
+    position:fixed; z-index:58; display:none; flex-direction:column; min-width:220px; max-width:calc(100vw - 16px);
+    padding:6px; border-radius:var(--r-md); background:var(--raise); border:var(--bw) solid var(--line); box-shadow:var(--shadow-2);
+    font-family:var(--ui-font);
+  }
+  #songPop.on{display:flex;}
+  #songPop .sng-head{padding:8px 12px 6px; font-size:var(--fs-small); color:var(--muted); line-height:1.35; overflow-wrap:anywhere;}
+  #songPop button{
+    display:flex; align-items:center; gap:12px; min-height:44px; padding:0 12px; border:0; border-radius:var(--r-sm);
+    background:transparent; color:var(--ink); font-family:var(--ui-font); font-size:var(--fs-body); text-align:left; cursor:pointer;
+  }
+  #songPop button:hover, #songPop button:focus-visible{background:var(--accent-soft);}
+  #songPop button svg{width:var(--icon-sm); height:var(--icon-sm); flex:none; color:var(--accent);}
+  /* Soundtrack: the book's songs, in order */
+  .sng-intro{color:var(--muted); font-size:var(--fs-small); margin:2px 4px 10px; line-height:1.45;}
+  .sng-list{list-style:none; margin:0; padding:0;}
+  .sng-item{display:flex; align-items:stretch; gap:2px;}
+  .sng-play{
+    flex:1; min-width:0; display:flex; align-items:flex-start; gap:12px; padding:10px 12px; border:0; border-radius:var(--r-sm);
+    background:transparent; color:var(--ink); text-align:left; font-family:var(--ui-font); cursor:pointer;
+  }
+  .sng-play:hover{background:var(--accent-soft);}
+  .sng-ic{flex:none; width:34px; height:34px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent);}
+  .sng-ic svg{width:var(--icon-sm); height:var(--icon-sm);}
+  .sng-txt{display:flex; flex-direction:column; min-width:0; gap:1px;}
+  .sng-t{font-family:var(--reader-font); font-size:var(--fs-subtitle); font-weight:600; line-height:1.3; overflow-wrap:anywhere;}
+  .sng-a{font-size:var(--fs-body); line-height:1.35; overflow-wrap:anywhere;}
+  .sng-c{font-size:var(--fs-small); color:var(--muted); line-height:1.35; margin-top:2px;}
+  .sng-play:hover .sng-c{color:var(--ink);}
+  .sng-go{flex:none; width:44px; border:0; border-radius:var(--r-sm); background:transparent; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer;}
+  .sng-go:hover{background:var(--accent-soft); color:var(--ink);}
+  .sng-go svg{width:var(--icon-sm); height:var(--icon-sm);}
   #markPop .dot.accent{background:var(--accent);} #markPop .dot.sun{background:#E8C547;} #markPop .dot.leaf{background:#7FB069;} #markPop .dot.rose{background:#E07A9A;}
   /* the notes panel above the list: search, the filters in use, and what the colours mean */
   .mk-find{margin:2px 0 8px;}
@@ -2214,6 +2265,11 @@
     background-image:none !important; -webkit-mask:none !important; mask:none !important; border-width:1px !important;
   }
   body.eink #warmth, body.eink #dim{display:none !important;}
+  /* a song in the text: an underlined link with a plain play mark in front */
+  body.eink #doc a.ll-song{background:none !important; padding:0; border-radius:0; text-decoration:underline; text-underline-offset:.2em;}
+  body.eink #doc a.ll-song::before{content:"\25B8"; content:"\25B8" / ""; background:none !important; width:auto; height:auto; vertical-align:baseline; color:#000;}
+  body.eink .sng-ic{background:transparent; border:1px solid #000;}
+  body.eink :is(#songPop button, .sng-play, .sng-go):focus-visible{outline:2px solid #000; outline-offset:-2px;}
   /* the bottom sheets' handles: solid black, not a grey tint */
   body.eink .pop-handle, body.eink .sheet-tabs .sheet-grab::before, body.eink #moreMenu .menu-grab::before, body.eink #side .side-grab::before, body.eink #dictCard .grab{background:#000 !important;}
   /* a chosen star keeps no hover tile (a touch leaves :hover on the last thing tapped) */
@@ -2332,6 +2388,8 @@
     #doc a{color:#000; text-decoration:underline;}
     /* the address after a link, only when it leads out to the web */
     #doc a[href^="http://"]::after, #doc a[href^="https://"]::after{content:" (" attr(href) ")"; font-size:.8em; color:#555; overflow-wrap:anywhere;}
+    #doc a.ll-song{background:none; padding:0; text-decoration:none;}
+    #doc a.ll-song::after{content:none;}
     /* highlights keep a grey wash and a rule underneath, so they survive a greyscale printer */
     #doc mark.ll-mark{background:#e2e2e2 !important; color:#000; border-bottom:1px solid #666; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
     #doc mark.ll-mark.noted{border-bottom:2px dotted #666;}

@@ -1,7 +1,7 @@
 /* lamplight service worker — offline cache for everything the app is made of.
    Bump VERSION with every release: a new version installs in the background, and the app
    shows an "update ready" toast; reloading switches over to the new cache. */
-const VERSION = "2026.10.01-40";
+const VERSION = "2026.10.02-41";
 const CACHE = "lamplight-" + VERSION;
 /* the natural voices' runtime (vendor/kokoro/: kokoro-js and the 21.6 MB ONNX runtime both models run on;
    vendor/piper/: the Piper runtime and the phonemizer), kept apart from this version's cache so that it outlives a
@@ -15,8 +15,8 @@ const RUNTIME_PATH = /\/vendor\/(kokoro|piper)\//;
    workers/piper-worker.js: English 78 MB, and Dutch 77 MB once a Dutch book asked for it), and the runtime they run on
    (RUNTIME above) — and the Dutch ↔ English pack (the
    Bergamot runtime and its two models, kept there by workers/mt-worker.js, 49 MB): downloads that must not go with
-   every update */
-const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices", "bergamot-models", RUNTIME];
+   every update — and the dictionary card's example sentences (tatoeba-examples, a few KB a word, kept by app.js) */
+const KEEP = ["lamplight-share", "transformers-cache", "kokoro-voices", "piper-voices", "bergamot-models", "tatoeba-examples", RUNTIME];
 /* runtime files a release renamed [old, new]: a reader who has the old one in RUNTIME gets the new one while this
    version installs (so the voices on the device keep working offline after the update), and the old one goes once this
    version is active. vendor/piper/phonemizer.js became phonemizer-en-nl.js when it learnt Dutch */

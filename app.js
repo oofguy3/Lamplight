@@ -2094,6 +2094,7 @@
           wrap.textContent = txt;
           $("#doc").innerHTML = "";
           $("#doc").appendChild(wrap);
+          if (typeof Songs !== "undefined" && Songs) Songs.scan();
           Anchor.invalidate();
           show("doc");
           reflow();
@@ -2222,6 +2223,7 @@
     opts = opts || {};
     state.toc = opts.toc || null;
     $("#doc").innerHTML = cleanHtml(html);
+    if (typeof Songs !== "undefined" && Songs) Songs.scan();     /* a song at a chapter's start becomes a link (the text stays as it is) */
     Anchor.invalidate();
     show("doc");
     reflow();
@@ -4224,6 +4226,416 @@
   })();
 
   /* ============================================================
+     Songs in the book — a chapter that opens on its song ("♪  “To Build a Home” — The Cinematic
+     Orchestra", "Song “Eye of the Tiger” — Survivor") gets that line as a link: a tap plays it in
+     Spotify, a hold offers YouTube Music, Apple Music or the name to copy, and Soundtrack in the
+     menu lists every song of the book. A line counts when it opens with a music marker (♪ ♫ ♬ 🎵 🎶
+     🎧, "Song", "Now playing:", "Nu speelt:", "Liedje:"… anywhere in the book), or, without one,
+     when it is a short line of its own near the start of a chapter, a quoted title, a dash and an
+     artist that reads like a name (so not “Hello,” — said Anna). The text of #doc stays exactly as
+     it is (positions, highlights, notes and read-aloud are character offsets into it): the line's
+     own nodes move into an <a class="ll-song">, and its note is drawn by the stylesheet.
+     ============================================================ */
+  var Songs = (function(){
+    var NEAR = 8;            /* the blocks after a heading or a chapter break that count as its start */
+    var SYM = "(?:[\\u2669-\\u266C]|\\uD83C[\\uDFB5\\uDFB6\\uDFA7\\uDFBC])\\uFE0F?";
+    var OPENQ = "\"'\\u201C\\u201E\\u2018\\u00AB\\u2039";
+    var MARKER = new RegExp("^\\s*(?:" + SYM + "\\s*|(?:now playing|playing|soundtrack|track|listening to|nu speelt|liedje|muziek|nummer|song)\\s*:\\s*|song\\s+(?=[" + OPENQ + "]))+", "i");
+    /* a first, cheap look at a block far from a chapter's start: a marker anywhere in it */
+    var HINT = new RegExp(SYM + "|\\b(?:playing|soundtrack|track|listening to|nu speelt|liedje|muziek|nummer|song)\\b", "i");
+    var CLOSERS = { "“": "”“", "„": "”“", "\"": "\"", "'": "'", "‘": "’", "«": "»", "‹": "›" };
+    var SEP = /^(?:\s*[—–]\s*|\s*-\s*|\s*,\s*|\s+(?:by|van|door)\s+)(?=\S)/i;
+    var DASH_SEP = /^(?:\s*[—–]\s*|\s*-\s*|\s+(?:by|van|door)\s+)(?=\S)/i;
+    var UNQ_DASH = /^(.+?)(?:\s+-\s+|\s*[—–]\s*)(\S.*)$/;
+    var UNQ_BY = /^(.+)\s+(?:by|van|door)\s+(\S.*)$/i;      /* the last "by": "Stand by Me by Ben E. King" */
+    var UNQ_COMMA = /^([^,]+),\s+(\S.*)$/;
+    /* "Survivor — “Eye of the Tiger”": the artist first (only after a marker) */
+    var REV = new RegExp("^([^" + OPENQ + "]+?)\\s*(?:[\\u2014\\u2013:]|\\s-)\\s*[" + OPENQ + "](.+)[\"'\\u201D\\u201C\\u2019\\u00BB\\u203A]$");
+    /* a player drawn after the song: ◁◁ II ▷▷, ⏮ ⏸ ⏭, ━━━●────, 1:32 / 3:45, ♡ ↻ */
+    var DECO = new RegExp("(?:\\sII(?![A-Za-z])|\\s|[\\u2669-\\u266C\\u25C0\\u25C1\\u25B6\\u25B7\\u23E9-\\u23FA\\u21BA\\u21BB\\u21C4\\u21C6\\u2661\\u2665\\u2764\\u275A\\u2016\\u2022\\u00B7|/\\uFE0E\\uFE0F=_~\\u2500-\\u257F\\u25A0-\\u25AC\\u25CB\\u25CF\\u25C9\\u2B24\\u26AA\\u26AB]|\\uD83C[\\uDFB5\\uDFB6\\uDFA7\\uDFBC]|\\uD83D[\\uDD00-\\uDD04]|\\d{1,2}:\\d{2}|-{2,}|[\\u2014\\u2013]{2,}|\\.{3,}|\\u2026)+$");
+    var LETTER = /[A-Za-z0-9À-ɏͰ-ϿЀ-ӿ぀-ヿ一-鿿가-힯]/;
+    var ART_SMALL = /^(?:&|\+|x|×|and|the|of|feat\.?|ft\.?|featuring|with|vs\.?|en|met|van|de|der|den|het|von|und|y|la|le|les|el|los|las|des|du|da|di|del|a|an|in|on|at|for|to)$/i;
+    var TITLE_SMALL = /^(?:a|an|the|and|or|of|in|on|at|to|for|with|by|from|my|me|you|your|is|it|be|i|am|are|was|de|het|een|en|van|op|met|je|ik)$/i;
+    var SAID = /^(?:said|says|asked|asks|replied|whispered|shouted|zei|zegt|vroeg|vraagt|antwoordde|fluisterde|riep)$/i;
+    var SCENE = /^(?:[*•·⁂~#=_\-—–❦❧§]\s*){1,12}$/;
+    var CH_WORD = /^(?:chapter|hoofdstuk|part|deel|book|boek)\s+(\S+)/i;
+    var CH_SOLO = /^(?:prologue|proloog|epilogue|epiloog|interlude|intermezzo|introduction|inleiding)\b/i;
+    var BLOCKS = "p, li, div, blockquote, pre, dd, dt, figcaption";
+    var BREAKS = "h1, h2, h3, h4, h5, h6, hr, section.ll-chapter";
+    var ALL = BREAKS + ", " + BLOCKS;
+    var count = 0, chapterOf = new WeakMap(), nearOf = new WeakMap();
+
+    function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+    function clean(s){ return String(s || "").replace(/\s+/g, " ").trim(); }
+
+    /* ---- reading a line ---- */
+    function titleLike(t){
+      if (!t || t.length > 80 || !LETTER.test(t)) return false;
+      var u = t.replace(/\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|vs|feat|ft)\./g, "").replace(/(?:\b[A-Z]\.)+/g, "");
+      if (/[.!?…,;:—–-]$/.test(u) || /[.!?…]\s/.test(u)) return false;
+      var words = t.split(" ");
+      if (words.length > 10) return false;
+      /* a longer quote in sentence case is an epigraph (“Not all those who wander are lost”), not a title */
+      if (words.length > 4){
+        var all = 0, big = 0;
+        words.forEach(function(w){ if (TITLE_SMALL.test(w)) return; all++; if (/^[^a-zß-ÿ]/.test(w)) big++; });
+        if (big * 2 < all) return false;
+      }
+      return true;
+    }
+    /* capitalised words, with "and", "the", "feat.", "van", "de"… between them; never a speech verb */
+    function nameLike(s){
+      if (!s || s.length > 60 || /[,;:"“”„«»]/.test(s)) return false;
+      if (/[.!?…]$/.test(s) && !/(?:^|\s)(?:[A-Z]\.)+$/.test(s) && !/\b(?:Jr|Sr|St|Dr)\.$/.test(s)) return false;
+      var words = s.split(" "), cap = 0;
+      if (words.length > 7 || SAID.test(words[0])) return false;
+      for (var i = 0; i < words.length; i++){
+        var w = words[i];
+        if (/^[^a-zß-ÿ]/.test(w)){ if (/^[A-ZÀ-Þ0-9]/.test(w)) cap++; continue; }
+        if (i === 0 || !ART_SMALL.test(w)) return false;
+      }
+      return cap > 0;
+    }
+    function quoted(rest){
+      var close = CLOSERS[rest.charAt(0)];
+      for (var i = 1; i < rest.length; i++){
+        if (close.indexOf(rest.charAt(i)) < 0) continue;
+        var after = rest.slice(i + 1), sm = SEP.exec(after);
+        if (sm) return { title: rest.slice(1, i), artist: after.slice(sm[0].length), quoted: true, dash: DASH_SEP.test(after) };
+        if (!after.trim()) return { title: rest.slice(1, i), artist: "", quoted: true, dash: false };
+      }
+      return null;
+    }
+    /* { title, artist, marked } for a line that names a song, else null; near: the line is close to a chapter's start */
+    function parse(line, near){
+      var s = clean(line);
+      if (!s || s.length > 200) return null;
+      var mk = MARKER.exec(s), marked = !!(mk && mk[0].trim());
+      if (!marked && (!near || s.length >= 120)) return null;
+      var rest = (marked ? s.slice(mk[0].length) : s).replace(DECO, "").trim(), r = null, m;
+      if (!rest) return null;
+      if (CLOSERS[rest.charAt(0)]) r = quoted(rest);
+      if (!r && marked){
+        if ((m = REV.exec(rest)) && m[1].length <= 60) r = { title: m[2], artist: m[1] };
+        else if ((m = UNQ_DASH.exec(rest)) || (m = UNQ_BY.exec(rest)) || (m = UNQ_COMMA.exec(rest))) r = { title: m[1], artist: m[2] };
+      }
+      if (!r) return null;
+      var title = clean(r.title), artist = clean(r.artist).replace(/^[\s,;:\-—–]+|[\s,;:\-—–]+$/g, "");
+      if (marked){
+        title = title.replace(/[\s,;:]+$/, "");          /* “Eye of the Tiger,” by Survivor */
+        if (!title || title.length > 120 || !LETTER.test(title) || artist.length > 80) return null;
+        if (!r.quoted && (title.length > 80 || artist.split(" ").length > 8)) return null;
+        if (artist && !LETTER.test(artist)) artist = "";
+      } else if (!r.quoted || !r.dash || !titleLike(title) || !nameLike(artist)) return null;
+      return { title: title, artist: artist, marked: marked };
+    }
+    function chapterLine(t){
+      if (t.length > 80) return false;
+      if (/^#{1,6}\s+\S/.test(t) || /^(?:\d{1,3}|[IVXLCDM]{1,7})\.?$/.test(t)) return true;
+      if (/[.!?,;]$/.test(t)) return false;
+      if (CH_SOLO.test(t)) return true;
+      var m = CH_WORD.exec(t);
+      return !!(m && /^(?:\d{1,3}|[IVXLCDM]{1,7}|[A-Z][a-z]+(?:-[a-z]+)?)$/.test(m[1].replace(/[.:—–-]+$/, "")));
+    }
+
+    /* ---- finding the lines in the document ---- */
+    /* a block's text cut at <br> and at the line breaks inside its text, as trimmed [start, end) offsets */
+    function linesOf(el){
+      var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT), n, text = "", cuts = [], out = [], at = 0;
+      while ((n = w.nextNode())){
+        if (n.nodeType === 3){
+          var v = n.nodeValue, k = v.indexOf("\n");
+          while (k >= 0){ cuts.push([text.length + k, 1]); k = v.indexOf("\n", k + 1); }
+          text += v;
+        } else if (n.tagName === "BR") cuts.push([text.length, 0]);
+      }
+      cuts.push([text.length, 0]);
+      cuts.forEach(function(c){
+        var a = at, b = c[0];
+        while (a < b && /\s/.test(text.charAt(a))) a++;
+        while (b > a && /\s/.test(text.charAt(b - 1))) b--;
+        if (b > a) out.push([a, b]);
+        at = c[0] + c[1];
+      });
+      return { text: text, lines: out };
+    }
+    /* (text node, offset) for an offset into el's text; end: a boundary belongs to the node before it */
+    function pointIn(el, off, end){
+      var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), n, sum = 0;
+      while ((n = w.nextNode())){
+        var len = n.nodeValue.length;
+        if (end ? off <= sum + len : off < sum + len) return { node: n, offset: off - sum };
+        sum += len;
+      }
+      return null;
+    }
+    function link(song){
+      var a = document.createElement("a");
+      a.className = "ll-song";
+      a.href = url("spotify", song);
+      a.setAttribute("data-title", song.title);
+      a.setAttribute("data-artist", song.artist);
+      a.title = _t("Play in Spotify · hold for more");
+      return a;
+    }
+    /* the line's own nodes move into the link: the text, and so every offset, stays as it was */
+    function wrap(el, a, b, whole, song){
+      var ln = link(song);
+      if (whole){
+        if (el.querySelector("a")) return null;
+        while (el.firstChild) ln.appendChild(el.firstChild);
+        el.appendChild(ln);
+        return ln;
+      }
+      var s = pointIn(el, a, false), e = pointIn(el, b, true);
+      if (!s || !e) return null;
+      var r = document.createRange();
+      r.setStart(s.node, s.offset); r.setEnd(e.node, e.offset);
+      var probe = r.cloneContents();
+      if (probe.querySelector && probe.querySelector("a")) return null;
+      ln.appendChild(r.extractContents());
+      r.insertNode(ln);
+      return ln;
+    }
+    function found(ln, chapter, near){ if (!ln) return; chapterOf.set(ln, chapter); nearOf.set(ln, near); count++; }
+    function scanHtml(doc){
+      var els = doc.querySelectorAll(ALL), since = 0, chapter = "";
+      for (var i = 0; i < els.length; i++){
+        var el = els[i];
+        if (el.matches(BREAKS)){
+          since = 0;
+          if (/^H\d$/.test(el.tagName)){ var ht = clean(el.textContent); if (ht) chapter = ht; }
+          continue;
+        }
+        if (el.querySelector(ALL) || el.closest(".ll-tr, .ll-song, a, nav, table")) continue;
+        var text = el.textContent;
+        if (!/\S/.test(text)) continue;
+        if (text.length <= 160){
+          var t = clean(text);
+          if (SCENE.test(t)){ since = 0; continue; }
+          if (chapterLine(t)){ since = 0; chapter = t.replace(/^#+\s*/, ""); continue; }
+        }
+        var near = since < NEAR;
+        since++;
+        if (text.length > 4000 || (!near && !HINT.test(text))) continue;
+        var L = linesOf(el);
+        for (var j = 0; j < L.lines.length; j++){
+          var ln = L.lines[j];
+          if (ln[1] - ln[0] > 240) continue;
+          var song = parse(L.text.slice(ln[0], ln[1]), near);
+          if (song) found(wrap(el, ln[0], ln[1], L.lines.length === 1, song), chapter, near);
+        }
+      }
+    }
+    /* a plain-text book is one block: its lines, with "Chapter 3", "Hoofdstuk 3", "12", "# Title" or a
+       scene break ("* * *") as the chapter starts */
+    function scanPlain(el){
+      var L = linesOf(el), since = 0, chapter = "", hits = [];
+      L.lines.forEach(function(ln){
+        var t = L.text.slice(ln[0], ln[1]);
+        if (t.length <= 80 && SCENE.test(t)){ since = 0; return; }
+        if (chapterLine(t)){ since = 0; chapter = t.replace(/^#+\s*/, ""); return; }
+        var near = since < NEAR;
+        since++;
+        if (t.length > 240 || (!near && !HINT.test(t))) return;
+        var song = parse(t, near);
+        if (song) hits.push({ a: ln[0], b: ln[1], song: song, chapter: chapter, near: near });
+      });
+      hits.forEach(function(h){ found(wrap(el, h.a, h.b, false, h.song), h.chapter, h.near); });
+    }
+    /* once per document, right after its text is in #doc (setDocHtml, the plain-text path) */
+    function scan(){
+      count = 0; closePop(true);
+      var doc = $("#doc");
+      if (!doc) return;
+      try {
+        var plain = doc.querySelector(":scope > div.plain");
+        if (plain) scanPlain(plain); else scanHtml(doc);
+      } catch(err){ if (window.console) console.warn("songs", err); }
+      Anchor.invalidate();
+    }
+
+    /* ---- a song and where it plays ---- */
+    function info(a){ return { el: a, title: a.getAttribute("data-title") || "", artist: a.getAttribute("data-artist") || "" }; }
+    function name(s){ return s.title + (s.artist ? " — " + s.artist : ""); }
+    function query(s){ return clean(s.title + " " + s.artist); }
+    function url(app, s){
+      var q = encodeURIComponent(query(s));
+      if (app === "ytm") return "https://music.youtube.com/search?q=" + q;
+      if (app === "apple") return "https://music.apple.com/search?term=" + q;
+      return "https://open.spotify.com/search/" + q;
+    }
+    function openWeb(u){
+      var w = null;
+      try { w = window.open(u, "_blank"); } catch(_){}
+      if (w){ try { w.opener = null; } catch(_){} }
+      else Marks.toast(_t("Couldn’t open the music app"));
+    }
+    /* the Spotify app first; still here after 1.2 s (no app, or it said no) the web player in a new tab */
+    function spotify(s){
+      var done = false, timer = null;
+      function finish(){ done = true; clearTimeout(timer); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", finish); }
+      function hidden(){ if (document.hidden) finish(); }
+      document.addEventListener("visibilitychange", hidden);
+      window.addEventListener("pagehide", finish);
+      timer = setTimeout(function(){ if (done) return; finish(); if (!document.hidden) openWeb(url("spotify", s)); }, 1200);
+      try { window.location.href = "spotify:search:" + encodeURIComponent(query(s)); } catch(_){}
+    }
+    function copy(text){
+      if (!navigator.clipboard){ Marks.toast(_t("Couldn’t copy")); return; }
+      navigator.clipboard.writeText(text).then(function(){ Marks.toast(_t("Copied")); }, function(){ Marks.toast(_t("Couldn’t copy")); });
+    }
+    function go(app, s){
+      if (app === "copy") copy(name(s));
+      else if (app === "spotify") spotify(s);
+      else openWeb(url(app, s));
+    }
+    /* what read-aloud says for the line: the song, in the book's language, never the note or the player */
+    function say(a){
+      var s = info(a), nl = /^nl/i.test(bookLang());
+      return (nl ? "Nummer: " : "Song: ") + s.title + (s.artist ? (nl ? ", van " : ", by ") + s.artist : "") + ".";
+    }
+
+    /* ---- a tap plays it; a hold (or a right-click) offers the other apps ---- */
+    var pop = null, popFor = null, heldAt = 0, holdTimer = null, hx = 0, hy = 0;
+    var APPS = [["spotify", "Spotify"], ["ytm", "YouTube Music"], ["apple", "Apple Music"]];
+    function buildPop(){
+      pop = document.createElement("div");
+      pop.id = "songPop"; pop.setAttribute("role", "menu");
+      document.body.appendChild(pop);
+      pop.addEventListener("click", function(e){
+        var b = e.target.closest("button[data-app]");
+        if (!b || !popFor) return;
+        var s = info(popFor); closePop(true); go(b.getAttribute("data-app"), s);
+      });
+      pop.addEventListener("keydown", function(e){
+        var bs = Array.prototype.slice.call(pop.querySelectorAll("button")), i = bs.indexOf(document.activeElement);
+        if (e.key === "ArrowDown" || e.key === "ArrowUp"){ e.preventDefault(); bs[(i + (e.key === "ArrowDown" ? 1 : bs.length - 1)) % bs.length].focus(); }
+        else if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); closePop(); }
+        else if (e.key === "Tab") closePop(true);
+      });
+    }
+    function showPop(a){
+      if (!pop) buildPop();
+      if (popFor === a && pop.classList.contains("on")) return;
+      popFor = a;
+      var s = info(a);
+      pop.setAttribute("aria-label", _t("Play “{title}”", { title: s.title }));
+      pop.innerHTML = '<div class="sng-head" lang="' + bookLang() + '" data-no-i18n>' + esc(name(s)) + '</div>' +
+        APPS.map(function(p){ return '<button type="button" role="menuitem" data-app="' + p[0] + '">' + ICONS.music + '<span>' + p[1] + '</span></button>'; }).join("") +
+        '<button type="button" role="menuitem" data-app="copy">' + COPY_ICON + '<span>' + esc(_t("Copy song name")) + '</span></button>';
+      pop.classList.add("on");
+      var r = a.getClientRects()[0] || a.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+      var x = Math.min(Math.max(8, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 8);
+      var y = r.top - ph - 8; if (y < 8) y = Math.min(r.bottom + 8, window.innerHeight - ph - 8);
+      pop.style.left = Math.round(x) + "px"; pop.style.top = Math.round(Math.max(8, y)) + "px";
+      var first = pop.querySelector("button"); if (first) first.focus({ preventScroll: true });
+    }
+    function closePop(quiet){
+      if (!pop || !pop.classList.contains("on")) return;
+      var a = popFor;
+      pop.classList.remove("on"); popFor = null;
+      if (!quiet && a && document.contains(a)) a.focus({ preventScroll: true });
+    }
+    function songAt(e){ var t = e.target; return t && t.closest ? t.closest("#doc a.ll-song") : null; }
+    /* the capture phase on the document: before the dictionary's word tap, the page-turn taps and the link handler of #doc */
+    document.addEventListener("click", function(e){
+      var a = songAt(e);
+      if (!a){ if (pop && pop.classList.contains("on") && !(e.target.closest && e.target.closest("#songPop")) && Date.now() - heldAt > 700) closePop(true); return; }
+      e.preventDefault(); e.stopPropagation();
+      if (Date.now() - heldAt < 700) return;           /* the click a hold leaves behind */
+      var sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+      closePop(true);
+      spotify(info(a));
+    }, true);
+    document.addEventListener("contextmenu", function(e){
+      var a = songAt(e);
+      if (!a) return;
+      e.preventDefault(); e.stopPropagation();
+      clearTimeout(holdTimer);
+      heldAt = Date.now();
+      showPop(a);
+    }, true);
+    /* a hold on a phone, should the browser send no contextmenu */
+    document.addEventListener("touchstart", function(e){
+      clearTimeout(holdTimer);
+      var a = songAt(e);
+      if (!a || e.touches.length > 1) return;
+      hx = e.touches[0].clientX; hy = e.touches[0].clientY;
+      holdTimer = setTimeout(function(){ heldAt = Date.now(); if (navigator.vibrate) navigator.vibrate(12); showPop(a); }, 520);
+    }, { passive: true, capture: true });
+    document.addEventListener("touchmove", function(e){
+      if (holdTimer && e.touches.length && (Math.abs(e.touches[0].clientX - hx) > 10 || Math.abs(e.touches[0].clientY - hy) > 10)) clearTimeout(holdTimer);
+    }, { passive: true, capture: true });
+    document.addEventListener("touchend", function(){ clearTimeout(holdTimer); }, { passive: true, capture: true });
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape" && pop && pop.classList.contains("on")){ e.stopPropagation(); closePop(); } }, true);
+    window.addEventListener("scroll", function(){ if (Date.now() - heldAt > 400) closePop(true); }, { passive: true });
+    window.addEventListener("resize", function(){ closePop(true); });
+
+    /* ---- Soundtrack: every song of the book, in order, with its chapter ---- */
+    function all(){
+      var doc = $("#doc"), heads = [];
+      if (state.mode !== "doc" || !doc) return [];
+      try { heads = Toc.entries() || []; } catch(_){ heads = []; }
+      return Array.prototype.map.call(doc.querySelectorAll("a.ll-song"), function(a){
+        var s = info(a), head = null;
+        heads.forEach(function(h){
+          if (h.el && (h.el === a || (h.el.compareDocumentPosition(a) & (Node.DOCUMENT_POSITION_FOLLOWING | Node.DOCUMENT_POSITION_CONTAINED_BY)))) head = h;
+        });
+        s.chapter = head ? head.title : (chapterOf.get(a) || "");
+        s.head = head && nearOf.get(a) ? head.el : null;
+        return s;
+      });
+    }
+    var shown = null;
+    function render(body, foot){
+      var list = all(), lang = bookLang();
+      shown = list;
+      if (!list.length){ body.innerHTML = '<div class="empty-note">' + esc(_t("No songs found in this book.")) + '</div>'; return; }
+      body.innerHTML = '<p class="sng-intro">' + esc(_tn(list.length, "One song in this book. Tap it to play it in Spotify.", "{n} songs, in the order of the book. Tap one to play it in Spotify.")) + '</p>' +
+        '<ol class="sng-list">' + list.map(function(s, i){
+          var lbl = s.artist ? _t("Play “{title}” by {artist} in Spotify", { title: s.title, artist: s.artist }) : _t("Play “{title}” in Spotify", { title: s.title });
+          return '<li class="sng-item">' +
+            '<button type="button" class="sng-play" data-i="' + i + '" aria-label="' + esc(lbl + (s.chapter ? " · " + s.chapter : "")) + '">' +
+              '<span class="sng-ic" aria-hidden="true">' + ICONS.music + '</span>' +
+              '<span class="sng-txt" lang="' + lang + '" data-no-i18n><span class="sng-t">' + esc(s.title) + '</span>' +
+                (s.artist ? '<span class="sng-a">' + esc(s.artist) + '</span>' : '') +
+                (s.chapter ? '<span class="sng-c">' + esc(s.chapter) + '</span>' : '') + '</span>' +
+            '</button>' +
+            '<button type="button" class="sng-go" data-go="' + i + '" aria-label="' + esc(_t("Go to the chapter")) + '" title="' + esc(_t("Go to the chapter")) + '">' + GO_ICON + '</button>' +
+          '</li>';
+        }).join("") + '</ol>';
+      foot.innerHTML = '<button type="button" class="chip" data-sng="copy">' + esc(_t("Copy list")) + '</button>';
+    }
+    Side.body.addEventListener("click", function(e){
+      if (!Side.is("songs") || !shown) return;
+      var p = e.target.closest(".sng-play"), g = e.target.closest(".sng-go"), s;
+      if (p && (s = shown[+p.getAttribute("data-i")])) spotify(s);
+      else if (g && (s = shown[+g.getAttribute("data-go")])){
+        Side.close();
+        if (Journal) Journal.jumped();
+        revealElement(s.head || s.el);
+      }
+    });
+    Side.foot.addEventListener("click", function(e){
+      if (!Side.is("songs") || !e.target.closest("[data-sng=copy]")) return;
+      copy(all().map(name).join("\n"));
+    });
+    function openPanel(){ Side.open("songs", _t("Soundtrack"), render, function(){ shown = null; }); }
+    document.addEventListener("ll:fileopened", function(){ count = 0; closePop(true); if (Side.is("songs")) Side.close(); });
+
+    var SVG = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+    ICONS.music = SVG + '<path d="M9 18V5l11-2v13"/><path d="M6 15a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/><path d="M17 13a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>';
+    var COPY_ICON = SVG + '<path d="M9 9h11v11H9z"/><path d="M5 15H4V4h11v1"/></svg>';
+    var GO_ICON = SVG + '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>';
+    Menu.add({ order: 21, pgroup: "reading", porder: 40.25, group: "navigate", icon: ICONS.music, label: function(){ return _t("Soundtrack"); }, run: openPanel,
+               show: function(){ return state.mode === "doc" && count > 0; } });
+
+    return { scan: scan, say: say, parse: parse, openPanel: openPanel, list: all, count: function(){ return count; } };
+  })();
+
+  /* ============================================================
      Search inside the document (text documents and PDFs)
      ============================================================ */
   /* text of a PDF page, cached per document (search and read-aloud share it) */
@@ -5408,8 +5820,24 @@
       /* dialogue dashes are decided over the whole document, not block by block */
       var dashes = dashStyle(got.map(function(g){ return g.text; }));
       got.forEach(function(g){
-        var h = /^H[1-4]$/.test(g.b.tagName);
-        unitsFromText(g.text, g.base, out, h ? { heading: true, level: +g.b.tagName.charAt(1) } : { heading: false }, dashes);
+        var h = /^H[1-4]$/.test(g.b.tagName), meta = h ? { heading: true, level: +g.b.tagName.charAt(1) } : { heading: false };
+        var songs = typeof Songs !== "undefined" && Songs ? g.b.querySelectorAll("a.ll-song") : [];
+        if (!songs.length){ unitsFromText(g.text, g.base, out, meta, dashes); return; }
+        /* a song line (Songs) is one unit that says the song ("Song: Eye of the Tiger, by Survivor."), not its
+           note, quotes or player; the text around it is read as usual. Offsets stay the line's own. */
+        var pos = 0;
+        Array.prototype.forEach.call(songs, function(a){
+          var tn = Anchor.textNodes(a);
+          if (!tn.length) return;
+          var s = offsetOfNode.get(tn[0]), e = offsetOfNode.get(tn[tn.length - 1]);
+          if (s === undefined || e === undefined) return;
+          s -= g.base; e += tn[tn.length - 1].length - g.base;
+          if (s < pos || e > g.text.length) return;
+          if (s > pos) unitsFromText(g.text.slice(pos, s), g.base + pos, out, meta, dashes);
+          out.push(Object.assign({ start: g.base + s, end: g.base + e, text: Songs.say(a), song: true, para: g.base + s, last: true }, meta));
+          pos = e;
+        });
+        if (pos < g.text.length) unitsFromText(g.text.slice(pos), g.base + pos, out, meta, dashes);
       });
       return out;
     }
@@ -11524,6 +11952,26 @@
       "#dictCard .part .pm{font-size:var(--fs-small); line-height:1.35; margin-top:2px;}",
       "#dictCard .part .po{font-size:var(--fs-small); line-height:1.3; color:var(--muted); font-style:italic; margin-top:1px;}",
       "#dictCard .gloss{font-style:italic; font-size:var(--fs-body); line-height:1.45; margin:2px 0 4px;}",
+      /* example sentences: the sentence (a tap reads it aloud), its translation, the credit; a quiet placeholder meanwhile */
+      "#dictCard .ex[hidden]{display:none;}",
+      "#dictCard .ex .sec{margin-top:20px;}",
+      "#dictCard .ex-list{list-style:none; margin:0; padding:0; display:grid; gap:12px;}",
+      "#dictCard .ex-list li{padding-left:12px; border-left:3px solid var(--accent-soft);}",
+      "#dictCard .ex-s{display:block; width:100%; text-align:start; margin:0; padding:2px 0; border:0; background:none; color:var(--ink); font:inherit; font-family:var(--reader-font); font-size:var(--fs-body); line-height:1.5; cursor:pointer; border-radius:6px;}",
+      "#dictCard .ex-s[aria-pressed=true]{background:var(--accent-soft);}",
+      "#dictCard .ex-s mark{background:var(--lamp-soft); color:inherit; font-weight:600; border-radius:3px; padding:0 2px;}",
+      "#dictCard .ex-tr{color:var(--muted); font-size:var(--fs-small); line-height:1.45; margin-top:2px;}",
+      "#dictCard .ex-src{display:inline-block; color:var(--muted); font-size:0.75rem; line-height:1.3; margin-top:3px; text-decoration:underline; text-decoration-color:var(--hair); text-underline-offset:2px;}",
+      "#dictCard .ex-src:hover{color:var(--ink);}",
+      "#dictCard .ex-more{margin:10px 0 2px; padding:0 4px; min-height:36px; border:0; background:none; color:var(--accent); font:inherit; font-size:var(--fs-small); font-weight:600; cursor:pointer;}",
+      "#dictCard .ex-more[hidden]{display:none;}",
+      "#dictCard .ex-wait{display:grid; gap:8px; padding:2px 0 4px;}",
+      "#dictCard .ex-wait span{display:block; height:10px; border-radius:999px; background:var(--hair); opacity:.55; animation:llExWait 1.4s ease-in-out infinite alternate;}",
+      "#dictCard .ex-wait span + span{width:62%;}",
+      "@keyframes llExWait{to{opacity:.2;}}",
+      "@media (prefers-reduced-motion: reduce){ #dictCard .ex-wait span{animation:none;} }",
+      "@media (pointer: coarse){ #dictCard .ex-more{min-height:44px;} #dictCard .ex-src{padding:4px 0;} }",
+      "@media (forced-colors: active){ #dictCard .ex-s mark{background:Highlight; color:HighlightText;} }",
       /* the translation line (filled by translate.js): under the word, lined up with it, or under the quoted
          sentence; the translation in the reader font, a quiet engine line, a "translating…" while it comes */
       "#dictCard .trline{flex:none; margin:6px 16px 0; min-width:0;}",
@@ -11902,13 +12350,21 @@
       try { speechSynthesis.cancel(); } catch(_){}
       resetSpeechBtn();
     }
-    function speakPlain(s, btn, stopLabel){
+    /* lang: the text's language (an example sentence), when the narrator's voice may not speak it */
+    function speakPlain(s, btn, stopLabel, lang){
       if (utter){ stopSpeech(); return; }
       if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
       if (window.__ll && window.__ll.Speak && window.__ll.Speak.isPlaying()) window.__ll.Speak.pause();
       var u = new SpeechSynthesisUtterance(s);
       var name = Store.get("ll_tts_voice") || "", vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
       for (var i = 0; i < vs.length; i++) if (vs[i].name === name){ u.voice = vs[i]; break; }
+      if (lang){
+        u.lang = lang;
+        var vl = function(v){ return String(v.lang || "").slice(0, 2).toLowerCase() === lang; };
+        if (u.voice && !vl(u.voice)) u.voice = null;
+        for (var j = 0; j < vs.length && !u.voice; j++) if (vl(vs[j]) && vs[j].localService) u.voice = vs[j];
+        for (var k = 0; k < vs.length && !u.voice; k++) if (vl(vs[k])) u.voice = vs[k];
+      }
       u.rate = Math.min(2, Math.max(0.5, parseFloat(Store.get("ll_tts_rate") || "1") || 1));
       u.onend = u.onerror = function(){ if (utter === u){ utter = null; resetSpeechBtn(); } };
       utter = u; utterBtn = btn; utterLabel = stopLabel ? btn.textContent : "";
@@ -12091,6 +12547,7 @@
       }
       p.innerHTML = h;
       renderParts(term, res);
+      runExamples(term, res, my);
     }
 
     /* ---------- word parts (prefix / root / suffix, see llMorph) ----------
@@ -12162,6 +12619,157 @@
         p.innerHTML = ""; p.appendChild(box);
         markTab("parts", String(r.parts.length));
       }).catch(function(err){ console.warn("Word parts unavailable", err); });
+    }
+
+    /* ---------- example sentences (Tatoeba, CC BY 2.0 FR) ----------
+       Under the meaning, once it is drawn: three sentences with the word in them (highlighted), each
+       with its translation under it, and More for five more. Asked for only when online and the switch
+       in the Dictionary settings is on (the default): 4 s at most, and nothing at all on a failure or
+       when there are none, so the card never waits for it. Each word's answer is kept in Cache Storage
+       (tatoeba-examples, which sw.js keeps across releases), so a word seen before has them offline. */
+    var EX_KEY = "ll_examples", EX_CACHE = "tatoeba-examples", EX_MAX = 800, EX_API = "https://api.tatoeba.org/unstable/sentences";
+    var ISO3 = { en: "eng", nl: "nld", de: "deu", fr: "fra", es: "spa", it: "ita", pt: "por", sv: "swe", da: "dan", no: "nob", fi: "fin",
+                 pl: "pol", cs: "ces", sk: "slk", hu: "hun", ro: "ron", el: "ell", tr: "tur", ru: "rus", uk: "ukr", ar: "ara", he: "heb",
+                 fa: "pes", hi: "hin", bn: "ben", ur: "urd", id: "ind", ms: "zsm", vi: "vie", th: "tha", zh: "cmn", "zh-Hant": "cmn",
+                 ja: "jpn", ko: "kor", sw: "swh", ca: "cat" };
+    function examplesOn(){ return Store.get(EX_KEY) !== "0"; }
+    /* the book's language, and the reader's for the translations: the language chosen under Translation,
+       else the device's, else (a book already in it) the other side of Dutch ↔ English */
+    function exLangs(){
+      var L = window.__ll, src = L && L.Speak && L.Speak.docLang ? L.Speak.docLang() : "en";
+      if (!ISO3[src]) return null;
+      var picked = Store.get("ll_tr_to"), to = picked && picked !== "auto" && ISO3[picked] ? picked : trReader();
+      if (to.slice(0, 2) === src) to = picked && picked !== "auto" && ISO3[picked] && picked.slice(0, 2) !== src ? picked : (src === "nl" ? "en" : "nl");
+      if (ISO3[to] === ISO3[src]) to = src === "nl" ? "en" : "nl";
+      return { src: src, to: to.slice(0, 2), from3: ISO3[src], to3: ISO3[to] };
+    }
+    var EX_WORD = /[A-Za-zÀ-ɏ]+(?:['’][A-Za-zÀ-ɏ]+)*/g;
+    function exTokens(t){ return (String(t).match(EX_WORD) || []).map(function(w){ return w.toLowerCase().replace(/’/g, "'"); }); }
+    /* a stem for the forms the search also finds (whistling, whistled; fietsen, fietste) */
+    function exStem(w){
+      var st = w.replace(/(ing|ed|es|en|er|est|ly|te|de|s|e|y|t)$/, "");
+      return st.length >= 3 && w.length > 3 ? st : "";
+    }
+    function exMatch(w, forms, stem){ return forms.indexOf(w) >= 0 || !!(stem && w.indexOf(stem) === 0 && w.length - stem.length <= 4); }
+    function exMark(text, forms, stem){
+      var out = "", last = 0, m;
+      EX_WORD.lastIndex = 0;
+      while ((m = EX_WORD.exec(text))){
+        if (!exMatch(m[0].toLowerCase().replace(/’/g, "'"), forms, stem)) continue;
+        out += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+        last = m.index + m[0].length;
+      }
+      return out + esc(text.slice(last));
+    }
+    /* the exact form tapped first, then the base form; 4–16 words; a direct translation */
+    function exScore(s, tw, forms){
+      var toks = exTokens(s.t), n = toks.length, k = 0;
+      if (toks.indexOf(tw) >= 0) k += 6;
+      else if (toks.some(function(w){ return forms.indexOf(w) >= 0; })) k += 3;
+      k += n >= 4 && n <= 16 ? 3 : -Math.min(3, (n < 4 ? 4 - n : n - 16) / 2);
+      if (s.d) k += 2;
+      return k;
+    }
+    /* the answer, cut down to what the card shows: the sentence, one translation (a direct one first) */
+    function exItems(j, to3){
+      var out = [];
+      ((j && j.data) || []).forEach(function(s){
+        if (!s || !s.text || s.is_unapproved) return;
+        var tr = null;
+        [].concat.apply([], s.translations || []).forEach(function(t){
+          if (t && t.lang === to3 && t.text && !t.is_unapproved && (!tr || (t.is_direct && !tr.d))) tr = { t: t.text, d: !!t.is_direct };
+        });
+        if (tr) out.push({ id: s.id, t: s.text, tr: tr.t, d: tr.d });
+      });
+      return out;
+    }
+    function exUrl(q, L){ return EX_API + "?lang=" + L.from3 + "&q=" + encodeURIComponent(q) + "&trans:lang=" + L.to3 + "&sort=relevance&limit=40"; }
+    function exCache(){ return window.caches && caches.open ? caches.open(EX_CACHE) : Promise.reject(new Error("no cache")); }
+    function exCached(url){
+      return exCache().then(function(c){ return c.match(url); }).then(function(r){ return r ? r.json() : null; }).catch(function(){ return null; });
+    }
+    function exKeep(url, items){
+      exCache().then(function(c){
+        return c.put(url, new Response(JSON.stringify(items), { headers: { "Content-Type": "application/json" } }))
+          .then(function(){ return c.keys(); })
+          .then(function(keys){ return Promise.all(keys.slice(0, Math.max(0, keys.length - EX_MAX)).map(function(k){ return c.delete(k); })); });
+      }).catch(function(){});
+    }
+    function exFetch(url, L){
+      var ctl = window.AbortController ? new AbortController() : null, timer = 0;
+      var late = new Promise(function(_, no){ timer = setTimeout(function(){ if (ctl) ctl.abort(); no(new Error("timeout")); }, 4000); });
+      var job = fetch(url, { signal: ctl ? ctl.signal : undefined, credentials: "omit", referrerPolicy: "no-referrer" })
+        .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+      return Promise.race([job, late]).then(function(j){ clearTimeout(timer); return exItems(j, L.to3); },
+                                            function(e){ clearTimeout(timer); throw e; });
+    }
+    /* one word: the kept answer, else (online) Tatoeba's */
+    function exGet(q, L){
+      var url = exUrl(q, L);
+      return exCached(url).then(function(hit){
+        if (hit) return hit;
+        if (!navigator.onLine) return [];
+        return exFetch(url, L).then(function(items){ if (items.length) exKeep(url, items); return items; }, function(){ return []; });
+      });
+    }
+    function runExamples(term, res, my){
+      if (!examplesOn() || !cur || cur.kind !== "word" || cur.gen !== my) return;
+      var L = exLangs(), p = panelEl("meaning");
+      var tw = String(term).toLowerCase().replace(/’/g, "'").replace(/^['-]+|['-]+$/g, "");
+      if (!L || !p || tw.length < 2 || /\d/.test(tw) || tw.length > 40) return;
+      var forms = [tw];
+      /* the card's base form is the English dictionary's, so only an English book asks for it too */
+      if (L.src === "en" && res && res.word && res.word.toLowerCase() !== tw && !/\s/.test(res.word)) forms.push(res.word.toLowerCase());
+      var stem = exStem(forms[forms.length - 1]) || exStem(tw);
+      var box = document.createElement("section");
+      box.className = "ex"; box.setAttribute("aria-labelledby", "dictExL"); box.setAttribute("aria-busy", "true");
+      box.innerHTML = '<div class="sec" id="dictExL">' + esc(_t("Example sentences")) + '</div>' +
+                      '<div class="ex-wait" aria-hidden="true"><span></span><span></span></div>';
+      /* offline, only the kept answer can come: nothing shows unless it does */
+      box.hidden = !navigator.onLine;
+      p.appendChild(box);
+      Promise.all(forms.map(function(q){ return exGet(q, L); })).then(function(lists){
+        if (!cur || cur.gen !== my || !box.parentNode) return;
+        var seen = {}, pool = [];
+        lists.forEach(function(list, li){
+          (list || []).forEach(function(s){
+            if (!s || !s.t || seen[s.t]) return;
+            seen[s.t] = 1;
+            pool.push({ s: s, k: exScore(s, tw, forms) - li, i: pool.length });
+          });
+        });
+        if (!pool.length){ box.remove(); return; }
+        pool.sort(function(a, b){ return b.k - a.k || a.i - b.i; });
+        box.hidden = false; box.removeAttribute("aria-busy");
+        box.innerHTML = '<div class="sec" id="dictExL">' + esc(_t("Example sentences")) + '</div><ul class="ex-list" data-no-i18n></ul>' +
+                        '<button type="button" class="ex-more">' + esc(_t("More")) + '</button>';
+        var ul = box.querySelector(".ex-list"), more = box.querySelector(".ex-more"), shown = 0;
+        function draw(n){
+          var end = Math.min(pool.length, shown + n), h = "";
+          for (var i = shown; i < end; i++){
+            var s = pool[i].s;
+            h += '<li><button type="button" class="ex-s" data-i="' + i + '" lang="' + L.src + '" aria-pressed="false" title="' + esc(_t("Read aloud")) + '">' + exMark(s.t, forms, stem) + '</button>' +
+                 '<div class="ex-tr" lang="' + L.to + '">' + esc(s.tr) + '</div>' +
+                 '<a class="ex-src" href="https://tatoeba.org/sentences/show/' + encodeURIComponent(s.id) + '" target="_blank" rel="noopener noreferrer" lang="en">Tatoeba · CC BY 2.0 FR</a></li>';
+          }
+          var first = shown;
+          ul.insertAdjacentHTML("beforeend", h);
+          shown = end;
+          more.hidden = shown >= pool.length;
+          return ul.querySelector('.ex-s[data-i="' + first + '"]');
+        }
+        draw(3);
+        more.addEventListener("click", function(){
+          var f = draw(5);
+          if (more.hidden && f) f.focus({ preventScroll: true });
+        });
+        ul.addEventListener("click", function(e){
+          var b = e.target.closest(".ex-s"); if (!b) return;
+          var s = pool[+b.dataset.i] && pool[+b.dataset.i].s; if (!s) return;
+          if (utter && utterBtn !== b) stopSpeech();
+          speakPlain(s.t, b, null, L.src);
+        });
+      });
     }
 
     /* the translation line is handed to translate.js as soon as the card is built: it translates at once when the
@@ -12684,7 +13292,7 @@
       doc.addEventListener("touchstart", function(e){
         if (dictMode === "off" || e.touches.length > 1) return;
         tStart = Date.now(); moved = false; held = false;
-        if (onTranslation(e)){ clearTimeout(holdTimer); return; }
+        if (onTranslation(e) || (e.target && e.target.closest && e.target.closest("a.ll-song"))){ clearTimeout(holdTimer); return; }     /* a song's hold is its own menu (Songs) */
         tX = e.touches[0].clientX; tY = e.touches[0].clientY;
         clearTimeout(holdTimer);
         holdTimer = setTimeout(function(){
@@ -12831,8 +13439,13 @@
         '</div>' +
         '<div class="hint">' +
           esc(_t("Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline.")) +
-        '</div>';
+        '</div>' +
+        '<div class="rowline"><label class="check"><input type="checkbox" role="switch" id="dictEx" aria-describedby="dictExHint">' + esc(_t("Show example sentences (online)")) + '</label></div>' +
+        '<div class="hint" id="dictExHint">' + esc(_t("Sentences from Tatoeba under the meaning. The word you tap is sent to Tatoeba; sentences you have seen stay on this device.")) + '</div>';
       sheet.appendChild(g);
+      var exSw = g.querySelector("#dictEx");
+      exSw.checked = examplesOn();
+      exSw.addEventListener("change", function(){ Store.set(EX_KEY, exSw.checked ? "1" : "0"); });
       function syncChips(){
         g.querySelectorAll("#dictChips .chip").forEach(function(c){
           var on = c.dataset.dm === dictMode; c.classList.toggle("on", on); c.setAttribute("aria-pressed", on ? "true" : "false");
@@ -12976,7 +13589,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Sounds: Sounds, Dim: Dim, Eink: Eink, PhoneBar: PhoneBar, SheetTabs: SheetTabs, UiLang: UiLang, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset,
+  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Songs: Songs, Sounds: Sounds, Dim: Dim, Eink: Eink, PhoneBar: PhoneBar, SheetTabs: SheetTabs, UiLang: UiLang, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset,
                  /* Pages flow: lay the columns out again after the text changed, landing on the same text (translate.js) */
                  relayoutPages: function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); } };
   window.Search = Search;
