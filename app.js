@@ -11845,7 +11845,7 @@
       /* a bottom sheet on phones: the raised surface, 24px top corners, the third step of elevation */
       "#dictCard{",
       "  position:fixed; left:0; right:0; bottom:0; z-index:60;",
-      "  display:flex; flex-direction:column; max-height:66vh;",
+      "  display:flex; flex-direction:column; max-height:min(82vh, calc(100vh - 48px));",
       "  background:var(--raise); color:var(--ink);",
       "  border-top:1px solid var(--line); border-radius:var(--r-xl) var(--r-xl) 0 0;",
       "  box-shadow:var(--shadow-3);",
@@ -11858,9 +11858,9 @@
       "#dictCard:focus-visible{outline:var(--ring) solid var(--accent); outline-offset:-2px;}",
       /* the handle: a 36 × 4 pill in a 24px grab zone */
       "#dictCard .grab{flex:none; width:36px; height:4px; border-radius:999px; background:color-mix(in oklab, var(--hair), var(--ink) 40%); margin:10px auto;}",
-      "#dictCard .inner{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}",
+      "#dictCard .inner{display:flex; flex-direction:column; flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;}",
       /* head: the mark (a lamp-tinted round), the word or “This sentence” in the title face, a round close */
-      "#dictCard .head{flex:none; display:flex; align-items:center; gap:12px; padding:4px 8px 0 16px; min-height:56px;}",
+      "#dictCard .head{flex:none; display:flex; align-items:center; gap:12px; padding:4px 8px 0 16px; min-height:56px; position:sticky; top:0; z-index:2; background:var(--raise);}",
       "#dictCard .mark{",
       "  flex:none; width:40px; height:40px; border-radius:50%;",
       "  display:flex; align-items:center; justify-content:center;",
@@ -11882,7 +11882,7 @@
       "  border-left:3px solid var(--lamp); border-radius:0 var(--r-sm) var(--r-sm) 0;",
       "  background:var(--lamp-soft); overflow-wrap:break-word;",
       "}",
-      "#dictCard .quote.clamp{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}",
+      "#dictCard .quote.clamp .qt{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}",
       "#dictCard .more{",
       "  flex:none; align-self:flex-end; min-height:40px; margin:0 8px 0; padding:0 10px; border:0; border-radius:var(--r-pill);",
       "  background:transparent; color:var(--accent); font:inherit; font-size:var(--fs-small); font-weight:600; cursor:pointer;",
@@ -11912,12 +11912,12 @@
       "#dictCard .dot{flex:none; width:6px; height:6px; border-radius:50%; background:var(--accent);}",
       "@media (max-width:359px){ #dictCard [role=tab]{gap:4px; padding:0 4px; font-size:var(--fs-small);} }",
       /* the panels scroll between the strip and the footer */
-      "#dictCard .body{flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:12px 16px;}",
+      "#dictCard .body{flex:none; padding:12px 16px;}",
       "#dictCard .panel[hidden]{display:none;}",
       "#dictCard .panel:focus{outline:none;}",
       "#dictCard .panel:focus-visible{outline:2px solid var(--accent); outline-offset:-2px; border-radius:8px;}",
       "#dictCard .foot{",
-      "  flex:none; display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px calc(8px + env(safe-area-inset-bottom, 0px));",
+      "  flex:none; display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px calc(8px + env(safe-area-inset-bottom, 0px)); position:sticky; bottom:0; z-index:2; margin-top:auto;",
       "  border-top:1px solid var(--line); background:var(--raise);",
       "}",
       "#dictCard .empty{color:var(--muted); font-size:var(--fs-body); line-height:1.5; text-align:center; padding:24px 8px;}",
@@ -12222,7 +12222,7 @@
       /* the translation line (filled by translate.js): under the word, or under the sentence it translates */
       var trl = o.tr ? '<div class="trline' + (o.quote ? ' clamp' : '') + '" id="dictTr" data-kind="' + o.tr + '" hidden>' +
                        '<div class="tr-slot" data-kind="' + o.tr + '" aria-live="polite"></div></div>' : '';
-      if (o.quote) h += '<div class="quote clamp" id="dictQuote" lang="en">' + esc(o.quote) + '</div>' + trl +
+      if (o.quote) h += '<div class="quote clamp" id="dictQuote" lang="en"><span class="qt">' + esc(o.quote) + '</span></div>' + trl +
                         '<button type="button" class="more" hidden aria-expanded="false" aria-controls="dictQuote' + (o.tr ? ' dictTr' : '') + '">' + esc(_t("Show all")) + '</button>';
       else h += trl;
       /* one tab needs no strip (the lookup field): its panel is a plain region then */
@@ -12283,7 +12283,7 @@
     }
     /* "Show all" is there while the quote, or the translation under it, is cut short */
     function refreshMore(){
-      var more = inner.querySelector(".more"), q = inner.querySelector("#dictQuote"), t = inner.querySelector("#dictTr .tr-out");
+      var more = inner.querySelector(".more"), q = inner.querySelector("#dictQuote .qt") || inner.querySelector("#dictQuote"), t = inner.querySelector("#dictTr .tr-out");
       if (!more || !q || !more.hidden) return;
       if (q.scrollHeight > q.clientHeight + 2 || (t && t.scrollHeight > t.clientHeight + 2)) more.hidden = false;
     }
@@ -12299,7 +12299,7 @@
         if (on){ var d = b.querySelector(".dot"); if (d) d.remove(); }
       });
       Array.prototype.forEach.call(inner.querySelectorAll(".panel"), function(p){ p.hidden = p.dataset.tab !== t; });
-      var body = inner.querySelector(".body"); if (body) body.scrollTop = 0;
+      var tabsEl = inner.querySelector(".tabs"); if (tabsEl && inner.scrollTop > tabsEl.offsetTop) inner.scrollTop = Math.max(0, tabsEl.offsetTop - 64);
       if (focus){ var b = tabEl(t); if (b) b.focus({ preventScroll: true }); }
       /* a panel drawn the first time its tab opens */
       if (cur.lazy[t]){ var f = cur.lazy[t]; delete cur.lazy[t]; f(); }
@@ -12869,7 +12869,7 @@
     }
     /* a row marks its own words in the quote above: on hover, on focus, and while it is pressed */
     function wireStyle(r, sentence){
-      var quote = inner.querySelector("#dictQuote"), rows = inner.querySelectorAll(".figrow");
+      var quote = inner.querySelector("#dictQuote .qt") || inner.querySelector("#dictQuote"), rows = inner.querySelectorAll(".figrow");
       var figs = (r.style && r.style.figurative) || [];
       if (!quote || !rows.length) return;
       function show(i){
