@@ -1622,8 +1622,19 @@
     $("#qFocus").addEventListener("change", function(e){ state.focus = e.target.checked; applyType(); });
     $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
     $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
-    /* the footer link: the sheet opens at the group, and Escape there hands focus back to the bar button */
-    $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#textGroup", a); });
+    /* the footer link: the sheet opens at the group (a PDF's own, not the dimmed Text group), and
+       Escape there hands focus back to the bar button */
+    $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt(state.mode === "pdf" ? "#pdfGroup" : "#textGroup", a); });
+    /* Fine-tune is the last thing in the phone's sheet, just above All text settings; a desktop
+       keeps More where it was, above Font. The element moves (its listeners with it), so the order
+       you tab through is the order you see */
+    function placeMore(){
+      var m = $("#qMore"), at = phone() ? $("#typeMore") : fontQuick.closest(".prow"), had = m.contains(document.activeElement) ? document.activeElement : null;
+      if (m.nextElementSibling === at) return;
+      panes.type.insertBefore(m, at);
+      if (had) had.focus({ preventScroll: true });
+    }
+    placeMore();
 
     /* ---- the theme pane: Previous, the last four used, then one group of tiles at a time behind
        a Light | Dark | Colour | Collections | High contrast | Mine switch (Collections holds the four
@@ -1799,7 +1810,7 @@
     /* across the phone width with the Text pane open (a turn of the phone, a window dragged
        narrower): the value gains or drops its "px" and its live reading */
     var phoneMq = window.matchMedia && window.matchMedia("(max-width:560px)");
-    function relayout(){ if (current === "type") syncType(); }
+    function relayout(){ placeMore(); if (current === "type") syncType(); }
     if (phoneMq){ if (phoneMq.addEventListener) phoneMq.addEventListener("change", relayout); else if (phoneMq.addListener) phoneMq.addListener(relayout); }
 
     /* the bar buttons */

@@ -186,6 +186,8 @@
     "Custom {v}": "Aangepast {v}",
     "type|Custom": "Aangepast",
     "All fonts": "Alle lettertypen",
+    "Fine-tune": "Fijnafstelling",
+    "Weight, letter and word spacing, focus reading": "Gewicht, letter- en woordafstand, focuslezen",
     "Theme": "Thema",
     "More actions": "Meer acties",
     "More": "Meer",

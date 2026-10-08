@@ -693,15 +693,16 @@
     #typePop .desk-row{display:none;}
     #typePop .phone-row{display:flex;}
     #typePop .seg.choices{display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px; flex:1 1 100%; width:auto; max-width:none; border-radius:var(--r-md); overflow:visible;}
-    #typePop .seg.choices .chip{flex-direction:column; gap:2px; min-height:56px; padding:4px 2px; border-radius:var(--r-sm); line-height:1.2;}
+    #typePop .seg.choices .chip{flex-direction:column; gap:2px; min-height:48px; padding:3px 2px; border-radius:var(--r-sm); line-height:1.2;}
     #typePop .seg.choices .chip svg{width:32px; height:24px; stroke-width:1.75;}
     #typePop .choice-note{flex:1 1 100%; margin:0;}
     /* the font row: four tiles, "Aa" in the face over its name (13px, two lines at most, a word
        too wide for its tile ending in an ellipsis); All fonts at the end of the label's line */
     #typePop .prow.font-row > .plabel{flex:1 1 auto;}
-    #allFonts{flex:none; margin:0 -10px 0 0;}
+    /* its 48px reach overhangs the label's line rather than making it taller */
+    #allFonts{flex:none; margin:-14px -10px -14px 0;}
     #typePop .seg.choices.fonts{grid-template-columns:repeat(4, minmax(0, 1fr));}
-    #fontRow .chip{justify-content:flex-start; min-height:72px; padding:6px 2px 4px; gap:2px;}
+    #fontRow .chip{justify-content:flex-start; min-height:68px; padding:5px 2px 4px; gap:1px;}
     #fontRow .aa{font-size:1.375rem; line-height:1.75rem; font-weight:400;}
     #fontRow .fn{max-width:100%; max-height:2.5em; overflow:hidden; font-size:var(--fs-small); line-height:1.25; text-align:center;}
     #fontRow .w{display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:top;}
@@ -709,7 +710,7 @@
     #typeClose{display:inline-flex; width:48px; min-width:48px; height:48px; padding:0; margin-right:-12px; border-color:transparent;}
     #typeClose svg{width:var(--icon-md); height:var(--icon-md);}
     #typePop .prow{flex-wrap:wrap; row-gap:var(--sp-2);}
-    #typePop .prow > label:not(.check), #typePop .prow > .plabel{flex:1 1 100%; width:auto; font-weight:700;}
+    #typePop .prow > label:not(.check), #typePop .prow > .plabel{flex:1 1 100%; width:auto; font-weight:700; line-height:1.2;}
     #typePop .prow-size{display:grid; grid-template-columns:minmax(0, 1fr); align-items:center;}
     #typePop .prow-size .prow-in{grid-area:2 / 1; justify-content:space-between; padding:4px; border:1px solid var(--line); border-radius:var(--r-md); background:var(--well);}
     #typePop #qSize, #typePop #qZoom, #typePop.pdf #qZoom{display:none;}
@@ -831,6 +832,13 @@
   .pop-more[open] summary::after, .cst-adv[open] summary::after{transform:translateY(2px) rotate(-135deg);}
   .pop-more[open] summary{border-bottom:1px solid var(--line); border-radius:0; margin-bottom:4px;}
   .pop-more[open] > :last-child{margin-bottom:8px;}
+  /* a phone calls it Fine-tune, with what it holds on a second line; a desktop says More */
+  .pop-more .ft{display:none;}
+  @media (max-width:560px){
+    .pop-more .ft-more{display:none;}
+    .pop-more .ft{display:flex; flex-direction:column; gap:1px; padding:8px 0;}
+    .pop-more .ft-n{font-size:var(--fs-small); font-weight:400; line-height:1.3; color:var(--muted);}
+  }
   /* the footer link to the full settings */
   .pop-link{
     position:relative; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; margin:var(--sp-2) 0 calc(-1 * var(--sp-4));

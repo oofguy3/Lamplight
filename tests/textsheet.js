@@ -160,6 +160,26 @@ const press = async (page, sel, n) => { for (let i = 0; i < (n || 1); i++){ awai
   R.check("320px: the row stays inside the sheet, every name inside its tile", row320.right <= row320.edge && row320.spill.length === 0, JSON.stringify(row320));
   await page.close(); await ctx.close();
 
+  /* ---------- phone: Fine-tune last, and the whole sheet within 85% of the screen ---------- */
+  ctx = await b.newContext(PHONE);
+  await ctx.addInitScript(() => { try { localStorage.setItem("ll_tip_doc", "1"); } catch(_){} });
+  page = await newPage(ctx, url);
+  await openFixture(page, "sample.md");
+  await openText(page);
+  const sum = await page.evaluate(() => { const s = document.querySelector("#qMore summary"), vis = (el) => !!el && el.getClientRects().length > 0;
+    return { t: (s.querySelector(".ft-t") || {}).textContent, n: (s.querySelector(".ft-n") || {}).textContent, more: vis(s.querySelector(".ft-more")), open: document.getElementById("qMore").open }; });
+  R.check("phone: Fine-tune with its second line, closed", sum.t === "Fine-tune" && sum.n === "Weight, letter and word spacing, focus reading" && !sum.more && !sum.open, JSON.stringify(sum));
+  const order = await page.evaluate(() => { const kids = [...document.getElementById("typePop").children].filter((k) => k.getClientRects().length); const at = (el) => kids.indexOf(el);
+    return { flow: at(document.getElementById("qFlow").closest(".prow")), more: at(document.getElementById("qMore")), link: at(document.getElementById("typeMore")), font: at(document.getElementById("fontRow").closest(".prow")) }; });
+  R.check("phone: Fine-tune comes after Flow, just before All text settings", order.font < order.flow && order.flow < order.more && order.more === order.link - 1, JSON.stringify(order));
+  const fitH = await page.evaluate(() => { const p = document.getElementById("pop"), r = p.getBoundingClientRect(); return { h: Math.round(r.height), sh: p.scrollHeight, ch: p.clientHeight }; });
+  R.check("390×844 with Fine-tune closed: the sheet fits 85% of the screen, nothing scrolls inside", fitH.h <= 844 * 0.85 + 1 && fitH.sh <= fitH.ch + 1, JSON.stringify(fitH));
+  await page.tap("#qMore summary"); await page.waitForTimeout(200);
+  const fitO = await page.evaluate(() => { const p = document.getElementById("pop"), r = p.getBoundingClientRect(); return { h: Math.round(r.height), sh: p.scrollHeight, ch: p.clientHeight }; });
+  R.check("Fine-tune open: the sheet stays within 85% and scrolls inside", fitO.h <= 844 * 0.85 + 1 && fitO.sh > fitO.ch, JSON.stringify(fitO));
+  R.check("no page errors (fine-tune)", !(page._errors || []).length, (page._errors || []).join(" | "));
+  await page.close(); await ctx.close();
+
   /* ---------- phone, a PDF: Zoom in the stepper ---------- */
   ctx = await b.newContext(PHONE);
   page = await newPage(ctx, url);
@@ -169,6 +189,10 @@ const press = async (page, sel, n) => { for (let i = 0; i < (n || 1); i++){ awai
   R.check("PDF phone: no line spacing or margin choices", !(await shown(page, "#qLhChoices")) && !(await shown(page, "#qMgChoices")));
   await press(page, "#smaller", 5);
   R.check("PDF phone: zoom 60% disables A−", Math.round((await st(page)).zoom * 100) === 60 && (await attr(page, "#smaller", "aria-disabled")) === "true", Math.round((await st(page)).zoom * 100) + " " + (await attr(page, "#smaller", "aria-disabled")));
+  R.check("PDF phone: Soften pages and Flow, no Fine-tune", (await shown(page, "#qSoften")) && (await shown(page, "#qFlow")) && !(await shown(page, "#qMore")));
+  await page.tap("#typeMore"); await page.waitForTimeout(500);
+  R.check("PDF: All text settings opens the PDF section", !(await isOpen(page)) && (await page.evaluate(() => document.getElementById("sheet").classList.contains("open") && (document.querySelector("#sheetTabs .on") || {}).dataset.group)) === "pdfGroup",
+    await page.evaluate(() => (document.querySelector("#sheetTabs .on") || {}).dataset && document.querySelector("#sheetTabs .on").dataset.group));
   R.check("no page errors (pdf)", !(page._errors || []).length, (page._errors || []).join(" | "));
   await page.close(); await ctx.close();
 
@@ -181,6 +205,10 @@ const press = async (page, sel, n) => { for (let i = 0; i < (n || 1); i++){ awai
   R.check("desktop: the value is not a live region (the slider says its own value)", (await attr(page, "#qSizeV", "aria-live")) !== "polite");
   R.check("desktop: Spacing and Width sliders, no choices", (await shown(page, "#qLh")) && (await shown(page, "#qW")) && !(await shown(page, "#qLhChoices")) && !(await shown(page, "#qMgChoices")));
   R.check("desktop: the font select, no font row, no previews fetched", (await shown(page, "#fontQuick")) && !(await shown(page, "#fontRow")) && !(await shown(page, "#allFonts")) && !(await page.evaluate(() => window.llFonts.loaded("literata"))));
+  const deskMore = await page.evaluate(() => { const s = document.querySelector("#qMore summary"), vis = (el) => !!el && el.getClientRects().length > 0; const kids = [...document.getElementById("typePop").children];
+    return { more: vis(s.querySelector(".ft-more")) && s.querySelector(".ft-more").textContent, ft: vis(s.querySelector(".ft")), before: kids.indexOf(document.getElementById("qMore")) < kids.indexOf(document.getElementById("fontQuick").closest(".prow")) }; });
+  R.check("desktop: still More, where it was (before Font)", deskMore.more === "More" && !deskMore.ft && deskMore.before, JSON.stringify(deskMore));
+  R.check("settings sheet: 'Line spacing'", (await page.$eval("label[for=rLh]", (l) => l.textContent.trim())) === "Line spacing" && (await page.$eval("label[for=qLh]", (l) => l.textContent.trim())) === "Spacing");
   R.check("desktop: focus starts on the size slider", (await focusId(page)) === "qSize", await focusId(page));
   /* a window dragged narrower with the pane open: it becomes the phone sheet, value and all */
   await page.setViewportSize({ width: 500, height: 800 }); await page.waitForTimeout(250);
