@@ -455,6 +455,73 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- read aloud, the floating pieces, Escape order ---------- */
+  const SPEECH = `(() => {
+    const voices = [{ name: "Samantha", lang: "en-US", localService: true, default: true, voiceURI: "Samantha" }];
+    const synth = { getVoices(){ return voices; }, speak(u){ setTimeout(() => u.onstart && u.onstart({}), 1); setTimeout(() => u.onend && u.onend({}), 400000); },
+      cancel(){}, pause(){}, resume(){}, addEventListener(){}, removeEventListener(){}, speaking: false, pending: false, paused: false };
+    Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true, writable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: function(t){ this.text = t; this.rate = 1; this.pitch = 1; this.volume = 1; this.voice = null; this.lang = ""; }, configurable: true, writable: true });
+    HTMLMediaElement.prototype.play = function(){ return Promise.resolve(); };
+  })();`;
+  await guard("read aloud", async () => {
+    const ctx = await b.newContext(PHONE);
+    await ctx.addInitScript(SPEECH);
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); localStorage.setItem("ll_prefs", JSON.stringify({ flow: "pages" })); } catch(_){} });
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    await page.waitForTimeout(400);
+    await openDock(page); await page.tap("#speakBtn"); await page.waitForTimeout(900);
+    const g = await page.evaluate(() => { const t = document.getElementById("tts").getBoundingClientRect(), s = document.getElementById("readFoot").getBoundingClientRect(), l = document.getElementById("dockBtn").getBoundingClientRect(), n = document.getElementById("leftNote");
+      return { on: document.getElementById("tts").classList.contains("on"), ttsTop: t.top, ttsBottom: t.bottom, stripTop: s.top, stripBottom: s.bottom, stripH: s.height, lampBottom: l.bottom, note: getComputedStyle(n).display !== "none" && n.getClientRects().length > 0,
+        label: (document.querySelector("#speakBtn .tool-l") || {}).textContent, viewBottom: document.getElementById("docView").getBoundingClientRect().bottom }; });
+    R.check("read aloud: the player at the foot, the strip on it, the note hidden", g.on && near(g.ttsBottom, 844) && near(g.stripBottom, g.ttsTop) && near(g.stripH, 92) && !g.note, JSON.stringify(g));
+    R.check("…the lamp 28px up the strip, the text above both", near(g.lampBottom, g.ttsTop - 28) && g.viewBottom <= g.stripTop + 1, JSON.stringify(g));
+    R.check("…and the Read aloud tool says Stop", g.label === "Stop", g.label);
+    await page.tap("#ttsSpeed"); await page.waitForTimeout(300);
+    const top = await page.evaluate(() => { const p = document.getElementById("ttsSpeedPop"), r = p.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + 10); return !p.hidden && !!at && p.contains(at); });
+    R.check("the speed popover is on top of the strip", top);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+    const h0 = await page.evaluate(() => document.getElementById("tts").offsetHeight), n0 = await page.evaluate(() => window.__ll.state.totalPages);
+    await openDock(page);
+    const cov = await page.evaluate(() => { const t = document.getElementById("tts").getBoundingClientRect(), at = document.elementFromPoint(t.left + t.width / 2, t.top + t.height / 2); return !!at && !!at.closest("#phoneDock"); });
+    const h1 = await page.evaluate(() => document.getElementById("tts").offsetHeight), n1 = await page.evaluate(() => window.__ll.state.totalPages);
+    R.check("the open dock covers the player; the player's height and the page count unchanged", cov && h1 === h0 && n1 === n0, JSON.stringify({ cov, h0, h1, n0, n1 }));
+    await page.evaluate(() => window.__ll.Marks.toast("A toast")); await page.waitForTimeout(400);
+    const tb = await page.evaluate(() => ({ toast: document.getElementById("toast").getBoundingClientRect().bottom, dock: document.getElementById("phoneDock").getBoundingClientRect().top }));
+    R.check("a toast while the dock is open sits above it", tb.toast <= tb.dock + 1, JSON.stringify(tb));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    await page.evaluate(() => window.__ll.Speak.stop()); await page.waitForTimeout(400);
+    R.check("no page errors (read aloud)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+  await guard("floating", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.md");
+    await page.evaluate(() => window.__ll.Auto.start()); await page.waitForTimeout(500);
+    const ab = await page.evaluate(() => { const a = document.getElementById("autoBar").getBoundingClientRect(), l = document.getElementById("dockBtn").getBoundingClientRect(); return { bottom: a.bottom, right: a.right, lampTop: l.top, on: document.getElementById("autoBar").classList.contains("on") }; });
+    R.check("the auto-scroll pill sits above the lamp, at the right", ab.on && ab.bottom <= ab.lampTop && near(ab.right, 378, 12), JSON.stringify(ab));
+    await page.evaluate(() => window.__ll.Auto.stop && window.__ll.Auto.stop()); await page.waitForTimeout(300);
+    await page.evaluate(() => window.llJournal.openCard()); await page.waitForTimeout(500);
+    const fc = await page.evaluate(() => ({ on: !!document.querySelector("#finish.on"), bottom: document.getElementById("finish").getBoundingClientRect().bottom, stripTop: document.getElementById("readFoot").getBoundingClientRect().top }));
+    R.check("the Finished card sits above the strip", fc.on && fc.bottom <= fc.stripTop + 1, JSON.stringify(fc));
+    await openDock(page);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    R.check("Escape with the dock over the Finished card closes the dock only", !(await dockOpen(page)) && (await page.evaluate(() => !!document.querySelector("#finish.on"))));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    /* Previously… hangs from the top, under the status bar, and stops above the strip */
+    /* the card needs reading history to fill it: a tall one in its place does for where it sits (on a
+       short screen, where a card of today's 720px would run under the strip) */
+    await page.setViewportSize({ width: 390, height: 640 }); await page.waitForTimeout(300);
+    const rc = await page.evaluate(() => { let r = document.getElementById("recap"); if (!r){ r = document.createElement("div"); r.id = "recap"; document.body.appendChild(r); }
+      r.innerHTML = "<p>line</p>".repeat(80); r.classList.add("on"); const b = r.getBoundingClientRect(), out = { top: b.top, bottom: b.bottom, stripTop: document.getElementById("readFoot").getBoundingClientRect().top };
+      r.classList.remove("on"); return out; });
+    R.check("Previously… hangs from the top and stops above the strip", rc.top <= 11 && rc.bottom <= rc.stripTop - 11, JSON.stringify(rc));
+    await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+    R.check("no page errors (floating)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
   /* ---------- a mouse at 390px and a wide phone: no phone chrome ---------- */
   await guard("not a phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });

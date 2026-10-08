@@ -1443,6 +1443,26 @@
     fill:none; stroke:var(--lamp-mark, var(--lamp)); stroke-width:2; stroke-linecap:round; stroke-dasharray:0 170;
   }
   @media (hover:hover){ #dockBtn:hover{background:var(--accent-soft);} }
+  /* read aloud: the player at the foot, the strip sitting on it (92px: the player keeps the safe
+     area), the note giving way to it */
+  body.phonebar.tts-on #readFoot{bottom:var(--ttsH, 0px); height:92px;}
+  body.phonebar.tts-on #dockBtn{bottom:28px;}
+  body.phonebar.tts-on #leftNote{display:none;}
+  /* what floats at the foot (the toasts, the auto-scroll pill at the right, the Finished card) sits
+     above the strip, and above the player under it; while the dock is open the toasts sit above the
+     dock (--pdH, set as it opens), and the card stays put under it */
+  body.phonebar{--aboveDock:calc(92px + env(safe-area-inset-bottom, 0px) + 12px);}
+  body.phonebar.tts-on{--aboveDock:calc(var(--dockH, 0px) + 92px + 12px);}
+  body.phonebar.dock-open{--toastRow:calc(var(--pdH, 0px) + 12px);}
+  body.phonebar.dock-open #finish{bottom:calc(var(--aboveDock) + var(--updateH, 0px));}
+  body.phonebar.dock-open.fin-on #toast, body.phonebar.dock-open.fin-on #einkToast{bottom:calc(var(--toastRow) + var(--updateH, 0px));}
+  body.phonebar.dock-open.fin-on #trStatus{bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px));}
+  /* Previously… hangs from the top of the screen, under the status bar, and stops above the strip */
+  body.phonebar #recap{
+    top:max(10px, env(safe-area-inset-top));
+    max-height:calc(100vh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
+    max-height:calc(100dvh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
+  }
   /* the dock rises over the strip; the lamp fades under it */
   body.dock-open #dockBtn{opacity:0;}
   body.phonebar.dock-open #phoneDockScrim{display:block; position:fixed; inset:0; z-index:28; touch-action:none;}

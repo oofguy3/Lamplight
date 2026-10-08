@@ -6162,7 +6162,7 @@
         var v = $("#docView").getBoundingClientRect();
         if (rect.left < v.left - 2 || rect.left > v.right) revealOffset(u.start);
       } else {
-        var head = Library.headerHeight(), bottom = window.innerHeight - $("#dock").offsetHeight;
+        var head = Library.headerHeight(), bottom = window.innerHeight - $("#dock").offsetHeight - (document.body.classList.contains("phonebar") ? $("#readFoot").offsetHeight : 0);
         if (rect.top < head + 4 || rect.bottom > bottom - 10) revealOffset(u.start, { center: true });
       }
     }
@@ -9407,7 +9407,7 @@
     /* Escape closes the card when nothing else is open over the page */
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !isOpen() || Side.current() || Menu.isOpen() || $("#pop").classList.contains("open") ||
-          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on")) return;
+          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on") || document.body.classList.contains("dock-open")) return;
       close();
     });
 
@@ -9617,6 +9617,8 @@
       if (!on) return;
       var h = bandHeight();
       if (y === null) y = Math.round(Library.headerHeight() + (window.innerHeight - Library.headerHeight()) * 0.38);
+      /* on a phone the band and its grip stay above the strip (and the player under it) */
+      if (document.body.classList.contains("phonebar")) y = Math.min(y, window.innerHeight - $("#readFoot").offsetHeight - $("#dock").offsetHeight - 24);
       var y0 = Math.max(0, y - h / 2), y1 = Math.min(window.innerHeight, y0 + h);
       top.style.height = y0 + "px"; bottom.style.height = (window.innerHeight - y1) + "px";
       line.style.top = y0 + "px"; line.style.height = (y1 - y0) + "px";
@@ -9692,7 +9694,7 @@
     function somethingOpen(){
       var sheet = $("#sheet");
       return (sheet.classList.contains("open") && sheet.offsetHeight > 0) || $("#side").classList.contains("open") ||
-        $("#moreMenu").classList.contains("open") || !!document.querySelector("#dictCard.open, #markPop.on");
+        $("#moreMenu").classList.contains("open") || !!document.querySelector("#dictCard.open, #markPop.on") || document.body.classList.contains("dock-open");
     }
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !on || somethingOpen()) return;
@@ -10532,7 +10534,7 @@
     /* Escape closes the card when nothing else is open over the page */
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !card || !card.classList.contains("on") || Side.current() || Menu.isOpen() || $("#pop").classList.contains("open") ||
-          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on")) return;
+          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on") || document.body.classList.contains("dock-open")) return;
       close();
     });
     /* the library, or a PDF turned into a page of status: the card belongs to the book */
@@ -11253,6 +11255,7 @@
       btn.setAttribute("aria-expanded", "true");
       hold(true);
       syncPos();
+      document.documentElement.style.setProperty("--pdH", dock.offsetHeight + "px");     /* the toasts float above it */
       dock.scrollTop = 0;
       dock.focus({ preventScroll: true });
       Pace.noteBlock("dock");          /* time with the dock open is not reading time */
