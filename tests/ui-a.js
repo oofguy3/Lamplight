@@ -189,9 +189,11 @@ const SPEECH_STUB = `(() => {
     await page.click('#qAuto [data-auto="off"]'); await page.waitForTimeout(100);
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
     await page.evaluate(() => window.llThemes.select("day"));
-    await page.keyboard.press("t"); await page.waitForTimeout(100);
+    /* t cross-fades (the theme lands a frame or two later), so wait for it rather than a fixed pause */
+    const settle = (k) => page.waitForFunction((x) => window.__ll.state.theme === x, k, { timeout: 1500 }).catch(() => {});
+    await page.keyboard.press("t"); await settle("dusk");
     const tn = await page.evaluate(() => window.__ll.state.theme);
-    await page.keyboard.press("t"); await page.waitForTimeout(100);
+    await page.keyboard.press("t"); await settle("day");
     R.check("t toggles day / night", tn === "dusk" && (await page.evaluate(() => window.__ll.state.theme)) === "day", tn);
     /* a saved custom theme joins the row of its lightness */
     await page.evaluate(() => { window.llThemes.select("midnight"); window.llThemes.create(); });

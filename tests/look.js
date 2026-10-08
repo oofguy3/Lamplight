@@ -28,6 +28,44 @@ const uppers = (page) => page.evaluate(() => [...document.querySelectorAll("body
     await page.close(); await ctx.close();
   }
 
+  /* sentence case: no label in spaced-out capitals, wherever the reader looks */
+  {
+    const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, reducedMotion: "reduce" });
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.txt");
+    await openFixture(page, "sample.md");
+    await page.keyboard.press("h"); await page.waitForTimeout(400);
+    let u = await uppers(page); R.check("no uppercase labels: library", u.length === 0, u.slice(0, 6).join(", "));
+    await page.keyboard.press("s"); await page.waitForTimeout(400);
+    u = await uppers(page); R.check("no uppercase labels: settings sheet", u.length === 0, u.slice(0, 6).join(", "));
+    const fsLabel = await page.evaluate(() => getComputedStyle(document.querySelector("#themeChips .chip-group-label")).fontSize);
+    R.check("labels at --fs-small (13px)", fsLabel === "13px", fsLabel);
+    await page.evaluate(() => window.llThemes.select("hicon")); await page.waitForTimeout(150);
+    const fsHi = await page.evaluate(() => getComputedStyle(document.querySelector("#themeChips .chip-group-label")).fontSize);
+    R.check("contrast tone: labels 15px", fsHi === "15px", fsHi);
+    await page.evaluate(() => window.llThemes.select("day"));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(250);
+    await openFixture(page, "sample.md");
+    await page.click("#more"); await page.waitForTimeout(250);
+    u = await uppers(page); R.check("no uppercase labels: ⋯ menu", u.length === 0, u.slice(0, 6).join(", "));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+    await page.keyboard.press("i"); await page.waitForTimeout(600);
+    u = await uppers(page); R.check("no uppercase labels: About this text", u.length === 0, u.slice(0, 6).join(", "));
+    await page.evaluate(() => window.__ll.Side.close()); await page.waitForTimeout(250);
+    /* the word card: a click on the first word of the first paragraph */
+    const at = await page.evaluate(() => {
+      const p = [...document.querySelectorAll("#doc p")].find((x) => /\w{4,}/.test(x.textContent)); const tn = [...p.childNodes].find((n) => n.nodeType === 3 && /\w{4,}/.test(n.textContent));
+      const m = /\w{4,}/.exec(tn.textContent); const r = document.createRange(); r.setStart(tn, m.index); r.setEnd(tn, m.index + m[0].length);
+      p.scrollIntoView({ block: "center" }); const b = r.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    });
+    await page.mouse.click(at.x, at.y);
+    await page.waitForFunction(() => { const c = document.getElementById("dictCard"); return c && c.classList.contains("open") && c.textContent.length > 20; }, null, { timeout: 15000 }).catch(() => {});
+    R.check("the word card uses LL UI", (await ff(page, "#dictCard")).startsWith('"LL UI"'), await ff(page, "#dictCard"));
+    u = await uppers(page); R.check("no uppercase labels: word card", u.length === 0, u.slice(0, 6).join(", "));
+    R.check("no page errors (casing)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await page.close(); await ctx.close();
+  }
+
   await b.close();
   server.close();
   process.exit(R.done());
