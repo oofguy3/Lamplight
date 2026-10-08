@@ -74,7 +74,9 @@ const I = require("../i18n.js");
       out.pos = [...document.querySelectorAll("#dictCard .pos")].map((x) => x.textContent);
       return out;
     });
-    R.check("Dutch device: the menu in Dutch", ["Voorlezen", "Bladwijzer zetten", "Leesstatistieken", "Bestand openen…"].every((w) => screens.menu.some((x) => x.indexOf(w) === 0)), JSON.stringify(screens.menu));
+    /* a phone while reading: Read aloud (Voorlezen) is in the dock, not the sheet */
+    R.check("Dutch device: the menu in Dutch", ["Bladwijzer zetten", "Wat voorafging…", "Leesstatistieken", "Bestand openen…"].every((w) => screens.menu.some((x) => x.indexOf(w) === 0)) &&
+      !screens.menu.some((x) => x.indexOf("Voorlezen") === 0), JSON.stringify(screens.menu));
     R.check("Dutch device: the word class in the card is Dutch", screens.pos.length && screens.pos.every((x) => /naamwoord|werkwoord|bijwoord/.test(x)), JSON.stringify(screens.pos));
     R.check("Dutch device: no key without Dutch on the main screens", noDutch.size === 0, [...noDutch].slice(0, 8).join(" | "));
     await p2.keyboard.press("Escape");

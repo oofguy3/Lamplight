@@ -421,6 +421,40 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- the More sheet leaves out what the dock has ---------- */
+  const menuItems = (page) => page.$$eval("#moreMenu button[role=menuitem]", (bs) => bs.map((b) => (b.querySelector("span") || b).textContent.trim()));
+  await guard("more sheet", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.md");
+    await openDock(page); await page.tap("#more"); await page.waitForTimeout(400);
+    const items = await menuItems(page);
+    R.check("phone More: no Read aloud, Contents, Search or Library", !items.some((t) => /^(Read aloud|Contents|Search|Library)$/.test(t)) && items.length > 5, items.join(" | "));
+    const quick = await page.$$eval("#moreMenu .menu-quick button[role=menuitem]", (bs) => bs.map((b) => { const r = b.getBoundingClientRect(); return { t: b.querySelector("span").textContent, top: Math.round(r.top), w: Math.round(r.width), fs: getComputedStyle(b).fontSize }; }));
+    R.check("the quick row: Bookmark here and Previously…, side by side, half the width each", quick.map((q) => q.t).join() === "Bookmark here,Previously…" && quick[0].top === quick[1].top && quick.every((q) => q.w > 150), JSON.stringify(quick));
+    R.check("…at 13px or more", quick.every((q) => parseFloat(q.fs) >= 13), JSON.stringify(quick.map((q) => q.fs)));
+    R.check("focus starts on Bookmark here", (await page.evaluate(() => document.activeElement && (document.activeElement.querySelector("span") || {}).textContent)) === "Bookmark here");
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    /* the library screen on a phone keeps the full menu in its header */
+    await page.evaluate(() => window.__ll.Library.home()); await page.waitForTimeout(500);
+    await page.tap("#more"); await page.waitForTimeout(400);
+    const lib = await menuItems(page);
+    R.check("library screen on a phone: today's menu (Open a file…, Settings)", lib.includes("Open a file…") && lib.includes("Settings") && !(await page.evaluate(() => document.body.classList.contains("phonebar"))), lib.join(" | "));
+    await page.keyboard.press("Escape");
+    await ctx.close();
+  });
+  await guard("no speech", async () => {
+    const ctx = await b.newContext(PHONE);
+    await ctx.addInitScript(() => { try { delete window.speechSynthesis; delete window.SpeechSynthesisUtterance; localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch(_){} });
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    await openDock(page);
+    const tools = await page.$$eval("#actRow > *", (els) => els.filter((e) => e.getClientRects().length).map((e) => e.id));
+    await page.tap("#more"); await page.waitForTimeout(400);
+    const items = await menuItems(page);
+    R.check("no speech synthesis: four tools, and Read aloud stays in More", tools.join() === "tocBtn,gear,lamp,more" && items.includes("Read aloud"), tools.join() + " / " + items.join(" | "));
+    await ctx.close();
+  });
+
   /* ---------- a mouse at 390px and a wide phone: no phone chrome ---------- */
   await guard("not a phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });

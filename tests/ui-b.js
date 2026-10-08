@@ -123,11 +123,12 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     });
     R.check("phone: a bottom sheet — at the viewport's foot, full width, at most 85vh, scrollable", Math.abs(m.bottom - m.inner) < 1 && m.left === 0 && m.width === m.iw && m.height <= m.inner * 0.85 + 1 && m.scrollable, JSON.stringify(m));
     R.check("phone: tiles ≥ 44 px in three columns, key hints hidden, a handle and a scrim", m.minH >= 44 && m.cols === 3 && m.kbd === "none" && m.grab && m.scrim, JSON.stringify(m));
-    R.check("phone: four large quick tiles first — Read aloud, Bookmark here, Contents, Previously… — in one row",
-      m.quick.join(" / ") === "Read aloud / Bookmark here / Contents / Previously…" && m.quickCols === 4 && m.quickH >= 84, JSON.stringify([m.quick, m.quickCols, m.quickH]));
+    /* while reading, the dock has Read aloud and Contents: the sheet's quick row keeps the other two */
+    R.check("phone: two large quick tiles first — Bookmark here, Previously… — in one row",
+      m.quick.join(" / ") === "Bookmark here / Previously…" && m.quickCols === 2 && m.quickH >= 84, JSON.stringify([m.quick, m.quickCols, m.quickH]));
     R.check("phone: then Reading, Tools and Lamplight, with Print, Storage and Close document last and Settings as the gear in the head",
       m.groups.join(" | ") === "Reading | Tools | Lamplight" && m.last.join(" / ") === "Print… / Storage / Close document" && m.gear && m.gear.label === "Settings" && m.gear.w === 48 && m.gear.icon, JSON.stringify([m.groups, m.last, m.gear]));
-    R.check("phone: focus on the first tile, arrows move through them", (await active(page)) === "Read aloud" && (await (async () => { await page.keyboard.press("ArrowRight"); return (await active(page)) === "Bookmark here"; })()));
+    R.check("phone: focus on the first tile, arrows move through them", (await active(page)) === "Bookmark here" && (await (async () => { await page.keyboard.press("ArrowRight"); return (await active(page)) === "Previously…"; })()));
     await shot(page, "menu-390-dusk");
     await page.mouse.click(195, 100); await page.waitForTimeout(200);
     /* ⋯ is in the closed dock by then: focus goes back to the lamp that opened it */

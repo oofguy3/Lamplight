@@ -3045,7 +3045,11 @@
     }
     function render(){
       menu.innerHTML = "";
-      var phone = isPhone(), shown = function(it){ return !it.sep && !(it.show && !it.show()); };
+      /* a phone while reading: the dock already has Contents, Search, Read aloud and the way back to
+         the library (`dock`), so the sheet leaves them out — Read aloud stays where the dock has no
+         speaker for it (no speech synthesis: the natural voices still read) */
+      var docked = document.body.classList.contains("phonebar");
+      var phone = isPhone(), shown = function(it){ return !it.sep && !(it.show && !it.show()) && !(docked && it.dock && !(it.dock === "speak" && $("#speakBtn").hidden)); };
       var grab = document.createElement("div");
       grab.className = "menu-grab"; grab.setAttribute("aria-hidden", "true");
       grab.addEventListener("click", function(){ close(true); });
@@ -3068,6 +3072,8 @@
         sec.className = "menu-group" + (g[0] === "quick" ? " menu-quick" : ""); sec.setAttribute("role", "group"); sec.setAttribute("aria-labelledby", "menuG-" + g[0]);
         head.className = "label"; head.id = "menuG-" + g[0]; head.textContent = _tc("menu", g[1]);
         grid.className = "menu-items";
+        /* the quick row shares its width among however many tiles it has */
+        if (g[0] === "quick") grid.style.gridTemplateColumns = "repeat(" + list.length + ", minmax(0, 1fr))";
         list.forEach(function(it){ grid.appendChild(entry(it)); });
         sec.appendChild(head); sec.appendChild(grid);
         groups.push({ el: sec, rows: list.length }); rows += list.length;
@@ -4409,7 +4415,7 @@
       }
     }
     function openPanel(){ Side.open("toc", _t("Contents"), render, function(){ shown = null; }, { family: "doc" }); }
-    Menu.add({ order: 10, quick: 3, group: "navigate", icon: ICONS.contents, label: function(){ return _t("Contents"); }, key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 10, quick: 3, dock: true, group: "navigate", icon: ICONS.contents, label: function(){ return _t("Contents"); }, key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, entries: docEntries, pdfEntries: pdfEntries, goPdfPage: goPdfPage };
   })();
 
@@ -5013,7 +5019,7 @@
         e.preventDefault(); openPanel();
       }
     });
-    Menu.add({ order: 20, pgroup: "reading", porder: 40.2, group: "navigate", icon: ICONS.search, label: function(){ return _t("Search"); }, key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 20, pgroup: "reading", porder: 40.2, dock: true, group: "navigate", icon: ICONS.search, label: function(){ return _t("Search"); }, key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, reset: reset, refresh: refresh, repair: repair, clearPaint: clearPaint, go: go, results: function(){ return results; } };
   })();
 
@@ -6991,7 +6997,7 @@
       if (silence) try { silence.pause(); } catch(_){}
     });
 
-    Menu.add({ order: 40, quick: 1, group: "reading", icon: ICONS.speaker, label: function(){ return active ? _t("Stop reading aloud") : _t("Read aloud"); }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
+    Menu.add({ order: 40, quick: 1, dock: "speak", group: "reading", icon: ICONS.speaker, label: function(){ return active ? _t("Stop reading aloud") : _t("Read aloud"); }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported || engineName !== "device"; } });
     /* the characters of the open document (audiobook.js works them out, on this device) */
     Menu.add({ order: 41, group: "reading", icon: ICONS.people, label: function(){ return _t("Who’s who"); }, run: function(){ withAudiobook(function(a){ a.openWho(); }); },
@@ -10909,7 +10915,7 @@
   /* the app's own entries: opening a file (the bar's Open button goes away while reading), the
      library, and the settings sheet (the ⋯ menu and the s key open it) */
   Menu.add({ order: 1, group: "app", icon: ICONS.open, label: _t("Open a file\u2026"), key: "O", run: function(){ $("#fileInput").click(); } });
-  Menu.add({ order: 2, group: "app", icon: ICONS.books, label: _t("Library"), run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+  Menu.add({ order: 2, dock: true, group: "app", icon: ICONS.books, label: _t("Library"), run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
   Menu.add({ order: 85, head: true, group: "app", icon: ICONS.gear, label: _t("Settings"), key: "S", run: function(){ setSheet(true); } });
 
   /* ============================================================
