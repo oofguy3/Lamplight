@@ -9,7 +9,8 @@
        letter and word spacing in em, and the gap under a paragraph */
     --fw:400; --fwh:700; --fwb:700; --ls:0em; --ws:0em; --pgap:0.95em;
     --reader-font: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
-    --ui-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* the interface: Atkinson Hyperlegible, bundled as 'LL UI' (see the @font-face rules below) */
+    --ui-font: 'LL UI', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     /* the interface's titles: one bundled face whatever the reader picks for the text */
     --title-font: 'LL Title', Georgia, 'Iowan Old Style', serif;
 
@@ -87,6 +88,12 @@
   @font-face{font-family:'Atkinson Hyperlegible'; font-style:normal; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Bold.woff2') format('woff2');}
   @font-face{font-family:'Atkinson Hyperlegible'; font-style:italic; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Italic.woff2') format('woff2');}
   @font-face{font-family:'Atkinson Hyperlegible'; font-style:italic; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-BoldItalic.woff2') format('woff2');}
+  /* the same four files as the interface's own face, under a name of its own so the chrome never
+     depends on the reading font the reader picks (only 400 and 700 exist: 500 renders as 400, 600 as 700) */
+  @font-face{font-family:'LL UI'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Regular.woff2') format('woff2');}
+  @font-face{font-family:'LL UI'; font-style:normal; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Bold.woff2') format('woff2');}
+  @font-face{font-family:'LL UI'; font-style:italic; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Italic.woff2') format('woff2');}
+  @font-face{font-family:'LL UI'; font-style:italic; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-BoldItalic.woff2') format('woff2');}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   /* skip link for keyboard and screen-reader users */
   .skip{position:absolute; left:8px; top:-60px; z-index:100; padding:12px 16px; border-radius:var(--r-md); background:var(--accent); color:var(--on-fill); font-family:var(--ui-font); font-size:var(--fs-body); font-weight:600;}

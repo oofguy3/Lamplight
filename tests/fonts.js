@@ -27,9 +27,10 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     return page;
   }
   const woff = (page) => page._reqs.filter((u) => /\.woff2(\?|$)/.test(u)).map((u) => u.split("/").pop());
-  /* the interface's own title face ('LL Title' in app.css: Literata, precached by the worker) is
-     part of the shell and loads with it; every reading font waits until it is chosen */
-  const TITLE_FACE = /^literata-latin-wght-(normal|italic)\.woff2$/;
+  /* the interface's own faces are part of the shell and load with it: the title face ('LL Title' in
+     app.css: Literata) and the interface face ('LL UI': Atkinson Hyperlegible), both precached by
+     the worker; every reading font waits until it is chosen */
+  const TITLE_FACE = /^(literata-latin-wght-(normal|italic)|AtkinsonHyperlegible-(Regular|Bold|Italic|BoldItalic))\.woff2$/;
   const readingWoff = (page) => woff(page).filter((f) => !TITLE_FACE.test(f));
   const family = (page, sel) => page.$eval(sel, (el) => getComputedStyle(el).fontFamily);
   const loaded = (page, id) => page.waitForFunction((i) => window.llFonts && window.llFonts.loaded(i), id, { timeout: 15000 }).then(() => true, () => false);
@@ -40,7 +41,7 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
   const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, serviceWorkers: "block" });
   let page = await open(ctx);
   try {
-    /* 1. the initial load fetches no reading font (only the interface's title face) */
+    /* 1. the initial load fetches no reading font (only the interface's own faces) */
     await openFixture(page, "sample.md");
     await page.waitForTimeout(700);                       /* the idle warm-up runs in here */
     R.check("initial load fetches no font file", readingWoff(page).length === 0, woff(page).join(", "));
