@@ -688,6 +688,9 @@
   .ctl.mini[aria-disabled="true"]:active{transform:none;}
   @media (hover:hover){ .ctl.mini[aria-disabled="true"]:hover{background:transparent;} }
   #typeClose, #typePop .phone-row{display:none;}
+  /* hints with a phone wording: a finger on a phone reads with the lamp */
+  .phone-hint{display:none;}
+  @media (pointer: coarse) and (max-width: 560px){ .desk-hint{display:none;} .phone-hint{display:inline;} }
   /* the Text sheet on a phone (and in any window 560px or narrower): a close button in the head,
      each label above its control, the size as a big A− / value / A+ stepper in place of the
      slider (the value in the reading font, without "px"), and line spacing and margins as three
@@ -1433,13 +1436,13 @@
   }
   #dockBtn{
     position:absolute; right:20px; bottom:calc(28px + env(safe-area-inset-bottom)); width:56px; height:56px; min-width:56px; padding:0;
-    border:1px solid var(--line); border-radius:50%; background:var(--panel); color:var(--ink);
+    border:var(--bw) solid var(--line); border-radius:50%; background:var(--panel); color:var(--ink);
     transition:opacity var(--t-fade) var(--ease-out), background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
   #dockBtn > svg{width:24px; height:24px;}
   /* the ring sits on the button's edge and starts at 12 o'clock */
   #dockBtn > .ring{
-    position:absolute; left:-1px; top:-1px; width:56px; height:56px; transform:rotate(-90deg); pointer-events:none;
+    position:absolute; left:calc(-1 * var(--bw)); top:calc(-1 * var(--bw)); width:56px; height:56px; transform:rotate(-90deg); pointer-events:none;
     fill:none; stroke:var(--lamp-mark, var(--lamp)); stroke-width:2; stroke-linecap:round; stroke-dasharray:0 170;
   }
   @media (hover:hover){ #dockBtn:hover{background:var(--accent-soft);} }
@@ -1463,6 +1466,27 @@
     max-height:calc(100vh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
     max-height:calc(100dvh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
   }
+  /* zen: only the text, and a faint lamp to leave by (clear while a key has brought the focus to it:
+     after a tap in the More sheet the focus comes back to it, and it stays faint); no note, no ring */
+  body.phonebar.zen #dockBtn{opacity:.4;}
+  body.phonebar.zen #dockBtn:focus-visible{opacity:1;}
+  body.phonebar.zen #leftNote, body.phonebar.zen #dockBtn > .ring{display:none;}
+  /* the "Opening …" screen between two books keeps the phone's chrome, without the strip */
+  body.phonebar[data-mode="status"] #readFoot{display:none;}
+  /* forced colours: the ring in Highlight, the edges in ButtonText, and Read aloud (its fill is
+     gone) ringed in Highlight */
+  @media (forced-colors: active){
+    #dockBtn > .ring{stroke:Highlight;}
+    #dockBtn, body.phonebar #phoneDock, .pd-dn{border-color:ButtonText;}
+    body.phonebar #actRow #speakBtn{border:2px solid Highlight;}
+  }
+  /* e-ink: the title's chevron is a mask, which e-ink leaves out; the handle is black; the place
+     slider is a white track with a black rule, filled in black */
+  body.eink.phonebar #fname .fn-t::after{display:none;}
+  body.eink .pd-grab{background:#000;}
+  body.eink #dockPos{--track:#fff;}
+  body.eink #dockPos::-webkit-slider-runnable-track{border:1px solid #000;}
+  body.eink #dockPos::-moz-range-track{background:#fff; border:1px solid #000;}
   /* the dock rises over the strip; the lamp fades under it */
   body.dock-open #dockBtn{opacity:0;}
   body.phonebar.dock-open #phoneDockScrim{display:block; position:fixed; inset:0; z-index:28; touch-action:none;}
@@ -1470,7 +1494,7 @@
   body.phonebar #phoneDock{
     display:flex; flex-direction:column; position:fixed; left:0; right:0; bottom:0; z-index:28; max-height:85dvh; overflow-y:auto; overscroll-behavior:contain;
     padding:8px 12px calc(24px + env(safe-area-inset-bottom)); background:var(--panel); color:var(--ink);
-    border-top:1px solid var(--line); border-radius:var(--r-xl) var(--r-xl) 0 0; font-family:var(--ui-font);
+    border-top:var(--bw) solid var(--line); border-radius:var(--r-xl) var(--r-xl) 0 0; font-family:var(--ui-font);
     transform:translateY(105%); visibility:hidden;
     transition:transform var(--t-fade) var(--ease-in), visibility 0s linear var(--t-fade), background var(--t-theme) ease;
   }
@@ -1490,7 +1514,7 @@
   .pd-cap{display:flex; justify-content:space-between; gap:var(--sp-3); margin:0; font-size:var(--fs-small); line-height:1.35; color:var(--muted); font-variant-numeric:tabular-nums;}
   #dockLeft{text-align:right;}
   /* Day and Night: two buttons in a well, the half on screen lifted with the accent's edge */
-  .pd-dn{flex:none; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; margin-top:var(--sp-3); padding:4px; border:1px solid var(--line); border-radius:var(--r-md); background:var(--well);}
+  .pd-dn{flex:none; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; margin-top:var(--sp-3); padding:4px; border:var(--bw) solid var(--line); border-radius:var(--r-md); background:var(--well);}
   .pd-dn[hidden]{display:none;}
   .dn-b{
     display:flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 12px;
@@ -2529,7 +2553,8 @@
     html, body{background:#fff !important; color:#000 !important; height:auto !important; min-height:0 !important; overflow:visible !important;}
     *{transition:none !important; animation:none !important;}
     header, #sheet, #sheetScrim, #pager, #tts, #actRow, #autoBar, #side, #sideScrim, #dictCard, #dictScrim, #dictPill, #markPop, #progress, #progressInfo,
-    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #einkToast, #pdf, .skip{display:none !important;}
+    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #einkToast, #pdf, .skip,
+    #readFoot, #phoneDockScrim, #phoneDock, #moreMenu, #moreScrim{display:none !important;}
     body > main{padding:0 !important;}
     #docView{display:block !important; position:static !important; width:auto !important; max-width:none !important; height:auto !important; overflow:visible !important; padding:0 !important; margin:0 !important;}
     /* Pages flow sets the columns and the height inline, so these need !important: one long column again */

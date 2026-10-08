@@ -2251,6 +2251,7 @@
         }).catch(fail);
 
       } else if (ext === "doc" || ext === "rtf" || ext === "odt" || ext === "pages"){
+        state.opening = false;
         status(_t(".{ext} isn't supported yet — export it as PDF, EPUB or DOCX and open that instead.", { ext: ext }));
 
       } else if (ext === "md" || ext === "markdown"){
@@ -9376,7 +9377,7 @@
       if (!quiet && inside){ var to = opener && document.contains(opener) && opener.getClientRects().length ? opener : $("#main"); if (to) to.focus({ preventScroll: true }); }
       opener = null;
       /* Not now (or ✕, Escape) on the card that came up by itself: not again this reading, and where to find it */
-      if (!quiet && was && was.auto && !was.saved){ markSeen(was.book, null); Marks.toast(_t("You can add it later: ⋯ › Mark as finished")); }
+      if (!quiet && was && was.auto && !was.saved){ markSeen(was.book, null); Marks.toast(_t("You can add it later: More › Mark as finished")); }
     }
     function save(){
       if (!cur) return;
@@ -9672,10 +9673,13 @@
       on = true;
       setSheet(false); Side.close(); Menu.close();
       document.body.classList.remove("immersive");
+      /* on a phone the dock gives way (a key pressed in it leaves the focus on the page) */
+      if (PhoneBar && PhoneBar.isDockOpen()){ PhoneBar.closeDock({ focus: false }); $("#main").focus({ preventScroll: true }); }
       document.body.classList.add("zen");
       goFull();
       relayout(off);
-      if (!toasted){ toasted = true; Marks.toast(_t("Zen mode — press z or Esc to leave")); }
+      /* a phone has no keys to press: the faint lamp is the way out */
+      if (!toasted){ toasted = true; Marks.toast(document.body.classList.contains("phonebar") ? _t("Zen mode — tap the lamp to leave") : _t("Zen mode — press z or Esc to leave")); }
     }
     function exit(){
       if (!on) return;
@@ -9710,7 +9714,7 @@
       var r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
       if (x < 0.35 || x > 0.65) return;
       e.stopImmediatePropagation();
-      if (!hinted){ hinted = true; Marks.toast(_t("Press z or Esc to leave zen mode")); }
+      if (!hinted){ hinted = true; Marks.toast(document.body.classList.contains("phonebar") ? _t("Tap the lamp to leave zen mode") : _t("Press z or Esc to leave zen mode")); }
     }
     $("#docView").addEventListener("click", middleTap);
     $("#pdf").addEventListener("click", middleTap);
@@ -11203,7 +11207,12 @@
     var gear = $("#gear"); gear.innerHTML = '<span class="g-aa">' + gear.innerHTML + '</span><span class="tool-i" aria-hidden="true">' + ICONS.type + '</span>';
     $("#lamp").insertAdjacentHTML("beforeend", '<span class="tool-i" aria-hidden="true">' + ICONS.bulb + '</span>');
     TOOLS.forEach(function(id){ document.getElementById(id).insertAdjacentHTML("beforeend", '<span class="tool-l" aria-hidden="true">' + escapeHtml(_t(NAMES[id])) + '</span>'); });
-    function on(){ return !!(mq && mq.matches) && (state.mode === "doc" || state.mode === "pdf"); }
+    /* reading on a phone; and the "Opening …" screen while one book gives way to another, so the
+       header does not flash up between them (a failed open, state.opening false, brings it back) */
+    function on(){
+      if (!(mq && mq.matches)) return false;
+      return state.mode === "doc" || state.mode === "pdf" || (state.mode === "status" && !!state.opening && document.body.classList.contains("phonebar"));
+    }
     /* an element back where it came from, or into `to` */
     function move(id, to){
       var el = document.getElementById(id), ph = homes[id];
@@ -11224,6 +11233,7 @@
       var off = want !== was && state.mode === placedMode && state.mode === "doc" && state.flow !== "pages" ? (seenOff !== null ? seenOff : Library.topCharOffset()) : null;
       placedMode = state.mode;
       if (want !== was){ Pop.close(true); Menu.close(); closeDock({ focus: false }); }
+      else if (want && state.mode === "status") closeDock({ focus: false });     /* "Opening …": no dock over it */
       document.body.classList.toggle("phonebar", want);
       TOOLS.forEach(function(id){ move(id, want ? row : null); });
       HEAD.forEach(function(id){ move(id, want ? head : null); });
@@ -11248,7 +11258,7 @@
     function hold(on){ Array.prototype.forEach.call(document.querySelectorAll(REST), function(n){ n.inert = on; }); }
     function isDockOpen(){ return document.body.classList.contains("dock-open"); }
     function openDock(){
-      if (!document.body.classList.contains("phonebar") || isDockOpen()) return;
+      if (!document.body.classList.contains("phonebar") || isDockOpen() || document.body.classList.contains("zen")) return;
       Pop.close(true); Menu.close();
       document.body.classList.add("dock-open");
       document.documentElement.classList.add("lock-dock");
@@ -11273,7 +11283,8 @@
     function toggleDock(){ if (isDockOpen()) closeDock(); else openDock(); }
     /* focus that would go back to a control in the closed dock goes to the lamp instead */
     function returnTarget(el){ return el && dock.contains(el) && !isDockOpen() && document.body.classList.contains("phonebar") ? btn : el; }
-    btn.addEventListener("click", function(){ toggleDock(); });
+    /* in zen the faint lamp is the way out, and nothing opens the dock */
+    btn.addEventListener("click", function(){ if (document.body.classList.contains("zen")) Zen.exit(); else toggleDock(); });
     /* a tap outside closes it and does nothing else */
     scrim.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); closeDock(); });
     /* Back, the title, Search and the tools close it before they act (capture: ahead of their own
@@ -11692,11 +11703,12 @@
   /* ---- first-run tips on the start screen, and one toast on the first document ever opened ---- */
   $("#tips").hidden = Store.get("ll_tips") === "seen";
   $("#tipsOk").addEventListener("click", function(){ Store.set("ll_tips", "seen"); $("#tips").hidden = true; });
-  /* the tip waits its turn: it never covers a message that is showing (a font that failed, say) */
+  /* the first document's tip (on a phone it also points to the lamp) waits its turn: it never covers
+     a message that is showing (a font that failed, say) */
   function tipDoc(){
     var t = $("#toast");
     if (t && t.classList.contains("on")){ setTimeout(tipDoc, 600); return; }
-    Marks.toast(_t("Tip: tap any word for its meaning"));
+    Marks.toast(document.body.classList.contains("phonebar") ? _t("Tap a word for its meaning. Tap the lamp for your reading controls.") : _t("Tip: tap any word for its meaning"));
   }
   document.addEventListener("ll:fileopened", function(){
     if (Store.get("ll_tip_doc")) return;

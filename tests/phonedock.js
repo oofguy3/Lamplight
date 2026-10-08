@@ -522,6 +522,143 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- zen, switching books, the modes, the copy ---------- */
+  const zenOn = (page) => page.evaluate(() => document.body.classList.contains("zen"));
+  await guard("zen", async () => {
+    const { ctx, page } = await phonePage(b, url, { flow: "pages" });
+    await openFixture(page, "sample.md");
+    await openDock(page);
+    await page.keyboard.press("z"); await page.waitForTimeout(500);
+    const z = await page.evaluate(() => ({ zen: document.body.classList.contains("zen"), dock: document.body.classList.contains("dock-open"), op: getComputedStyle(document.getElementById("dockBtn")).opacity,
+      note: getComputedStyle(document.getElementById("leftNote")).display !== "none", ring: getComputedStyle(document.querySelector("#dockBtn .ring")).display !== "none",
+      line: getComputedStyle(document.getElementById("progress")).display !== "none", toast: (document.getElementById("toast") || {}).textContent || "" }));
+    R.check("zen: the dock closes, a faint lamp, no note, no ring, no progress line", z.zen && !z.dock && z.op === "0.4" && !z.note && !z.ring && !z.line, JSON.stringify(z));
+    R.check("zen toast: 'Zen mode — tap the lamp to leave'", z.toast === "Zen mode — tap the lamp to leave", z.toast);
+    const v = await rect(page, "#docView");
+    await page.touchscreen.tap(195, v.bottom - 20); await page.waitForTimeout(400);
+    await page.touchscreen.tap(195, v.top + v.height / 2 + 7); await page.waitForTimeout(400);
+    R.check("zen: the bottom strip and the middle open nothing", !(await dockOpen(page)) && (await zenOn(page)));
+    const hint = await page.evaluate(() => (document.getElementById("toast") || {}).textContent || "");
+    R.check("zen: the middle tap's hint says to tap the lamp", hint === "Tap the lamp to leave zen mode", hint);
+    /* a key that brings the focus to the lamp makes it clear */
+    for (let i = 0; i < 40 && (await focusId(page)) !== "dockBtn"; i++) await page.keyboard.press("Tab");
+    R.check("zen: the lamp is clear while a key has brought the focus to it", (await focusId(page)) === "dockBtn" && (await page.$eval("#dockBtn", (e) => getComputedStyle(e).opacity)) === "1");
+    await page.tap("#dockBtn"); await page.waitForTimeout(500);
+    R.check("zen: a tap on the lamp leaves zen, and opens nothing", !(await zenOn(page)) && !(await dockOpen(page)));
+    /* zen from the More sheet: the focus comes back to the lamp after the tap, and it stays faint */
+    await openDock(page); await page.tap("#more"); await page.waitForTimeout(300);
+    await page.tap("#moreMenu button:has-text('Zen mode')"); await page.waitForTimeout(500);
+    const fz = await page.evaluate(() => ({ zen: document.body.classList.contains("zen"), focus: document.activeElement && document.activeElement.id, op: getComputedStyle(document.getElementById("dockBtn")).opacity }));
+    R.check("zen from the More sheet: the lamp has the focus and stays faint", fz.zen && fz.focus === "dockBtn" && fz.op === "0.4", JSON.stringify(fz));
+    R.check("no page errors (zen)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+  await guard("switching books", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    const path = require("path");
+    /* an EPUB shows "Opening book…" while it is read; a Markdown file goes straight in */
+    await page.setInputFiles("#fileInput", [path.join(__dirname, "fixtures", "sample.md"), path.join(__dirname, "fixtures", "sample.epub")]);
+    await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length === 2 && document.getElementById("docView").style.display === "block", null, { timeout: 20000 });
+    const tabOf = (ext) => page.evaluate((x) => window.__ll.Tabs.list().find((t) => t.name.endsWith(x)).id, ext);
+    const read = () => page.waitForFunction(() => window.__ll.state.mode === "doc" && !window.__ll.state.opening, null, { timeout: 20000 });
+    const md = await tabOf(".md"), epub = await tabOf(".epub");
+    if ((await page.evaluate(() => window.__ll.Tabs.active())) !== md){ await page.evaluate((id) => window.__ll.Tabs.activate(id), md); await read(); }
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { window.__hdrMax = 0; window.__sawStatus = false; const tick = () => { const h = document.querySelector("header").getBoundingClientRect().height; window.__hdrMax = Math.max(window.__hdrMax, h); if (document.body.dataset.mode === "status") window.__sawStatus = true; if (window.__watch) requestAnimationFrame(tick); }; window.__watch = true; requestAnimationFrame(tick); });
+    await page.evaluate((id) => window.__ll.Tabs.activate(id), epub);
+    await read(); await page.waitForTimeout(300);
+    const sw = await page.evaluate(() => { window.__watch = false; return { max: window.__hdrMax, status: window.__sawStatus, pb: document.body.classList.contains("phonebar"), strip: document.getElementById("readFoot").getClientRects().length > 0 }; });
+    R.check("switching books: through 'Opening book…', no header box at any frame", sw.max === 0 && sw.status && sw.pb && sw.strip, JSON.stringify(sw));
+    /* a book that fails to open, and a format that can't be read: the header, the wordmark and Open come back */
+    const pick = (name, bytes) => page.evaluate(([n, b]) => { const f = new File([new Uint8Array(b)], n); const dt = new DataTransfer(); dt.items.add(f); const inp = document.getElementById("fileInput"); inp.files = dt.files; inp.dispatchEvent(new Event("change", { bubbles: true })); }, [name, bytes]);
+    const back = async (what) => {
+      await page.waitForFunction(() => document.body.dataset.mode === "status" && !window.__ll.state.opening, null, { timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const s = await page.evaluate(() => ({ mode: document.body.dataset.mode, pb: document.body.classList.contains("phonebar"), hdr: document.querySelector("header").getClientRects().length }));
+      R.check(what + ": the header is back", s.mode === "status" && !s.pb && s.hdr > 0, JSON.stringify(s));
+    };
+    await pick("broken.pdf", [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0, 0, 0]);
+    await back("a failed open");
+    await page.evaluate((id) => window.__ll.Tabs.activate(id), md); await read(); await page.waitForTimeout(300);
+    await pick("letter.rtf", [0x7b, 0x5c, 0x72, 0x74, 0x66, 0x31, 0x7d]);
+    await back("a format it can't read");
+    await ctx.close();
+  });
+  await guard("modes", async () => {
+    /* the contrast tone: 2px edges, 15px tool names */
+    let { ctx, page } = await phonePage(b, url, { theme: "hicon" });
+    await openFixture(page, "sample.md");
+    await openDock(page);
+    const hc = await page.evaluate(() => ({ bw: getComputedStyle(document.getElementById("dockBtn")).borderTopWidth, dock: getComputedStyle(document.getElementById("phoneDock")).borderTopWidth, fs: getComputedStyle(document.querySelector("#actRow .tool-l")).fontSize }));
+    R.check("contrast tone: the lamp's and the dock's edges 2px, tool names 15px", hc.bw === "2px" && hc.dock === "2px" && hc.fs === "15px", JSON.stringify(hc));
+    await ctx.close();
+    /* reduced motion (every phone page here asks for it): no slide */
+    const still = (d) => /^0s(, 0s)*$/.test(d);
+    ({ ctx, page } = await phonePage(b, url));
+    await openFixture(page, "sample.md");
+    const rm = await page.$eval("#phoneDock", (e) => getComputedStyle(e).transitionDuration);
+    R.check("reduced motion: the dock has no slide", still(rm), rm);
+    await ctx.close();
+    /* e-ink, on a phone that allows motion: the dock slides until e-ink is on */
+    ctx = await b.newContext(Object.assign({}, PHONE, { reducedMotion: "no-preference" }));
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); localStorage.setItem("ll_prefs", JSON.stringify({ flow: "pages" })); } catch(_){} });
+    page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    const slide = await page.$eval("#phoneDock", (e) => getComputedStyle(e).transitionDuration);
+    await page.evaluate(() => window.__ll.Eink.set(true)); await page.waitForTimeout(300);
+    const tr = await page.$eval("#phoneDock", (e) => getComputedStyle(e).transitionDuration);
+    R.check("e-ink: the dock has no slide", !still(slide) && still(tr), slide + " → " + tr);
+    await ctx.close();
+    /* forced colours */
+    ctx = await b.newContext(Object.assign({ forcedColors: "active" }, PHONE));
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch(_){} });
+    page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    const fc = await page.evaluate(() => { const probe = document.createElement("div"); probe.style.color = "Highlight"; document.body.appendChild(probe); const hl = getComputedStyle(probe).color; probe.remove();
+      return { stroke: getComputedStyle(document.querySelector("#dockBtn .ring")).stroke, hl }; });
+    R.check("forced colours: the ring is drawn in Highlight", fc.stroke === fc.hl, JSON.stringify(fc));
+    await ctx.close();
+    /* print: none of the phone's chrome */
+    ({ ctx, page } = await phonePage(b, url));
+    await openFixture(page, "sample.md");
+    await openDock(page);
+    await page.emulateMedia({ media: "print" }); await page.waitForTimeout(200);
+    const pr = await page.evaluate(() => ["#readFoot", "#phoneDockScrim", "#phoneDock", "#moreMenu"].map((s) => getComputedStyle(document.querySelector(s)).display));
+    R.check("print: the strip, the dock and the More sheet are not printed", pr.every((d) => d === "none"), pr.join(","));
+    await ctx.close();
+  });
+  /* tool names at the narrowest width, English and Dutch, in the normal and the contrast tone */
+  for (const [locale, theme] of [["en-GB", "day"], ["en-GB", "hicon"], ["nl-NL", "hicon"]]){
+    await guard("names " + locale + " " + theme, async () => {
+      const ctx = await b.newContext(Object.assign({ locale }, PHONE, { viewport: { width: 320, height: 640 } }));
+      await ctx.addInitScript((t) => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); localStorage.setItem("ll_prefs", JSON.stringify({ theme: t })); } catch(_){} }, theme);
+      const page = await newPage(ctx, url);
+      await openFixture(page, "sample.md");
+      await openDock(page);
+      const t = await page.evaluate(() => [...document.querySelectorAll("#actRow .tool-l")].filter((l) => l.getClientRects().length).map((l) => { const b = l.parentElement.getBoundingClientRect(), r = l.getBoundingClientRect(), lh = parseFloat(getComputedStyle(l).lineHeight);
+        return { t: l.textContent, lines: Math.round(r.height / lh), clip: r.left < b.left - 0.5 || r.right > b.right + 0.5 || l.scrollWidth > l.clientWidth + 1 }; }));
+      const note = await page.evaluate(() => { const n = document.getElementById("leftNote"), l = document.getElementById("dockBtn").getBoundingClientRect(); return { right: n.getBoundingClientRect().right, lampLeft: l.left, over: n.scrollWidth > n.clientWidth + 1 }; });
+      R.check("320px, " + locale + ", " + theme + ": tool names wrap to two lines at most, nothing clipped", t.every((x) => !x.clip && x.lines <= 2), JSON.stringify(t));
+      R.check("320px, " + locale + ", " + theme + ": the note fits beside the lamp", note.right <= note.lampLeft && !note.over, JSON.stringify(note));
+      await ctx.close();
+    });
+  }
+  await guard("copy", async () => {
+    const ctx = await b.newContext(PHONE);
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_tips", "seen"); } catch(_){} });
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    await page.waitForFunction(() => /Tap the lamp/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: 6000 }).catch(() => {});
+    R.check("the first-document tip on a phone", ((await page.evaluate(() => (document.getElementById("toast") || {}).textContent)) || "") === "Tap a word for its meaning. Tap the lamp for your reading controls.");
+    const hint = await page.evaluate(() => { const h = document.getElementById("flowHint"); return [...h.querySelectorAll("span")].filter((s) => s.getClientRects().length).map((s) => s.textContent).join(" | ") || h.textContent; });
+    R.check("the flow hint on a phone tells of the lamp", /^Scroll: tap the lamp for your reading controls\. Pages: tap the left or right edge, or swipe sideways, to turn; swipe up or tap the lamp for your reading controls\.$/.test(hint), hint);
+    await page.evaluate(() => window.__ll.Library.home()); await page.waitForTimeout(400);
+    await page.evaluate(() => { document.getElementById("tips").hidden = false; });
+    const tip = await page.evaluate(() => [...document.querySelectorAll("#tips .tip-row span")].filter((s) => s.getClientRects().length).map((s) => s.textContent));
+    R.check("the start screen's third tip on a phone", tip.includes("While reading, tap the lamp for read aloud, stats, zen mode and more."), tip.join(" | "));
+    await ctx.close();
+  });
+
   /* ---------- a mouse at 390px and a wide phone: no phone chrome ---------- */
   await guard("not a phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });

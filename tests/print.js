@@ -55,7 +55,7 @@ const layout = (page) => page.evaluate(() => {
   await page.waitForTimeout(200);
   const p = await layout(page);
   R.check("print: header, sheet and pager not displayed", (await display(page, "header")) === "none" && (await display(page, "#sheet")) === "none" && (await display(page, "#pager")) === "none");
-  R.check("print: the bars, panels and readouts not displayed", await page.evaluate(() => ["#tts", "#autoBar", "#side", "#progress", "#progressInfo", "#ruler", "#dictCard", "#dictPill", "#markPop", "#pdf", ".skip", "#empty", "#library"].every((s) => getComputedStyle(document.querySelector(s)).display === "none")));
+  R.check("print: the bars, panels and readouts not displayed", await page.evaluate(() => ["#tts", "#autoBar", "#side", "#progress", "#progressInfo", "#ruler", "#dictCard", "#dictPill", "#markPop", "#pdf", ".skip", "#empty", "#library", "#readFoot", "#phoneDockScrim", "#phoneDock"].every((s) => getComputedStyle(document.querySelector(s)).display === "none")));
   R.check("print: #doc has column-count auto", p.columns === "auto", p.columns);
   R.check("print: the view's height is auto (the inline height is overridden, the text runs down the page)", p.viewInline !== "" && Math.abs(p.viewH - p.docH) < 2 && p.docH > p.inner && !p.wide, JSON.stringify({ inline: p.viewInline, viewH: p.viewH, docH: p.docH, wide: p.wide }));
   R.check("print: black on white", p.bodyBg === "rgb(255, 255, 255)" && p.bodyColor === "rgb(0, 0, 0)" && p.docColor === "rgb(0, 0, 0)", p.bodyBg + " / " + p.bodyColor + " / " + p.docColor);
