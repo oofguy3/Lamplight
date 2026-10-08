@@ -2153,7 +2153,12 @@
     if (left) part("pg-left", left, true);
   }
   function updateProgress(){
-    if (!pagedActive()) return;
+    /* Scroll flow: the scroll listener keeps the line and a phone's strip up to date; a book just
+       laid out, with no scroll yet, gets them here */
+    if (!pagedActive()){
+      if (state.mode === "doc" || state.mode === "pdf"){ var h = document.documentElement, max = h.scrollHeight - h.clientHeight; setProgressBar(max > 0 ? (h.scrollTop / max) * 100 : 0); Progress.strip(); }
+      return;
+    }
     Progress.tick();
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
@@ -8287,12 +8292,14 @@
         text = pages > 3 ? _t("p. {page} / {pages} \u00B7 {left}", { page: page, pages: pages, left: fmt(leftP) }) : _t("p. {page} / {pages}", { page: page, pages: pages });
       }
       show(text);
-      /* a phone: the note at the foot, and the dock's position and caption */
-      if (document.body.classList.contains("phonebar")){
-        var ch = chapterLeft();
-        put($("#leftNote"), ch); put($("#dockLeft"), ch);
-        PhoneBar.syncPos();
-      }
+      strip();
+    }
+    /* a phone: the note at the foot, and the dock's position and caption */
+    function strip(){
+      if (!document.body.classList.contains("phonebar")) return;
+      var ch = chapterLeft();
+      put($("#leftNote"), ch); put($("#dockLeft"), ch);
+      PhoneBar.syncPos();
     }
     /* the time left from here, worded for the page-turn bar ("18 min left"), or "" when the
        document is too short to say */
@@ -8307,7 +8314,7 @@
       }
       return "";
     }
-    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, chapterLeft: chapterLeft, sample: function(){ return Pace.summary(); }, docWords: words };
+    return { tick: tick, strip: strip, wpm: currentWpm, ppm: currentPpm, left: left, chapterLeft: chapterLeft, sample: function(){ return Pace.summary(); }, docWords: words };
   })();
 
   /* ============================================================
@@ -9704,8 +9711,8 @@
       if (e.key !== "Escape" || !on || somethingOpen()) return;
       exit();
     }, true);
-    /* in Pages flow the middle tap toggles the bars (tapNav, registered later on the same
-       elements, so this runs first): in zen it only reminds how to leave, once */
+    /* in Pages flow the middle tap toggles the bars, or opens the dock on a phone (tapNav, registered
+       later on the same elements, so this runs first): in zen it only reminds how to leave, once */
     function middleTap(e){
       /* e-ink mode's middle turns the page like the rest of the right two-thirds */
       if (!on || !pagedActive() || state.eink === true || e.target.closest("a")) return;
@@ -11152,6 +11159,9 @@
      changed), whether switching is on or off. Which half a theme is: the pair first, then the two
      high-contrast themes (Contrast for day, Contrast dark for night), else neither */
   function dnOf(k){
+    /* a pair left collapsed (the same theme twice) is the half its colours say, so Day and t
+       still leave a dark one */
+    if (state.autoDay === state.autoNight && k === state.autoDay){ var t = resolveTheme(k); return t && isDarkColor(t.bg) ? "night" : "day"; }
     if (k === state.autoDay) return "day";
     if (k === state.autoNight) return "night";
     if (k === "hicon") return "day";
@@ -11232,8 +11242,13 @@
       if (state.mode !== placedMode) seenOff = null;
       var off = want !== was && state.mode === placedMode && state.mode === "doc" && state.flow !== "pages" ? (seenOff !== null ? seenOff : Library.topCharOffset()) : null;
       placedMode = state.mode;
-      if (want !== was){ Pop.close(true); Menu.close(); closeDock({ focus: false }); }
-      else if (want && state.mode === "status") closeDock({ focus: false });     /* "Opening …": no dock over it */
+      /* nothing moves unless phone reading starts or ends (a move on every view change re-inserted
+         the More menu and dropped the focus inside it) */
+      if (want === was){
+        if (want && state.mode === "status") closeDock({ focus: false });     /* "Opening …": no dock over it */
+        return;
+      }
+      Pop.close(true); Menu.close(); closeDock({ focus: false });
       document.body.classList.toggle("phonebar", want);
       TOOLS.forEach(function(id){ move(id, want ? row : null); });
       HEAD.forEach(function(id){ move(id, want ? head : null); });
@@ -11244,11 +11259,9 @@
       /* the title is the way to the other open books */
       if (want){ fname.setAttribute("role", "button"); fname.tabIndex = 0; fname.setAttribute("aria-haspopup", "dialog"); }
       else { fname.removeAttribute("role"); fname.removeAttribute("tabindex"); fname.removeAttribute("aria-haspopup"); }
-      if (want !== was){
-        headVar(); dockVar(); themeColor();
-        if (pagedActive()) relayoutPaged();
-        else if (off !== null && off !== undefined) revealOffset(off);
-      }
+      headVar(); dockVar(); themeColor();
+      if (pagedActive()) relayoutPaged();
+      else if (off !== null && off !== undefined) revealOffset(off);
     }
     if (mq){ if (mq.addEventListener) mq.addEventListener("change", place); else if (mq.addListener) mq.addListener(place); }
 
@@ -11259,7 +11272,7 @@
     function isDockOpen(){ return document.body.classList.contains("dock-open"); }
     function openDock(){
       if (!document.body.classList.contains("phonebar") || isDockOpen() || document.body.classList.contains("zen")) return;
-      Pop.close(true); Menu.close();
+      Pop.close(true); Menu.close(); setSheet(false);
       document.body.classList.add("dock-open");
       document.documentElement.classList.add("lock-dock");
       btn.setAttribute("aria-expanded", "true");
@@ -11293,7 +11306,8 @@
       var c = e.target.closest(".pd-head > *, #actRow > *");
       if (!c || !isDockOpen()) return;
       closeDock({ focus: false });
-      setTimeout(function(){ if (dock.contains(document.activeElement) && document.body.classList.contains("phonebar")) btn.focus({ preventScroll: true }); }, 0);
+      /* with no slide (reduced motion, e-ink) the dock is hidden at once and the focus falls to the page */
+      setTimeout(function(){ var a = document.activeElement; if ((!a || a === document.body || dock.contains(a)) && document.body.classList.contains("phonebar")) btn.focus({ preventScroll: true }); }, 0);
     }, true);
     /* Escape closes it, unless something above it is open: that one takes the key */
     document.addEventListener("keydown", function(e){
@@ -12080,7 +12094,7 @@
   $("#smaller").addEventListener("click", function(){ if (this.getAttribute("aria-disabled") !== "true") bump(-1); });
   $("#bigger").addEventListener("click",  function(){ if (this.getAttribute("aria-disabled") !== "true") bump(1); });
 
-  /* page turning: buttons, edge taps, swipes, keys — middle tap toggles the bars */
+  /* page turning: buttons, edge taps, swipes, keys — a middle tap toggles the bars (on a phone it opens the dock) */
   $("#prevPg").addEventListener("click", function(){ turn(-1); });
   $("#nextPg").addEventListener("click", function(){ turn(1); });
 
@@ -12092,8 +12106,9 @@
     setSheet(false);
     relayoutPaged();
   }
-  /* the top and bottom 56px of the page, where the bars live: a tap there shows or hides them, and
-     never looks a word up (in the middle of a phone's page almost every point is a word) */
+  /* the top and bottom 56px of the page, where the bars live: a tap there shows or hides them (on a
+     phone the bottom one opens the dock), and never looks a word up (in the middle of a phone's page
+     almost every point is a word) */
   var BAR_STRIP = 56;
   function inBarStrip(y, el){
     var r = (el || (state.mode === "pdf" ? $("#pdf") : $("#docView"))).getBoundingClientRect();
@@ -12157,6 +12172,8 @@
     if (e.key === "Escape"){ setSheet(false); return; }
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
     if (Side.current()) return;   /* the keys scroll the open drawer, not the pages behind it */
+    /* a phone: the open dock holds the page still, and Space on the lamp presses the lamp */
+    if (document.body.classList.contains("dock-open") || (e.key === " " && e.target.closest && e.target.closest("#readFoot"))) return;
     if (!pagedActive()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " "){ e.preventDefault(); turn(1); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp"){ e.preventDefault(); turn(-1); }
@@ -13764,7 +13781,7 @@
       if (!document.body.classList.contains("paged")) return true;
       var r = $("#docView").getBoundingClientRect();      /* the strip itself is scrolled sideways */
       var f = (x - r.left) / r.width;
-      /* the top and bottom strips of the page show and hide the bars instead (tapNav) */
+      /* the top and bottom strips of the page show and hide the bars instead, or on a phone the bottom one opens the dock (tapNav) */
       if (typeof y === "number" && state.eink !== true && inBarStrip(y, $("#docView"))) return false;
       return f >= 0.35 && f <= 0.65;
     }

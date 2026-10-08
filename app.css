@@ -1918,7 +1918,6 @@
     body.paged.tts-on #pgInfo .pg-n{flex:none; font-family:var(--ui-font); font-size:var(--fs-small); font-weight:700; line-height:1.35;}
     body.paged.tts-on #pgInfo .pg-sec ~ .pg-left .pg-dot, body.paged.tts-on #pgInfo .pg-dot{display:inline;}
     body.paged.tts-on #tts{border-top:0; padding-bottom:calc(8px + env(safe-area-inset-bottom));}
-    body.paged.tts-on.phonebar:not(.immersive) #tts{padding-bottom:8px;}
   }
   /* ---------- the voices panel ----------
      A handful of good choices first — the pair that is reading, then up to six cards for this

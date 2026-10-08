@@ -59,9 +59,10 @@ const uppers = (page) => page.evaluate(() => [...document.querySelectorAll("body
       p.scrollIntoView({ block: "center" }); const b = r.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
     });
     await page.mouse.click(at.x, at.y);
-    await page.waitForFunction(() => { const c = document.getElementById("dictCard"); return c && c.classList.contains("open") && c.textContent.length > 20; }, null, { timeout: 15000 }).catch(() => {});
-    R.check("the word card uses LL UI", (await ff(page, "#dictCard")).startsWith('"LL UI"'), await ff(page, "#dictCard"));
-    u = await uppers(page); R.check("no uppercase labels: word card", u.length === 0, u.slice(0, 6).join(", "));
+    const cardOpen = await page.waitForFunction(() => { const c = document.getElementById("dictCard"); return c && c.classList.contains("open") && c.textContent.length > 20; }, null, { timeout: 15000 }).then(() => true, () => false);
+    R.check("the word card opens on a click on a word", cardOpen);
+    R.check("the word card uses LL UI", cardOpen && (await ff(page, "#dictCard")).startsWith('"LL UI"'), await ff(page, "#dictCard"));
+    u = await uppers(page); R.check("no uppercase labels: word card", cardOpen && u.length === 0, u.slice(0, 6).join(", "));
     R.check("no page errors (casing)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close(); await ctx.close();
   }

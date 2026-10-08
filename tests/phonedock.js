@@ -478,6 +478,7 @@ async function phonePage(b, url, prefs){
     R.check("read aloud: the player at the foot, the strip on it, the note hidden", g.on && near(g.ttsBottom, 844) && near(g.stripBottom, g.ttsTop) && near(g.stripH, 92) && !g.note, JSON.stringify(g));
     R.check("…the lamp 28px up the strip, the text above both", near(g.lampBottom, g.ttsTop - 28) && g.viewBottom <= g.stripTop + 1, JSON.stringify(g));
     R.check("…and the Read aloud tool says Stop", g.label === "Stop", g.label);
+    R.check("…and the focus is on the lamp (reduced motion hides the dock at once)", (await focusId(page)) === "dockBtn", await focusId(page));
     await page.tap("#ttsSpeed"); await page.waitForTimeout(300);
     const top = await page.evaluate(() => { const p = document.getElementById("ttsSpeedPop"), r = p.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + 10); return !p.hidden && !!at && p.contains(at); });
     R.check("the speed popover is on top of the strip", top);
@@ -659,12 +660,76 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- a keyboard on a phone: Space presses the lamp, the open dock holds the page ---------- */
+  await guard("keys", async () => {
+    const { ctx, page } = await phonePage(b, url, { flow: "pages" });
+    await openFixture(page, "sample.md");
+    const pg = () => page.evaluate(() => window.__ll.state.page);
+    const p0 = await pg();
+    await page.focus("#dockBtn"); await page.keyboard.press(" "); await page.waitForTimeout(300);
+    R.check("Space on the lamp opens the dock, and turns no page", (await dockOpen(page)) && (await pg()) === p0, JSON.stringify({ open: await dockOpen(page), page: await pg(), p0 }));
+    for (const k of ["ArrowRight", "PageDown", "End", "ArrowLeft"]) await page.keyboard.press(k);
+    await page.waitForTimeout(300);
+    R.check("with the dock open the page keys turn nothing", (await pg()) === p0 && (await dockOpen(page)), String(await pg()));
+    await page.focus("#tocBtn"); await page.keyboard.press(" "); await page.waitForTimeout(400);
+    R.check("Space on Contents in the dock opens Contents and turns no page", (await page.evaluate(() => document.getElementById("side").classList.contains("open"))) && (await pg()) === p0, String(await pg()));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    await page.focus("#main"); await page.keyboard.press("ArrowRight"); await page.waitForTimeout(300);
+    R.check("the keys turn the page again once the dock is shut", (await pg()) === p0 + 1, String(await pg()));
+    /* the settings sheet (s) under a dock opened from the keyboard: the dock takes its place */
+    await page.keyboard.press("s"); await page.waitForTimeout(400);
+    await page.focus("#dockBtn"); await page.keyboard.press("Enter"); await page.waitForTimeout(400);
+    const st = await page.evaluate(() => { const d = document.getElementById("phoneDock").getBoundingClientRect(), at = document.elementFromPoint(d.left + d.width / 2, d.top + d.height / 2);
+      return { sheet: document.getElementById("sheet").classList.contains("open"), dock: document.body.classList.contains("dock-open"), onTop: !!at && !!at.closest("#phoneDock") }; });
+    R.check("the dock opened over the settings sheet closes the sheet and is on top", !st.sheet && st.dock && st.onTop, JSON.stringify(st));
+    await ctx.close();
+  });
+
+  /* ---------- the notch and the home bar (emulated safe areas: 47px top, 34px bottom) ---------- */
+  await guard("safe areas", async () => {
+    const ctx = await b.newContext(PHONE);
+    await ctx.addInitScript(SPEECH);
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch(_){} });
+    const page = await newPage(ctx, url);
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34 } });
+    await openFixture(page, "sample.md");
+    const sc = await page.evaluate(() => { const f = document.getElementById("readFoot").getBoundingClientRect(), l = document.getElementById("dockBtn").getBoundingClientRect();
+      return { stripH: f.height, lampBottom: l.bottom, mainTop: getComputedStyle(document.getElementById("main")).paddingTop }; });
+    R.check("safe areas: the strip grows by the home bar, the lamp sits above it, the text starts below the notch", near(sc.stripH, 126) && near(sc.lampBottom, 844 - 34 - 28) && sc.mainTop === "47px", JSON.stringify(sc));
+    await openDock(page);
+    const dk = await page.evaluate(() => { const d = document.getElementById("phoneDock"), r = document.getElementById("actRow").getBoundingClientRect(); return { pad: getComputedStyle(d).paddingBottom, rowBottom: r.bottom }; });
+    R.check("safe areas: the dock's tools stay above the home bar", dk.pad === "58px" && dk.rowBottom <= 844 - 34 - 24 + 1, JSON.stringify(dk));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    /* Pages flow while reading aloud: the player, at the very foot, keeps its button clear of the home bar */
+    await page.evaluate(() => document.querySelector('#flowChips [data-flow="pages"]').click()); await page.waitForTimeout(500);
+    await openDock(page); await page.tap("#speakBtn"); await page.waitForTimeout(900);
+    const tt = await page.evaluate(() => ({ paged: document.body.classList.contains("paged"), pad: getComputedStyle(document.getElementById("tts")).paddingBottom, play: document.getElementById("ttsPlay").getBoundingClientRect().bottom }));
+    R.check("safe areas, Pages flow, reading aloud: the player's buttons stay above the home bar", tt.paged && parseFloat(tt.pad) >= 34 && tt.play <= 844 - 34, JSON.stringify(tt));
+    await page.evaluate(() => window.__ll.Speak.stop());
+    await ctx.close();
+  });
+
+  /* ---------- the strip has its note and the lamp its name as soon as a book opens (Scroll flow, no scroll yet) ---------- */
+  await guard("strip on open", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.epub");
+    await page.waitForTimeout(600);
+    const o = await page.evaluate(() => ({ note: document.getElementById("leftNote").textContent, pct: document.getElementById("dockPct").textContent, y: window.scrollY }));
+    R.check("a book just opened: the note and the lamp's percentage are there before any scroll", o.y === 0 && /left/.test(o.note) && /through the book/.test(o.pct), JSON.stringify(o));
+    await ctx.close();
+  });
+
   /* ---------- a mouse at 390px and a wide phone: no phone chrome ---------- */
   await guard("not a phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.epub");
     R.check("390px with a mouse: the header, no strip, no dock", (await page.evaluate(() => document.querySelector("header").getClientRects().length > 0)) && !(await shown(page, "#readFoot")) && !(await shown(page, "#phoneDock")));
+    /* the More menu open with the focus in it: a place() (every view change calls one) moves nothing */
+    await page.click("#more"); await page.waitForTimeout(400); await page.keyboard.press("ArrowDown"); await page.waitForTimeout(100);
+    const mf = await page.evaluate(() => { const a = document.activeElement; window.__ll.PhoneBar.place(); window.__ll.PhoneBar.place(); return { same: document.activeElement === a, inMenu: !!a.closest("#moreMenu"), open: document.getElementById("moreMenu").classList.contains("open") }; });
+    R.check("a mouse: place() leaves the open More menu and its focus alone", mf.same && mf.inMenu && mf.open, JSON.stringify(mf));
     await ctx.close();
   });
 

@@ -266,12 +266,14 @@ const STUB = `(() => {
           if (b.left > vr.left + vr.width * 0.37 && b.right < vr.left + vr.width * 0.63 && b.top > vr.top + 70 && b.bottom < vr.bottom - 70) return { x: b.left + b.width / 2, y: b.top + b.height / 2, word: m[0] }; } } return null; });
     if (w){ await page.touchscreen.tap(w.x, w.y); await page.waitForTimeout(700); R.check("a word in the middle of the page is still looked up", await card(), JSON.stringify(w)); await page.keyboard.press("Escape"); await page.waitForTimeout(300); }
     else R.check("a word in the middle of the page", false);
-    R.check("the Reading caption says so", /swipe down, or tap the top or bottom edge of the page, to show the bars/i.test(await page.$eval("#flowHint", (h) => h.textContent)));
-    /* reading aloud in Pages flow: the page line folds above the one-row player */
+    const caption = await page.evaluate(() => [...document.querySelectorAll("#flowHint span")].filter((s) => s.getClientRects().length).map((s) => s.textContent).join(" "));
+    R.check("the Reading caption says so (its phone wording, the one on screen)", /swipe up or tap the lamp for your reading controls/i.test(caption), caption);
+    /* reading aloud in Pages flow: a one-row player at the foot with the strip on it; the page and
+       the time left are the lamp's ring and the dock's (no page line) */
     await page.keyboard.press("r"); await page.waitForTimeout(500);
-    const pl = await page.evaluate(() => { const t = document.getElementById("tts").getBoundingClientRect(), p = document.getElementById("pager").getBoundingClientRect();
-      return { pagerAbove: p.bottom <= t.top + 1, pagerH: Math.round(p.height), ttsH: Math.round(t.height), play: Math.round(document.getElementById("ttsPlay").getBoundingClientRect().width) }; });
-    R.check("Pages flow while reading aloud: the page and the time left are a thin line above the one-row player", pl.pagerAbove && pl.pagerH <= 40 && pl.ttsH < 90 && pl.play === 56, JSON.stringify(pl));
+    const pl = await page.evaluate(() => { const t = document.getElementById("tts").getBoundingClientRect(), s = document.getElementById("readFoot").getBoundingClientRect();
+      return { stripOn: Math.abs(s.bottom - t.top) <= 1, pager: getComputedStyle(document.getElementById("pager")).display, ttsH: Math.round(t.height), play: Math.round(document.getElementById("ttsPlay").getBoundingClientRect().width) }; });
+    R.check("Pages flow while reading aloud: a one-row player at the foot with the strip on it, no page line", pl.stripOn && pl.pager === "none" && pl.ttsH < 90 && pl.play === 56, JSON.stringify(pl));
     R.check("pages: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await page.close();
   } catch (err){ R.check("pages (exception)", false, String(err).split("\n")[0]); }

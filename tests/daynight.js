@@ -82,6 +82,18 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   await setPair(page, "night", "day"); await select(page, "day"); await press(page, "t");
   R.check("collapsed pair day/day: from day t goes to dusk", (await theme(page)) === "dusk", await theme(page));
   await setPair(page, "night", "dusk");
+  /* …and a dark one reaches a day theme: the pair's one theme is the half its colours say */
+  await setPair(page, "day", "dusk"); await select(page, "dusk");
+  const dd = await page.evaluate(() => window.llThemes.dnOf("dusk"));
+  await press(page, "t");
+  R.check("collapsed pair dusk/dusk: dusk is the night half, and t goes to day", dd === "night" && (await theme(page)) === "day", dd + " " + (await theme(page)));
+  await select(page, "dusk");
+  await page.evaluate(() => window.llThemes.setDayNight("day")); await page.waitForTimeout(400);
+  const toDay = await theme(page);
+  await page.evaluate(() => window.llThemes.setDayNight("night")); await page.waitForTimeout(400);
+  const toNight = await theme(page);
+  R.check("collapsed pair dusk/dusk: Day goes to day, and Night back to dusk", toDay === "day" && toNight === "dusk", toDay + " " + toNight);
+  await setPair(page, "day", "day");
 
   /* 7. dnOf: which half a theme is */
   const r = await page.evaluate(() => window.llThemes.dnOf ? ["day", "dusk", "paper", "hicon"].map((k) => window.llThemes.dnOf(k)) : "no dnOf");
