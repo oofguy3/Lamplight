@@ -176,6 +176,7 @@
     "Contents": "Inhoud",
     "Read aloud": "Voorlezen",
     "Text settings": "Tekstinstellingen",
+    "Close text settings": "Tekstinstellingen sluiten",
     "Theme": "Thema",
     "More actions": "Meer acties",
     "More": "Meer",

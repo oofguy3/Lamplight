@@ -361,13 +361,18 @@ const SPEECH_STUB = `(() => {
     await touchDrag(page, 195, 120, 195, 20);
     const l1 = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("pop").classList.contains("open"), scrim: document.getElementById("popScrim").classList.contains("on") }));
     R.check("a drag on the scrim leaves the page and the sheet where they are", l1.y === 100 && l1.open && l1.scrim, JSON.stringify(l1));
-    const wr = await rect(page, "#qW");
-    await touchDrag(page, wr.left - 30, wr.top + wr.height / 2, wr.left - 30, wr.top - 120);
+    /* the phone sheet puts each label above its control and has no Size slider (A− / A+ instead):
+       the drag starts on the Size label, and the slider is Letters, a step in under More */
+    const lr = await rect(page, "#qSizeL");
+    await touchDrag(page, lr.left + 10, lr.top + lr.height / 2, lr.left + 10, lr.top - 120);
     const l2 = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("pop").classList.contains("open") }));
     R.check("a drag inside the sheet (beside a slider) does not scroll the page or close the sheet", l2.y === 100 && l2.open, JSON.stringify(l2));
-    const s0 = await page.evaluate(() => window.__ll.state.size), sr = await rect(page, "#qSize");
-    await touchDrag(page, sr.left + 8 + (sr.width - 16) * ((s0 - 14) / 14), sr.top + sr.height / 2, sr.right - 4, sr.top + sr.height / 2 + 10);
-    R.check("a sideways drag on the Size slider still changes the size", (await page.evaluate(() => window.__ll.state.size)) > s0 && (await popOpen(page)), String(await page.evaluate(() => window.__ll.state.size)));
+    await page.tap("#qMore summary"); await page.waitForTimeout(250);
+    await page.$eval("#qLs", (el) => el.scrollIntoView({ block: "center" })); await page.waitForTimeout(150);
+    const ls0 = await page.evaluate(() => window.__ll.state.ls || 0), sr = await rect(page, "#qLs");
+    await touchDrag(page, sr.left + 8, sr.top + sr.height / 2, sr.right - 4, sr.top + sr.height / 2 + 10);
+    R.check("a sideways drag on a slider in the sheet still changes its value", (await page.evaluate(() => window.__ll.state.ls || 0)) > ls0 && (await popOpen(page)), String(await page.evaluate(() => window.__ll.state.ls)));
+    await page.tap("#qMore summary"); await page.waitForTimeout(150);
     /* near the top: the popover is a bottom sheet and may stand up to 85vh tall, so the middle
        of the scrim is behind it */
     await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(400);

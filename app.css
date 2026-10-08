@@ -679,6 +679,27 @@
   #typePop.pdf #qSize, #typePop.pdf .doc-row{display:none;}
   #typePop.pdf #qZoom{display:block;}
   #typePop.pdf .pdf-row{display:flex;}
+  /* an end of the range (A− at the smallest size or zoom, A+ at the largest): still focusable, a
+     press does nothing, and the button steps back */
+  .ctl.mini[aria-disabled="true"]{color:var(--muted); border-color:var(--line); cursor:default;}
+  .ctl.mini[aria-disabled="true"]:active{transform:none;}
+  @media (hover:hover){ .ctl.mini[aria-disabled="true"]:hover{background:transparent;} }
+  #typeClose{display:none;}
+  /* the Text sheet on a phone (and in any window 560px or narrower): a close button in the head,
+     each label above its control, and the size as a big A− / value / A+ stepper in place of the
+     slider, the value in the reading font and without "px" */
+  @media (max-width:560px){
+    #typePop .pop-head{min-height:48px; padding-bottom:0;}
+    #typeClose{display:inline-flex; width:48px; min-width:48px; height:48px; padding:0; margin-right:-12px; border-color:transparent;}
+    #typeClose svg{width:var(--icon-md); height:var(--icon-md);}
+    #typePop .prow{flex-wrap:wrap; row-gap:var(--sp-2);}
+    #typePop .prow > label:not(.check), #typePop .prow > .plabel{flex:1 1 100%; width:auto; font-weight:700;}
+    #typePop .prow-size{display:grid; grid-template-columns:minmax(0, 1fr); align-items:center;}
+    #typePop .prow-size .prow-in{grid-area:2 / 1; justify-content:space-between; padding:4px; border:1px solid var(--line); border-radius:var(--r-md); background:var(--well);}
+    #typePop #qSize, #typePop #qZoom, #typePop.pdf #qZoom{display:none;}
+    #typePop .prow-size .val{grid-area:2 / 1; justify-self:center; min-width:0; text-align:center; font-family:var(--reader-font); font-size:1.5rem; line-height:2rem; color:var(--ink);}
+    #typePop .ctl.mini{width:56px; min-width:56px; height:56px; border-radius:var(--r-sm); font-size:1.125rem;}
+  }
   /* Day ⇄ Night: two large buttons for the Auto pair, each with a small page of the theme it goes
      to, its word, and the theme's name under it; the one on screen is pressed. Where the name is
      the word itself (the Day theme on the Day button) the name steps back, and the pressed one
@@ -827,6 +848,7 @@
   @media (forced-colors: active){
     #pop{border-color:ButtonText;}
     .pop-link::before{border-top-color:ButtonText;}
+    .ctl.mini[aria-disabled="true"]{color:GrayText; border-color:GrayText;}
   }
 
   /* ---------- fonts ---------- */

@@ -1477,9 +1477,9 @@
       btn.setAttribute("aria-expanded", "true");
       place();
       rebase();
-      /* focus lands on the first control: the size (zoom) slider, or the chosen theme's tile (its
-         group is the one showing) */
-      var first = id === "type" ? (panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
+      /* focus lands on the first control: the size (zoom) slider, A− on a phone (the slider is not
+         shown there), or the chosen theme's tile (its group is the one showing) */
+      var first = id === "type" ? (phone() ? $("#smaller") : panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
                                 : (panes.theme.querySelector(".tiles:not([hidden]) .chip.on") || panes.theme.querySelector(".tiles:not([hidden]) .chip"));
       (first || el).focus({ preventScroll: true });
     }
@@ -1502,12 +1502,21 @@
       Object.keys(FONTS).forEach(function(id){ if (FONTS[id].group !== g.id) return; var o = document.createElement("option"); o.value = id; o.textContent = fontName(FONTS[id]); og.appendChild(o); });
       fontQuick.appendChild(og);
     });
+    /* the stepper's ends: the button stays focusable, a press does nothing, and it says so */
+    function setEnd(b, on){ if (on) b.setAttribute("aria-disabled", "true"); else b.removeAttribute("aria-disabled"); }
     function syncType(){
-      var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100);
+      var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100), ph = phone(), v = $("#qSizeV");
       panes.type.classList.toggle("pdf", pdf);
       $("#qSizeL").textContent = pdf ? _t("Zoom") : _t("Size");
       $("#qZoom").value = z; $("#qSize").value = state.size;
-      $("#qSizeV").textContent = pdf ? z + " %" : state.size + " px";
+      /* a phone has no slider: the value between A− and A+ is the one thing that says the size, read
+         out as it changes (rewritten only when it does, so a screen reader hears each step once) */
+      var sv = pdf ? z + " %" : ph ? String(state.size) : state.size + " px";
+      if (v.textContent !== sv) v.textContent = sv;
+      if (v.getAttribute("aria-live") !== (ph ? "polite" : "off")) v.setAttribute("aria-live", ph ? "polite" : "off");
+      /* zoom moves in steps of 0.1 that drift in floating point: the ends are read off the rounded percent */
+      setEnd($("#smaller"), pdf ? z <= 60 : state.size <= 14);
+      setEnd($("#bigger"), pdf ? z >= 250 : state.size >= 28);
       $("#qLh").value = state.lh; $("#qLhV").textContent = dec(state.lh, 2);
       $("#qW").value = state.width; $("#qWV").textContent = state.width + " px";
       var rg = weightRange(FONTS[state.font] || FONTS.serif);
@@ -1697,6 +1706,7 @@
     }, true);
     scrim.addEventListener("click", function(){ close(); });
     el.querySelector(".pop-handle").addEventListener("click", function(){ close(); });
+    $("#typeClose").addEventListener("click", function(){ close(); });
     dragToClose(el, [el.querySelector(".pop-handle")].concat(Array.prototype.slice.call(el.querySelectorAll(".pop-head"))), function(){ close(); }, function(){ return !!current; });
     /* scrolling away from the popover closes it — on a desktop, where it hangs from the bar. A
        phone's sheet stays: Escape, the scrim or the handle close it, and the page is held still
@@ -1709,6 +1719,11 @@
       if (!phone() && Math.abs(window.scrollY - scrollY0) > 80) close(true);
     }, { passive: true });
     window.addEventListener("resize", place);
+    /* across the phone width with the Text pane open (a turn of the phone, a window dragged
+       narrower): the value gains or drops its "px" and its live reading */
+    var phoneMq = window.matchMedia && window.matchMedia("(max-width:560px)");
+    function relayout(){ if (current === "type") syncType(); }
+    if (phoneMq){ if (phoneMq.addEventListener) phoneMq.addEventListener("change", relayout); else if (phoneMq.addListener) phoneMq.addListener(relayout); }
 
     /* the bar buttons */
     $("#gear").addEventListener("click", function(e){ e.stopPropagation(); open("type", this, syncType); });
@@ -11689,8 +11704,9 @@
       applyType();
     }
   }
-  $("#smaller").addEventListener("click", function(){ bump(-1); });
-  $("#bigger").addEventListener("click",  function(){ bump(1); });
+  /* at an end the button is aria-disabled: still focusable, and a press does nothing */
+  $("#smaller").addEventListener("click", function(){ if (this.getAttribute("aria-disabled") !== "true") bump(-1); });
+  $("#bigger").addEventListener("click",  function(){ if (this.getAttribute("aria-disabled") !== "true") bump(1); });
 
   /* page turning: buttons, edge taps, swipes, keys — middle tap toggles the bars */
   $("#prevPg").addEventListener("click", function(){ turn(-1); });

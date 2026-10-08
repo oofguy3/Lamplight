@@ -50,7 +50,10 @@
 <div id="pop" role="dialog" aria-label="Text settings" aria-hidden="true" tabindex="-1" data-i18n-attr="aria-label">
   <div class="pop-handle" aria-hidden="true"></div>
   <div class="pop-pane" id="typePop" hidden>
-    <div class="pop-head"><span class="label" data-i18n>Text</span></div>
+    <!-- the close button shows on a phone only (560px and narrower), where the pane is a bottom sheet -->
+    <div class="pop-head"><span class="label" data-i18n>Text</span>
+      <button type="button" class="ctl" id="typeClose" title="Close text settings" aria-label="Close text settings" data-i18n-attr="aria-label title"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
     <div class="prow prow-size">
       <label for="qSize" id="qSizeL" data-i18n>Size</label>
       <div class="prow-in">
