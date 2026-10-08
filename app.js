@@ -10895,15 +10895,36 @@
     /* zen hides the bar: a popover left under it would float on its own */
     if (document.body.classList.contains("zen")) Pop.close(true);
   }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
-  /* t: between the day and the night theme (the auto pair; day / dusk unless changed). From a
-     theme that is neither, a light one goes to the night theme and a dark one to the day theme */
-  function toggleDayNight(){
-    var day = state.autoDay, night = state.autoNight, cur = state.theme, dark = isDarkColor(currentTheme().bg), to;
-    if (cur === day && day !== night) to = night;
-    else if (cur === night && day !== night) to = day;
-    else to = dark ? day : night;
-    if (to === cur) to = dark ? "day" : "dusk";
-    selectTheme(to);
+  /* Day and night: the reader's day theme and night theme (the auto pair; day / dusk unless
+     changed), whether switching is on or off. Which half a theme is: the pair first, then the two
+     high-contrast themes (Contrast for day, Contrast dark for night), else neither */
+  function dnOf(k){
+    if (k === state.autoDay) return "day";
+    if (k === state.autoNight) return "night";
+    if (k === "hicon") return "day";
+    if (k === "hidark") return "night";
+    return null;
+  }
+  /* one setter for the switch, t and the hold: the pair's theme for that half. A high-contrast
+     reader whose pair has no contrast theme stays in high contrast, and a pair left collapsed
+     (the same theme twice) still reaches Dusk or Day. It never rewrites the pair, adds no Recent
+     entry, and t and the hold say where they went */
+  function setDayNight(which, opts){
+    var cur = state.theme, day = state.autoDay, night = state.autoNight, to;
+    if (which !== "day" && which !== "night") return;
+    if (dnOf(cur) === which) to = cur;
+    else if (cur !== day && cur !== night && (cur === "hicon" || cur === "hidark")) to = which === "day" ? "hicon" : "hidark";
+    else to = which === "day" ? day : night;
+    if (to === cur && dnOf(cur) !== which) to = which === "day" ? "day" : "dusk";
+    if (!resolveTheme(to)) to = which === "day" ? "day" : "dusk";
+    if (to !== cur) crossFade(function(){ selectTheme(to, { dayNight: true }); });
+    if (opts && opts.toast) Marks.toast(_t("{name} theme", { name: themeName(to) || resolveTheme(to).name }));
+  }
+  /* t and the hold: to the other half. From a theme that is neither, a light one goes to the
+     night theme and a dark one to the day theme */
+  function toggleDayNight(opts){
+    var h = dnOf(state.theme);
+    setDayNight(h ? (h === "day" ? "night" : "day") : (isDarkColor(currentTheme().bg) ? "day" : "night"), opts);
   }
 
   /* ---------- phones held in one hand: the reading actions at the foot of the screen ----------
@@ -10973,7 +10994,7 @@
       if ((e.key === "Enter" || e.key === " ") && document.body.classList.contains("phonebar")){ e.preventDefault(); openSwitcher(); }
     });
     /* a long press on the lamp switches between the day and the night theme without the popover */
-    longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight(); Marks.toast(_t("{name} theme", { name: themeName(state.theme) || currentTheme().name })); });
+    longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight({ toast: true }); });
     place();
     return { place: place, on: on, openSwitcher: openSwitcher };
   })();
@@ -11289,11 +11310,14 @@
     a.unshift(prev);
     Store.set("ll_theme_recent", JSON.stringify(a.slice(0, 6)));
   }
-  function selectTheme(theme){
-    if (theme !== state.theme) noteTheme(state.theme);
+  /* opts.dayNight: a Day/Night switch, which neither rewrites the auto pair nor counts as a recent pick */
+  function selectTheme(theme, opts){
+    var dn = !!(opts && opts.dayNight);
+    if (theme !== state.theme && !dn) noteTheme(state.theme);
     state.theme = theme;
     if (customById(theme)) syncCustomUI();
-    applyTheme(); AutoTheme.userPicked(theme);
+    applyTheme();
+    if (!dn) AutoTheme.userPicked(theme);
   }
   /* the theme before this one (Previous): the latest used that still exists */
   function prevTheme(){
@@ -11566,7 +11590,7 @@
   /* exposed for tests (not a public API) */
   window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, pickerGroups: pickerGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
     customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast,
-    pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker };
+    pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight };
 
   $("#flowChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
@@ -11707,7 +11731,7 @@
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
     add("o", _t("Open a file"), function(){ $("#fileInput").click(); });
     add("s", _t("Settings"), function(){ document.body.classList.remove("hidebar"); setSheet(); });
-    add("t", _t("Switch day / night theme"), toggleDayNight);
+    add("t", _t("Switch day / night theme"), function(){ toggleDayNight({ toast: true }); });
     add("+", _t("Larger text / zoom in"), function(){ bump(1); }, docOpen);
     add("-", _t("Smaller text / zoom out"), function(){ bump(-1); }, docOpen);
     add("p", _t("Switch scroll / pages"), function(){ setFlow(state.flow === "pages" ? "scroll" : "pages"); }, docOpen);

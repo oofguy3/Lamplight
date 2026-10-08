@@ -58,12 +58,14 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     const panes = await page.evaluate(() => ["qLight", "qDark", "qColour", "qHi"].map((id) => id + ":" + (document.getElementById(id).hidden ? "hidden" : "shown")).join(",") + " / " + document.querySelector("#qGroups [aria-selected=true]").id);
     R.check("the popover opens on the current theme's group, the others hidden", panes === "qLight:shown,qDark:hidden,qColour:hidden,qHi:hidden / qTabLight", panes);
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
-    await page.keyboard.press("t");
+    /* t cross-fades (a view transition), so the theme lands a moment after the key */
+    const settle = (k) => page.waitForFunction((t) => window.__ll.state.theme === t, k, { timeout: 1500 }).catch(() => {});
+    await page.keyboard.press("t"); await settle("dusk");
     R.check("the t key goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
-    await page.keyboard.press("t");
+    await page.keyboard.press("t"); await settle("day");
     R.check("t again goes back to the day theme", (await state("theme")) === "day", await state("theme"));
     await page.evaluate(() => window.llThemes.select("paper"));
-    await page.keyboard.press("t");
+    await page.keyboard.press("t"); await settle("dusk");
     R.check("from a light theme that is neither, t goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
     const order = await page.evaluate(() => window.llThemes.groups().reduce((a, g) => a.concat(g.ids), []).join(","));
     R.check("the theme order is lights, then darks, then colours, then high contrast", CYCLE.join(",") === order && CYCLE[0] === "day" && CYCLE[CYCLE.length - 1] === "hidark" && CYCLE.indexOf("dusk") > CYCLE.indexOf("mist") && CYCLE.indexOf("rose") > CYCLE.indexOf("candle"), CYCLE.join(","));
