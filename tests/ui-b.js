@@ -105,7 +105,9 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
   try {
     const page = await newPage(phone, url);
     await openFixture(page, "sample.md");
-    await page.click("#more"); await page.waitForTimeout(350);
+    /* on a phone ⋯ (More) is a tool in the dock the lamp opens */
+    const dock = async () => { await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250); };
+    await dock(); await page.click("#more"); await page.waitForTimeout(350);
     const m = await page.evaluate(() => {
       const r = document.getElementById("moreMenu").getBoundingClientRect(), sc = document.getElementById("moreScrim");
       const tiles = Array.from(document.querySelectorAll("#moreMenu .menu-group:not(.menu-quick) button[role=menuitem]")).map((b) => b.getBoundingClientRect());
@@ -128,8 +130,9 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     R.check("phone: focus on the first tile, arrows move through them", (await active(page)) === "Read aloud" && (await (async () => { await page.keyboard.press("ArrowRight"); return (await active(page)) === "Bookmark here"; })()));
     await shot(page, "menu-390-dusk");
     await page.mouse.click(195, 100); await page.waitForTimeout(200);
-    R.check("phone: a tap on the scrim closes it and focus returns to ⋯", !(await isOpen(page, "#moreMenu")) && (await active(page)) === "more", await active(page));
-    await page.click("#more"); await page.waitForTimeout(200);
+    /* ⋯ is in the closed dock by then: focus goes back to the lamp that opened it */
+    R.check("phone: a tap on the scrim closes it and focus returns to the lamp", !(await isOpen(page, "#moreMenu")) && (await active(page)) === "dockBtn", await active(page));
+    await dock(); await page.click("#more"); await page.waitForTimeout(200);
     await page.click("#moreMenu .menu-grab"); await page.waitForTimeout(200);
     R.check("phone: the handle closes it", !(await isOpen(page, "#moreMenu")));
     /* a toast is as wide as its words (up to the margins), not the half of the screen right of the middle */
@@ -406,6 +409,7 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
       try {
         const page = await newPage(ctx, url);
         await openFixture(page, "sample.md");
+        await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250);   /* a phone: ⋯ is in the dock (a no-op on a desktop) */
         await page.click("#more"); await shot(page, "menu-" + tag + "-" + theme);
         await page.keyboard.press("Escape"); await page.waitForTimeout(100);
         await page.keyboard.press("c"); await shot(page, "panel-" + tag + "-" + theme);

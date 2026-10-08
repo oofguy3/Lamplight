@@ -40,6 +40,8 @@ const STUB = `(() => {
   const line = (x1, y1, x2, y2, n) => Array.from({ length: (n || 8) + 1 }, (_, i) => ({ x: x1 + (x2 - x1) * i / (n || 8), y: y1 + (y2 - y1) * i / (n || 8) }));
   const centre = (page, sel) => page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   const open = (page, sel, cls) => page.$eval(sel, (e, c) => e.classList.contains(c || "open"), cls);
+  /* on a phone the reading tools live in the dock the lamp opens */
+  const dock = async (page) => { await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250); };
 
   /* ---------------- 1. the phone's bars ---------------- */
   let ctx = await phoneCtx();
@@ -48,6 +50,7 @@ const STUB = `(() => {
     await page.setInputFiles("#fileInput", [FIX("sample.md"), FIX("sample.txt")]);
     await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length === 2 && document.getElementById("docView").style.display === "block", null, { timeout: 20000 });
     await page.waitForTimeout(500);
+    await dock(page);
     const bar = await page.evaluate(() => {
       const row = document.getElementById("actRow"), r = (id) => document.getElementById(id).getBoundingClientRect();
       return { phone: document.body.classList.contains("phonebar"), ids: Array.from(row.children).map((e) => e.id), sizes: Array.from(row.children).map((e) => Math.round(e.getBoundingClientRect().width) + "x" + Math.round(e.getBoundingClientRect().height)),
@@ -55,17 +58,23 @@ const STUB = `(() => {
         tabs: getComputedStyle(document.getElementById("tabs")).display, title: document.getElementById("fname").textContent, titleFont: getComputedStyle(document.querySelector("#fname .fn-t")).fontFamily,
         role: document.getElementById("fname").getAttribute("role"), dockH: getComputedStyle(document.documentElement).getPropertyValue("--dockH").trim(), rowH: Math.round(row.getBoundingClientRect().height) };
     });
-    R.check("phone: Contents, Aa, Read aloud, the lamp and ⋯ move to a row at the foot, each 48 px, their ids kept",
-      bar.phone && bar.ids.join() === "tocBtn,gear,speakBtn,lamp,more" && bar.sizes.every((s) => s === "48x48") && bar.rowBottom === 844 && bar.dockH === bar.rowH + "px", JSON.stringify(bar));
-    R.check("phone: the bar keeps Search, and the tabs fold into the book's title (the title face, a button)",
-      bar.search && bar.searchTop && bar.tabs === "none" && bar.title === "The Lamp" && /LL Title/.test(bar.titleFont) && bar.role === "button", JSON.stringify(bar));
+    /* the dock: the tools in its row, at least 48 px each, ids kept; nothing at the foot holds space (--dockH 0) */
+    R.check("phone: Contents, Text, Read aloud, Theme and More move into the dock's tool row, each at least 48 px, their ids kept",
+      bar.phone && bar.ids.join() === "tocBtn,gear,speakBtn,lamp,more" && bar.sizes.every((s) => s.split("x").every((v) => +v >= 48)) && bar.dockH === "0px" &&
+      (await page.evaluate(() => document.getElementById("phoneDock").contains(document.getElementById("actRow")))), JSON.stringify(bar));
+    R.check("phone: the dock's head has Search, and the tabs fold into the book's title (the title face, a button)",
+      bar.search && bar.tabs === "none" && bar.title === "The Lamp" && /LL Title/.test(bar.titleFont) && bar.role === "button" &&
+      (await page.evaluate(() => document.querySelector("#phoneDock .pd-head").contains(document.getElementById("searchBtn")))), JSON.stringify(bar));
+    await page.evaluate(() => window.__ll.PhoneBar.closeDock()); await page.waitForTimeout(250);
     /* the row goes and comes back with the bar */
     await page.evaluate(() => window.scrollTo(0, 600)); await page.waitForTimeout(150);
     await page.evaluate(() => window.scrollTo(0, 1200)); await page.waitForTimeout(300);
-    const gone = await page.evaluate(() => ({ hide: document.body.classList.contains("hidebar"), row: getComputedStyle(document.getElementById("actRow")).display }));
+    /* no bar to hide on a phone: the lamp stays where it is while scrolling */
+    const lampAt = () => page.evaluate(() => { const r = document.getElementById("dockBtn").getBoundingClientRect(); return { y: Math.round(r.top), shown: getComputedStyle(document.getElementById("readFoot")).display !== "none" }; });
+    const gone = await lampAt();
     await page.mouse.wheel(0, -400); await page.waitForTimeout(400);
-    const back = await page.evaluate(() => ({ hide: document.body.classList.contains("hidebar"), row: getComputedStyle(document.getElementById("actRow")).display }));
-    R.check("phone: scrolling on hides the row with the bar; scrolling back brings both", gone.hide && gone.row === "none" && !back.hide && back.row === "flex", JSON.stringify([gone, back]));
+    const back = await lampAt();
+    R.check("phone: scrolling either way leaves the lamp where it is", gone.shown && back.shown && gone.y === back.y, JSON.stringify([gone, back]));
     /* the progress pill: at the foot, over nothing being read, gone 1.2 s after the scrolling stops */
     await page.evaluate(() => { window.scrollBy(0, 40); });
     await page.waitForTimeout(350);
@@ -73,7 +82,7 @@ const STUB = `(() => {
     await page.waitForTimeout(1300);
     R.check("the progress pill sits above the dock at 13px and fades 1.2 s after the scrolling stops", pill.on && pill.above && pill.fs === "13px" && !(await open(page, "#progressInfo", "on")), JSON.stringify(pill));
     /* the title opens the open books */
-    await page.tap("#fname"); await page.waitForTimeout(500);
+    await dock(page); await page.tap("#fname"); await page.waitForTimeout(500);
     const sw = await page.evaluate(() => ({ title: document.getElementById("sideTitle").textContent, rows: Array.from(document.querySelectorAll(".bk-name")).map((e) => e.textContent), cur: (document.querySelector(".bk-open[aria-current]") || {}).textContent || "" }));
     R.check("a tap on the title opens the open books, the one being read marked", sw.title === "Open books" && sw.rows.join("|") === "The Lamp|sample" && /The Lamp/.test(sw.cur), JSON.stringify(sw));
     await page.tap(".bk-row:not(.on) .bk-open");
@@ -81,12 +90,12 @@ const STUB = `(() => {
     await page.waitForTimeout(400);
     R.check("…and a tap on another switches to it and closes the sheet", !(await open(page, "#side")) && (await page.$eval("#fname", (f) => f.textContent)) === "sample");
     /* long presses */
-    await touch(page, [await centre(page, "#lamp")], 700);
+    await dock(page); await touch(page, [await centre(page, "#lamp")], 700);
     const lp = await page.evaluate(() => ({ theme: window.__ll.state.theme, pop: document.getElementById("pop").classList.contains("open") }));
     R.check("a long press on the lamp switches to the night theme without opening the popover", lp.theme === "dusk" && !lp.pop, JSON.stringify(lp));
     await touch(page, [await centre(page, "#lamp")], 700);
     R.check("…and again back to the day theme", (await page.evaluate(() => window.__ll.state.theme)) === "day");
-    await touch(page, [await centre(page, "#speakBtn")], 700);
+    await dock(page); await touch(page, [await centre(page, "#speakBtn")], 700);
     const ls = await page.evaluate(() => ({ side: document.getElementById("sideTitle").textContent, open: document.getElementById("side").classList.contains("open"), tts: document.getElementById("tts").classList.contains("on") }));
     R.check("a long press on the speaker opens the voices and does not start reading", ls.open && ls.side === "Read-aloud voices" && !ls.tts, JSON.stringify(ls));
     /* swipe a sheet down to close it */
@@ -95,7 +104,7 @@ const STUB = `(() => {
     const spring = await page.evaluate(() => ({ open: document.getElementById("side").classList.contains("open"), t: document.getElementById("side").style.transform }));
     await touch(page, line(head.x, head.y, head.x, head.y + 180));
     R.check("a short drag on a sheet's head springs back; past 80 px it closes the sheet", spring.open && spring.t === "" && !(await open(page, "#side")), JSON.stringify(spring));
-    await page.tap("#speakBtn"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#speakBtn"); await page.waitForTimeout(400);
     R.check("a tap on the speaker still starts reading aloud", await open(page, "#tts", "on"));
     await page.evaluate(() => window.__ll.Speak.stop()); await page.waitForTimeout(300);
     /* the settings are a bottom sheet */
@@ -128,7 +137,7 @@ const STUB = `(() => {
     const h2 = await page.evaluate(() => ({ n: window.__ll.Marks.list().length, drawn: document.querySelectorAll("#doc mark.ll-mark").length }));
     R.check("removing a highlight offers Undo, and Undo draws it again", h1.n === 0 && h1.drawn === 0 && /^Highlight removedUndo$/.test(h1.toast) && h2.n === 1 && h2.drawn > 0, JSON.stringify([h1, h2]));
     /* background sounds in one tap from the menu */
-    await page.tap("#more"); await page.waitForTimeout(350);
+    await dock(page); await page.tap("#more"); await page.waitForTimeout(350);
     const mix0 = await page.evaluate(() => Array.from(document.querySelectorAll("#moreMenu button[role=menuitem]")).some((x) => /Sound mix/.test(x.textContent)));
     await page.evaluate(() => Array.from(document.querySelectorAll("#moreMenu button")).find((x) => /^Background sounds$/.test(x.querySelector("span").textContent)).click());
     await page.waitForFunction(() => document.getElementById("sndChips"), null, { timeout: 10000 }); await page.waitForTimeout(200);
@@ -139,12 +148,12 @@ const STUB = `(() => {
     await page.tap('#sndChips [data-snd="rain"]'); await page.waitForTimeout(150);
     R.check("…and a playing tile tapped again leaves the rest playing", (await page.evaluate(() => Array.from(document.querySelectorAll("#sndChips [aria-pressed=true]")).map((x) => x.dataset.snd).join())) === "fire");
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
-    await page.tap("#more"); await page.waitForTimeout(350);
+    await dock(page); await page.tap("#more"); await page.waitForTimeout(350);
     const lab = await page.evaluate(() => Array.from(document.querySelectorAll("#moreMenu button")).filter((x) => /background sounds/i.test(x.textContent)).map((x) => x.querySelector("span").textContent + (x.classList.contains("on") ? "*" : "")));
     await page.evaluate(() => Array.from(document.querySelectorAll("#moreMenu button")).find((x) => /^Stop background sounds$/.test(x.querySelector("span").textContent)).click());
     await page.waitForTimeout(250);
     const s2 = await page.evaluate(() => ({ on: window.llSounds.isOn(), toast: document.getElementById("toast").textContent }));
-    await page.tap("#more"); await page.waitForTimeout(350);
+    await dock(page); await page.tap("#more"); await page.waitForTimeout(350);
     await page.evaluate(() => Array.from(document.querySelectorAll("#moreMenu button")).find((x) => /^Background sounds$/.test(x.querySelector("span").textContent)).click());
     await page.waitForTimeout(300);
     const s3 = await page.evaluate(() => ({ on: window.llSounds.isOn(), side: document.getElementById("side").classList.contains("open"), toast: document.getElementById("toast").textContent }));
@@ -152,7 +161,7 @@ const STUB = `(() => {
       lab.join() === "Stop background sounds*" && !s2.on && /^Background sounds offMix…$/.test(s2.toast), JSON.stringify([lab, s2]));
     R.check("…and Background sounds plays the last mix again in one tap, the panel a Mix… away", s3.on && !s3.side && /Fire — playing/.test(s3.toast), JSON.stringify(s3));
     /* the panel keeps an entry of its own once there is a mix (the first time, the tile itself opens it) */
-    await page.tap("#more"); await page.waitForTimeout(350);
+    await dock(page); await page.tap("#more"); await page.waitForTimeout(350);
     const mix1 = await page.evaluate(() => { const b = Array.from(document.querySelectorAll("#moreMenu button[role=menuitem]")).find((x) => /^Sound mix…$/.test(x.querySelector("span").textContent)); if (b) b.click(); return !!b; });
     await page.waitForTimeout(600);
     const mixSide = await page.evaluate(() => document.getElementById("side").classList.contains("open") ? document.getElementById("sideTitle").textContent : "");
@@ -160,7 +169,7 @@ const STUB = `(() => {
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     await page.evaluate(() => window.llSounds.setOn(false));
     /* the theme popover: Day ⇄ Night, recent, high contrast, a grid of swatches */
-    await page.tap("#lamp"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#lamp"); await page.waitForTimeout(400);
     const tp = await page.evaluate(() => ({ dn: Array.from(document.querySelectorAll("#qDayNight .dn")).map((x) => x.querySelector(".dn-t").textContent + ":" + x.querySelector(".dn-n").textContent + (x.getAttribute("aria-pressed") === "true" ? "*" : "")),
       hi: Array.from(document.querySelectorAll("#qHi .chip")).map((x) => x.dataset.theme), recent: Array.from(document.querySelectorAll("#qRecent .chip")).map((x) => x.dataset.theme),
       tileH: Math.round(document.querySelector("#qLight .chip").getBoundingClientRect().height), cols: getComputedStyle(document.getElementById("qLight")).gridTemplateColumns.split(" ").length,

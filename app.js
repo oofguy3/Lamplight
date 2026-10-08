@@ -806,6 +806,9 @@
     var tone = eink ? "light" : HICON.indexOf(state.theme) >= 0 && !themeDraft ? "contrast" : dark ? "dark" : "light";
     r.setProperty("--lamp", eink ? "#000000" : (t.lamp || t.accent));
     r.setProperty("--raise", eink ? c.panel : (t.raise || c.panel));
+    /* text on an accent fill (the phone dock's Read aloud): the panel colour, or the ink where a
+       light accent (a custom theme's) leaves the panel colour under 4.5:1 */
+    r.setProperty("--on-accent", contrast(c.panel, c.accent) >= 4.5 ? c.panel : c.ink);
     root.setAttribute("data-tone", tone);
     /* a textured theme's faint paper or cloth behind the text (app.css); none in e-ink mode, in the
        high-contrast themes or with Plain background */
@@ -1420,6 +1423,11 @@
     function wide(paths){ return '<svg viewBox="0 0 32 24" ' + open + '>' + paths + '</svg>'; }
     var page = '<rect x="5" y="2.5" width="22" height="19" rx="3"/>';
     return {
+      /* the phone dock's Text and Theme tools and the lamp button: "Aa" in strokes, a bulb and a
+         hanging lamp, their glass in the lamp colour (.glass in app.css) */
+      type:      svg('<path d="M2.5 19L8 5l5.5 14M4.5 14h7"/><circle cx="18.25" cy="15.5" r="3.25"/><path d="M21.5 12v7"/>'),
+      bulb:      svg('<path class="glass" d="M9.5 17.5v-1.3c0-.9-.4-1.6-1-2.2A5.5 5.5 0 1 1 15.5 14c-.6.6-1 1.3-1 2.2v1.3z"/><path d="M10 20.5h4"/>'),
+      lamp:      svg('<path class="glass" d="M9 16a3 3 0 0 0 6 0z"/><path d="M12 5v5"/><path d="M9 10h6l4 6H5z"/>'),
       lhTight:   wide('<path d="M4 8h24M4 12h24M4 16h16"/>'),
       lhNormal:  wide('<path d="M4 6h24M4 12h24M4 18h16"/>'),
       lhAiry:    wide('<path d="M4 3h24M4 12h24M4 21h16"/>'),
@@ -1478,6 +1486,7 @@
       if (current === id){ close(); return; }
       if (current) close(true);
       Menu.close(); Side.close();
+      if (PhoneBar) PhoneBar.closeDock({ focus: false });
       document.body.classList.remove("hidebar");
       current = id; anchor = btn;
       Object.keys(panes).forEach(function(k){ panes[k].hidden = k !== id; });
@@ -1505,7 +1514,7 @@
       scrim.classList.remove("on");
       document.documentElement.classList.remove("lock-pop");
       btn.setAttribute("aria-expanded", "false");
-      if (!quiet && btn.focus) btn.focus({ preventScroll: true });
+      if (!quiet && btn.focus) (PhoneBar ? PhoneBar.returnTarget(btn) : btn).focus({ preventScroll: true });
     }
     function is(id){ return current === id; }
 
@@ -2897,7 +2906,7 @@
     /* the drawer is modal: while it is open the rest of the page is inert, so Tab cannot reach the
        bar under the scrim and open a menu or a popover behind it. The card, the toasts and the
        highlight popover sit over the drawer and stay live. */
-    var BEHIND = "header, #sheet, #main, #dock, #pop, .skip";
+    var BEHIND = "header, #sheet, #main, #dock, #pop, .skip, #readFoot, #phoneDockScrim, #phoneDock";
     function holdRest(on){
       Array.prototype.forEach.call(document.querySelectorAll(BEHIND), function(n){ n.inert = on; });
     }
@@ -2910,6 +2919,8 @@
       if (wasOpen && current !== name && onClose) onClose();
       current = name; onClose = closeFn || null; family = (opts && opts.family) || null;
       if (!wasOpen) opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#main");
+      /* a panel opened from the phone dock (a hold, a key) takes its place */
+      if (PhoneBar) PhoneBar.closeDock({ focus: false });
       title.textContent = ttl;
       drawSwitch();
       body.innerHTML = ""; foot.innerHTML = ""; foot.style.display = "none";
@@ -2937,7 +2948,7 @@
       /* the page comes back to life before focus returns to it: focus() on an inert element is a no-op */
       holdRest(false);
       if (fn) fn();
-      if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+      if (opener && opener.focus && document.contains(opener)) (PhoneBar ? PhoneBar.returnTarget(opener) : opener).focus({ preventScroll: true });
       opener = null;
     }
     scrim.addEventListener("click", close);
@@ -3047,10 +3058,12 @@
     function isOpen(){ return menu.classList.contains("open"); }
     function open(){
       render();
+      if (PhoneBar) PhoneBar.closeDock({ focus: false });
       if (!scrim){
         scrim = document.createElement("div"); scrim.id = "moreScrim"; scrim.setAttribute("aria-hidden", "true");
         scrim.addEventListener("click", function(){ close(true); });
-        wrap.appendChild(scrim);
+        /* next to the menu, wherever it is (PhoneBar moves both to body level on a phone) */
+        menu.parentNode.insertBefore(scrim, menu);
       }
       menu.classList.add("open"); scrim.classList.add("on"); menu.scrollTop = 0;
       btn.setAttribute("aria-expanded", "true");
@@ -3063,10 +3076,10 @@
       if (!isOpen()) return;
       menu.classList.remove("open"); if (scrim) scrim.classList.remove("on");
       btn.setAttribute("aria-expanded", "false");
-      if (back) btn.focus({ preventScroll: true });
+      if (back) (PhoneBar ? PhoneBar.returnTarget(btn) : btn).focus({ preventScroll: true });
     }
     btn.addEventListener("click", function(e){ e.stopPropagation(); if (isOpen()) close(); else open(); });
-    document.addEventListener("click", function(e){ if (isOpen() && !e.target.closest("#moreWrap")) close(); });
+    document.addEventListener("click", function(e){ if (isOpen() && !e.target.closest("#moreWrap, #moreMenu")) close(); });
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !isOpen()) return;
       e.preventDefault(); e.stopImmediatePropagation(); close(true);
@@ -11027,6 +11040,9 @@
     var lab = on ? _t("Stop reading aloud") : _t("Read aloud");
     b.setAttribute("aria-label", lab);
     b.title = lab;
+    /* the phone dock's name under the icon (PhoneBar adds it) */
+    var tl = b.querySelector(".tool-l");
+    if (tl) tl.textContent = on ? _t("Stop") : _t("Read aloud");
   }
   if (window.MutationObserver) new MutationObserver(function(){
     syncSpeakBtn();
@@ -11066,33 +11082,102 @@
     setDayNight(h ? (h === "day" ? "night" : "day") : (isDarkColor(currentTheme().bg) ? "day" : "night"), opts);
   }
 
-  /* ---------- phones held in one hand: the reading actions at the foot of the screen ----------
-     With a finger for a pointer on a phone (560px and under) and a document open, the reading
-     buttons (Contents, Aa, Read aloud, the lamp and ⋯) move from the top bar into a slim row at the
-     foot of the dock (#actRow), where the thumb is. The bar keeps the library mark, the book's
-     title with its section, and Search. The buttons themselves move, their ids and listeners with
-     them; the row goes and comes back with the bar (hidebar in Scroll flow, immersive in Pages,
-     app.css). The tabs strip folds into the title: a tap on it opens a switcher of the open books. */
+  /* ---------- phones while reading: the strip, the lamp and the dock ----------
+     With a finger for a pointer on a phone (560px and under) and a document open, the header goes
+     and the screen is the text, with a strip at the foot: the time left in the chapter, and the lamp
+     button, its ring showing how far through the book you are. A tap on the lamp opens the dock, a
+     sheet with every reading tool. The header's own buttons move into it, their ids and listeners
+     with them: Back, the title (a tap opens the open books) and Search in its head; Contents, Text,
+     Read aloud, Theme and More in its tool row, each with its name. The More sheet moves to body
+     level too, since a hidden header would hide it. Everything goes back when phone reading ends (a
+     turn past 560px, a mouse, the library). While the dock is open the page holds still: a tap
+     outside it, Escape or any of its controls closes it, and a control that opens a sheet or a panel
+     hands focus back to the lamp when that closes (returnTarget). */
   var PhoneBar = (function(){
     var mq = window.matchMedia ? window.matchMedia("(pointer: coarse) and (max-width: 560px)") : null;
-    var row = $("#actRow"), fname = $("#fname"), IDS = ["tocBtn", "gear", "speakBtn", "lamp", "more"], homes = {};
-    IDS.forEach(function(id){ var el = document.getElementById(id), ph = document.createComment(" " + id + " "); el.parentNode.insertBefore(ph, el); homes[id] = ph; });
+    var dock = $("#phoneDock"), scrim = $("#phoneDockScrim"), btn = $("#dockBtn"), row = $("#actRow"), head = dock.querySelector(".pd-head"), fname = $("#fname");
+    var TOOLS = ["tocBtn", "gear", "speakBtn", "lamp", "more"], HEAD = ["fname", "searchBtn"], homes = {};
+    var NAMES = { tocBtn: "Contents", gear: "Text", speakBtn: "Read aloud", lamp: "Theme", more: "More" };
+    TOOLS.concat(HEAD, ["moreMenu"]).forEach(function(id){ var el = document.getElementById(id), ph = document.createComment(" " + id + " "); el.parentNode.insertBefore(ph, el); homes[id] = ph; });
+    /* the dock's own icons; each tool's name under its icon, and Text and Theme get their dock
+       icons in place of the bar's "Aa" and CSS bulb (app.css shows one or the other) */
+    $("#dockHome").innerHTML = ICONS.chevronL;
+    btn.insertAdjacentHTML("beforeend", ICONS.lamp);
+    $("#dockDay").insertAdjacentHTML("afterbegin", ICONS.sun);
+    $("#dockNight").insertAdjacentHTML("afterbegin", ICONS.moon);
+    var gear = $("#gear"); gear.innerHTML = '<span class="g-aa">' + gear.innerHTML + '</span><span class="tool-i" aria-hidden="true">' + ICONS.type + '</span>';
+    $("#lamp").insertAdjacentHTML("beforeend", '<span class="tool-i" aria-hidden="true">' + ICONS.bulb + '</span>');
+    TOOLS.forEach(function(id){ document.getElementById(id).insertAdjacentHTML("beforeend", '<span class="tool-l" aria-hidden="true">' + escapeHtml(_t(NAMES[id])) + '</span>'); });
     function on(){ return !!(mq && mq.matches) && (state.mode === "doc" || state.mode === "pdf"); }
+    /* an element back where it came from, or into `to` */
+    function move(id, to){
+      var el = document.getElementById(id), ph = homes[id];
+      if (to){ if (el.parentNode !== to) to.appendChild(el); }
+      else if (el.previousSibling !== ph) ph.parentNode.insertBefore(el, ph.nextSibling);
+    }
     function place(){
       var want = on(), was = document.body.classList.contains("phonebar");
-      if (want !== was) Pop.close(true);
+      if (want !== was){ Pop.close(true); Menu.close(); closeDock({ focus: false }); }
       document.body.classList.toggle("phonebar", want);
-      IDS.forEach(function(id){
-        var el = document.getElementById(id), ph = homes[id];
-        if (want){ if (el.parentNode !== row) row.appendChild(el); }
-        else if (el.parentNode === row) ph.parentNode.insertBefore(el, ph.nextSibling);
-      });
+      TOOLS.forEach(function(id){ move(id, want ? row : null); });
+      HEAD.forEach(function(id){ move(id, want ? head : null); });
+      /* the More sheet, and its scrim once Menu has made one, at body level */
+      move("moreMenu", want ? document.body : null);
+      var ms = $("#moreScrim"), menu = $("#moreMenu");
+      if (ms && ms.nextSibling !== menu) menu.parentNode.insertBefore(ms, menu);
       /* the title is the way to the other open books */
       if (want){ fname.setAttribute("role", "button"); fname.tabIndex = 0; fname.setAttribute("aria-haspopup", "dialog"); }
       else { fname.removeAttribute("role"); fname.removeAttribute("tabindex"); fname.removeAttribute("aria-haspopup"); }
       if (want !== was){ headVar(); dockVar(); if (pagedActive()) relayoutPaged(); }
     }
     if (mq){ if (mq.addEventListener) mq.addEventListener("change", place); else if (mq.addListener) mq.addListener(place); }
+
+    /* ---- the dock ---- */
+    /* while it is open everything else is out of reach (as Side does with its BEHIND list) */
+    var REST = "header, #sheet, #main, #dock, #pop, .skip, #readFoot, #finish, #recap, #autoBar, #progressInfo";
+    function hold(on){ Array.prototype.forEach.call(document.querySelectorAll(REST), function(n){ n.inert = on; }); }
+    function isDockOpen(){ return document.body.classList.contains("dock-open"); }
+    function openDock(){
+      if (!document.body.classList.contains("phonebar") || isDockOpen()) return;
+      Pop.close(true); Menu.close();
+      document.body.classList.add("dock-open");
+      document.documentElement.classList.add("lock-dock");
+      btn.setAttribute("aria-expanded", "true");
+      hold(true);
+      dock.scrollTop = 0;
+      dock.focus({ preventScroll: true });
+    }
+    /* opts.focus false: a control in the dock is about to take focus somewhere else */
+    function closeDock(opts){
+      if (!isDockOpen()) return;
+      document.body.classList.remove("dock-open");
+      document.documentElement.classList.remove("lock-dock");
+      btn.setAttribute("aria-expanded", "false");
+      hold(false);
+      if (!opts || opts.focus !== false) btn.focus({ preventScroll: true });
+    }
+    function toggleDock(){ if (isDockOpen()) closeDock(); else openDock(); }
+    /* focus that would go back to a control in the closed dock goes to the lamp instead */
+    function returnTarget(el){ return el && dock.contains(el) && !isDockOpen() && document.body.classList.contains("phonebar") ? btn : el; }
+    btn.addEventListener("click", function(){ toggleDock(); });
+    /* a tap outside closes it and does nothing else */
+    scrim.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); closeDock(); });
+    /* Back, the title, Search and the tools close it before they act (capture: ahead of their own
+       listeners). One that opens nothing to take focus (Read aloud) leaves it on the lamp */
+    dock.addEventListener("click", function(e){
+      var c = e.target.closest(".pd-head > *, #actRow > *");
+      if (!c || !isDockOpen()) return;
+      closeDock({ focus: false });
+      setTimeout(function(){ if (dock.contains(document.activeElement) && document.body.classList.contains("phonebar")) btn.focus({ preventScroll: true }); }, 0);
+    }, true);
+    /* Escape closes it, unless something above it is open: that one takes the key */
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !isDockOpen()) return;
+      var card = $("#dictCard");
+      if ($("#sheet").classList.contains("open") || Pop.is("type") || Pop.is("theme") || Menu.isOpen() || $("#side").classList.contains("open") || (card && card.classList.contains("open"))) return;
+      e.preventDefault(); e.stopImmediatePropagation(); closeDock();
+    }, true);
+    $("#dockHome").addEventListener("click", function(){ Library.home(); });
 
     /* the switcher: the open books (the tabs), each with its close; the library and a new file below */
     function esc(x){ return escapeHtml(String(x)); }
@@ -11135,7 +11220,7 @@
     /* a long press on the lamp switches between the day and the night theme without the popover */
     longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight({ toast: true }); });
     place();
-    return { place: place, on: on, openSwitcher: openSwitcher };
+    return { place: place, on: on, openSwitcher: openSwitcher, openDock: openDock, closeDock: closeDock, toggleDock: toggleDock, isDockOpen: isDockOpen, returnTarget: returnTarget };
   })();
   /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
      Scroll flow, opening it should push the text down so what was at the top reappears just
@@ -11162,7 +11247,7 @@
     var before = ref.getBoundingClientRect().top, h = was ? sheet.offsetHeight : 0;
     /* read before the class flips: the browser only drops focus from a hidden element lazily */
     var active = document.activeElement, inside = sheet.contains(active);
-    if (open){ Pop.close(true); Side.close(); }
+    if (open){ Pop.close(true); Side.close(); if (PhoneBar) PhoneBar.closeDock({ focus: false }); }
     sheet.classList.toggle("open", open);
     sheet.setAttribute("aria-hidden", open ? "false" : "true");
     if (!paged){
@@ -11180,7 +11265,7 @@
     } else {
       if (inside){
         var to = sheetOpener && document.contains(sheetOpener) && sheetOpener.getClientRects().length ? sheetOpener : $("#more");
-        if (to) to.focus({ preventScroll: true });
+        if (to) (PhoneBar ? PhoneBar.returnTarget(to) : to).focus({ preventScroll: true });
       }
       sheetOpener = null;
     }

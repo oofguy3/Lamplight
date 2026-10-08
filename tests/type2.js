@@ -385,11 +385,13 @@ function fakeClock(iso){
         await page.evaluate(() => window.llPop.sheetAt("#themeGroup")); await page.waitForTimeout(700);
         await shot("theme-group");
         await page.evaluate(() => window.llPop.sheet(false)); await page.waitForTimeout(400);
-        await page.click("#gear"); await page.waitForTimeout(350);
+        /* a phone's reading tools live in the dock the lamp opens (a no-op on a desktop) */
+        const dock = async () => { await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250); };
+        await dock(); await page.click("#gear"); await page.waitForTimeout(350);
         await page.evaluate(() => { document.getElementById("qMore").open = true; }); await page.waitForTimeout(250);
         await shot("type-popover");
         await page.keyboard.press("Escape"); await page.waitForTimeout(300);
-        await page.click("#lamp"); await page.waitForTimeout(350);
+        await dock(); await page.click("#lamp"); await page.waitForTimeout(350);
         await shot("theme-popover");
         await page.keyboard.press("Escape"); await page.waitForTimeout(300);
         await shot("warm-0");

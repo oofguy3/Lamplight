@@ -439,8 +439,32 @@
     <span id="pgInfo" aria-live="polite">1 / 1</span>
     <button class="ctl" id="nextPg" title="Next page" aria-label="Next page" data-i18n-attr="aria-label title"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   </div>
-  <!-- phones held in one hand (pointer: coarse, 560px and under): the reading actions come down here from the
-       bar while a document is open — the same buttons, moved by app.js (PhoneBar), their ids unchanged -->
+</div>
+<!-- phones while reading (PhoneBar in app.js: a finger for a pointer, 560px and narrower, a book
+     open): no header, only the text and a strip at the foot, with the time left in the chapter on
+     the left and the lamp on the right. The lamp opens the dock: Back, the title and Search (moved
+     here from the bar), the position in the book, Day and Night, and the five reading tools — the
+     bar's own buttons, moved into #actRow with their ids and listeners -->
+<div id="readFoot">
+  <p id="leftNote" aria-live="off"></p>
+  <button type="button" class="ctl" id="dockBtn" aria-label="Reading controls" aria-expanded="false" aria-controls="phoneDock" aria-describedby="dockPct" data-i18n-attr="aria-label"><svg class="ring" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="27"/></svg></button>
+  <span class="vh" id="dockPct"></span>
+</div>
+<div id="phoneDockScrim" aria-hidden="true"></div>
+<div id="phoneDock" role="dialog" aria-modal="true" aria-label="Reading controls" tabindex="-1" data-i18n-attr="aria-label">
+  <div class="pd-grab" aria-hidden="true"></div>
+  <div class="pd-head">
+    <button type="button" class="ctl" id="dockHome" title="Back to library" aria-label="Back to library" data-i18n-attr="aria-label title"></button>
+  </div>
+  <div class="pd-pos" hidden>
+    <label class="vh" for="dockPos" data-i18n>Position in book</label>
+    <input type="range" id="dockPos" min="1" max="1" step="1" value="1">
+    <p class="pd-cap"><span id="dockPage"></span><span id="dockLeft"></span></p>
+  </div>
+  <div class="pd-dn" role="group" aria-label="Day or night" data-i18n-attr="aria-label" hidden>
+    <button type="button" class="dn-b" id="dockDay" aria-pressed="false"><span data-i18n>Day</span></button>
+    <button type="button" class="dn-b" id="dockNight" aria-pressed="false"><span data-i18n>Night</span></button>
+  </div>
   <div id="actRow" role="toolbar" aria-label="Reading actions" data-i18n-attr="aria-label"></div>
 </div>
 <div id="sideScrim"></div>

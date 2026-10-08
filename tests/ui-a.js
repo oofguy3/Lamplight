@@ -27,6 +27,8 @@ const SPEECH_STUB = `(() => {
   const rect = (page, sel) => page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; });
   const visible = (page, sel) => page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== "none" && r.width > 0 && r.height > 0; });
   const popOpen = (page) => page.$eval("#pop", (p) => p.classList.contains("open"));
+  /* on a phone the reading tools live in the dock the lamp opens (a no-op anywhere else) */
+  const dock = async (page) => { await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250); };
   const sheetOpen = (page) => page.$eval("#sheet", (s) => s.classList.contains("open"));
   const unnamed = (page) => page.evaluate(() => Array.from(document.querySelectorAll("button")).filter((b) => b.offsetParent !== null && !(b.textContent.trim() || b.getAttribute("aria-label") || b.getAttribute("title"))).map((b) => b.id || b.className));
   /* the popover's rows against its padding box: nothing pokes past the edge, nothing scrolls sideways */
@@ -350,7 +352,7 @@ const SPEECH_STUB = `(() => {
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     R.check("no horizontal overflow with a document", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-    await page.tap("#gear"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#gear"); await page.waitForTimeout(400);
     const p = await rect(page, "#pop");
     /* the phone Text sheet stands at most 85% of the screen tall (its choices make it taller than the old rows) */
     R.check("the type popover is a bottom sheet: full width, on the bottom edge, with a handle and scrim", (await popOpen(page)) && Math.abs(p.bottom - 844) <= 1 && Math.abs(p.width - 390) <= 1 && p.top >= 844 * 0.15 - 1 && (await visible(page, ".pop-handle")) && (await page.$eval("#popScrim", (s) => s.classList.contains("on"))), JSON.stringify(p));
@@ -378,12 +380,12 @@ const SPEECH_STUB = `(() => {
        of the scrim is behind it */
     await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(400);
     R.check("the scrim closes it", !(await popOpen(page)) && !(await page.$eval("#popScrim", (s) => s.classList.contains("on"))));
-    await page.tap("#lamp"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#lamp"); await page.waitForTimeout(400);
     const t = await rect(page, "#pop");
     R.check("the theme popover is a bottom sheet too", (await page.evaluate(() => window.llPop.is("theme"))) && Math.abs(t.bottom - 844) <= 1 && t.height <= 844 * 0.85 + 1, JSON.stringify(t));
     await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(300);
     /* the side panel's scrim holds the page too */
-    await page.tap("#tocBtn"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#tocBtn"); await page.waitForTimeout(400);
     await touchDrag(page, 195, 60, 195, 300);
     const l3 = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("side").classList.contains("open") }));
     R.check("a drag on the side panel's scrim leaves the page still and the panel open", l3.y === 100 && l3.open, JSON.stringify(l3));
@@ -410,7 +412,7 @@ const SPEECH_STUB = `(() => {
       for (const f of ["sample.md", "sample.pdf"]){
         await openFixture(p, f);
         for (const btn of ["#gear", "#lamp"]){
-          await p.tap(btn); await p.waitForTimeout(350);
+          await dock(p); await p.tap(btn); await p.waitForTimeout(350);
           const fit = await popFits(p);
           R.check(w + "px, " + f + ": " + btn + " fits its sheet", fit.fits && (await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), JSON.stringify(fit));
           await p.keyboard.press("Escape"); await p.waitForTimeout(250);
@@ -431,9 +433,9 @@ const SPEECH_STUB = `(() => {
         const shot = async (name) => { await page.waitForTimeout(300); await page.screenshot({ path: path.join(SHOTS, "ui-a-" + name + "-" + tag + "-" + theme + ".png") }); };
         await shot("start-empty");
         await openFixture(page, "sample.md");
-        await page.click("#gear"); await shot("pop-type");
+        await dock(page); await page.click("#gear"); await shot("pop-type");
         await page.keyboard.press("Escape"); await page.waitForTimeout(150);
-        await page.click("#lamp"); await shot("pop-theme");
+        await dock(page); await page.click("#lamp"); await shot("pop-theme");
         await page.keyboard.press("Escape"); await page.waitForTimeout(150);
         await page.keyboard.press("s"); await shot("sheet");
         await page.keyboard.press("Escape"); await page.waitForTimeout(150);
