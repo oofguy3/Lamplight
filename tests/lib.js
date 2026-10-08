@@ -48,6 +48,15 @@ async function openFixture(page, name){
   else await page.waitForFunction(() => document.getElementById("docView").style.display === "block" && document.getElementById("doc").textContent.length > 100, null, { timeout: 30000 });
   await page.waitForTimeout(150);
 }
+/* click an entry of the More menu once it has finished opening. It drops in over 200 ms; a click
+   while it still moves makes Playwright retry with a scrollIntoView of its own, which on a desktop
+   scrolls the page under the sticky bar, and the menu closes on a scroll as it should (it hangs
+   from the bar) */
+async function menuItem(page, label){
+  await page.waitForSelector("#moreMenu.open", { timeout: 20000 });
+  await page.waitForFunction(() => document.getElementById("moreMenu").getAnimations({ subtree: true }).every((a) => a.playState !== "running"));
+  await page.click("#moreMenu button:has-text('" + label + "')");
+}
 function fixtures(){ return fs.readdirSync(path.join(__dirname, "fixtures")).filter((f) => /\.(txt|md|html|epub|docx|pdf)$/.test(f)); }
 /* tiny assertion + reporter */
 function makeReport(){
@@ -58,4 +67,4 @@ function makeReport(){
     results
   };
 }
-module.exports = { serve, browser, newPage, openFixture, fixtures, makeReport, ROOT };
+module.exports = { serve, browser, newPage, openFixture, menuItem, fixtures, makeReport, ROOT };

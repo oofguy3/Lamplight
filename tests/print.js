@@ -4,7 +4,7 @@
    window.print(), a PDF opens in a new tab; the entry only shows with a document open.
    Screenshots go to $LL_SHOTS (default: the OS temp dir).   NODE_PATH=$(npm root -g) node tests/print.js */
 const path = require("path"), fs = require("fs"), os = require("os");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-print");
 
 const menuLabels = (page) => page.evaluate(() => { document.getElementById("more").click(); const items = Array.from(document.querySelectorAll("#moreMenu button")).map((b) => b.textContent); document.getElementById("more").click(); return items; });
@@ -93,7 +93,7 @@ const layout = (page) => page.evaluate(() => {
   /* 3. the entry on a text document calls window.print() */
   await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
   await page.click("#more");
-  await page.click("#moreMenu button:has-text('Print')");
+  await menuItem(page, "Print");
   await page.waitForTimeout(150);
   R.check("Print… on a text document calls window.print()", (await page.evaluate(() => window.__printed)) === 1 && !(await page.evaluate(() => document.getElementById("moreMenu").classList.contains("open"))));
   R.check("no page errors (text)", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -114,7 +114,7 @@ const layout = (page) => page.evaluate(() => {
     if (tab) await tab.close().catch(() => null);
     return { tab: !!tab, urls };
   };
-  const viaMenu = await opened(async () => { await page.click("#more"); await page.click("#moreMenu button:has-text('Print')"); });
+  const viaMenu = await opened(async () => { await page.click("#more"); await menuItem(page, "Print"); });
   R.check("pdf: the entry opens a new tab on a blob: URL", viaMenu.tab && viaMenu.urls.some((u) => /^blob:http/.test(u)), JSON.stringify(viaMenu));
   R.check("pdf: the toast mentions the new tab", /new tab/.test(await toast(page)), await toast(page));
   const viaKey = await opened(async () => { await page.keyboard.press("Control+p"); });

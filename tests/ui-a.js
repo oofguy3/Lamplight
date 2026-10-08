@@ -4,7 +4,7 @@
    card, tips). Screenshots go to $LL_SHOTS (default: the OS temp dir).
    NODE_PATH=$(npm root -g) node tests/ui-a.js */
 const path = require("path"), os = require("os");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || os.tmpdir();
 
 /* a fake speech engine so read-aloud can be exercised headlessly */
@@ -270,7 +270,7 @@ const SPEECH_STUB = `(() => {
     R.check("Escape from a control in the sheet returns focus to the document", !(await sheetOpen(page)) && (await page.evaluate(() => document.activeElement.id === "main")), await page.evaluate(() => document.activeElement.id));
     await page.click("#more");
     await page.waitForSelector("#moreMenu button:has-text('Settings')", { state: "visible", timeout: 20000 });
-    await page.click("#moreMenu button:has-text('Settings')"); await page.waitForTimeout(300);
+    await menuItem(page, "Settings"); await page.waitForTimeout(300);
     await page.evaluate(() => document.getElementById("sheetClose").focus());
     await page.keyboard.press("Enter"); await page.waitForTimeout(200);
     R.check("closing with the sheet's own button returns focus to the ⋯ button it came from", !(await sheetOpen(page)) && (await page.evaluate(() => document.activeElement.id === "more")), await page.evaluate(() => document.activeElement.id));

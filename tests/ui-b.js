@@ -3,7 +3,7 @@
    the toasts. Headless Chromium has no voices, so speech is stubbed. Screenshots go to $LL_SHOTS
    (default: the OS temp dir). */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-ui-b");
 
 const STUB = `(function(){
@@ -92,7 +92,7 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.keyboard.press("Escape");
     await page.evaluate(() => window.__ll.Speak.stop());
     /* Settings from the menu opens the sheet */
-    await page.click("#more"); await page.click("#moreMenu button:has-text('Settings')"); await page.waitForTimeout(200);
+    await page.click("#more"); await menuItem(page, "Settings"); await page.waitForTimeout(200);
     R.check("Settings opens the sheet", await isOpen(page, "#sheet"));
     await page.keyboard.press("Escape");
     R.check("desktop menu: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
