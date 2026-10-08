@@ -83,7 +83,7 @@ On a phone today:
 |---|---|---|---|
 | Tap, Enter or Space on the lamp | yes | yes | yes |
 | Tap on blank space in the middle band (0.35–0.65 of the width) | no | yes | no (taps turn pages) |
-| Tap in the bottom strip (`BAR_STRIP`, app.js:11648-11652) | no | yes | no |
+| Tap in the bottom strip (`BAR_STRIP`, app.js:11648-11652), or on a blank part of `#readFoot` | no | yes | no |
 | Vertical swipe up (> 55 px) starting on the page | no | yes | no |
 
 A tap on a word keeps opening the dictionary in every flow. In Scroll flow nothing but the lamp opens the dock.
@@ -100,7 +100,7 @@ A tap on a word keeps opening the dictionary in every flow. In Scroll flow nothi
 
 - The page stays visible and undimmed but holds still: no scrolling, no reaction except closing.
 - The dock overlays the page. It never changes `availHeight()`, the page count or `#dock`'s measured height.
-- `#dockBtn`, `#leftNote` and the read-aloud player are hidden.
+- The dock covers `#readFoot` (the lamp and the note) and the read-aloud player; they stay where they are, so nothing re-paginates, and are inert while it is open.
 - Focus moves to the dock container (`tabindex="-1"`, labelled "Reading controls"). Tab order follows the visual order. On close, focus returns to `#dockBtn`.
 
 ### 5.4 Layout, top to bottom
@@ -274,7 +274,7 @@ Desktop values stay as they are (pinned by tests/ui-b.js:251-272).
 
 - `#tts` stays a full-width bar at the very bottom.
 - `#readFoot` sits directly above it (its bottom offset is the player's height), and `#leftNote` hides.
-- Opening the dock hides `#tts` until the dock closes.
+- The open dock covers `#tts`. It is not hidden or resized, because a change in `#dock`'s height re-paginates (app.js:1736-1740).
 
 ### 7.11 Zen on phones
 
@@ -520,7 +520,7 @@ Phone 390 × 844 with touch, plus 320 × 568 where noted:
    - All fonts returns to the sheet;
    - the PDF variant;
    - the 320 px fit.
-9. Read aloud: the player at the foot, the lamp above it, the note hidden, and the player hidden while the dock is open.
+9. Read aloud: the player at the foot, the lamp above it, the note hidden, and the player covered (not resized) while the dock is open.
 10. Zen: a faint lamp, and a tap leaves zen.
 11. Switching books (no header flash); rotation with the dock open (closed, parts back, position kept).
 12. Modes: contrast tone (2 px, 15 px), forced colours (`page.emulateMedia({ forcedColors: 'active' })`), e-ink, reduced motion.
