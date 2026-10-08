@@ -87,6 +87,28 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   const r = await page.evaluate(() => window.llThemes.dnOf ? ["day", "dusk", "paper", "hicon"].map((k) => window.llThemes.dnOf(k)) : "no dnOf");
   R.check("dnOf(day/dusk/paper/hicon) = day/night/null/day", JSON.stringify(r) === '["day","night",null,"day"]', JSON.stringify(r));
 
+  /* 8. the pair is shown, and the half on screen marked, with switching off too */
+  const dnMarks = () => page.evaluate(() => [...document.querySelectorAll("#qDayNight .dn")].map((b) => b.dataset.dn + ":" + b.classList.contains("on")).join(","));
+  await select(page, "dusk");
+  await page.click("#lamp"); await page.waitForTimeout(150);
+  R.check("Auto off: the theme popover shows the pair", await page.evaluate(() => !document.getElementById("qDayNight").hidden));
+  R.check("Auto off on dusk: Night marked, Day not", (await dnMarks()) === "day:false,night:true", await dnMarks());
+  await page.keyboard.press("Escape"); await page.waitForTimeout(100);
+  await select(page, "paper");
+  await page.click("#lamp"); await page.waitForTimeout(150);
+  R.check("on paper: neither half marked", (await dnMarks()) === "day:false,night:false", await dnMarks());
+  await page.keyboard.press("Escape"); await page.waitForTimeout(100);
+  await page.keyboard.press("s"); await page.waitForTimeout(250);
+  R.check("Auto off: the settings sheet shows the day/night pickers", await page.evaluate(() => getComputedStyle(document.getElementById("autoRow")).display !== "none"));
+  await page.keyboard.press("Escape"); await page.waitForTimeout(150);
+
+  /* 9. a tile picked while switching is on becomes that period's theme, and the toast says so */
+  await setMode(page, "time");
+  await page.evaluate(() => window.llThemes.pick("candle", true));
+  await page.waitForTimeout(100);
+  R.check("Auto on, tile pick at noon: the toast says it is now your day theme", (await toasts(page, /Candle is now your day theme/)).length === 1, JSON.stringify(await page.evaluate(() => window.__toasts.slice(-2))));
+  await setMode(page, "off"); await setPair(page, "day", "day"); await select(page, "day");
+
   R.check("no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
   await page.close();
   await ctx.close();

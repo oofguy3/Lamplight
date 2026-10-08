@@ -911,7 +911,7 @@
       document.querySelectorAll("#autoChips .chip").forEach(function(ch){
         var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
       });
-      $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
+      $("#autoRow").style.display = "block";   /* the day and night themes: shown whether switching is on or off */
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
       var opts = themeOptions();
       ["#autoDay", "#autoNight", "#qDaySel", "#qNightSel"].forEach(function(sel){ var el = $(sel); if (el && el.getAttribute("data-opts") !== opts){ el.innerHTML = opts; el.setAttribute("data-opts", opts); } });
@@ -1612,7 +1612,7 @@
       $("#qNightName").textContent = themeName(night);
       Array.prototype.forEach.call(panes.theme.querySelectorAll(".dn"), function(b){
         var k = b.dataset.dn === "day" ? day : night;
-        b.classList.toggle("on", state.auto !== "off" && state.theme === k);
+        b.classList.toggle("on", dnOf(state.theme) === b.dataset.dn);
         dnSwatch(b, k);
       });
       tileMark(panes.theme, t);
@@ -1620,7 +1620,7 @@
         var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
       });
       $("#qTimes").hidden = state.auto !== "time";
-      $("#qDayNight").hidden = state.auto === "off";
+      $("#qDayNight").hidden = false;   /* the pair is the reader's whether switching is on or off */
       if (document.activeElement !== $("#qFrom")) $("#qFrom").value = state.nightFrom;
       if (document.activeElement !== $("#qTo")) $("#qTo").value = state.nightTo;
       /* Previous: one step back to the theme before this one */
@@ -11370,14 +11370,15 @@
     fn();
   }
   /* a theme picked by hand in a picker: applied at once, with the fade. While day and night
-     switching is on it lasts until the next switch, and the first time that happens the toast
-     offers to turn switching off */
+     switching is on it becomes the theme for this period (day or night), and the first time that
+     happens the toast says so and offers to turn switching off */
   function pickTheme(theme, noFade){
     if (!resolveTheme(theme) || theme === state.theme) return;
     if (noFade) selectTheme(theme); else crossFade(function(){ selectTheme(theme); });
     if (state.auto !== "off" && Store.get("ll_auto_asked") !== "1"){
       Store.set("ll_auto_asked", "1");
-      Marks.toast(_t("Day and night is on: this theme lasts until the next switch."), { action: _t("Turn off"), ms: 7000, run: function(){
+      var nm = themeName(theme);
+      Marks.toast(AutoTheme.isNight() ? _t("Day and night is on: {name} is now your night theme.", { name: nm }) : _t("Day and night is on: {name} is now your day theme.", { name: nm }), { action: _t("Turn off"), ms: 7000, run: function(){
         AutoTheme.setMode("off"); Marks.toast(_t("Day and night switching is off"));
       } });
     }
