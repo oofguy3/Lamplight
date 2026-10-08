@@ -815,9 +815,7 @@
     if (t.texture && !eink && tone !== "contrast" && !state.plainBg) root.setAttribute("data-texture", t.texture); else root.removeAttribute("data-texture");
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
-    /* the installed app's title bar takes the panel colour */
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", c.panel);
+    themeColor();
     tileMark($("#themeChips"), themeDraft ? null : t);
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
@@ -827,6 +825,12 @@
     if (Warmth) Warmth.apply();
     if (Pop) Pop.sync();
     Prefs.save();
+  }
+  /* the installed app's title bar (the phone's status bar) takes the panel colour, or the page
+     colour while reading on a phone, where the text runs up to it */
+  function themeColor(){
+    var meta = document.querySelector('meta[name="theme-color"]'), r = document.documentElement.style;
+    if (meta) meta.setAttribute("content", r.getPropertyValue(document.body.classList.contains("phonebar") ? "--bg" : "--panel").trim());
   }
   /* the preview and the meter show every colour of the theme being edited */
   function previewCustom(t){
@@ -1888,6 +1892,14 @@
   else window.addEventListener("resize", dockVar);
   function availHeight(){
     headVar();
+    /* a phone while reading: no header, the text starts at main's top padding and stops 14px
+       above the strip at the foot (the strip sits on the read-aloud player while it plays, which
+       --dockH counts); the dock is an overlay and takes nothing */
+    if (document.body.classList.contains("phonebar")){
+      var pdock = dockVar(), padTop = parseFloat(getComputedStyle($("#main")).paddingTop) || 0;
+      dockLaidOut = pdock;
+      return Math.max(160, window.innerHeight - padTop - pdock - $("#readFoot").offsetHeight - 14);
+    }
     var head = document.querySelector("header"), zen = document.body.classList.contains("zen");
     var headH = document.body.classList.contains("immersive") || zen ? 0 : head.offsetHeight;
     var dockH = dockVar();
@@ -11115,8 +11127,19 @@
       if (to){ if (el.parentNode !== to) to.appendChild(el); }
       else if (el.previousSibling !== ph) ph.parentNode.insertBefore(el, ph.nextSibling);
     }
+    /* a turn of the phone (the book stays open) reflows the text and the header comes or goes over
+       it: in Scroll flow it lands back on the place noted a moment after the last scroll (by the
+       time the turn is reported the text has already moved). Opening a book places itself */
+    var placedMode = null, seenOff = null, seenT = null;
+    window.addEventListener("scroll", function(){
+      clearTimeout(seenT);
+      seenT = setTimeout(function(){ seenOff = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null; }, 150);
+    }, { passive: true });
     function place(){
       var want = on(), was = document.body.classList.contains("phonebar");
+      if (state.mode !== placedMode) seenOff = null;
+      var off = want !== was && state.mode === placedMode && state.mode === "doc" && state.flow !== "pages" ? (seenOff !== null ? seenOff : Library.topCharOffset()) : null;
+      placedMode = state.mode;
       if (want !== was){ Pop.close(true); Menu.close(); closeDock({ focus: false }); }
       document.body.classList.toggle("phonebar", want);
       TOOLS.forEach(function(id){ move(id, want ? row : null); });
@@ -11128,7 +11151,11 @@
       /* the title is the way to the other open books */
       if (want){ fname.setAttribute("role", "button"); fname.tabIndex = 0; fname.setAttribute("aria-haspopup", "dialog"); }
       else { fname.removeAttribute("role"); fname.removeAttribute("tabindex"); fname.removeAttribute("aria-haspopup"); }
-      if (want !== was){ headVar(); dockVar(); if (pagedActive()) relayoutPaged(); }
+      if (want !== was){
+        headVar(); dockVar(); themeColor();
+        if (pagedActive()) relayoutPaged();
+        else if (off !== null && off !== undefined) revealOffset(off);
+      }
     }
     if (mq){ if (mq.addEventListener) mq.addEventListener("change", place); else if (mq.addListener) mq.addListener(place); }
 
@@ -12047,6 +12074,8 @@
 
     if (state.mode !== "doc" && state.mode !== "pdf") return;
     Library.notePosition();
+    /* a phone while reading has no bar to hide */
+    if (document.body.classList.contains("phonebar")) return;
     var y = h.scrollTop;
     var dy = y - lastY;
     lastY = y;

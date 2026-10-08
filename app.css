@@ -153,6 +153,7 @@
   .bar{
     display:flex; align-items:center; gap:var(--sp-2);
     padding:4px 18px; max-width:1100px; margin:0 auto; min-height:56px;
+    padding-left:max(18px, env(safe-area-inset-left)); padding-right:max(18px, env(safe-area-inset-right));
   }
   /* the wordmark: the title face in italic, "light" in the lamp's colour */
   .wordmark{
@@ -903,8 +904,8 @@
   }
 
   /* ---------- content ---------- */
-  body > main{padding:26px 18px 90px;}
-  body.paged main{padding:14px 14px 0;}
+  body > main{padding:26px 18px 90px; padding-left:max(18px, env(safe-area-inset-left)); padding-right:max(18px, env(safe-area-inset-right));}
+  body.paged main{padding:14px 14px 0; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right));}
   /* the start screen. The hero shows until the library has a book; then the Continue card, the
      streak, the first-run tips and the recent files take the same 560px column */
   #empty{max-width:560px; margin:5vh auto 0; position:relative;}
@@ -1369,6 +1370,7 @@
     display:none; align-items:center; justify-content:space-between; gap:var(--sp-3);
     background:var(--panel); border-top:1px solid var(--line);
     padding:8px 16px calc(8px + env(safe-area-inset-bottom));
+    padding-left:max(16px, env(safe-area-inset-left)); padding-right:max(16px, env(safe-area-inset-right));
     transition:background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
   #pager .ctl{width:48px; height:48px; min-width:48px; padding:0; border-radius:50%; border-color:transparent; background:var(--accent-soft);}
@@ -1409,6 +1411,14 @@
      the five reading tools with their names. They are the header's own buttons, moved (ids and
      listeners with them); the header steps out of the way once they have left */
   body.phonebar > header{display:none;}
+  /* the text gets the screen: it starts under the status bar, and nothing else sits at the foot
+     but the strip (the page-turn bar, the 3px progress line and the pill give way to the lamp's ring
+     and the note, zen included) */
+  body.phonebar #pager, body.phonebar #progress, body.phonebar #progressInfo{display:none !important;}
+  body.phonebar:not(.zen) > main, body.phonebar.paged:not(.zen) > main{padding-top:max(20px, env(safe-area-inset-top));}
+  /* Scroll flow: the last line clears the strip (and the read-aloud player under it) */
+  body.phonebar:not(.paged) > main{padding-bottom:calc(92px + env(safe-area-inset-bottom) + 24px);}
+  body.phonebar.tts-on:not(.paged) > main{padding-bottom:calc(var(--dockH, 0px) + 116px);}
   /* the open books fold into the title: a tap on it lists them */
   body.phonebar #tabs, body.phonebar #tabs.on{display:none;}
   #readFoot, #phoneDockScrim, #phoneDock, .tool-l, .tool-i{display:none;}
@@ -1597,7 +1607,7 @@
      phones (24px top corners, a handle); a 56px head with the title in the title face and a round
      48px close, a scrolling body, a sticky foot of actions */
   #side{
-    position:fixed; top:0; right:0; bottom:0; z-index:45; width:min(400px, 100%);
+    position:fixed; top:0; right:0; bottom:0; z-index:45; width:min(400px, 100%); padding-right:env(safe-area-inset-right, 0px);
     background:var(--raise); color:var(--ink); border-left:1px solid var(--line); border-radius:var(--r-lg) 0 0 var(--r-lg);
     box-shadow:var(--shadow-side); display:flex; flex-direction:column;
     transform:translateX(105%); visibility:hidden;
@@ -1731,7 +1741,7 @@
 
   /* auto-scroll control: a pill floating above the dock */
   #autoBar{
-    position:fixed; right:12px; bottom:var(--aboveDock); z-index:17; display:none; align-items:center; gap:2px;
+    position:fixed; right:max(12px, env(safe-area-inset-right)); bottom:var(--aboveDock); z-index:17; display:none; align-items:center; gap:2px;
     background:var(--raise); border:var(--bw) solid var(--line); border-radius:var(--r-pill); padding:4px; box-shadow:var(--shadow-2);
     font-family:var(--ui-font); transition:background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
@@ -1752,6 +1762,7 @@
   #tts{
     display:none; position:relative; grid-template-columns:minmax(0, 1fr) auto auto auto minmax(0, 1fr); align-items:center; gap:var(--sp-1);
     background:var(--panel); border-top:1px solid var(--line); padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    padding-left:max(12px, env(safe-area-inset-left)); padding-right:max(12px, env(safe-area-inset-right));
     transition:background var(--t-theme) ease, border-color var(--t-theme) ease; font-family:var(--ui-font);
   }
   #tts.on{display:grid;}

@@ -321,9 +321,11 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length === 2 && document.getElementById("docView").style.display === "block", null, { timeout: 20000 });
     await page.waitForTimeout(400);
     await page.mouse.move(200, 500); await page.mouse.wheel(0, 60); await page.waitForTimeout(400);
-    const h = await page.evaluate(() => ({ headH: getComputedStyle(document.documentElement).getPropertyValue("--headH").trim(), header: document.querySelector("header").offsetHeight + "px",
-      pillTop: document.getElementById("progressInfo").getBoundingClientRect().top, tabsBottom: document.getElementById("tabs").getBoundingClientRect().bottom, on: document.getElementById("progressInfo").classList.contains("on") }));
-    R.check("phone, two tabs: --headH is the taller header and the progress pill sits under the tabs strip", h.headH === h.header && h.on && h.pillTop >= h.tabsBottom, JSON.stringify(h));
+    /* a phone while reading has no header: --headH is 0, the tabs fold into the dock's title, and the
+       lamp's ring and note stand in for the progress pill */
+    const h = await page.evaluate(() => ({ phone: document.body.classList.contains("phonebar"), headH: getComputedStyle(document.documentElement).getPropertyValue("--headH").trim(), header: document.querySelector("header").offsetHeight,
+      tabs: getComputedStyle(document.getElementById("tabs")).display, pill: getComputedStyle(document.getElementById("progressInfo")).display }));
+    R.check("phone, two tabs: no header (--headH 0px), the tabs fold away, no progress pill", h.phone && h.headH === "0px" && h.header === 0 && h.tabs === "none" && h.pill === "none", JSON.stringify(h));
     await page.close();
   } catch (err){ R.check("tabs strip height (exception)", false, String(err).split("\n")[0]); }
   await tabsCtx.close();

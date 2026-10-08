@@ -146,6 +146,69 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- layout: the text clears the strip, the dock never re-paginates ---------- */
+  await guard("layout", async () => {
+    const { ctx, page } = await phonePage(b, url, { flow: "pages" });
+    await openFixture(page, "sample.epub");
+    await page.waitForTimeout(300);
+    const n0 = await page.evaluate(() => window.__ll.state.totalPages);
+    await openDock(page);
+    const n1 = await page.evaluate(() => window.__ll.state.totalPages);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    const n2 = await page.evaluate(() => window.__ll.state.totalPages);
+    R.check("Pages: page count unchanged by opening and closing the dock", n0 > 1 && n1 === n0 && n2 === n0, [n0, n1, n2].join(" "));
+    const pg = await page.evaluate(() => { const v = document.getElementById("docView").getBoundingClientRect(), s = document.getElementById("readFoot").getBoundingClientRect(), m = getComputedStyle(document.getElementById("main"));
+      return { viewTop: v.top, viewBottom: v.bottom, stripTop: s.top, padTop: m.paddingTop, pager: getComputedStyle(document.getElementById("pager")).display, headH: getComputedStyle(document.documentElement).getPropertyValue("--headH").trim() }; });
+    R.check("Pages: the text column ends above the strip, and starts 20px from the top", pg.viewBottom <= pg.stripTop + 1 && pg.padTop === "20px" && pg.viewTop >= 19, JSON.stringify(pg));
+    R.check("Pages: no page-turn bar, and the header counts nothing (--headH 0px)", pg.pager === "none" && pg.headH === "0px", JSON.stringify(pg));
+    const bars = await page.evaluate(() => ({ line: getComputedStyle(document.getElementById("progress")).display, pill: getComputedStyle(document.getElementById("progressInfo")).display }));
+    R.check("no progress line or pill under phonebar", bars.line === "none" && bars.pill === "none", JSON.stringify(bars));
+    await page.keyboard.press("z"); await page.waitForTimeout(400);
+    const zen = await page.evaluate(() => ({ zen: document.body.classList.contains("zen"), line: getComputedStyle(document.getElementById("progress")).display, viewBottom: document.getElementById("docView").getBoundingClientRect().bottom, stripTop: document.getElementById("readFoot").getBoundingClientRect().top }));
+    R.check("…in zen too, and the text still clears the strip", zen.zen && zen.line === "none" && zen.viewBottom <= zen.stripTop + 1, JSON.stringify(zen));
+    await page.keyboard.press("z"); await page.waitForTimeout(400);
+    R.check("no page errors (layout)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+  await guard("scroll layout", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.epub");
+    const meta = await page.evaluate(() => document.querySelector('meta[name="viewport"]').content);
+    R.check("viewport-fit=cover", /viewport-fit=cover/.test(meta), meta);
+    const cols = await page.evaluate(() => { const r = document.documentElement.style; return { meta: document.querySelector('meta[name="theme-color"]').content.toLowerCase(), bg: r.getPropertyValue("--bg").trim().toLowerCase(), panel: r.getPropertyValue("--panel").trim().toLowerCase() }; });
+    R.check("theme-color is the page colour in a book", cols.meta === cols.bg && cols.bg !== cols.panel, JSON.stringify(cols));
+    /* the last line clears the strip at the very end */
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(400);
+    const end = await page.evaluate(() => { const ps = [...document.querySelectorAll("#doc p, #doc li, #doc h1, #doc h2, #doc h3")].filter((p) => p.getClientRects().length); const last = ps[ps.length - 1].getBoundingClientRect();
+      return { lastBottom: last.bottom, stripTop: document.getElementById("readFoot").getBoundingClientRect().top, hide: document.body.classList.contains("hidebar") }; });
+    R.check("Scroll: the last line clears the strip at the end", end.lastBottom <= end.stripTop + 1, JSON.stringify(end));
+    R.check("Scroll: no bar hides on the way down", !end.hide);
+    /* a turn of the phone with the dock open: the dock closes, the header is back, the place is kept */
+    await page.evaluate(() => { const p = [...document.querySelectorAll("#doc p")][4]; window.scrollTo(0, p.getBoundingClientRect().top + window.scrollY - 30); }); await page.waitForTimeout(300);
+    const off0 = await page.evaluate(() => window.__ll.Library.topCharOffset());
+    await openDock(page);
+    await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(600);
+    const rot = await page.evaluate(() => ({ open: document.body.classList.contains("dock-open"), pb: document.body.classList.contains("phonebar"), hdr: document.querySelector("header").getClientRects().length, off: window.__ll.Library.topCharOffset(),
+      meta: document.querySelector('meta[name="theme-color"]').content.toLowerCase(), panel: document.documentElement.style.getPropertyValue("--panel").trim().toLowerCase() }));
+    R.check("rotate to 844×390 with the dock open: dock closed, header back, position kept", !rot.open && !rot.pb && rot.hdr > 0 && Math.abs(rot.off - off0) < 80, JSON.stringify(Object.assign({ off0 }, rot)));
+    R.check("…and theme-color is the panel colour again", rot.meta === rot.panel, JSON.stringify(rot));
+    await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(600);
+    /* rotating while a panel opened from the dock is up: it keeps working */
+    await openDock(page); await page.tap("#tocBtn"); await page.waitForTimeout(400);
+    await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(600);
+    const before = await page.evaluate(() => window.scrollY);
+    const went = await page.evaluate(() => { const items = [...document.querySelectorAll("#sideBody .toc-item")].filter((x) => x.getClientRects().length); const last = items[items.length - 1]; if (last) last.click(); return !!last; });
+    await page.waitForTimeout(600);
+    const after = await page.evaluate(() => ({ y: window.scrollY, side: document.getElementById("side").classList.contains("open") }));
+    R.check("rotate while the Contents panel (opened from the dock) is up: it still works", went && after.y !== before, JSON.stringify({ before, after }));
+    await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(400);
+    await page.evaluate(() => window.__ll.Library.home()); await page.waitForTimeout(500);
+    const lib = await page.evaluate(() => { const r = document.documentElement.style; return { meta: document.querySelector('meta[name="theme-color"]').content.toLowerCase(), panel: r.getPropertyValue("--panel").trim().toLowerCase() }; });
+    R.check("theme-color is the panel colour on the library", lib.meta === lib.panel, JSON.stringify(lib));
+    R.check("no page errors (scroll layout)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
   /* ---------- a mouse at 390px and a wide phone: no phone chrome ---------- */
   await guard("not a phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });

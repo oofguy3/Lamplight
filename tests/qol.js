@@ -70,17 +70,16 @@ const STUB = `(() => {
     await page.evaluate(() => window.scrollTo(0, 600)); await page.waitForTimeout(150);
     await page.evaluate(() => window.scrollTo(0, 1200)); await page.waitForTimeout(300);
     /* no bar to hide on a phone: the lamp stays where it is while scrolling */
-    const lampAt = () => page.evaluate(() => { const r = document.getElementById("dockBtn").getBoundingClientRect(); return { y: Math.round(r.top), shown: getComputedStyle(document.getElementById("readFoot")).display !== "none" }; });
+    const lampAt = () => page.evaluate(() => { const r = document.getElementById("dockBtn").getBoundingClientRect(); return { y: Math.round(r.top), shown: getComputedStyle(document.getElementById("readFoot")).display !== "none", hide: document.body.classList.contains("hidebar") }; });
     const gone = await lampAt();
     await page.mouse.wheel(0, -400); await page.waitForTimeout(400);
     const back = await lampAt();
-    R.check("phone: scrolling either way leaves the lamp where it is", gone.shown && back.shown && gone.y === back.y, JSON.stringify([gone, back]));
-    /* the progress pill: at the foot, over nothing being read, gone 1.2 s after the scrolling stops */
+    R.check("phone: scrolling either way leaves the lamp where it is, and nothing hides", gone.shown && back.shown && gone.y === back.y && !gone.hide && !back.hide, JSON.stringify([gone, back]));
+    /* the lamp's ring and the note stand in for the progress pill and the 3px line on a phone */
     await page.evaluate(() => { window.scrollBy(0, 40); });
     await page.waitForTimeout(350);
-    const pill = await page.evaluate(() => { const p = document.getElementById("progressInfo"), r = p.getBoundingClientRect(), d = document.getElementById("dock").getBoundingClientRect(); return { on: p.classList.contains("on"), above: r.bottom <= d.top, fs: getComputedStyle(p).fontSize }; });
-    await page.waitForTimeout(1300);
-    R.check("the progress pill sits above the dock at 13px and fades 1.2 s after the scrolling stops", pill.on && pill.above && pill.fs === "13px" && !(await open(page, "#progressInfo", "on")), JSON.stringify(pill));
+    const pill = await page.evaluate(() => ({ pill: getComputedStyle(document.getElementById("progressInfo")).display, line: getComputedStyle(document.getElementById("progress")).display }));
+    R.check("phone: no progress pill and no 3px line while scrolling (the lamp's ring has the place)", pill.pill === "none" && pill.line === "none", JSON.stringify(pill));
     /* the title opens the open books */
     await dock(page); await page.tap("#fname"); await page.waitForTimeout(500);
     const sw = await page.evaluate(() => ({ title: document.getElementById("sideTitle").textContent, rows: Array.from(document.querySelectorAll(".bk-name")).map((e) => e.textContent), cur: (document.querySelector(".bk-open[aria-current]") || {}).textContent || "" }));

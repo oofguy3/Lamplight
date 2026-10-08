@@ -173,7 +173,9 @@ async function clickView(page, sel, fx){
   await page.screenshot({ path: path.join(SHOTS, "zen-phone-day.png") });
   await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
   await setFlow(page, "pages"); await page.waitForTimeout(500);
-  R.check("phone: pages fill the screen", Math.abs((await viewH(page, "#docView")) - (844 - 26)) <= 2, String(await viewH(page, "#docView")));
+  /* the strip at the foot (the lamp, faint in zen) stays reserved: the pages fill the screen above it */
+  const zp = await page.evaluate(() => { const v = document.getElementById("docView").getBoundingClientRect(), s = document.getElementById("readFoot").getBoundingClientRect(); return { h: Math.round(v.height), bottom: v.bottom, stripTop: s.top }; });
+  R.check("phone: pages fill the screen above the strip", Math.abs(zp.h - (844 - 14 - 92 - 14)) <= 2 && zp.bottom <= zp.stripTop + 1, JSON.stringify(zp));
   await page.screenshot({ path: path.join(SHOTS, "zen-phone-dusk-pages.png") });
   await page.keyboard.press("z"); await page.waitForTimeout(400);
   R.check("phone: z leaves, no fullscreen left behind", !(await zenOn(page)) && (await page.evaluate(() => !document.fullscreenElement)));
