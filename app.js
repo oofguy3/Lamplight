@@ -54,12 +54,14 @@
   /* a long press (about half a second on the spot) runs `fn` instead of the tap: the click the
      finger's lift would send is swallowed, and so is the context menu a long press brings up on
      some phones. Keys keep the tap (the same actions have their own keys and buttons) */
-  function longPress(el, fn, ms){
+  /* when: an optional test, asked as the finger goes down; false leaves the tap alone */
+  function longPress(el, fn, ms, when){
     if (!el) return;
     var timer = null, x = 0, y = 0, fired = 0;
     function clear(){ clearTimeout(timer); timer = null; }
     el.addEventListener("pointerdown", function(e){
       if (e.button !== undefined && e.button !== 0) return;
+      if (when && !when()) return;
       clear(); x = e.clientX; y = e.clientY;
       timer = setTimeout(function(){
         timer = null; fired = Date.now();
@@ -822,6 +824,11 @@
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
     themeColor();
+    /* the phone dock's Day and Night: the half on screen pressed; e-ink has no themes to switch */
+    var dnNow = themeDraft ? null : dnOf(state.theme);
+    $("#dockDay").setAttribute("aria-pressed", dnNow === "day" ? "true" : "false");
+    $("#dockNight").setAttribute("aria-pressed", dnNow === "night" ? "true" : "false");
+    $("#phoneDock .pd-dn").hidden = eink;
     tileMark($("#themeChips"), themeDraft ? null : t);
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
@@ -11350,8 +11357,34 @@
     fname.addEventListener("keydown", function(e){
       if ((e.key === "Enter" || e.key === " ") && document.body.classList.contains("phonebar")){ e.preventDefault(); openSwitcher(); }
     });
-    /* a long press on the lamp switches between the day and the night theme without the popover */
-    longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight({ toast: true }); });
+    /* a long press on the Theme button switches between the day and the night theme without the
+       popover; on a phone the lamp at the foot holds that (the Theme tool sits right under the
+       dock's own Day and Night, and has no hold) */
+    longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight({ toast: true }); }, 0, function(){ return !document.body.classList.contains("phonebar"); });
+    longPress(btn, function(){ toggleDayNight({ toast: true }); });
+    /* Day and Night act in place: the dock stays open, and the pressed half is the answer (no toast) */
+    $("#dockDay").addEventListener("click", function(){ setDayNight("day"); });
+    $("#dockNight").addEventListener("click", function(){ setDayNight("night"); });
+    /* Pages flow: a tap on the strip's blank part opens the dock too (not in zen or e-ink) */
+    $("#readFoot").addEventListener("click", function(e){
+      if (e.target.closest("#dockBtn") || !pagedActive() || state.eink === true || document.body.classList.contains("zen")) return;
+      openDock();
+    });
+    /* a swipe down that starts on the dock (scrolled to its top) or on the page around it closes it, in every flow */
+    function swipeDownCloses(el){
+      var y0 = null, x0 = 0;
+      el.addEventListener("touchstart", function(e){
+        y0 = (el === dock && dock.scrollTop > 0) || (e.target.closest && e.target.closest("input[type=range]")) ? null : e.touches[0].clientY;
+        x0 = e.touches[0].clientX;
+      }, { passive: true });
+      el.addEventListener("touchend", function(e){
+        if (y0 === null || !isDockOpen()) return;
+        var dy = e.changedTouches[0].clientY - y0, dx = e.changedTouches[0].clientX - x0;
+        y0 = null;
+        if (dy > 55 && dy > Math.abs(dx) * 1.4) closeDock();
+      }, { passive: true });
+    }
+    swipeDownCloses(dock); swipeDownCloses(scrim);
     place();
     return { place: place, on: on, openSwitcher: openSwitcher, openDock: openDock, closeDock: closeDock, toggleDock: toggleDock, isDockOpen: isDockOpen, returnTarget: returnTarget, syncPos: syncPos };
   })();
@@ -12043,6 +12076,8 @@
   var BAR_STRIP = 56;
   function inBarStrip(y, el){
     var r = (el || (state.mode === "pdf" ? $("#pdf") : $("#docView"))).getBoundingClientRect();
+    /* a phone while reading has no bar at the top: only the bottom strip, which opens the dock */
+    if (document.body.classList.contains("phonebar")) return r.bottom - y < BAR_STRIP;
     return y - r.top < BAR_STRIP || r.bottom - y < BAR_STRIP;
   }
   function tapNav(e){
@@ -12054,6 +12089,15 @@
     var x = (e.clientX - r.left) / r.width;
     /* e-ink mode: the left third goes back, the rest forward, a whole page at a time */
     if (state.eink === true){ turn(x < 1 / 3 ? -1 : 1); return; }
+    /* a phone: the edges turn, the bottom strip and a blank middle open the dock (zen: neither) */
+    if (document.body.classList.contains("phonebar")){
+      var zen = document.body.classList.contains("zen");
+      if (inBarStrip(e.clientY, e.currentTarget)){ if (!zen) PhoneBar.openDock(); }
+      else if (x < 0.35) turn(-1);
+      else if (x > 0.65) turn(1);
+      else if (!zen) PhoneBar.openDock();
+      return;
+    }
     if (inBarStrip(e.clientY, e.currentTarget)) toggleBars();
     else if (x < 0.35) turn(-1);
     else if (x > 0.65) turn(1);
@@ -12065,20 +12109,25 @@
   /* swipes in Pages flow: sideways turns the page; down on the page shows the bars, up hides them
      (the page itself never scrolls vertically in Pages flow — a zoomed PDF page that does keeps its
      vertical swipes, and e-ink mode keeps its bars) */
-  var touchX = null, touchY = null, touchPage = false;
+  var touchX = null, touchY = null, touchPage = false, touchAside = false;
+  var NO_SWIPE = "#phoneDock, #phoneDockScrim, #readFoot, #sheet, #sheetScrim, #pop, #popScrim, #side, #sideScrim, #moreMenu, #moreScrim, #dictCard, #dictScrim, input[type=range]";
   document.addEventListener("touchstart", function(e){
     touchX = e.touches[0].clientX; touchY = e.touches[0].clientY;
     touchPage = !!(e.target && e.target.closest && e.target.closest("#docView, #pdf"));
+    /* a drag on a slider, a sheet, a scrim or the phone's dock and strip is theirs, never a page turn */
+    touchAside = !!(e.target && e.target.closest && e.target.closest(NO_SWIPE));
   }, {passive:true});
   document.addEventListener("touchend", function(e){
     if (touchX === null || !pagedActive()) { touchX = null; return; }
     var dx = e.changedTouches[0].clientX - touchX;
     var dy = e.changedTouches[0].clientY - touchY;
     touchX = null;
-    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) turn(dx < 0 ? 1 : -1);
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4){ if (!touchAside) turn(dx < 0 ? 1 : -1); }
     else if (touchPage && Math.abs(dy) > 55 && Math.abs(dy) > Math.abs(dx) * 1.4 && state.eink !== true){
       var pdf = $("#pdf");
       if (state.mode === "pdf" && pdf.scrollHeight > pdf.clientHeight + 2) return;
+      /* a phone: up opens the dock (not in zen); there are no bars to bring down */
+      if (document.body.classList.contains("phonebar")){ if (dy < 0 && !document.body.classList.contains("zen")) PhoneBar.openDock(); return; }
       toggleBars(dy > 0);
     }
   }, {passive:true});

@@ -299,6 +299,128 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- gestures: what opens the dock, what turns the page ---------- */
+  const touchHold = async (page, x, y, ms) => {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+    await page.waitForTimeout(ms);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await cdp.detach(); await page.waitForTimeout(400);
+  };
+  const pageNo = (page) => page.evaluate(() => window.__ll.state.page);
+  const shut = async (page) => { await page.evaluate(() => window.__ll.PhoneBar.closeDock()); await page.waitForTimeout(700); };
+  /* blank space between two paragraphs in the middle band of the page on screen */
+  const blankMiddle = (page) => page.evaluate(() => { const vr = document.getElementById("docView").getBoundingClientRect();
+    const ps = [...document.querySelectorAll("#doc p, #doc h1, #doc h2")].map((p) => p.getBoundingClientRect()).filter((r) => r.left >= vr.left - 1 && r.right <= vr.right + 1 && r.top > vr.top + 60 && r.bottom < vr.bottom - 80).sort((a, b) => a.top - b.top);
+    for (let i = 0; i + 1 < ps.length; i++) if (ps[i + 1].top - ps[i].bottom > 8) return { x: vr.left + vr.width / 2, y: (ps[i].bottom + ps[i + 1].top) / 2 }; return null; });
+  await guard("gestures", async () => {
+    const { ctx, page } = await phonePage(b, url, { flow: "pages" });
+    await openFixture(page, "sample.md");
+    await page.waitForTimeout(500);
+    const gap = await blankMiddle(page);
+    await page.touchscreen.tap(gap.x, gap.y); await page.waitForTimeout(400);
+    R.check("Pages: a blank tap in the middle opens the dock", await dockOpen(page), JSON.stringify(gap));
+    await shut(page);
+    const v = await rect(page, "#docView");
+    await page.touchscreen.tap(195, v.bottom - 20); await page.waitForTimeout(400);
+    R.check("Pages: a tap on the bottom strip of the page opens the dock", await dockOpen(page));
+    await shut(page);
+    const foot = await rect(page, "#readFoot");
+    await page.touchscreen.tap(150, foot.top + 30); await page.waitForTimeout(400);
+    R.check("Pages: a tap on the strip's blank part opens the dock", await dockOpen(page));
+    await shut(page);
+    await touchDrag(page, 195, 560, 195, 300);
+    const a = await dockOpen(page);
+    await page.waitForTimeout(500);
+    await touchDrag(page, 195, 120, 195, 400);
+    R.check("Pages: a swipe up opens the dock, a swipe down on the scrim closes it", a && !(await dockOpen(page)));
+    await page.waitForTimeout(500);
+    await openDock(page);
+    const d = await rect(page, "#phoneDock");
+    await touchDrag(page, 195, d.top + 20, 195, d.top + 220);
+    R.check("…and a swipe down on the dock closes it too", !(await dockOpen(page)));
+    await page.waitForTimeout(600);
+    const p0 = await pageNo(page);
+    await page.touchscreen.tap(370, v.top + 20); await page.waitForTimeout(500);
+    R.check("Pages: the top corners turn the page (no strip of their own any more)", (await pageNo(page)) === p0 + 1 && !(await dockOpen(page)));
+    await page.touchscreen.tap(20, v.top + 20); await page.waitForTimeout(500);
+    R.check("…both ways", (await pageNo(page)) === p0);
+    await openDock(page);
+    const head = await rect(page, "#phoneDock .pd-head");
+    await touchDrag(page, 320, head.top + 24, 60, head.top + 28);
+    R.check("Pages: a sideways swipe on the dock does not turn the page", (await pageNo(page)) === p0, String(await pageNo(page)));
+    await shut(page);
+    await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(300);
+    await page.tap("#gear"); await page.waitForTimeout(400);
+    await page.tap("#qMore summary"); await page.waitForTimeout(250);
+    await page.$eval("#qLs", (el) => el.scrollIntoView({ block: "center" })); await page.waitForTimeout(150);
+    const ls = await rect(page, "#qLs");
+    await touchDrag(page, ls.left + 6, ls.top + ls.height / 2, ls.right - 6, ls.top + ls.height / 2);
+    R.check("Pages: a sideways drag on a slider in the Text sheet does not turn the page", (await pageNo(page)) === p0, String(await pageNo(page)));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    /* a word in the top strip is looked up now: the strip is the page like the rest */
+    R.check("no page errors (gestures)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+  await guard("scroll and e-ink taps", async () => {
+    let { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.md");
+    const gap = await blankMiddle(page);
+    if (gap){ await page.touchscreen.tap(gap.x, gap.y); await page.waitForTimeout(400); }
+    R.check("Scroll: a blank tap does not open the dock (only the lamp does)", !!gap && !(await dockOpen(page)));
+    await ctx.close();
+    ({ ctx, page } = await phonePage(b, url, { flow: "pages" }));
+    await page.evaluate(() => { localStorage.setItem("ll_eink", "1"); });
+    await openFixture(page, "sample.md");
+    await page.evaluate(() => window.__ll.Eink && window.__ll.Eink.set && window.__ll.Eink.set(true)); await page.waitForTimeout(500);
+    const p0 = await pageNo(page), v = await rect(page, "#docView");
+    await page.touchscreen.tap(195, v.top + v.height / 2); await page.waitForTimeout(500);
+    const turned = (await pageNo(page)) === p0 + 1 && !(await dockOpen(page));
+    await openDock(page);
+    R.check("e-ink: a middle tap turns the page, the lamp opens the dock", turned && (await dockOpen(page)), JSON.stringify({ p0, now: await pageNo(page) }));
+    R.check("e-ink: no Day/Night switch in the dock", !(await shown(page, "#phoneDock .pd-dn")));
+    await ctx.close();
+  });
+  await guard("greek", async () => {
+    const { ctx, page } = await phonePage(b, url, { flow: "pages" });
+    await openFixture(page, "sample.md");
+    await page.evaluate(() => { [...document.querySelectorAll("#doc p")].forEach((p) => { p.textContent = "Ὁ λύχνος βομβεῖ ἥσυχα καθὼς γυρίζει τὴν σελίδα. Ἀκόμη ἕνα κεφάλαιο, λέει στὸν ἑαυτό της, μόνο ἕνα ἀκόμη, καὶ ἡ βροχὴ ἔπεφτε πάλι ἔξω."; }); window.__ll.relayoutPages(); });
+    await page.waitForTimeout(500);
+    const v = await rect(page, "#docView"), p0 = await pageNo(page);
+    await page.touchscreen.tap(195, v.top + v.height / 2); await page.waitForTimeout(500);
+    const openGreek = await dockOpen(page);
+    await shut(page);
+    await page.touchscreen.tap(370, v.top + v.height / 2); await page.waitForTimeout(500);
+    R.check("Greek text in Pages flow: a middle tap opens the dock, the edges turn", openGreek && (await pageNo(page)) === p0 + 1, JSON.stringify({ openGreek, p0, now: await pageNo(page) }));
+    await ctx.close();
+  });
+  /* ---------- Day and Night in the dock, and the holds ---------- */
+  await guard("day night", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.md");
+    await openDock(page);
+    const n0 = await page.evaluate(() => ({ day: document.getElementById("dockDay").getAttribute("aria-pressed"), night: document.getElementById("dockNight").getAttribute("aria-pressed"), shown: !document.querySelector(".pd-dn").hidden }));
+    await page.tap("#dockNight");
+    await page.waitForFunction(() => window.__ll.state.theme === "dusk", null, { timeout: 1500 }).catch(() => {});
+    const n1 = await page.evaluate(() => ({ theme: window.__ll.state.theme, night: document.getElementById("dockNight").getAttribute("aria-pressed"), open: document.body.classList.contains("dock-open"), toast: !!document.getElementById("toast") && document.getElementById("toast").classList.contains("on") }));
+    R.check("the switch marks the half on screen; Night → dusk; the dock stays open, no toast", n0.shown && n0.day === "true" && n0.night === "false" && n1.theme === "dusk" && n1.night === "true" && n1.open && !n1.toast, JSON.stringify([n0, n1]));
+    R.check("the switch is a labelled group", (await page.$eval("#phoneDock .pd-dn", (g) => g.getAttribute("role") + ":" + g.getAttribute("aria-label"))) === "group:Day or night");
+    /* no hold on the Theme tool in the dock: the switch is right above it */
+    const lampAt = await rect(page, "#lamp");
+    await touchHold(page, lampAt.left + lampAt.width / 2, lampAt.top + lampAt.height / 2, 800);
+    R.check("no hold on the Theme tool in the dock", (await page.evaluate(() => window.__ll.state.theme)) === "dusk");
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(500);
+    /* a hold on the lamp switches, with a toast */
+    const lb = await rect(page, "#dockBtn");
+    await touchHold(page, lb.left + 28, lb.top + 28, 800);
+    await page.waitForFunction(() => window.__ll.state.theme === "day", null, { timeout: 1500 }).catch(() => {});
+    const h = await page.evaluate(() => ({ theme: window.__ll.state.theme, toast: (document.getElementById("toast") || {}).textContent || "", open: document.body.classList.contains("dock-open") }));
+    R.check("a hold on the lamp switches day and night, with a toast, and leaves the dock shut", h.theme === "day" && /Day theme/.test(h.toast) && !h.open, JSON.stringify(h));
+    R.check("no page errors (day night)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
   /* ---------- a mouse at 390px and a wide phone: no phone chrome ---------- */
   await guard("not a phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });

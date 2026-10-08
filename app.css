@@ -1469,6 +1469,18 @@
   #dockPos::-moz-range-thumb{width:20px; height:20px; border:0; background:var(--ink); box-shadow:none;}
   .pd-cap{display:flex; justify-content:space-between; gap:var(--sp-3); margin:0; font-size:var(--fs-small); line-height:1.35; color:var(--muted); font-variant-numeric:tabular-nums;}
   #dockLeft{text-align:right;}
+  /* Day and Night: two buttons in a well, the half on screen lifted with the accent's edge */
+  .pd-dn{flex:none; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; margin-top:var(--sp-3); padding:4px; border:1px solid var(--line); border-radius:var(--r-md); background:var(--well);}
+  .pd-dn[hidden]{display:none;}
+  .dn-b{
+    display:flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 12px;
+    border:var(--bw-sel) solid transparent; border-radius:var(--r-sm); background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:var(--fs-body); cursor:pointer;
+  }
+  .dn-b svg{width:24px; height:24px; flex:none;}
+  @media (hover:hover){ .dn-b:hover{background:color-mix(in srgb, var(--ink) 6%, transparent);} }
+  .dn-b[aria-pressed="true"]{background:var(--raise); border-color:var(--accent); font-weight:600; box-shadow:var(--shadow-1);}
+  :root[data-tone="dark"] .dn-b[aria-pressed="true"]{background:color-mix(in oklab, var(--ink) 10%, var(--raise)); box-shadow:none;}
   /* Back, the title with its section under it, Search */
   .pd-head{flex:none; display:flex; align-items:center; gap:var(--sp-1); min-height:48px;}
   .pd-head > .ctl{width:48px; height:48px; min-width:48px; padding:0; border:0; border-radius:var(--r-md); background:transparent; color:var(--ink); flex:none;}
