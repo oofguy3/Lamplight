@@ -11873,11 +11873,27 @@
       else if (state.mode === "pdf" && state.pdfDoc){ renderPdf(); }
     }, 350);
   });
-  /* a web font or an image arriving after the first layout changes where the pages break */
-  var lateLayout = null;
+  /* a web font or an image arriving after the first layout changes where the pages break. One
+     that lands while printing (the print layout asks for faces the screen has not used yet) waits
+     for the screen layout: under print media there are no pages to measure */
+  var lateLayout = null, printMq = window.matchMedia ? window.matchMedia("print") : null, afterPrint = null;
   function relayoutLater(){
     clearTimeout(lateLayout);
-    lateLayout = setTimeout(function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); }, 80);
+    lateLayout = setTimeout(function(){
+      if (state.mode !== "doc" || state.flow !== "pages") return;
+      if (printMq && printMq.matches){
+        if (!afterPrint){
+          afterPrint = function(){
+            if (printMq.matches) return;
+            if (printMq.removeEventListener) printMq.removeEventListener("change", afterPrint); else printMq.removeListener(afterPrint);
+            afterPrint = null; relayoutLater();
+          };
+          if (printMq.addEventListener) printMq.addEventListener("change", afterPrint); else printMq.addListener(afterPrint);
+        }
+        return;
+      }
+      relayoutDocPages();
+    }, 80);
   }
   if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", relayoutLater);
   $("#doc").addEventListener("load", function(e){ if (e.target && e.target.tagName === "IMG") relayoutLater(); }, true);
