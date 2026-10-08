@@ -1411,7 +1411,16 @@
   var ICONS = (function(){
     var open = 'stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
     function svg(paths, extra){ return '<svg viewBox="0 0 24 24" ' + open + (extra || '') + '>' + paths + '</svg>'; }
+    /* the Text sheet's pictograms are wider than tall: three lines of text, or a page with its text */
+    function wide(paths){ return '<svg viewBox="0 0 32 24" ' + open + '>' + paths + '</svg>'; }
+    var page = '<rect x="5" y="2.5" width="22" height="19" rx="3"/>';
     return {
+      lhTight:   wide('<path d="M4 8h24M4 12h24M4 16h16"/>'),
+      lhNormal:  wide('<path d="M4 6h24M4 12h24M4 18h16"/>'),
+      lhAiry:    wide('<path d="M4 3h24M4 12h24M4 21h16"/>'),
+      mgNarrow:  wide(page + '<path d="M8.5 8h15M8.5 12h15M8.5 16h10"/>'),
+      mgMedium:  wide(page + '<path d="M11 8h10M11 12h10M11 16h6.5"/>'),
+      mgWide:    wide(page + '<path d="M13.5 8h5M13.5 12h5M13.5 16h3"/>'),
       close:     svg('<path d="M6 6l12 12M18 6L6 18"/>'),
       open:      svg('<path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/>'),
       chevronR:  svg('<path d="M9 6l6 6-6 6"/>'),
@@ -1502,8 +1511,21 @@
       Object.keys(FONTS).forEach(function(id){ if (FONTS[id].group !== g.id) return; var o = document.createElement("option"); o.value = id; o.textContent = fontName(FONTS[id]); og.appendChild(o); });
       fontQuick.appendChild(og);
     });
+    /* the phone's line spacing and margin choices wear their pictograms */
+    Array.prototype.forEach.call(panes.type.querySelectorAll("[data-icon]"), function(b){ b.insertAdjacentHTML("afterbegin", ICONS[b.dataset.icon]); });
     /* the stepper's ends: the button stays focusable, a press does nothing, and it says so */
     function setEnd(b, on){ if (on) b.setAttribute("aria-disabled", "true"); else b.removeAttribute("aria-disabled"); }
+    /* one choice pressed in a group of three, the one whose value matches; none, and the note
+       under the group says "Custom" (with the value, for line spacing) */
+    function choose(group, attr, match){
+      var hit = false;
+      Array.prototype.forEach.call(panes.type.querySelectorAll(group + " [data-" + attr + "]"), function(b){
+        var on = match(+b.getAttribute("data-" + attr)); if (on) hit = true;
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      return hit;
+    }
+    function note(el, s){ el.hidden = !s; if (el.textContent !== s) el.textContent = s; }
     function syncType(){
       var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100), ph = phone(), v = $("#qSizeV");
       panes.type.classList.toggle("pdf", pdf);
@@ -1519,6 +1541,10 @@
       setEnd($("#bigger"), pdf ? z >= 250 : state.size >= 28);
       $("#qLh").value = state.lh; $("#qLhV").textContent = dec(state.lh, 2);
       $("#qW").value = state.width; $("#qWV").textContent = state.width + " px";
+      /* line spacing matches within a hair (the slider's steps of 0.05 drift); "Custom 1.6" drops
+         the second decimal's zero, and dec gives the Dutch comma */
+      note($("#qLhCustom"), choose("#qLhChoices", "lh", function(v){ return Math.abs(state.lh - v) < 0.001; }) ? "" : _t("Custom {v}", { v: dec(state.lh, 2).replace(/0$/, "") }));
+      note($("#qMgCustom"), choose("#qMgChoices", "mg", function(v){ return (state.margin || 0) === v; }) ? "" : _tc("type", "Custom"));
       var rg = weightRange(FONTS[state.font] || FONTS.serif);
       setWeightRow($("#qWeightRow"), $("#qWeight"), $("#qWeightV"), rg);
       $("#qWeightNote").hidden = !rg.two;
@@ -1538,6 +1564,16 @@
     });
     $("#qLh").addEventListener("input", function(e){ state.lh = +e.target.value; applyType(); });
     $("#qW").addEventListener("input", function(e){ state.width = +e.target.value; applyType(); });
+    $("#qLhChoices").addEventListener("click", function(e){ var b = e.target.closest("[data-lh]"); if (b){ state.lh = +b.dataset.lh; applyType(); } });
+    /* a saved width narrower than this screen's column would hold the text whatever the margin:
+       a margin picked here brings the width back to its default, so the choice is what you see */
+    function columnRoom(){ var m = $("#main"), cs = getComputedStyle(m); return m.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); }
+    $("#qMgChoices").addEventListener("click", function(e){
+      var b = e.target.closest("[data-mg]"); if (!b) return;
+      state.margin = +b.dataset.mg;
+      if (state.width < columnRoom()) state.width = 720;
+      applyType();
+    });
     $("#qWeight").addEventListener("input", function(e){ state.weight = +e.target.value; applyType(); });
     $("#qLs").addEventListener("input", function(e){ state.ls = +e.target.value; applyType(); });
     $("#qWs").addEventListener("input", function(e){ state.ws = +e.target.value; applyType(); });

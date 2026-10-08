@@ -352,7 +352,8 @@ const SPEECH_STUB = `(() => {
     R.check("no horizontal overflow with a document", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
     await page.tap("#gear"); await page.waitForTimeout(400);
     const p = await rect(page, "#pop");
-    R.check("the type popover is a bottom sheet: full width, on the bottom edge, with a handle and scrim", (await popOpen(page)) && Math.abs(p.bottom - 844) <= 1 && Math.abs(p.width - 390) <= 1 && p.top > 200 && (await visible(page, ".pop-handle")) && (await page.$eval("#popScrim", (s) => s.classList.contains("on"))), JSON.stringify(p));
+    /* the phone Text sheet stands at most 85% of the screen tall (its choices make it taller than the old rows) */
+    R.check("the type popover is a bottom sheet: full width, on the bottom edge, with a handle and scrim", (await popOpen(page)) && Math.abs(p.bottom - 844) <= 1 && Math.abs(p.width - 390) <= 1 && p.top >= 844 * 0.15 - 1 && (await visible(page, ".pop-handle")) && (await page.$eval("#popScrim", (s) => s.classList.contains("on"))), JSON.stringify(p));
     const rowH = await page.$$eval("#typePop .prow", (rs) => rs.filter((r) => r.offsetParent !== null).map((r) => Math.round(r.getBoundingClientRect().height)));
     R.check("rows are at least 44px tall on touch", rowH.length >= 5 && rowH.every((h) => h >= 44), rowH.join(","));
     /* a finger holds the page still under the sheet: a drag on the scrim or inside the sheet

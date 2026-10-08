@@ -56,12 +56,70 @@ const press = async (page, sel, n) => { for (let i = 0; i < (n || 1); i++){ awai
   R.check("320px: no sideways scroll, A+ inside the sheet", fit.sw <= fit.cw && fit.right <= fit.edge, JSON.stringify(fit));
   await page.close(); await ctx.close();
 
+  /* ---------- phone: line spacing and margins as three choices each ---------- */
+  ctx = await b.newContext(PHONE);
+  page = await newPage(ctx, url);
+  await openFixture(page, "sample.md");
+  await openText(page);
+  const choices = (sel) => page.$$eval(sel + " button", (bs) => bs.map((x) => x.textContent.trim() + (x.getAttribute("aria-pressed") === "true" ? "*" : "")).join());
+  const capOf = (sel) => page.$eval(sel, (e) => (e.hidden || getComputedStyle(e).display === "none") ? "" : e.textContent.trim());
+  const tapOn = async (sel) => { await page.tap(sel); await page.waitForTimeout(80); };
+  R.check("phone: Line spacing Tight / Normal / Airy, Margins Narrow / Medium / Wide, the defaults pressed",
+    (await choices("#qLhChoices")) === "Tight,Normal*,Airy" && (await choices("#qMgChoices")) === "Narrow*,Medium,Wide", (await choices("#qLhChoices")) + " | " + (await choices("#qMgChoices")));
+  R.check("phone: each group is labelled, and the Spacing and Width sliders are gone", (await page.$eval("#qLhChoices", (g) => document.getElementById(g.getAttribute("aria-labelledby")).textContent.trim())) === "Line spacing" &&
+    (await page.$eval("#qMgChoices", (g) => document.getElementById(g.getAttribute("aria-labelledby")).textContent.trim())) === "Margins" && !(await shown(page, "#qLh")) && !(await shown(page, "#qW")));
+  const tall = await page.$$eval("#qLhChoices button, #qMgChoices button", (bs) => bs.map((x) => Math.round(x.getBoundingClientRect().height)));
+  R.check("phone: every choice is at least 48px tall, with its pictogram", tall.every((h) => h >= 48) && (await page.$$eval("#qLhChoices button svg, #qMgChoices button svg", (s) => s.length)) === 6, tall.join(","));
+  await tapOn('#qLhChoices [data-lh="1.5"]');
+  R.check("Tight sets lh 1.5 and is pressed", (await st(page)).lh === 1.5 && (await choices("#qLhChoices")) === "Tight*,Normal,Airy", (await st(page)).lh);
+  await tapOn('#qLhChoices [data-lh="2"]');
+  R.check("Airy sets lh 2", (await st(page)).lh === 2 && (await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--lh").trim())) === "2");
+  await tapOn('#qMgChoices [data-mg="28"]');
+  R.check("Wide sets margin 28, and the page shows it", (await st(page)).margin === 28 && (await page.$eval("#docView", (d) => getComputedStyle(d).paddingLeft)) === "28px", (await st(page)).margin);
+  /* values set elsewhere (the full settings, an older version) that match no choice */
+  await page.evaluate(() => { window.__ll.state.lh = 1.6; window.llType.apply(); }); await page.waitForTimeout(60);
+  R.check("saved lh 1.6: nothing pressed, 'Custom 1.6'", (await choices("#qLhChoices")) === "Tight,Normal,Airy" && (await capOf("#qLhCustom")) === "Custom 1.6", await capOf("#qLhCustom"));
+  await page.evaluate(() => { window.__ll.state.lh = 1.55; window.llType.apply(); }); await page.waitForTimeout(60);
+  R.check("saved lh 1.55: 'Custom 1.55'", (await capOf("#qLhCustom")) === "Custom 1.55", await capOf("#qLhCustom"));
+  await page.evaluate(() => { window.__ll.state.margin = 20; window.llType.apply(); }); await page.waitForTimeout(60);
+  R.check("saved margin 20: nothing pressed, 'Custom'", (await choices("#qMgChoices")) === "Narrow,Medium,Wide" && (await capOf("#qMgCustom")) === "Custom", await capOf("#qMgCustom"));
+  R.check("…and nothing snaps until a tap", (await st(page)).lh === 1.55 && (await st(page)).margin === 20);
+  await tapOn('#qLhChoices [data-lh="1.75"]');
+  R.check("a tap on a choice clears the caption", (await capOf("#qLhCustom")) === "" && (await choices("#qLhChoices")) === "Tight,Normal*,Airy");
+  /* a saved width narrower than this screen's column would hide the margins: a margin tap restores it */
+  await page.evaluate(() => { window.__ll.state.width = 320; window.llType.apply(); }); await page.waitForTimeout(60);
+  await tapOn('#qMgChoices [data-mg="12"]');
+  R.check("width 320 then Medium: width 720, margin 12", (await st(page)).width === 720 && (await st(page)).margin === 12, JSON.stringify({ w: (await st(page)).width, m: (await st(page)).margin }));
+  await page.evaluate(() => { window.__ll.state.width = 600; window.llType.apply(); }); await page.waitForTimeout(60);
+  await tapOn('#qMgChoices [data-mg="0"]');
+  R.check("a width wider than the column is kept (600)", (await st(page)).width === 600 && (await st(page)).margin === 0);
+  await page.evaluate(() => { window.__ll.state.lh = 1.4; window.__ll.state.margin = 40; window.llType.apply(); window.llType.reset(); }); await page.waitForTimeout(80);
+  R.check("Reset presses Normal and Narrow", (await choices("#qLhChoices")) === "Tight,Normal*,Airy" && (await choices("#qMgChoices")) === "Narrow*,Medium,Wide" && (await capOf("#qLhCustom")) === "" && (await capOf("#qMgCustom")) === "");
+  R.check("no page errors (choices)", !(page._errors || []).length, (page._errors || []).join(" | "));
+  await page.close(); await ctx.close();
+
+  /* ---------- phone, in Dutch ---------- */
+  ctx = await b.newContext(Object.assign({ locale: "nl-NL" }, PHONE));
+  await ctx.addInitScript(() => { try { localStorage.setItem("ll_i18n_debug", "1"); } catch(_){} });
+  page = await newPage(ctx, url);
+  const noDutch = new Set();
+  page.on("console", (m) => { const k = /^\[i18n\] no Dutch for: ([\s\S]*)$/.exec(m.text()); if (k) noDutch.add(k[1]); });
+  await openFixture(page, "sample.md");
+  await page.evaluate(() => { window.__ll.state.lh = 1.6; window.__ll.state.margin = 20; window.llType.apply(); });
+  await openText(page);
+  R.check("Dutch: 'Aangepast 1,6' and 'Aangepast'", (await capOf("#qLhCustom")) === "Aangepast 1,6" && (await capOf("#qMgCustom")) === "Aangepast", (await capOf("#qLhCustom")) + " | " + (await capOf("#qMgCustom")));
+  R.check("Dutch: Krap / Normaal / Ruim and Smal / Gemiddeld / Breed", (await choices("#qLhChoices")) === "Krap,Normaal,Ruim" && (await choices("#qMgChoices")) === "Smal,Gemiddeld,Breed", (await choices("#qLhChoices")) + " | " + (await choices("#qMgChoices")));
+  R.check("Dutch: the close button is 'Tekstinstellingen sluiten'", (await attr(page, "#typeClose", "aria-label")) === "Tekstinstellingen sluiten");
+  R.check("Dutch: nothing in the Text sheet lacks Dutch", ![...noDutch].some((k) => /Line spacing|Tight|Normal|Airy|Narrow|Wide|Custom|Close text settings/.test(k)), [...noDutch].join(" | "));
+  await page.close(); await ctx.close();
+
   /* ---------- phone, a PDF: Zoom in the stepper ---------- */
   ctx = await b.newContext(PHONE);
   page = await newPage(ctx, url);
   await openFixture(page, "sample.pdf");
   await openText(page);
   R.check("PDF phone: the value reads 100 %", (await text(page, "#qSizeV")) === "100 %", await text(page, "#qSizeV"));
+  R.check("PDF phone: no line spacing or margin choices", !(await shown(page, "#qLhChoices")) && !(await shown(page, "#qMgChoices")));
   await press(page, "#smaller", 5);
   R.check("PDF phone: zoom 60% disables A−", Math.round((await st(page)).zoom * 100) === 60 && (await attr(page, "#smaller", "aria-disabled")) === "true", Math.round((await st(page)).zoom * 100) + " " + (await attr(page, "#smaller", "aria-disabled")));
   R.check("no page errors (pdf)", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -74,6 +132,7 @@ const press = async (page, sel, n) => { for (let i = 0; i < (n || 1); i++){ awai
   await page.click("#gear"); await page.waitForTimeout(200);
   R.check("desktop: slider shown, '19 px', no close button", (await shown(page, "#qSize")) && (await text(page, "#qSizeV")) === "19 px" && !(await shown(page, "#typeClose")), (await text(page, "#qSizeV")));
   R.check("desktop: the value is not a live region (the slider says its own value)", (await attr(page, "#qSizeV", "aria-live")) !== "polite");
+  R.check("desktop: Spacing and Width sliders, no choices", (await shown(page, "#qLh")) && (await shown(page, "#qW")) && !(await shown(page, "#qLhChoices")) && !(await shown(page, "#qMgChoices")));
   R.check("desktop: focus starts on the size slider", (await focusId(page)) === "qSize", await focusId(page));
   /* a window dragged narrower with the pane open: it becomes the phone sheet, value and all */
   await page.setViewportSize({ width: 500, height: 800 }); await page.waitForTimeout(250);

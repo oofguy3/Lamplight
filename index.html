@@ -64,8 +64,29 @@
       </div>
       <span class="val" id="qSizeV">19 px</span>
     </div>
-    <div class="prow doc-row"><label for="qLh" data-i18n>Spacing</label><input type="range" id="qLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="qLhV">1.75</span></div>
-    <div class="prow doc-row"><label for="qW" data-i18n>Width</label><input type="range" id="qW" min="320" max="960" step="20" value="720"><span class="val" id="qWV">720 px</span></div>
+    <div class="prow doc-row desk-row"><label for="qLh" data-i18n>Spacing</label><input type="range" id="qLh" min="1.3" max="2.1" step="0.05" value="1.75"><span class="val" id="qLhV">1.75</span></div>
+    <div class="prow doc-row desk-row"><label for="qW" data-i18n>Width</label><input type="range" id="qW" min="320" max="960" step="20" value="720"><span class="val" id="qWV">720 px</span></div>
+    <!-- a phone has three choices each for line spacing and margins in place of the Spacing and
+         Width sliders, each with its pictogram (data-icon, from ICONS); a value set elsewhere that
+         matches none presses none, and the note under the row says "Custom" -->
+    <div class="prow doc-row phone-row">
+      <span class="plabel" id="qLhChoicesL" data-i18n>Line spacing</span>
+      <div class="seg choices" id="qLhChoices" role="group" aria-labelledby="qLhChoicesL" aria-describedby="qLhCustom">
+        <button type="button" class="chip" data-lh="1.5" data-icon="lhTight" aria-pressed="false"><span data-i18n>Tight</span></button>
+        <button type="button" class="chip" data-lh="1.75" data-icon="lhNormal" aria-pressed="false"><span data-i18n>Normal</span></button>
+        <button type="button" class="chip" data-lh="2" data-icon="lhAiry" aria-pressed="false"><span data-i18n>Airy</span></button>
+      </div>
+      <span class="phint choice-note" id="qLhCustom" hidden></span>
+    </div>
+    <div class="prow doc-row phone-row">
+      <span class="plabel" id="qMgChoicesL" data-i18n>Margins</span>
+      <div class="seg choices" id="qMgChoices" role="group" aria-labelledby="qMgChoicesL" aria-describedby="qMgCustom">
+        <button type="button" class="chip" data-mg="0" data-icon="mgNarrow" aria-pressed="false"><span data-i18n>Narrow</span></button>
+        <button type="button" class="chip" data-mg="12" data-icon="mgMedium" aria-pressed="false"><span data-i18n>Medium</span></button>
+        <button type="button" class="chip" data-mg="28" data-icon="mgWide" aria-pressed="false"><span data-i18n>Wide</span></button>
+      </div>
+      <span class="phint choice-note" id="qMgCustom" hidden></span>
+    </div>
     <!-- weight and the fine spacings are a step in: the popover stays a short glance, and the
          sheet's Text group has the same controls in full -->
     <details class="pop-more doc-row" id="qMore">
