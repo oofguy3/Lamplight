@@ -406,6 +406,9 @@
        flow to go back to when it is turned off, einkAsked that a slow screen was offered it (see Eink) */
     dim:false, dimLevel:40, dimNight:false, eink:null, einkFlow:null, einkAsked:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
+    /* a Day/Night switch made while switching is on: { theme, period: "day" | "night", until: ms },
+       kept until the next automatic change (see AutoTheme.hold) */
+    dnHold:null,
     zoom:1, soften:true, plainBg:false,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
     mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
@@ -414,7 +417,7 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "plainBg", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "plainBg", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked", "dnHold"];
     var loading = false;
     /* a number inside its range, or the default when the stored value is nonsense */
     function num(v, lo, hi, dflt){
@@ -474,6 +477,9 @@
       if (!resolveTheme(state.autoNight)) state.autoNight = "dusk";
       if (!/^\d\d:\d\d$/.test(state.nightFrom)) state.nightFrom = "21:00";
       if (!/^\d\d:\d\d$/.test(state.nightTo)) state.nightTo = "07:00";
+      var h = state.dnHold;
+      state.dnHold = h && typeof h === "object" && typeof h.theme === "string" && resolveTheme(h.theme) && (h.period === "day" || h.period === "night") && typeof h.until === "number" && isFinite(h.until)
+        ? { theme: h.theme, period: h.period, until: h.until } : null;
       if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
@@ -844,7 +850,34 @@
       if (state.auto === "time") return inWindow();
       return null;
     }
-    function wanted(){ var n = isNight(); return n === null ? null : (n ? state.autoNight : state.autoDay); }
+    /* the theme switching wants now: the pair's theme for this period, unless a Day/Night switch
+       made in this period still holds (until the next automatic change) */
+    function wanted(){
+      var n = isNight(), h = state.dnHold;
+      if (n === null) return null;
+      if (h){
+        if (Date.now() < h.until && h.period === (n ? "night" : "day") && resolveTheme(h.theme)) return h.theme;
+        clearHold();
+      }
+      return n ? state.autoNight : state.autoDay;
+    }
+    /* the next minute the schedule switches, as a time */
+    function nextBoundaryAt(){
+      var d = new Date(), now = d.getHours() * 60 + d.getMinutes(), best = 1440;
+      [minutes(state.nightFrom), minutes(state.nightTo)].forEach(function(m){ var w = (m - now + 1440) % 1440 || 1440; if (w < best) best = w; });
+      return d.getTime() + best * 60000 - d.getSeconds() * 1000 - d.getMilliseconds();
+    }
+    /* a Day/Night switch while switching is on: it holds until the next automatic change (the next
+       boundary on a schedule; with Follow phone the first change the app sees, or 12 hours, since
+       the phone may switch while the app is closed). Switching to the theme the period wants
+       simply ends any hold */
+    function hold(theme){
+      var n = isNight();
+      if (n === null || theme === (n ? state.autoNight : state.autoDay)){ clearHold(); return; }
+      state.dnHold = { theme: theme, period: n ? "night" : "day", until: state.auto === "time" ? nextBoundaryAt() : Date.now() + 12 * 3600000 };
+      Prefs.save();
+    }
+    function clearHold(){ if (state.dnHold){ state.dnHold = null; Prefs.save(); } }
     /* fade: a switch while the page is in view (the hour came round, the phone went dark)
        cross-fades; at start-up it is simply there */
     function apply(fade){
@@ -897,17 +930,19 @@
     }
     function fadeApply(){ apply(true); }
     if (mq){ (mq.addEventListener ? mq.addEventListener("change", fadeApply) : mq.addListener(fadeApply)); }
-    timer = setInterval(function(){ if (state.auto === "time") apply(true); }, 30000);
+    timer = setInterval(function(){ if (state.auto === "time" || state.dnHold) apply(true); }, 30000);
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") apply(); });
     /* Off, Follow phone or On a schedule: turning it on asks again, once, when a theme is then picked by hand */
     function setMode(a){
       if (!/^(off|system|time)$/.test(a)) return;
       if (a !== "off" && a !== state.auto) Store.set("ll_auto_asked", "0");
+      clearHold();
       state.auto = a; Prefs.save(); apply(true);
       if (Pop) Pop.sync();
     }
     function setPair(which, k){
       if (!resolveTheme(k)) return;
+      clearHold();
       if (which === "day") state.autoDay = k; else state.autoNight = k;
       Prefs.save(); apply(true);
       if (Pop) Pop.sync();
@@ -918,9 +953,9 @@
     });
     $("#autoDay").addEventListener("change", function(e){ setPair("day", e.target.value); });
     $("#autoNight").addEventListener("change", function(e){ setPair("night", e.target.value); });
-    $("#nightFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); apply(); });
-    $("#nightTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); apply(); });
-    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair };
+    $("#nightFrom").addEventListener("change", function(e){ clearHold(); state.nightFrom = e.target.value || "21:00"; Prefs.save(); apply(); });
+    $("#nightTo").addEventListener("change", function(e){ clearHold(); state.nightTo = e.target.value || "07:00"; Prefs.save(); apply(); });
+    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair, hold: hold, clearHold: clearHold };
   })();
 
   /* ---------- warmth: a warm film over the screen for the evening ----------
@@ -10918,6 +10953,7 @@
     if (to === cur && dnOf(cur) !== which) to = which === "day" ? "day" : "dusk";
     if (!resolveTheme(to)) to = which === "day" ? "day" : "dusk";
     if (to !== cur) crossFade(function(){ selectTheme(to, { dayNight: true }); });
+    AutoTheme.hold(to);
     if (opts && opts.toast) Marks.toast(_t("{name} theme", { name: themeName(to) || resolveTheme(to).name }));
   }
   /* t and the hold: to the other half. From a theme that is neither, a light one goes to the
@@ -11317,7 +11353,7 @@
     state.theme = theme;
     if (customById(theme)) syncCustomUI();
     applyTheme();
-    if (!dn) AutoTheme.userPicked(theme);
+    if (!dn){ AutoTheme.clearHold(); AutoTheme.userPicked(theme); }
   }
   /* the theme before this one (Previous): the latest used that still exists */
   function prevTheme(){
@@ -11590,7 +11626,7 @@
   /* exposed for tests (not a public API) */
   window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, pickerGroups: pickerGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
     customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast,
-    pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight };
+    pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight, hold: function(){ return state.dnHold; } };
 
   $("#flowChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
