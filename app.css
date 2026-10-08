@@ -2510,10 +2510,8 @@
   body.eink :is(#updateToast #updateReload, #einkToast #einkYes){background:#000 !important; color:#fff;}
   body.eink :is(#updateToast #updateLater, #einkToast #einkNo){border-color:transparent;}
   body.eink #toast .toast-act{color:#000; border-color:#000;}
-  /* a playing sound's tile is white on black already: its icon keeps a plain line, no grey fill;
-     the rule over the reading row is solid black */
+  /* a playing sound's tile is white on black already: its icon keeps a plain line, no grey fill */
   body.eink .snd-tiles .chip[aria-pressed="true"] svg{fill:none;}
-  body.eink #actRow{border-top-color:#000 !important;}
   /* the sleep timer's badge stays a black pill with white words */
   body.eink #tts .tts-sleep{background:#000 !important; color:#fff; border:0 !important;}
   /* greyed-out controls are whole again; a disabled one is dashed (a hidden one stays hidden) */
