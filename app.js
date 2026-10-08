@@ -809,6 +809,12 @@
     /* text on an accent fill (the phone dock's Read aloud): the panel colour, or the ink where a
        light accent (a custom theme's) leaves the panel colour under 4.5:1 */
     r.setProperty("--on-accent", contrast(c.panel, c.accent) >= 4.5 ? c.panel : c.ink);
+    /* the phone lamp's progress ring and the dock's position slider: the lamp colour, drawn toward
+       the ink in 5% steps until it shows at 3:1 on the panel (it only moves for a custom theme,
+       whose lamp is its accent) */
+    var lampC = eink ? "#000000" : (t.lamp || t.accent), mark = lampC;
+    for (var k = 1; k <= 20 && contrast(mark, c.panel) < 3; k++) mark = mix(lampC, c.ink, k * 0.05);
+    r.setProperty("--lamp-mark", mark);
     root.setAttribute("data-tone", tone);
     /* a textured theme's faint paper or cloth behind the text (app.css); none in e-ink mode, in the
        high-contrast themes or with Plain background */
@@ -2095,19 +2101,24 @@
      rule as the title readout (Section), so the two never name different sections for one page
      (a PDF's outline arrives later; the readout is drawn again when it does) */
   var pdfSections = { doc: null, list: null };
+  /* the open PDF's outline: null while it is being read (the readouts are drawn again when it lands) */
+  function pdfOutline(){
+    var doc = state.pdfDoc;
+    if (!doc) return null;
+    if (pdfSections.doc !== doc){
+      pdfSections.doc = doc; pdfSections.list = null;
+      Toc.pdfEntries().then(function(list){ if (state.pdfDoc === doc){ pdfSections.list = list; updatePager(); Progress.tick(); } });
+    }
+    return pdfSections.list;
+  }
   function currentSection(){
     if (state.mode === "doc"){
       var e = Section ? Section.at(pageTopOffset()) : null;
       return e ? e.title : "";
     }
     if (state.mode === "pdf" && state.pdfDoc){
-      var doc = state.pdfDoc;
-      if (pdfSections.doc !== doc){
-        pdfSections.doc = doc; pdfSections.list = null;
-        Toc.pdfEntries().then(function(list){ if (state.pdfDoc === doc){ pdfSections.list = list; updatePager(); } });
-      }
       var hit = null, pg = state.pdfPageNum;
-      (pdfSections.list || []).forEach(function(e){ if (e.page && e.page <= pg) hit = e; });
+      (pdfOutline() || []).forEach(function(e){ if (e.page && e.page <= pg) hit = e; });
       return hit ? hit.title : "";
     }
     return "";
@@ -2142,11 +2153,16 @@
     else { cur = state.pdfPageNum; total = state.pdfDoc ? state.pdfDoc.numPages : 1; }
     setProgressBar(total > 0 ? (cur / total) * 100 : 0);
   }
-  /* the 3px line at the top, and its value for assistive technology */
+  /* the 3px line at the top, and its value for assistive technology; on a phone, the lamp's ring
+     and the words a screen reader hears with it ("47% through the book") */
+  var RING = 2 * Math.PI * 27;
   function setProgressBar(pct){
-    var bar = $("#progress");
+    var bar = $("#progress"), p = Math.max(0, Math.min(100, pct || 0));
     bar.style.width = pct + "%";
     bar.setAttribute("aria-valuenow", String(Math.round(pct)));
+    var arc = $("#dockBtn .ring circle"), said = _t("{p}% through the book", { p: Math.round(p) }), d = $("#dockPct");
+    if (arc) arc.style.strokeDasharray = (RING * p / 100).toFixed(2) + " " + RING.toFixed(2);
+    if (d && d.textContent !== said) d.textContent = said;
   }
 
   /* ---------- file opening ---------- */
@@ -3250,7 +3266,9 @@
       if (state.mode !== "doc") return null;
       if (state.flow === "pages") return pageEndOffset();
       if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
-      var view = $("#doc").getBoundingClientRect(), y0 = Math.min(window.innerHeight, view.bottom) - 6;
+      /* on a phone the strip at the foot (and the player under it) covers the last lines */
+      var foot = document.body.classList.contains("phonebar") ? $("#readFoot").offsetHeight + (parseFloat(document.documentElement.style.getPropertyValue("--dockH")) || 0) : 0;
+      var view = $("#doc").getBoundingClientRect(), y0 = Math.min(window.innerHeight - foot, view.bottom) - 6;
       var xs = [view.left + view.width - 10, view.left + view.width / 2, view.left + 10];
       for (var dy = 0; dy < 240 && y0 - dy > headerHeight(); dy += 16){
         for (var k = 0; k < xs.length; k++){
@@ -7078,6 +7096,8 @@
       return lo;
     }
     function docWords(){ return indexReady() ? index.words : 0; }
+    /* the words between two character offsets of the text: the index once it is built, null until then */
+    function wordsBetween(a, b){ return ensureIndex() ? Math.max(0, idx(b) - idx(a)) : null; }
 
     /* ---- PDF words per page, asked for once a page has been in the rested window ---- */
     var pageWords = {}, pageAsked = {}, pdfWordsDoc = null;
@@ -7116,7 +7136,11 @@
       if (n.nodeType !== 3 || !n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
       return Anchor.offsetOf(n, r.startOffset);
     }
-    function dockHeight(){ return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dockH")) || 0; }
+    /* what covers the foot of the text: the dock, and on a phone the strip with the lamp */
+    function dockHeight(){
+      var h = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dockH")) || 0;
+      return document.body.classList.contains("phonebar") ? h + $("#readFoot").offsetHeight : h;
+    }
     /* the last character on screen: topCharOffset's probing, upward from the foot of the view */
     function bottomCharOffset(){
       if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
@@ -7237,7 +7261,7 @@
         (b.contains("zen") ? 1 : 0) + (b.contains("immersive") ? 1 : 0) + (has("#tts", "on") ? 1 : 0) + (has("#autoBar", "on") ? 1 : 0) + (has("#sheet", "open") ? 1 : 0);
     }
     function layoutKeyNow(){ return window.innerHeight + "|" + flowKeyNow(); }
-    function overlayOpen(){ return has("#side", "open") || has("#dictCard", "open") || has("#moreMenu", "open"); }
+    function overlayOpen(){ return has("#side", "open") || has("#dictCard", "open") || has("#moreMenu", "open") || document.body.classList.contains("dock-open"); }
     function armSettle(){ clearTimeout(settleTimer); settleTimer = setTimeout(settle, Params.SETTLE_MS); }
     function poke(){
       if (!docOpen()) return;
@@ -7287,6 +7311,7 @@
       if (sheet && sheet.classList.contains("open") && sheet.offsetHeight > 0) list.push("sheet");
       if (has("#moreMenu", "open")) list.push("menu");
       if (has("#pop", "open")) list.push("pop");
+      if (document.body.classList.contains("dock-open")) list.push("dock");
       if (document.visibilityState !== "visible") list.push("hidden");
       if (window.llTranslate && window.llTranslate.isOn && window.llTranslate.isOn()) list.push("translated");
       return list;
@@ -8139,7 +8164,7 @@
     window.llPace = { state: stateOut, runs: runsOut, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence,
                       summary: summary, reset: reset, _debug: debug };
     return { poke: poke, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence, summary: summary,
-             state: stateOut, runs: runsOut, docWords: docWords, reset: reset, flush: save, noteBlock: noteBlock };
+             state: stateOut, runs: runsOut, docWords: docWords, wordsBetween: wordsBetween, reset: reset, flush: save, noteBlock: noteBlock };
   })();
 
   /* ============================================================
@@ -8171,6 +8196,43 @@
       var h = Math.floor(min / 60), m = Math.round(min % 60);
       return m ? _t("{h} h {m} min left", { h: h, m: m }) : _t("{h} h left", { h: h });
     }
+    /* the phone's note and the dock: the time left in the chapter (to the next top-level contents
+       entry, at the measured speed), or the whole book's for one without chapters; "" while there is
+       nothing to say, and the first letter upper-cased ("Under a minute left", "Nog 4 min") */
+    function fmtCh(min){
+      if (!isFinite(min) || min < 0) return "";
+      if (min < 1) return _t("Under a minute left in chapter");
+      var t = Math.round(min), h = Math.floor(t / 60), m = t % 60;
+      if (!h) return _t("{n} min left in chapter", { n: t });
+      return m ? _t("{h} h {m} min left in chapter", { h: h, m: m }) : _t("{h} h left in chapter", { h: h });
+    }
+    function cap(s){ return s ? s.charAt(0).toLocaleUpperCase(I18N.locale()) + s.slice(1) : ""; }
+    function chapterLeft(){
+      if (state.mode === "doc"){
+        var n = words();
+        if (n <= 80) return "";
+        var top = state.flow === "pages" ? pageTopOffset() : Library.topCharOffset(), end = Section.chapterEnd(top);
+        if (end === null) return cap(fmt((1 - Math.max(0, Math.min(1, readFrac()))) * n / currentWpm()));
+        var w = Pace.wordsBetween(top, end);
+        if (w === null) w = (end - top) / Math.max(1, Anchor.textLength()) * n;      /* the index is still being built */
+        return fmtCh(w / currentWpm());
+      }
+      if (state.mode === "pdf" && state.pdfDoc){
+        var pages = state.pdfDoc.numPages, page = Library.currentPdfPage(), list = pdfOutline(), next = null;
+        if (pages <= 3) return "";
+        if (list && list.length){
+          var lvl = Math.min.apply(null, list.map(function(e){ return e.level || 1; })), inOne = false;
+          list.forEach(function(e){
+            if ((e.level || 1) !== lvl || !e.page) return;
+            if (e.page <= page) inOne = true; else if (next === null) next = e.page;
+          });
+          if (next === null && inOne) next = pages + 1;     /* the last chapter runs to the end */
+        }
+        return next === null ? cap(fmt((pages - page) / currentPpm())) : fmtCh((next - page) / currentPpm());
+      }
+      return "";
+    }
+    function put(el, s){ if (el && el.textContent !== s) el.textContent = s; }
     function show(text){
       /* in Pages flow the page-turn bar carries the readout; the pill is for Scroll flow, and
          for a document (the start screen's scroll has nothing to report) */
@@ -8211,6 +8273,12 @@
         text = pages > 3 ? _t("p. {page} / {pages} \u00B7 {left}", { page: page, pages: pages, left: fmt(leftP) }) : _t("p. {page} / {pages}", { page: page, pages: pages });
       }
       show(text);
+      /* a phone: the note at the foot, and the dock's position and caption */
+      if (document.body.classList.contains("phonebar")){
+        var ch = chapterLeft();
+        put($("#leftNote"), ch); put($("#dockLeft"), ch);
+        PhoneBar.syncPos();
+      }
     }
     /* the time left from here, worded for the page-turn bar ("18 min left"), or "" when the
        document is too short to say */
@@ -8225,7 +8293,7 @@
       }
       return "";
     }
-    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, sample: function(){ return Pace.summary(); }, docWords: words };
+    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, chapterLeft: chapterLeft, sample: function(){ return Pace.summary(); }, docWords: words };
   })();
 
   /* ============================================================
@@ -11171,8 +11239,10 @@
       document.documentElement.classList.add("lock-dock");
       btn.setAttribute("aria-expanded", "true");
       hold(true);
+      syncPos();
       dock.scrollTop = 0;
       dock.focus({ preventScroll: true });
+      Pace.noteBlock("dock");          /* time with the dock open is not reading time */
     }
     /* opts.focus false: a control in the dock is about to take focus somewhere else */
     function closeDock(opts){
@@ -11181,6 +11251,7 @@
       document.documentElement.classList.remove("lock-dock");
       btn.setAttribute("aria-expanded", "false");
       hold(false);
+      Pace.noteBlock("dock");
       if (!opts || opts.focus !== false) btn.focus({ preventScroll: true });
     }
     function toggleDock(){ if (isDockOpen()) closeDock(); else openDock(); }
@@ -11205,6 +11276,41 @@
       e.preventDefault(); e.stopImmediatePropagation(); closeDock();
     }, true);
     $("#dockHome").addEventListener("click", function(){ Library.home(); });
+
+    /* ---- the position slider: the pages in Pages flow and for a PDF, a percentage of the text in
+       Scroll flow. The caption follows the thumb, the jump happens on release (or an arrow key,
+       a page or 1% a step), and the dock stays open ---- */
+    var pos = $("#dockPos"), posCap = $("#dockPage"), sliding = false;
+    function posModel(){
+      if (state.mode === "pdf" && state.pdfDoc) return { min: 1, max: state.pdfDoc.numPages, v: Library.currentPdfPage(), pages: true };
+      if (state.mode === "doc" && state.flow === "pages") return { min: 1, max: Math.max(1, state.totalPages), v: state.page + 1, pages: true };
+      return { min: 0, max: 100, v: Math.round(Math.max(0, Math.min(1, readFrac())) * 100), pages: false };
+    }
+    function posSay(m, v){
+      var c = m.pages ? _t("Page {n} of {m}", { n: v, m: m.max }) : v + "%";
+      if (posCap.textContent !== c) posCap.textContent = c;
+      pos.setAttribute("aria-valuetext", c);
+    }
+    function syncPos(){
+      if (sliding || !document.body.classList.contains("phonebar")) return;
+      var m = posModel();
+      if (pos.min !== String(m.min)) pos.min = m.min;
+      if (pos.max !== String(m.max)) pos.max = m.max;
+      if (pos.value !== String(m.v)) pos.value = m.v;
+      posSay(m, m.v);
+    }
+    pos.addEventListener("input", function(){ sliding = true; posSay(posModel(), +pos.value); });
+    pos.addEventListener("change", function(){
+      sliding = false;
+      var v = +pos.value;
+      if (state.mode === "pdf" && state.pdfDoc){
+        if (state.flow === "pages"){ state.pdfPageNum = v; renderPdfSingle(); Progress.tick(); }
+        else Toc.goPdfPage(v);
+      } else if (state.mode === "doc" && state.flow === "pages") gotoPage(v - 1);
+      else { var h = document.documentElement; window.scrollTo(0, v / 100 * (h.scrollHeight - h.clientHeight)); }
+      if (Journal) Journal.jumped();
+      syncPos();
+    });
 
     /* the switcher: the open books (the tabs), each with its close; the library and a new file below */
     function esc(x){ return escapeHtml(String(x)); }
@@ -11247,7 +11353,7 @@
     /* a long press on the lamp switches between the day and the night theme without the popover */
     longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight({ toast: true }); });
     place();
-    return { place: place, on: on, openSwitcher: openSwitcher, openDock: openDock, closeDock: closeDock, toggleDock: toggleDock, isDockOpen: isDockOpen, returnTarget: returnTarget };
+    return { place: place, on: on, openSwitcher: openSwitcher, openDock: openDock, closeDock: closeDock, toggleDock: toggleDock, isDockOpen: isDockOpen, returnTarget: returnTarget, syncPos: syncPos };
   })();
   /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
      Scroll flow, opening it should push the text down so what was at the top reappears just
@@ -11488,7 +11594,7 @@
       if (offs && offsLen === len) return offs;
       offs = Toc.entries().map(function(e, i){
         var w = document.createTreeWalker(e.el, NodeFilter.SHOW_TEXT), n = w.nextNode();
-        return { title: e.title, i: i, off: n ? Anchor.offsetOf(n, 0) : null };
+        return { title: e.title, i: i, off: n ? Anchor.offsetOf(n, 0) : null, level: e.level || 1 };
       }).filter(function(e){ return e.off !== null; });
       offsLen = len;
       return offs;
@@ -11522,11 +11628,23 @@
       clearTimeout(timer);
       timer = setTimeout(function(){ last = Date.now(); pick(); }, Math.max(60, 500 - (Date.now() - last)));
     }
+    /* where the chapter around character `top` ends (the phone's "min left in chapter"): at the
+       next top-level contents entry, or the end of the text. A first entry named like the book (its
+       title heading) is no chapter; with no chapters left, null: the whole book is the span */
+    function chapterEnd(top){
+      if (top === null || top === undefined) return null;
+      var book = fname.textContent.trim();
+      var es = entries().filter(function(e){ return !(e.i === 0 && e.title && (e.title === book || book.indexOf(e.title + " ") === 0)); });
+      if (!es.length) return null;
+      var lvl = Math.min.apply(null, es.map(function(e){ return e.level; }));
+      for (var i = 0; i < es.length; i++) if (es[i].level === lvl && es[i].off > top + 1) return es[i].off;
+      return Anchor.textLength();
+    }
     function reset(){ offs = null; set(""); }
     window.addEventListener("scroll", update, { passive: true });
     if (window.MutationObserver) new MutationObserver(update).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
     document.addEventListener("ll:fileopened", function(){ reset(); Pop.close(true); });
-    return { update: update, reset: reset, at: at };
+    return { update: update, reset: reset, at: at, chapterEnd: chapterEnd };
   })();
 
   /* ---- first-run tips on the start screen, and one toast on the first document ever opened ---- */

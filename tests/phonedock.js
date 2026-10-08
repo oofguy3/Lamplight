@@ -209,6 +209,96 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- the ring, the note, the position slider ---------- */
+  const NOTE = /^(Under a minute|\d+ min|\d+ h( \d+ min)?) left in chapter$/;
+  const ringPct = (page) => page.evaluate(() => { const c = document.querySelector("#dockBtn .ring circle"), da = (c.style.strokeDasharray || getComputedStyle(c).strokeDasharray).split(/[ ,]+/).map(parseFloat);
+    return { ring: da[0] / (2 * Math.PI * 27) * 100, bar: +document.getElementById("progress").getAttribute("aria-valuenow"), pct: document.getElementById("dockPct").textContent, desc: document.getElementById("dockBtn").getAttribute("aria-describedby") }; });
+  await guard("ring and note", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.epub");
+    /* a fresh profile (no reading history): the note is an estimate from the prior, or nothing */
+    const fresh = await page.$eval("#leftNote", (e) => e.textContent);
+    R.check("fresh profile: the note is empty or an estimate, never 0, NaN or undefined", (fresh === "" || NOTE.test(fresh)) && !/\b0 min|NaN|undefined/.test(fresh), fresh);
+    await page.evaluate(() => { const h = document.documentElement; window.scrollTo(0, (h.scrollHeight - h.clientHeight) / 2); }); await page.waitForTimeout(600);
+    const r = await ringPct(page);
+    R.check("ring follows progress (scroll to ~50%)", Math.abs(r.ring - r.bar) < 1 && r.bar > 30 && r.bar < 70, JSON.stringify(r));
+    R.check("the lamp says how far through, to a screen reader", /^\d+% through the book$/.test(r.pct) && r.desc === "dockPct", JSON.stringify(r));
+    const note = await page.$eval("#leftNote", (e) => e.textContent);
+    R.check("the note: the time left in the chapter", NOTE.test(note), note);
+    await openDock(page);
+    const cap = await page.evaluate(() => ({ page: document.getElementById("dockPage").textContent, left: document.getElementById("dockLeft").textContent, note: document.getElementById("leftNote").textContent,
+      pos: document.getElementById("dockPos"), shown: !document.querySelector(".pd-pos").hidden }));
+    R.check("the dock's caption: the place on the left, the chapter's time on the right", cap.shown && /^\d+%$/.test(cap.page) && cap.left === cap.note, JSON.stringify(cap));
+    const mark = await page.evaluate(() => { const r = document.documentElement.style; return window.llThemes.contrast(r.getPropertyValue("--lamp-mark").trim(), r.getPropertyValue("--panel").trim()); });
+    R.check("the ring's colour shows at 3:1 or more on the panel", mark >= 3, mark.toFixed(2));
+    R.check("no page errors (ring)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+  await guard("note without chapters", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.txt");
+    await page.evaluate(() => window.scrollBy(0, 200)); await page.waitForTimeout(600);
+    const note = await page.$eval("#leftNote", (e) => e.textContent);
+    R.check("sample.txt (no chapters): the whole book's time, capitalised", /^(Under a minute left|\d+ min left|\d+ h( \d+ min)? left)$/.test(note), note);
+    await ctx.close();
+  });
+  await guard("light accent ring", async () => {
+    const { ctx, page } = await phonePage(b, url, { theme: "c:lite", customs: [{ id: "lite", name: "Lite", bg: "#fbf7ee", accent: "#f2d06b" }] });
+    await openFixture(page, "sample.epub");
+    const mark = await page.evaluate(() => { const r = document.documentElement.style; return window.llThemes.contrast(r.getPropertyValue("--lamp-mark").trim(), r.getPropertyValue("--panel").trim()); });
+    R.check("custom theme with a light accent: the ring still shows at 3:1 on the panel", mark >= 3, mark.toFixed(2));
+    await ctx.close();
+  });
+  await guard("slider", async () => {
+    /* Pages flow: one step a page */
+    let { ctx, page } = await phonePage(b, url, { flow: "pages" });
+    await openFixture(page, "sample.epub");
+    await page.waitForTimeout(300);
+    await openDock(page);
+    const total = await page.evaluate(() => window.__ll.state.totalPages);
+    const pos = await page.$eval("#dockPos", (r) => ({ min: r.min, max: r.max, v: r.value }));
+    R.check("Pages: the slider runs over the pages", pos.min === "1" && +pos.max === total && pos.v === "1", JSON.stringify(Object.assign({ total }, pos)));
+    await page.$eval("#dockPos", (r) => { r.value = 3; r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true })); });
+    await page.waitForTimeout(500);
+    const after = await page.evaluate(() => ({ pg: document.getElementById("pgInfo").textContent, page: window.__ll.state.page, cap: document.getElementById("dockPage").textContent, vt: document.getElementById("dockPos").getAttribute("aria-valuetext"), open: document.body.classList.contains("dock-open") }));
+    R.check("Pages: set 3 → page 3", /^3 \//.test(after.pg) && after.page === 2, JSON.stringify(after));
+    R.check("aria-valuetext equals the caption", after.vt === after.cap && after.cap === "Page 3 of " + total, JSON.stringify(after));
+    R.check("the dock stays open after a slider jump", after.open);
+    await page.focus("#dockPos"); await page.keyboard.press("ArrowRight"); await page.waitForTimeout(400);
+    R.check("an arrow key moves one page", (await page.evaluate(() => window.__ll.state.page)) === 3);
+    await ctx.close();
+    /* Scroll flow: one step a percent */
+    ({ ctx, page } = await phonePage(b, url));
+    await openFixture(page, "sample.epub");
+    await openDock(page);
+    const sp = await page.$eval("#dockPos", (r) => ({ min: r.min, max: r.max }));
+    await page.$eval("#dockPos", (r) => { r.value = 50; r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true })); });
+    await page.waitForTimeout(500);
+    const frac = await page.evaluate(() => { const h = document.documentElement; return h.scrollTop / (h.scrollHeight - h.clientHeight); });
+    R.check("Scroll: the slider runs 0–100; 50 → about half way", sp.min === "0" && sp.max === "100" && Math.abs(frac - 0.5) < 0.05, JSON.stringify(Object.assign({ frac }, sp)));
+    R.check("…and its caption is the percentage", (await page.$eval("#dockPage", (e) => e.textContent)) === "50%");
+    await ctx.close();
+    /* a PDF: one step a page, in both flows */
+    ({ ctx, page } = await phonePage(b, url));
+    await openFixture(page, "sample.pdf");
+    await openDock(page);
+    await page.$eval("#dockPos", (r) => { r.value = 2; r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true })); });
+    await page.waitForTimeout(900);
+    R.check("PDF: a slider jump to page 2", (await page.evaluate(() => window.__ll.Library.currentPdfPage())) === 2 && /^Page 2 of \d+$/.test(await page.$eval("#dockPage", (e) => e.textContent)));
+    R.check("no page errors (slider)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+  await guard("Dutch note", async () => {
+    const ctx = await b.newContext(Object.assign({ locale: "nl-NL" }, PHONE));
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch(_){} });
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.epub");
+    await page.evaluate(() => window.scrollBy(0, 300)); await page.waitForTimeout(600);
+    const nl = await page.evaluate(() => ({ note: document.getElementById("leftNote").textContent, pct: document.getElementById("dockPct").textContent }));
+    R.check("Dutch: 'Nog 4 min in dit hoofdstuk' form", /^Nog (geen minuut|\d+ min|\d+ u( \d+ min)?) in dit hoofdstuk$/.test(nl.note) && /^\d+% van het boek gelezen$/.test(nl.pct), JSON.stringify(nl));
+    await ctx.close();
+  });
+
   /* ---------- a mouse at 390px and a wide phone: no phone chrome ---------- */
   await guard("not a phone", async () => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });

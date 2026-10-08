@@ -1457,6 +1457,18 @@
   body.phonebar.dock-open #phoneDock{transform:none; visibility:visible; transition:transform var(--t-fade) var(--ease-out), visibility 0s, background var(--t-theme) ease;}
   #phoneDock:focus{outline:none;}
   .pd-grab{flex:none; width:36px; height:4px; margin:0 auto 8px; border-radius:var(--r-pill); background:color-mix(in oklab, var(--hair), var(--ink) 40%);}
+  /* the place in the book: a slider with a 4px track, its filled part in the lamp's mark, and a
+     caption under it (the page or the percentage, and the time left in the chapter) */
+  .pd-pos{flex:none; margin-top:var(--sp-2); padding:0 12px;}
+  .pd-pos[hidden]{display:none;}
+  #dockPos{display:block; width:100%; min-width:0; height:44px; --track:var(--line);}
+  #dockPos::-webkit-slider-runnable-track{height:4px; border-radius:2px; background:linear-gradient(90deg, var(--lamp-mark, var(--lamp)) var(--v, 0%), var(--track) var(--v, 0%));}
+  #dockPos::-moz-range-track{height:4px; border-radius:2px;}
+  #dockPos::-moz-range-progress{height:4px; border-radius:2px; background:var(--lamp-mark, var(--lamp));}
+  #dockPos::-webkit-slider-thumb{width:20px; height:20px; margin-top:-8px; border:0; background:var(--ink); box-shadow:none;}
+  #dockPos::-moz-range-thumb{width:20px; height:20px; border:0; background:var(--ink); box-shadow:none;}
+  .pd-cap{display:flex; justify-content:space-between; gap:var(--sp-3); margin:0; font-size:var(--fs-small); line-height:1.35; color:var(--muted); font-variant-numeric:tabular-nums;}
+  #dockLeft{text-align:right;}
   /* Back, the title with its section under it, Search */
   .pd-head{flex:none; display:flex; align-items:center; gap:var(--sp-1); min-height:48px;}
   .pd-head > .ctl{width:48px; height:48px; min-width:48px; padding:0; border:0; border-radius:var(--r-md); background:transparent; color:var(--ink); flex:none;}
