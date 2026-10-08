@@ -113,6 +113,53 @@ const press = async (page, sel, n) => { for (let i = 0; i < (n || 1); i++){ awai
   R.check("Dutch: nothing in the Text sheet lacks Dutch", ![...noDutch].some((k) => /Line spacing|Tight|Normal|Airy|Narrow|Wide|Custom|Close text settings/.test(k)), [...noDutch].join(" | "));
   await page.close(); await ctx.close();
 
+  /* ---------- phone: four fonts at a tap, and All fonts ---------- */
+  ctx = await b.newContext(PHONE);
+  page = await newPage(ctx, url);
+  await openFixture(page, "sample.md");
+  await openText(page);
+  const rowIds = () => page.$$eval("#fontRow [data-font]", (bs) => bs.map((x) => x.dataset.font + (x.getAttribute("aria-pressed") === "true" ? "*" : "")).join());
+  R.check("font row: serif, literata, hyper, sans, Georgia pressed", (await rowIds()) === "serif*,literata,hyper,sans", await rowIds());
+  const tiles = await page.$$eval("#fontRow [data-font]", (bs) => bs.map((x) => ({ name: x.textContent.replace(/^Aa/, "").trim(), aa: getComputedStyle(x.querySelector(".aa")).fontFamily, fs: getComputedStyle(x.querySelector(".fn")).fontSize })));
+  R.check("each tile: 'Aa' in its own face, the name under it at 13px", tiles.map((t) => t.name).join("|") === "Georgia|Literata|Atkinson Hyperlegible|System sans" &&
+    /^Georgia/.test(tiles[0].aa) && /^"?Literata/.test(tiles[1].aa) && /^"?Atkinson Hyperlegible/.test(tiles[2].aa) && tiles.every((t) => t.fs === "13px"), JSON.stringify(tiles));
+  R.check("the row is labelled Font, and the select is not shown", (await page.$eval("#fontRow", (g) => document.getElementById(g.getAttribute("aria-labelledby")).textContent.trim())) === "Font" && !(await shown(page, "#fontQuick")));
+  R.check("opening the sheet fetched Literata's preview face", await page.waitForFunction(() => window.llFonts.loaded("literata"), null, { timeout: 8000 }).then(() => true, () => false));
+  await page.tap('#fontRow [data-font="literata"]'); await page.waitForTimeout(100);
+  R.check("tap Literata sets the font", (await st(page)).font === "literata" && (await rowIds()) === "serif,literata*,hyper,sans", await rowIds());
+  await page.evaluate(() => { window.__ll.state.font = "lora"; window.llType.apply(); }); await page.waitForTimeout(100);
+  R.check("with Lora in use: the fourth is Lora, pressed", (await rowIds()) === "serif,literata,hyper,lora*", await rowIds());
+  await page.tap('#fontRow [data-font="serif"]'); await page.waitForTimeout(100);
+  R.check("back to Georgia: System sans returns, and focus stays on Georgia", (await rowIds()) === "serif*,literata,hyper,sans" && (await page.evaluate(() => document.activeElement && document.activeElement.dataset.font)) === "serif", (await rowIds()) + " " + (await page.evaluate(() => document.activeElement && (document.activeElement.dataset.font || document.activeElement.id))));
+  /* All fonts: the panel, a pick there, and back to the sheet */
+  await page.tap("#allFonts"); await page.waitForTimeout(400);
+  const inPanel = await page.evaluate(() => ({ side: document.getElementById("side").classList.contains("open"), title: document.getElementById("sideTitle").textContent, pop: window.llPop.is("type") }));
+  R.check("All fonts opens the Fonts panel in place of the sheet", inPanel.side && inPanel.title === "Fonts" && !inPanel.pop, JSON.stringify(inPanel));
+  await page.evaluate(() => document.querySelector('#sideBody .font-item[data-font="merriweather"]').click()); await page.waitForTimeout(100);
+  await page.tap("#sideClose"); await page.waitForTimeout(400);
+  R.check("closing the panel returns to the Text sheet, focus on All fonts", (await isOpen(page)) && (await focusId(page)) === "allFonts" && !(await page.$eval("#side", (s) => s.classList.contains("open"))), (await isOpen(page)) + " " + (await focusId(page)));
+  R.check("…with the pick in the fourth place, pressed", (await rowIds()) === "serif,literata,hyper,merriweather*", await rowIds());
+  await page.tap("#allFonts"); await page.waitForTimeout(400);
+  await page.keyboard.press("Escape"); await page.waitForTimeout(400);
+  R.check("Escape on the panel also comes back to the sheet", (await isOpen(page)) && (await focusId(page)) === "allFonts", (await isOpen(page)) + " " + (await focusId(page)));
+  /* a one-word name breaks where its second part starts */
+  await page.evaluate(() => { window.__ll.state.font = "dyslexic"; window.llType.apply(); }); await page.waitForTimeout(100);
+  const dys = await page.$eval('#fontRow [data-font="dyslexic"] .fn', (n) => [...n.querySelectorAll(".w")].map((w) => w.textContent + "@" + Math.round(w.getBoundingClientRect().top)));
+  R.check("OpenDyslexic reads Open / Dyslexic on two lines", dys.length === 2 && dys[0].startsWith("Open@") && dys[1].startsWith("Dyslexic@") && dys[0].split("@")[1] !== dys[1].split("@")[1], dys.join(" "));
+  R.check("no page errors (fonts)", !(page._errors || []).length, (page._errors || []).join(" | "));
+  await page.close(); await ctx.close();
+
+  /* ---------- 320px: the row stays inside the sheet, names inside their tiles ---------- */
+  ctx = await b.newContext(Object.assign({}, PHONE, { viewport: { width: 320, height: 640 } }));
+  page = await newPage(ctx, url);
+  await openFixture(page, "sample.md");
+  await openText(page);
+  const row320 = await page.evaluate(() => { const p = document.getElementById("pop").getBoundingClientRect(), r = document.getElementById("fontRow").getBoundingClientRect();
+    const spill = [...document.querySelectorAll("#fontRow [data-font]")].filter((b) => { const br = b.getBoundingClientRect(); return [...b.querySelectorAll(".w")].some((w) => { const wr = w.getBoundingClientRect(); return wr.left < br.left - 0.5 || wr.right > br.right + 0.5; }); }).map((b) => b.dataset.font);
+    return { right: Math.round(r.right), edge: Math.round(p.right), spill }; });
+  R.check("320px: the row stays inside the sheet, every name inside its tile", row320.right <= row320.edge && row320.spill.length === 0, JSON.stringify(row320));
+  await page.close(); await ctx.close();
+
   /* ---------- phone, a PDF: Zoom in the stepper ---------- */
   ctx = await b.newContext(PHONE);
   page = await newPage(ctx, url);
@@ -133,6 +180,7 @@ const press = async (page, sel, n) => { for (let i = 0; i < (n || 1); i++){ awai
   R.check("desktop: slider shown, '19 px', no close button", (await shown(page, "#qSize")) && (await text(page, "#qSizeV")) === "19 px" && !(await shown(page, "#typeClose")), (await text(page, "#qSizeV")));
   R.check("desktop: the value is not a live region (the slider says its own value)", (await attr(page, "#qSizeV", "aria-live")) !== "polite");
   R.check("desktop: Spacing and Width sliders, no choices", (await shown(page, "#qLh")) && (await shown(page, "#qW")) && !(await shown(page, "#qLhChoices")) && !(await shown(page, "#qMgChoices")));
+  R.check("desktop: the font select, no font row, no previews fetched", (await shown(page, "#fontQuick")) && !(await shown(page, "#fontRow")) && !(await shown(page, "#allFonts")) && !(await page.evaluate(() => window.llFonts.loaded("literata"))));
   R.check("desktop: focus starts on the size slider", (await focusId(page)) === "qSize", await focusId(page));
   /* a window dragged narrower with the pane open: it becomes the phone sheet, value and all */
   await page.setViewportSize({ width: 500, height: 800 }); await page.waitForTimeout(250);

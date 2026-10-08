@@ -1400,7 +1400,12 @@
       }
     }
     function closed(){ if (watcher) watcher.disconnect(); watcher = null; listEl = null; }
-    function openPanel(){ Side.open("fonts", _t("Fonts"), render, closed); }
+    /* opts.back runs once the panel has closed (All fonts in the phone's Text sheet goes back
+       there); not when another panel takes its place, while the drawer is still open */
+    function openPanel(opts){
+      var back = opts && opts.back;
+      Side.open("fonts", _t("Fonts"), render, back ? function(){ closed(); if (!$("#side").classList.contains("open")) back(); } : closed);
+    }
 
     /* for tests and other modules */
     window.llFonts = { load: load, loaded: loaded, use: use, openPanel: openPanel, catalogue: FONTS, groups: FONT_GROUPS };
@@ -1526,6 +1531,34 @@
       return hit;
     }
     function note(el, s){ el.hidden = !s; if (el.textContent !== s) el.textContent = s; }
+    /* the phone's font row: Georgia, Literata, Atkinson Hyperlegible and System sans, each "Aa" in
+       its own face over its name. A font in use that is none of them takes the fourth place, so
+       the one on screen is always there and pressed; the four buttons stay the same elements (the
+       fourth changes in place), so a tap never loses focus */
+    var ROW_FONTS = ["serif", "literata", "hyper", "sans"], fontRow = $("#fontRow");
+    fontRow.innerHTML = ROW_FONTS.map(function(){ return '<button type="button" class="chip" aria-pressed="false"><span class="aa" aria-hidden="true">Aa</span><span class="fn"></span></button>'; }).join("");
+    /* words wrap; a word wider than its tile ends in an ellipsis; a one-word name may break where
+       a capital starts its second part (Open / Dyslexic) */
+    function tileName(name){
+      var words = name.split(" ");
+      if (words.length === 1) words = [name.replace(/([a-z])([A-Z])/g, "$1\u0001$2")];
+      return words.map(function(w){ return w.split("\u0001").map(function(p){ return '<span class="w">' + escapeHtml(p) + '</span>'; }).join("<wbr>"); }).join(" ");
+    }
+    function syncFontRow(){
+      var ids = ROW_FONTS.slice();
+      if (ids.indexOf(state.font) < 0 && FONTS[state.font]) ids[3] = state.font;
+      Array.prototype.forEach.call(fontRow.children, function(b, i){
+        var id = ids[i], f = FONTS[id];
+        if (b.dataset.font !== id){
+          b.dataset.font = id;
+          b.querySelector(".aa").style.fontFamily = f.stack;
+          b.querySelector(".fn").innerHTML = tileName(fontName(f));
+        }
+        b.setAttribute("aria-pressed", id === state.font ? "true" : "false");
+      });
+      /* the previews: a bundled family's regular face, asked for now that the row is on screen */
+      ids.forEach(function(id){ if (FONTS[id].files) Fonts.load(id, true).catch(function(){}); });
+    }
     function syncType(){
       var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100), ph = phone(), v = $("#qSizeV");
       panes.type.classList.toggle("pdf", pdf);
@@ -1551,6 +1584,7 @@
       $("#qLs").value = state.ls || 0; $("#qLsV").textContent = emVal(state.ls || 0);
       $("#qWs").value = state.ws || 0; $("#qWsV").textContent = emVal(state.ws || 0);
       fontQuick.value = state.font;
+      if (ph) syncFontRow();
       $("#qSoften").checked = !!state.soften;
       Array.prototype.forEach.call(panes.type.querySelectorAll("#qFlow .chip"), function(ch){
         var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
@@ -1578,6 +1612,13 @@
     $("#qLs").addEventListener("input", function(e){ state.ls = +e.target.value; applyType(); });
     $("#qWs").addEventListener("input", function(e){ state.ws = +e.target.value; applyType(); });
     fontQuick.addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
+    fontRow.addEventListener("click", function(e){ var b = e.target.closest("[data-font]"); if (b && b.dataset.font !== state.font){ state.font = b.dataset.font; applyType(); } });
+    /* All fonts: the browse panel in place of the sheet, and back to the sheet (focus on All fonts)
+       once the panel closes */
+    $("#allFonts").addEventListener("click", function(){
+      var from = anchor;
+      Fonts.openPanel({ back: function(){ if (!from) return; open("type", from, syncType); $("#allFonts").focus({ preventScroll: true }); } });
+    });
     $("#qFocus").addEventListener("change", function(e){ state.focus = e.target.checked; applyType(); });
     $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
     $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
@@ -11685,7 +11726,7 @@
     if (ch) setFlow(ch.dataset.flow);
   });
   $("#fontSel").addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
-  $("#fontBrowse").addEventListener("click", Fonts.openPanel);
+  $("#fontBrowse").addEventListener("click", function(){ Fonts.openPanel(); });
   $("#rSize").addEventListener("input", function(e){ state.size = +e.target.value; applyType(); });
   $("#rLh").addEventListener("input",  function(e){ state.lh   = +e.target.value; applyType(); });
   $("#rW").addEventListener("input",   function(e){ state.width= +e.target.value; applyType(); });

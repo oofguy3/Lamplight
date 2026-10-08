@@ -303,6 +303,19 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     R.check("LICENSES.md names every bundled family", unlicensed.length === 0, unlicensed.join(", "));
     await page.close();
 
+    /* 8b. a phone: start-up fetches no reading font either, and the Text sheet's font row asks for
+       its previews only once the sheet opens */
+    {
+      const c = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
+      const p = await open(c);
+      await openFixture(p, "sample.md");
+      await p.waitForTimeout(700);
+      R.check("phone start-up loads no reading-font file", readingWoff(p).length === 0, woff(p).join(", "));
+      R.check("…and adds no preview face before the Text sheet opens", !(await p.evaluate(() => window.llFonts.loaded("literata"))));
+      R.check("phone start-up: no page errors", !(p._errors || []).length, (p._errors || []).join(" | "));
+      await c.close();
+    }
+
     /* 9. screenshots: the sheet with the menu and the browse panel, desktop and phone, light and dark */
     async function shots(vp, tag, sheetTheme, panelTheme){
       const c = await b.newContext({ viewport: vp, serviceWorkers: "block" });

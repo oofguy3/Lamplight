@@ -97,7 +97,13 @@
       <div class="prow"><label for="qWs" data-i18n>Words</label><input type="range" id="qWs" min="0" max="0.4" step="0.02" value="0"><span class="val" id="qWsV">0.00 em</span></div>
       <div class="prow"><label class="check" data-i18n><input type="checkbox" role="switch" id="qFocus">Focus reading — bold the start of each word</label></div>
     </details>
-    <div class="prow doc-row"><label for="fontQuick" data-i18n>Font</label><select id="fontQuick" class="sel"></select></div>
+    <div class="prow doc-row desk-row"><label for="fontQuick" data-i18n>Font</label><select id="fontQuick" class="sel"></select></div>
+    <!-- a phone has four fonts at a tap instead (their buttons come from app.js), and All fonts for the rest -->
+    <div class="prow doc-row phone-row font-row">
+      <span class="plabel" id="fontRowL" data-i18n>Font</span>
+      <button type="button" class="link-btn" id="allFonts" data-i18n>All fonts</button>
+      <div class="seg choices fonts" id="fontRow" role="group" aria-labelledby="fontRowL"></div>
+    </div>
     <div class="prow pdf-row"><label class="check" data-i18n><input type="checkbox" role="switch" id="qSoften" checked>Soften pages in dark themes</label></div>
     <div class="prow">
       <span class="plabel" id="qFlowL" data-i18n>Flow</span>

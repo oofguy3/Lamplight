@@ -185,6 +185,7 @@
     "Wide": "Breed",
     "Custom {v}": "Aangepast {v}",
     "type|Custom": "Aangepast",
+    "All fonts": "Alle lettertypen",
     "Theme": "Thema",
     "More actions": "Meer acties",
     "More": "Meer",
