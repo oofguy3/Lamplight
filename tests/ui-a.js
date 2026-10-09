@@ -35,7 +35,7 @@ const SPEECH_STUB = `(() => {
   const popFits = (page) => page.evaluate(() => {
     const p = document.getElementById("pop"), r = p.getBoundingClientRect(), cs = getComputedStyle(p);
     const padR = r.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth) + 0.5;
-    const rows = Array.from(p.querySelectorAll(".prow, .pop-link")).filter((x) => x.offsetParent !== null);   /* a strip scrolls its chips by design (its own 2px bleed sits under the mask) */
+    const rows = Array.from(p.querySelectorAll(".prow, .pop-link")).filter((x) => x.offsetParent !== null);   /* rows, not every control: a segment's chips scroll sideways inside it, and on phones the type popover's close button and All fonts reach into the padding with their 48px targets, by design */
     return { fits: p.scrollWidth <= p.clientWidth && rows.every((x) => x.getBoundingClientRect().right <= padR), sw: p.scrollWidth, cw: p.clientWidth, over: rows.filter((x) => x.getBoundingClientRect().right > padR).map((x) => x.id || x.className) };
   });
   /* a finger drag through the debugger (Playwright's touchscreen only taps) */

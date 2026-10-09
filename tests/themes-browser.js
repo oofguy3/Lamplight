@@ -166,7 +166,11 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     await page.click("#cDel");
     list = await customs();
     R.check("delete asks first and removes the theme", list.length === 2 && list.every((c) => c.name !== "Third"), list.map((c) => c.name).join("|"));
-    R.check("after a delete, a built-in of the same lightness is selected", /^(day|dusk)$/.test(await state("theme")) && !(await page.$eval("#customRow", (r) => r.classList.contains("show"))), await state("theme"));
+    /* Custom 1 went into the day half (Paper, a light page, was on screen) and each copy took its
+       place there, so the deleted theme was the day half on screen: that half falls back to Day and
+       stays on screen, and the night half keeps Dusk */
+    const del = await page.evaluate(() => { const s = window.__ll.state; return { theme: s.theme, pair: s.autoDay + "/" + s.autoNight, editor: document.getElementById("customRow").classList.contains("show") }; });
+    R.check("after a delete, the day half shows its fallback, Day, and the editor closes", del.theme === "day" && del.pair === "day/dusk" && !del.editor, JSON.stringify(del));
 
     /* 6. the day / night lists */
     await page.click('#autoChips .chip[data-auto="time"]');
