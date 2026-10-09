@@ -289,14 +289,25 @@
     hicon:     {name:"Contrast",      family:"neutral", bg:"#FFFFFF", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
     hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
   };
-  /* the picker shows the built-ins in four groups (display only: the tone still comes from the
-     page colour), and the lamp cycles them in the same order */
+  /* the looks: a day theme and a night theme that belong together, in the picker's order. A tap on
+     one makes it the reader's pair (selectLook). Its id is its day half; its name is its two themes'
+     names joined, "Day & Dusk" (lookName), unless it has a name of its own */
+  var LOOKS = [
+    { id: "day", day: "day", night: "dusk" },
+    { id: "paper", day: "paper", night: "ink" },
+    { id: "sepia", day: "sepia", night: "cocoa" },
+    { id: "sage", day: "sage", night: "forest" },
+    { id: "seaair", day: "seaair", night: "canals" },
+    { id: "hicon", day: "hicon", night: "hidark", name: "Contrast" }
+  ];
+  /* Settings › Theme shows the built-ins in these groups (display only: the tone still comes from
+     the page colour), and the day and night lists offer them in the same order */
   var HICON = ["hicon", "hidark"];
   var THEME_GROUPS = {
     light:  ["day", "paper", "sepia", "parchment", "linen", "newsprint", "mist"],
     dark:   ["dusk", "ink", "graphite", "cocoa", "slate", "noir", "candle"],
     colour: ["rose", "peach", "sage", "mint", "sky", "lavender", "forest", "moss", "ocean", "midnight", "plum", "ember", "terminal", "amber"],
-    /* the four collections: one Collections tab in the picker, a labelled section each */
+    /* the four collections: a labelled group each in Settings › Theme */
     dutch:   ["delft", "vermeer", "rembrandt", "tulips", "polder", "canals"],
     nature:  ["autumn", "winter", "aurora", "seaair", "blossom"],
     cozy:    ["coffee", "library", "rain", "cabin", "nighttrain"],
@@ -630,32 +641,77 @@
   }
 
   /* ---------- theme + type ---------- */
-  /* a theme's preview tile, the one picker drawing (the lamp's popover, its Recent row and the
-     settings sheet): a small page in the theme's colours — "Aa" in its text colour, two lines of
-     secondary text, the panel as a strip along the bottom with the lamp as a button on it — and
-     the name under it. The one on screen is pressed: a ring and a check (tileMark). "Aa" is drawn
-     by the stylesheet, so the button's text is the name alone. */
+  /* the looks and the tiles that show them, the one picker drawing (the lamp's popover and the
+     settings sheet). A tile shows a theme as a small page in its colours (pageHtml): "Aa" in its
+     text colour, two lines of secondary text beside it and two under it, the panel as a strip along
+     the bottom with the lamp lit on it. A look's tile holds two such pages side by side, its day
+     theme on the left and its night theme on the right; a theme's own tile, one. The name sits under
+     the drawing ("Aa" is drawn by the stylesheet, so the button's text is the name alone), and the
+     pressed tile wears a ring and a check (tileMark). */
   function tileVars(t){
     return "--sw-bg:" + t.bg + ";--sw-ink:" + t.ink + ";--sw-mut:" + t.muted + ";--sw-pan:" + t.panel + ";--sw-acc:" + (t.lamp || t.accent);
   }
-  function tileSwatch(t, cls){ return '<i' + (cls ? ' class="' + cls + '"' : "") + ' style="' + tileVars(t) + '" aria-hidden="true"><b></b><s></s><s></s></i>'; }
+  /* one small page; data-t names the theme it shows, so tileMark can repaint one being edited */
+  function pageHtml(id, t){
+    return '<i class="pg" data-t="' + escapeHtml(id) + '" style="' + tileVars(t) + '"><b></b><s></s><s></s><q></q><q></q><u></u><em></em></i>';
+  }
+  /* a tile for one theme: the reader's own, and in Settings each built-in */
   function tileHtml(id, t){
-    return '<button type="button" class="chip tile" data-theme="' + id + '" aria-pressed="false">' + tileSwatch(t) +
-      '<span class="tile-n">' + escapeHtml(themeName(id)) + '</span></button>';
+    return '<button type="button" class="chip tile" data-theme="' + escapeHtml(id) + '" aria-pressed="false"><i aria-hidden="true">' + pageHtml(id, t) +
+      '</i><span class="tile-n">' + escapeHtml(themeName(id)) + '</span></button>';
   }
-  /* marks the tiles under `root` for the theme on screen, and brings a custom tile's colours up
-     to date while it is being edited */
+  /* the look a built-in belongs to; a look by its id; the look the reader's pair is, or null when the
+     pair is no look (mixed in the lists, or holding a theme of the reader's own) */
+  function lookOf(id){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].day === id || LOOKS[i].night === id) return LOOKS[i]; return null; }
+  function lookById(id){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].id === id) return LOOKS[i]; return null; }
+  function pairLook(){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].day === state.autoDay && LOOKS[i].night === state.autoNight) return LOOKS[i]; return null; }
+  /* "Day & Dusk": the two themes' names joined, in the interface's language; Contrast has its own */
+  function lookName(l){
+    return l.name ? _tc("theme", l.name) : _t("{day} & {night}", { day: themeName(l.day), night: themeName(l.night) });
+  }
+  /* a look's tile, or with the id "pair" the tile of the reader's own pair */
+  function lookTileHtml(id, day, night){
+    var d = resolveTheme(day), n = resolveTheme(night);
+    if (!d || !n) return "";
+    return '<button type="button" class="chip tile look" data-look="' + id + '" aria-pressed="false"><i aria-hidden="true">' + pageHtml(day, d) + pageHtml(night, n) +
+      '</i><span class="tile-n">' + escapeHtml(lookName(lookById(id) || { day: day, night: night })) + '</span></button>';
+  }
+  /* the six looks, and first the pair's own tile when the pair is no look */
+  function looksHtml(){
+    return (pairLook() ? "" : lookTileHtml("pair", state.autoDay, state.autoNight)) + LOOKS.map(function(l){ return lookTileHtml(l.id, l.day, l.night); }).join("");
+  }
+  /* the reader's own themes, then New theme (the maker, starting from the theme on screen). In the
+     popover each own theme carries a ⋯ for its actions; a long press on the tile does the same */
+  function mineHtml(withActions){
+    return state.customs.map(function(c){
+      var k = "c:" + c.id, tile = tileHtml(k, customColors(c));
+      if (!withActions) return tile;
+      return '<div class="mine-t">' + tile + '<button type="button" class="mine-ed" data-acts="' + escapeHtml(k) + '" aria-label="' + escapeHtml(_t("Actions for {name}", { name: c.name })) +
+        '" title="' + escapeHtml(_t("Edit, rename, duplicate or delete")) + '">' + ICONS.more + '</button></div>';
+    }).join("") +
+      '<button type="button" class="chip tile chip-new" data-new="1" title="' + escapeHtml(_t("Make my own from this one")) + '"><i aria-hidden="true"></i><span class="tile-n">' + escapeHtml(_t("New theme")) + '</span></button>';
+  }
+  /* the half on screen: the half of the pair the theme on screen is; for a theme outside the pair
+     (only the raw llThemes.select leaves one), the half its page colour says */
+  function halfOnScreen(){ return dnOf(state.theme) || (isDarkColor(currentTheme().bg) ? "night" : "day"); }
+  /* marks the tiles under `root`: a look's or the pair's tile when its two themes are the reader's
+     pair and one of them is on screen, a theme's tile when it is on screen. The pressed one's name
+     says so. The own theme on screen is repainted in every tile that shows it, so one being edited
+     changes everywhere at once */
   function tileMark(root, t){
-    var custom = customById(state.theme);
-    Array.prototype.forEach.call(root.querySelectorAll(".chip[data-theme]"), function(ch){
-      var on = ch.dataset.theme === state.theme;
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll(".chip[data-look], .chip[data-theme]"), function(ch){
+      var on, pg = ch.querySelectorAll(".pg");
+      if (ch.dataset.look) on = pg.length === 2 && pg[0].dataset.t === state.autoDay && pg[1].dataset.t === state.autoNight && (state.theme === state.autoDay || state.theme === state.autoNight);
+      else on = ch.dataset.theme === state.theme;
       ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
-      if (on) ch.setAttribute("aria-label", _t("{name}, current theme", { name: themeName(state.theme) })); else ch.removeAttribute("aria-label");
-      if (on && custom && t){ var sw = ch.querySelector("i"); if (sw) sw.setAttribute("style", tileVars(t)); }
+      if (on) ch.setAttribute("aria-label", _t("{name}, current theme", { name: ch.dataset.look ? ch.querySelector(".tile-n").textContent : themeName(state.theme) }));
+      else ch.removeAttribute("aria-label");
     });
+    if (t && customById(state.theme)) Array.prototype.forEach.call(root.querySelectorAll(".pg"), function(p){ if (p.dataset.t === state.theme) p.setAttribute("style", tileVars(t)); });
   }
-  /* the picker's groups for display: the built-in groups (themeGroups), then the reader's own
-     saved themes in a group of their own (Mine) */
+  /* the built-in groups (themeGroups), then the reader's own saved themes in a group of their own
+     (Mine): the day and night lists offer them so */
   function pickerGroups(){
     var g = themeGroups();
     g.push({ id: "mine", name: _t("Mine"), ids: state.customs.map(function(c){ return "c:" + c.id; }) });
@@ -668,16 +724,17 @@
       return '<optgroup label="' + escapeHtml(g.name) + '">' + g.ids.map(function(k){ return '<option value="' + k + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
     }).join("");
   }
+  /* Settings › Theme: every built-in under its group's label, then the reader's own under Mine,
+     the theme on screen pressed */
   function buildThemeChips(){
     var html = "";
     themeGroups().forEach(function(g){
       html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="tiles">' +
         g.ids.map(function(k){ return tileHtml(k, THEMES[k]); }).join("") + '</div></div>';
     });
-    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Mine") + '</div><div class="tiles">' +
-      state.customs.map(function(c){ return tileHtml("c:" + c.id, customColors(c)); }).join("") +
-      '<button type="button" class="chip tile chip-new" data-new="1" title="' + _t("Make my own from this one") + '"><i aria-hidden="true"></i><span class="tile-n">' + _t("New theme") + '</span></button></div></div>';
+    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Mine") + '</div><div class="tiles">' + mineHtml(false) + '</div></div>';
     $("#themeChips").innerHTML = html;
+    tileMark($("#themeChips"), currentTheme());
   }
   function buildCustomUI(){
     $("#bgSwatches").innerHTML = BG_SWATCHES.map(function(c){
@@ -824,10 +881,14 @@
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
     themeColor();
-    /* the phone dock's Day and Night: the half on screen pressed; e-ink has no themes to switch */
-    var dnNow = themeDraft ? null : dnOf(state.theme);
+    /* every Day/Night switch (the picker's head, Settings › Theme, the phone dock): the half of the
+       theme on screen pressed, also while the maker's draft is shown (a preview, the half has not
+       changed); e-ink has no themes to switch, so none shows there */
+    var dnNow = dnOf(state.theme);
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg [data-dn]"), function(b){ b.setAttribute("aria-pressed", b.dataset.dn === dnNow ? "true" : "false"); });
     $("#dockDay").setAttribute("aria-pressed", dnNow === "day" ? "true" : "false");
     $("#dockNight").setAttribute("aria-pressed", dnNow === "night" ? "true" : "false");
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg"), function(s){ s.hidden = eink; });
     $("#phoneDock .pd-dn").hidden = eink;
     tileMark($("#themeChips"), themeDraft ? null : t);
     $("#customRow").classList.toggle("show", !!custom);
@@ -934,9 +995,8 @@
       $("#autoRow").style.display = "block";   /* the day and night themes: shown whether switching is on or off */
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
       var opts = themeOptions();
-      ["#autoDay", "#autoNight", "#qDaySel", "#qNightSel"].forEach(function(sel){ var el = $(sel); if (el && el.getAttribute("data-opts") !== opts){ el.innerHTML = opts; el.setAttribute("data-opts", opts); } });
+      ["#autoDay", "#autoNight"].forEach(function(sel){ var el = $(sel); if (el && el.getAttribute("data-opts") !== opts){ el.innerHTML = opts; el.setAttribute("data-opts", opts); } });
       $("#autoDay").value = state.autoDay; $("#autoNight").value = state.autoNight;
-      $("#qDaySel").value = state.autoDay; $("#qNightSel").value = state.autoNight;
       $("#nightFrom").value = state.nightFrom; $("#nightTo").value = state.nightTo;
       $("#autoHint").textContent = nowLine();
       $("#qNow").textContent = nowLine();
@@ -1518,9 +1578,9 @@
       place();
       rebase();
       /* focus lands on the first control: the size (zoom) slider, A− on a phone (the slider is not
-         shown there), or the chosen theme's tile (its group is the one showing) */
+         shown there), or the pressed look (the first look when none is) */
       var first = id === "type" ? (phone() ? $("#smaller") : panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
-                                : (panes.theme.querySelector(".tiles:not([hidden]) .chip.on") || panes.theme.querySelector(".tiles:not([hidden]) .chip"));
+                                : ($('#qLooks .chip[aria-pressed="true"]') || $("#qLooks .chip"));
       (first || el).focus({ preventScroll: true });
     }
     function close(quiet){
@@ -1662,56 +1722,17 @@
     }
     placeMore();
 
-    /* ---- the theme pane: Previous, the last four used, then one group of tiles at a time behind
-       a Light | Dark | Colour | Collections | High contrast | Mine switch (Collections holds the four
-       collections, Dutch, Nature and seasons, Cozy and Textured, as labelled sections), "Make my own from this one", and Day
-       and night (Off, Follow phone, On a schedule; the two themes; what it does now). It opens on
-       the group of the theme on screen, and a tile applies its theme and leaves the popover open ---- */
-    var qGroup = "light", actsFor = null;
-    var GROUP_PANES = { light: "#qLight", dark: "#qDark", colour: "#qColour", coll: "#qColl", hicon: "#qHi", mine: "#qMine" };
-    function paneOf(id){ return COLLECTIONS.indexOf(id) >= 0 ? "coll" : id; }
-    function tile(k){ var t = resolveTheme(k); return t ? tileHtml(k, t) : ""; }
-    /* an own theme's tile carries a ⋯ for its actions (a long press on the tile does the same) */
-    function mineTile(k){
-      var t = resolveTheme(k); if (!t) return "";
-      return '<div class="mine-t">' + tileHtml(k, t) + '<button type="button" class="mine-ed" data-acts="' + k + '" aria-label="' + escapeHtml(_t("Actions for {name}", { name: themeName(k) })) + '" title="' + escapeHtml(_t("Edit, rename, duplicate or delete")) + '">' + ICONS.more + '</button></div>';
-    }
-    function groupOf(k){
-      var g = pickerGroups();
-      for (var i = 0; i < g.length; i++) if (g[i].ids.indexOf(k) >= 0) return paneOf(g[i].id);
-      return "light";
-    }
-    function showGroup(id){
-      qGroup = GROUP_PANES[id] ? id : "light";
-      Array.prototype.forEach.call(panes.theme.querySelectorAll("#qGroups [role=tab]"), function(b){
-        var on = b.dataset.g === qGroup;
-        b.setAttribute("aria-selected", on ? "true" : "false"); b.classList.toggle("on", on); b.tabIndex = on ? 0 : -1;
-        /* six tabs scroll sideways on a phone: the chosen one is brought into view */
-        if (on){ var bar = b.parentNode, br = bar.getBoundingClientRect(), tr = b.getBoundingClientRect();
-          if (tr.left < br.left || tr.right > br.right) bar.scrollLeft += (tr.left + tr.right) / 2 - (br.left + br.right) / 2; }
-      });
-      Object.keys(GROUP_PANES).forEach(function(k){ $(GROUP_PANES[k]).hidden = k !== qGroup; });
-      if (qGroup !== "mine") showActs(null);
-    }
+    /* ---- the theme pane: "Theme" with the Day/Night switch in its head, the six looks (with the
+       pair's own tile first when the pair is no look), the reader's own themes under Mine with New
+       theme, and Day and night (Off, Follow phone, On a schedule; what it does now). A tile applies
+       at once and leaves the popover open ---- */
+    var actsFor = null;
+    /* the looks and Mine, drawn again whenever the pair or the reader's own themes change
+       (pairChanged); `keep` keeps an own theme's actions open */
     function renderTheme(keep){
-      var groups = pickerGroups(), coll = "";
-      groups.forEach(function(g){
-        if (paneOf(g.id) === "coll"){
-          coll += '<div class="q-coll" role="group" aria-labelledby="qc-' + g.id + '"><div class="plabel" id="qc-' + g.id + '">' + escapeHtml(g.name) + '</div><div class="tiles">' + g.ids.map(tile).join("") + '</div></div>';
-          return;
-        }
-        $(GROUP_PANES[g.id]).innerHTML = g.id === "mine"
-          ? g.ids.map(mineTile).join("") + '<button type="button" class="chip tile chip-new" data-new="1"><i aria-hidden="true"></i><span class="tile-n">' + escapeHtml(_t("New theme")) + '</span></button>'
-          : g.ids.map(tile).join("");
-      });
-      $("#qColl").innerHTML = coll;
-      /* the last four used, the one on screen first (and marked); only when it offers a choice */
-      var recent = [state.theme].concat(recentThemes()).filter(function(k, i, a){ return resolveTheme(k) && a.indexOf(k) === i; }).slice(0, 4);
-      if (recent.length < 2) recent = [];
-      $("#qRecent").innerHTML = recent.map(tile).join("");
-      $("#qRecentSec").hidden = !recent.length;
-      showGroup(keep ? qGroup : groupOf(state.theme));
-      if (actsFor) showActs(customById(actsFor) ? actsFor : null);
+      $("#qLooks").innerHTML = looksHtml();
+      $("#qMine").innerHTML = mineHtml(true);
+      showActs(keep ? actsFor : null);
     }
     /* the actions for one of the reader's own themes, in a row under the grid */
     function showActs(k){
@@ -1726,44 +1747,28 @@
         }).join("");
       box.hidden = false;
     }
-    /* a Day / Night picker's small page, in the colours of the theme it stands for */
-    function dnSwatch(b, k){ var t = resolveTheme(k), i = b.querySelector(".dn-sw"); if (t && i) i.setAttribute("style", tileVars(t)); }
     function syncTheme(){
-      var t = currentTheme();
-      var day = resolveTheme(state.autoDay) ? state.autoDay : "day", night = resolveTheme(state.autoNight) ? state.autoNight : "dusk";
-      $("#qDayName").textContent = themeName(day);
-      $("#qNightName").textContent = themeName(night);
-      Array.prototype.forEach.call(panes.theme.querySelectorAll(".dn"), function(b){
-        var k = b.dataset.dn === "day" ? day : night;
-        b.classList.toggle("on", dnOf(state.theme) === b.dataset.dn);
-        dnSwatch(b, k);
-      });
-      tileMark(panes.theme, t);
+      tileMark(panes.theme, currentTheme());
       Array.prototype.forEach.call(panes.theme.querySelectorAll("#qAuto .chip"), function(ch){
         var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
       });
       $("#qTimes").hidden = state.auto !== "time";
-      $("#qDayNight").hidden = false;   /* the pair is the reader's whether switching is on or off */
       if (document.activeElement !== $("#qFrom")) $("#qFrom").value = state.nightFrom;
       if (document.activeElement !== $("#qTo")) $("#qTo").value = state.nightTo;
-      /* Previous: one step back to the theme before this one */
-      var prev = prevTheme();
-      $("#qPrev").hidden = !prev;
-      if (prev){ $("#qPrevN").textContent = _t("Back to {name}", { name: themeName(prev) }); $("#qPrev").title = _t("Previous theme"); }
       $("#qNow").textContent = AutoTheme.nowLine();
     }
     panes.theme.addEventListener("click", function(e){
-      var tab = e.target.closest("#qGroups [role=tab]");
-      if (tab){ showGroup(tab.dataset.g); return; }
+      var dn = e.target.closest("#qDN [data-dn]");
+      if (dn){ setDayNight(dn.dataset.dn); return; }
       var ed = e.target.closest(".mine-ed");
       if (ed){ showActs(actsFor === ed.dataset.acts ? null : ed.dataset.acts); return; }
       var act = e.target.closest("#qActs [data-act]");
       if (act){ var k = actsFor; if (k) themeAction(act.dataset.act, k); return; }
-      if (e.target.closest(".tiles .chip-new")){ Maker.open({ from: state.theme }); return; }
-      var ch = e.target.closest(".tiles .chip[data-theme]");
+      var look = e.target.closest(".chip[data-look]");
+      if (look){ chooseLook(look.dataset.look); return; }
+      if (e.target.closest(".chip-new")){ Maker.open({ from: state.theme }); return; }
+      var ch = e.target.closest(".chip[data-theme]");
       if (ch){ pickTheme(ch.dataset.theme); return; }
-      if (e.target.closest("#qPrev")){ var p = prevTheme(); if (p) pickTheme(p); return; }
-      if (e.target.closest("#qMake")){ Maker.open({ from: state.theme }); return; }
       var a = e.target.closest("#qAuto .chip");
       if (a){ AutoTheme.setMode(a.dataset.auto); syncTheme(); }
     });
@@ -1771,17 +1776,6 @@
     var pressed = null;
     $("#qMine").addEventListener("pointerdown", function(e){ var ch = e.target.closest(".chip[data-theme]"); pressed = ch ? ch.dataset.theme : null; }, true);
     longPress($("#qMine"), function(){ if (pressed && customById(pressed)) showActs(pressed); });
-    $("#qDaySel").addEventListener("change", function(e){ AutoTheme.setPair("day", e.target.value); });
-    $("#qNightSel").addEventListener("change", function(e){ AutoTheme.setPair("night", e.target.value); });
-    /* the group switch is a tab list: the arrow keys, Home and End move along it */
-    $("#qGroups").addEventListener("keydown", function(e){
-      var tabs = Array.prototype.slice.call(this.querySelectorAll("[role=tab]")), i = tabs.indexOf(document.activeElement), n = tabs.length, j = -1;
-      if (i < 0) return;
-      if (e.key === "ArrowRight") j = (i + 1) % n; else if (e.key === "ArrowLeft") j = (i + n - 1) % n;
-      else if (e.key === "Home") j = 0; else if (e.key === "End") j = n - 1;
-      if (j < 0) return;
-      e.preventDefault(); showGroup(tabs[j].dataset.g); tabs[j].focus();
-    });
     /* the night hours, the same as the sheet's (On a schedule) */
     $("#qFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
     $("#qTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
@@ -1842,7 +1836,7 @@
     /* the bar buttons */
     $("#gear").addEventListener("click", function(e){ e.stopPropagation(); open("type", this, syncType); });
     $("#lamp").addEventListener("click", function(e){ e.stopPropagation(); open("theme", this, function(){ renderTheme(); syncTheme(); }); });
-    /* the reader's own themes changed (saved, renamed, copied, deleted): the open pane is redrawn in place */
+    /* the pair or the reader's own themes changed (pairChanged): the open pane is drawn again in place */
     function refreshThemes(){ if (current === "theme"){ renderTheme(true); syncTheme(); } }
 
     window.llPop = { open: open, close: close, is: is, sync: sync, sheet: setSheet, sheetAt: openSheetAt };
@@ -11214,6 +11208,8 @@
     btn.insertAdjacentHTML("beforeend", ICONS.lamp);
     $("#dockDay").insertAdjacentHTML("afterbegin", ICONS.sun);
     $("#dockNight").insertAdjacentHTML("afterbegin", ICONS.moon);
+    /* the theme picker's Day/Night switches (its head, and Settings › Theme) wear the same two */
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg [data-dn]"), function(b){ b.insertAdjacentHTML("afterbegin", b.dataset.dn === "day" ? ICONS.sun : ICONS.moon); });
     var gear = $("#gear"); gear.innerHTML = '<span class="g-aa">' + gear.innerHTML + '</span><span class="tool-i" aria-hidden="true">' + ICONS.type + '</span>';
     $("#lamp").insertAdjacentHTML("beforeend", '<span class="tool-i" aria-hidden="true">' + ICONS.bulb + '</span>');
     TOOLS.forEach(function(id){ document.getElementById(id).insertAdjacentHTML("beforeend", '<span class="tool-l" aria-hidden="true">' + escapeHtml(_t(NAMES[id])) + '</span>'); });
@@ -11734,12 +11730,18 @@
     }, 300);
   });
 
+  /* Settings › Theme: a look, New theme (the maker) or a theme's tile, and the Day/Night switch on
+     the heading's row */
   $("#themeChips").addEventListener("click", function(e){
-    var ch = e.target.closest(".chip");
-    if (!ch) return;
-    if (ch.dataset.new) Maker.open({ from: state.theme }); else pickTheme(ch.dataset.theme);
+    var look = e.target.closest(".chip[data-look]");
+    if (look){ chooseLook(look.dataset.look); return; }
+    if (e.target.closest(".chip-new")){ Maker.open({ from: state.theme }); return; }
+    var ch = e.target.closest(".chip[data-theme]");
+    if (ch) pickTheme(ch.dataset.theme);
   });
-  /* the themes picked by hand, the latest first: the theme popover shows the last few */
+  $("#sDN").addEventListener("click", function(e){ var b = e.target.closest("[data-dn]"); if (b) setDayNight(b.dataset.dn); });
+  /* the themes picked by hand, the latest first: deleting the theme on screen goes back to the one
+     before it (prevTheme) */
   function recentThemes(){ try { var a = JSON.parse(Store.get("ll_theme_recent") || "[]"); return Array.isArray(a) ? a : []; } catch(_){ return []; } }
   function noteTheme(prev){
     if (!prev) return;
@@ -11747,7 +11749,8 @@
     a.unshift(prev);
     Store.set("ll_theme_recent", JSON.stringify(a.slice(0, 6)));
   }
-  /* opts.dayNight: a Day/Night switch, which neither rewrites the auto pair nor counts as a recent pick */
+  /* opts.dayNight: the caller has set the pair (a Day/Night switch, a look), so this neither rewrites
+     it nor counts as a recent pick */
   function selectTheme(theme, opts){
     var dn = !!(opts && opts.dayNight);
     if (theme !== state.theme && !dn) noteTheme(state.theme);
@@ -11756,7 +11759,7 @@
     applyTheme();
     if (!dn){ AutoTheme.clearHold(); AutoTheme.userPicked(theme); }
   }
-  /* the theme before this one (Previous): the latest used that still exists */
+  /* the theme before this one: the latest used that still exists */
   function prevTheme(){
     var a = recentThemes();
     for (var i = 0; i < a.length; i++) if (a[i] !== state.theme && resolveTheme(a[i])) return a[i];
@@ -11784,8 +11787,40 @@
       } });
     }
   }
-  /* the saved themes changed (new, renamed, copied or deleted): redraw the chips, the day / night lists and the open popover */
-  function customsChanged(){ buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes(); }
+  /* a look: it becomes the reader's pair, and its theme for the half on screen shows; a Day/Night
+     hold carries over to that theme, its period and end unchanged. With `half` ("day" or "night")
+     that half shows instead, and with switching on it holds as a Day/Night switch would. The pair,
+     the hold and the theme change together, inside the cross-fade */
+  function selectLook(day, night, half){
+    if (!resolveTheme(day) || !resolveTheme(night) || day === night) return;
+    var shown = (half || halfOnScreen()) === "night" ? night : day;
+    if (!half && day === state.autoDay && night === state.autoNight && shown === state.theme) return;
+    crossFade(function(){
+      state.autoDay = day; state.autoNight = night;
+      if (!half && state.dnHold) state.dnHold.theme = shown;
+      selectTheme(shown, { dayNight: true });
+      if (half && state.auto !== "off") AutoTheme.hold(shown);
+      Prefs.save();
+      pairChanged();
+    });
+  }
+  /* a tap on a look's tile; the pair's own tile is the pair already, so a tap on it does nothing */
+  function chooseLook(id){
+    var l = id === "pair" ? null : lookById(id);
+    if (l) selectLook(l.day, l.night);
+  }
+  /* the pair or the reader's own themes changed (a look, a list, an own theme saved, renamed, copied
+     or deleted): Settings' tiles, the day and night lists and the open popover are drawn again. A
+     tile that had the focus goes with its grid, so the focus moves to the grid's pressed tile (or
+     its first), where a keyboard left off */
+  function pairChanged(){
+    var a = document.activeElement, grid = a && a.closest ? a.closest("#qLooks, #qMine, #themeChips") : null;
+    buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes();
+    if (!grid || document.contains(a)) return;
+    grid = document.getElementById(grid.id);
+    var to = grid && (grid.querySelector('.chip[aria-pressed="true"]') || grid.querySelector(".chip"));
+    if (to) to.focus({ preventScroll: true });
+  }
   /* Edit, Rename, Duplicate and Delete for one of the reader's own themes */
   function themeAction(act, k){
     var c = customById(k); if (!c) return;
@@ -11799,11 +11834,11 @@
     if (name === null) return;
     name = name.trim().slice(0, 60);
     if (!name || name === c.name) return;
-    c.name = name; customsChanged(); syncCustomUI(); Prefs.save(); Pop.sync();
+    c.name = name; pairChanged(); syncCustomUI(); Prefs.save(); Pop.sync();
   }
   function dupCustom(c){
     var d = copyCustom(c, customName(_t("{name} copy", { name: c.name })));
-    customsChanged(); Prefs.save();
+    pairChanged(); Prefs.save();
     Marks.toast(_t("Copied as \u201C{name}\u201D", { name: d.name }));
     return d;
   }
@@ -11815,13 +11850,13 @@
     state.customs.splice(at, 1);
     if (state.autoDay === gone) state.autoDay = "day";
     if (state.autoNight === gone) state.autoNight = "dusk";
-    customsChanged();
+    pairChanged();
     if (state.theme === gone) selectTheme(prevTheme() || (isDarkColor(c.bg) ? "dusk" : "day")); else Prefs.save();
     Marks.toast(_t("Deleted \u201C{name}\u201D", { name: c.name }), { undo: function(){
       if (customById(gone)) return;
       state.customs.splice(Math.min(at, state.customs.length), 0, c);
       state.autoDay = was.day; state.autoNight = was.night;
-      customsChanged();
+      pairChanged();
       if (was.theme === gone) selectTheme(gone); else Prefs.save();
       AutoTheme.syncUI(); Pop.sync();
     } });
@@ -11829,7 +11864,7 @@
   }
 
   /* ---- the maker: your own theme from three colours ----
-     Starts from any theme (Make my own from this one) or edits one of the reader's own. Background,
+     Starts from the theme on screen (New theme) or edits one of the reader's own. Background,
      text and accent are picked; the panel, the raised surface, the secondary text, the hairline and
      the lamp are derived from them (customColors), so a saved theme wears the same tokens as a
      built-in on every screen. Text and accent are moved in lightness until they read at 4.5:1, and
@@ -11918,7 +11953,7 @@
       } else { r.c.name = name; c = addCustom(r.c); }
       d = null; themeDraft = null;
       Side.close();
-      customsChanged();
+      pairChanged();
       var id = "c:" + c.id;
       if (state.theme === id){ syncCustomUI(); applyTheme(); } else pickTheme(id, true);
       Marks.toast(_t("Saved \u201C{name}\u201D", { name: name }));
@@ -11946,7 +11981,7 @@
   function createCustom(){
     var t = currentTheme();
     var c = addCustom({ name: customName(), bg: normHex(t.bg), ink: normHex(t.ink), autoInk: true, accent: normHex(t.accent) });
-    customsChanged(); selectTheme("c:" + c.id); focusChip("c:" + c.id);
+    pairChanged(); selectTheme("c:" + c.id); focusChip("c:" + c.id);
     return c;
   }
 
@@ -11957,7 +11992,7 @@
   $("#cDup").addEventListener("click", function(){
     var c = editing(); if (!c) return;
     var d = copyCustom(c, customName(_t("{name} copy", { name: c.name })));
-    customsChanged(); selectTheme("c:" + d.id);
+    pairChanged(); selectTheme("c:" + d.id);
     Marks.toast(_t("Copied as “{name}”", { name: d.name }));
   });
   $("#cSaveAs").addEventListener("click", function(){
@@ -11965,7 +12000,7 @@
     var name = prompt(_t("Name for the new theme"), customName());
     if (name === null) return;
     var d = copyCustom(c, name.trim().slice(0, 60) || customName());
-    customsChanged(); selectTheme("c:" + d.id);
+    pairChanged(); selectTheme("c:" + d.id);
     Marks.toast(_t("Saved as “{name}”", { name: d.name }));
   });
   $("#cDel").addEventListener("click", function(){ var c = editing(); if (c && deleteCustom(c)) focusChip(state.theme); });

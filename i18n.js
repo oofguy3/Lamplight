@@ -245,6 +245,7 @@
     "Only at night": "Alleen ’s nachts",
     "E-ink mode": "E-inkmodus",
     "All themes and the editor…": "Alle thema’s en de editor…",
+    "More theme settings…": "Meer thema-instellingen…",
     "Reading settings": "Leesinstellingen",
     "Reading": "Lezen",
     "Reading flow": "Leesweergave",
@@ -397,7 +398,9 @@
     "Noir": "Noir",
     "theme|Contrast": "Contrast",
     "Contrast dark": "Contrast donker",
-    /* the four collections (Settings › Theme and the picker’s Collections tab) */
+    /* a look: its day theme and its night theme, "Dag & Schemer" */
+    "{day} & {night}": "{day} & {night}",
+    /* the four collections (Settings › Theme) */
     "Delft blue": "Delfts blauw",
     "Vermeer": "Vermeer",
     "Rembrandt": "Rembrandt",

@@ -99,11 +99,13 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   const r = await page.evaluate(() => window.llThemes.dnOf ? ["day", "dusk", "paper", "hicon"].map((k) => window.llThemes.dnOf(k)) : "no dnOf");
   R.check("dnOf(day/dusk/paper/hicon) = day/night/null/day", JSON.stringify(r) === '["day","night",null,"day"]', JSON.stringify(r));
 
-  /* 8. the pair is shown, and the half on screen marked, with switching off too */
-  const dnMarks = () => page.evaluate(() => [...document.querySelectorAll("#qDayNight .dn")].map((b) => b.dataset.dn + ":" + b.classList.contains("on")).join(","));
+  /* 8. the pair is shown (its look pressed), and the half on screen marked in the popover's Day/Night
+     switch, with switching off too; on a theme outside the pair (the raw select) neither half is */
+  const dnMarks = () => page.evaluate(() => [...document.querySelectorAll("#qDN [data-dn]")].map((b) => b.dataset.dn + ":" + (b.getAttribute("aria-pressed") === "true")).join(","));
   await select(page, "dusk");
   await page.click("#lamp"); await page.waitForTimeout(150);
-  R.check("Auto off: the theme popover shows the pair", await page.evaluate(() => !document.getElementById("qDayNight").hidden));
+  R.check("Auto off: the theme popover shows the pair", await page.evaluate(() => { const d = document.getElementById("qDN"), on = document.querySelector('#qLooks .chip[aria-pressed="true"]');
+    return !!d && !d.hidden && d.getBoundingClientRect().height > 0 && !!on && on.dataset.look === "day"; }));
   R.check("Auto off on dusk: Night marked, Day not", (await dnMarks()) === "day:false,night:true", await dnMarks());
   await page.keyboard.press("Escape"); await page.waitForTimeout(100);
   await select(page, "paper");

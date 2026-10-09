@@ -390,16 +390,17 @@
   @media (hover:hover){ .seg .chip:hover{border-color:transparent; background:color-mix(in srgb, var(--ink) 6%, transparent);} }
   .seg .chip.on, .seg .chip[aria-pressed="true"]{background:var(--raise); border-color:var(--accent); font-weight:600; box-shadow:var(--shadow-1);}
   .seg .chip.on::before, .seg .chip[aria-pressed="true"]::before{display:none;}
-  /* theme swatch: the theme's page colour with its accent as the lamp in the middle; the colours
-     are kept under forced colours (they are the information), with a system-colour rim */
-  .chip i{
+  /* a chip's round swatch: its colour with a dot of the accent in the middle (a highlight colour's
+     chip). A theme tile draws small pages instead (.chip.tile below), so this leaves it alone. The
+     colours are kept under forced colours (they are the information), with a system-colour rim */
+  .chip:where(:not(.tile)) i{
     display:inline-block; flex:none; width:20px; height:20px; border-radius:50%; margin:0 2px 0 -6px;
     position:relative; background:var(--sw-bg, var(--accent)); forced-color-adjust:none;
     box-shadow:inset 0 0 0 1px color-mix(in srgb, currentColor 32%, transparent);
   }
-  .chip i::after{content:""; position:absolute; inset:5px; border-radius:50%; background:var(--sw-acc, var(--accent));}
+  .chip:where(:not(.tile)) i::after{content:""; position:absolute; inset:5px; border-radius:50%; background:var(--sw-acc, var(--accent));}
   @media (forced-colors: active){
-    .chip i{outline:1px solid ButtonText; outline-offset:1px;}
+    .chip:where(:not(.tile)) i{outline:1px solid ButtonText; outline-offset:1px;}
     .seg{border-color:ButtonText;}
     .seg .chip.on, .seg .chip[aria-pressed="true"]{border-color:Highlight; border-width:2px;}
     .sheet-tabs button.on{border-color:Highlight; border-width:2px;}
@@ -723,34 +724,17 @@
     #typePop .prow-size .val{grid-area:2 / 1; justify-self:center; min-width:0; text-align:center; font-family:var(--reader-font); font-size:1.5rem; line-height:2rem; color:var(--ink);}
     #typePop .ctl.mini{width:56px; min-width:56px; height:56px; border-radius:var(--r-sm); font-size:1.125rem;}
   }
-  /* Day ⇄ Night: two large buttons for the Auto pair, each with a small page of the theme it goes
-     to, its word, and the theme's name under it; the one on screen is pressed. Where the name is
-     the word itself (the Day theme on the Day button) the name steps back, and the pressed one
-     says "Current" instead */
-  .dn-pair{display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:var(--sp-2); margin-bottom:var(--sp-1);}
-  .dn{
-    position:relative; display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto; align-content:center; align-items:center; column-gap:12px; row-gap:1px;
-    min-height:56px; padding:6px 12px 6px 8px; text-align:left; border:1.5px solid var(--ctl-line); border-radius:var(--r-lg); background:transparent; color:var(--ink);
-    font-family:var(--ui-font); cursor:pointer; transition:background-color var(--t-fade), border-color var(--t-fade), transform var(--t-press) var(--ease-out);
-  }
-  .dn .dn-sw{grid-row:1 / span 2;}
-  .dn-t{font-size:var(--fs-body); font-weight:700; line-height:1.2;}
-  .dn-n, .dn-cur{font-size:var(--fs-small); color:var(--muted); line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .dn-cur, .dn.same .dn-n{display:none;}
-  .dn.same[aria-pressed="true"] .dn-cur{display:block;}
-  .dn.same:not([aria-pressed="true"]) .dn-t{grid-row:1 / span 2;}
-  @media (hover:hover){ .dn:hover{background:var(--accent-soft);} .dn:hover .dn-n{color:var(--ink);} }
-  .dn:active{transform:scale(.98);}
-  .dn[aria-pressed="true"]{background:var(--accent-soft); border:var(--bw-sel) solid var(--accent);}
-  .dn[aria-pressed="true"] :is(.dn-n, .dn-cur){color:var(--ink);}      /* the secondary colour on the tint can slip under 4.5:1 */
-  :root[data-tone="contrast"] .dn{border-width:2px;}
-  #qRecentSec[hidden]{display:none;}
   .pop-sec{display:grid; gap:var(--sp-2);}
   .plabel{font-size:var(--fs-body); color:var(--ink);}
   .pop-sec .plabel, .sub-label{font-size:var(--fs-small); font-weight:700; color:var(--muted);}
   .sub-label{margin:var(--sp-1) 0 calc(-1 * var(--sp-1));}
-  /* the theme group's column never grows past the sheet (a segment's max-content would widen it, and the tiles with it) */
-  #themeGroup{grid-template-columns:minmax(0, 1fr);}
+  /* Settings › Theme: the heading and the Day/Night switch share the first row, and everything else
+     spans the group. The first column never grows past the sheet (a segment's max-content would
+     widen it, and the tiles with it) */
+  #themeGroup{grid-template-columns:minmax(0, 1fr) auto;}
+  #themeGroup > *{grid-column:1 / -1;}
+  #themeGroup > .label{grid-column:1; grid-row:1; margin-bottom:0;}
+  #themeGroup > #sDN{grid-column:2; grid-row:1; align-self:center;}
   /* switching by itself: the label over its three choices, the hours under them while By time is on */
   #themePop .q-auto{display:grid; grid-template-columns:minmax(0, 1fr); gap:2px; min-height:0;}
   #themePop .q-auto > .plabel{width:auto; font-size:var(--fs-small); color:var(--muted);}
@@ -759,46 +743,49 @@
   #themePop .q-times[hidden]{display:none;}
   #themePop .q-times > label{width:auto; flex:none; font-size:var(--fs-small);}
   #themePop .q-times .sel{flex:1 1 0; min-width:0; min-height:40px; padding:0 10px; background-image:none;}
-  /* the group switch: one segmented row across the popover, its four options sharing the width */
-  .q-groups{display:grid; grid-template-columns:repeat(4, auto); width:100%; margin-top:var(--sp-1);}
   #themePop .pop-head{min-height:32px; padding-bottom:0;}
   #themePop{row-gap:6px;}
-  .q-groups .chip, .q-groups .chip.chip{min-height:36px;}
-  .q-groups .chip{padding:4px 8px; min-width:0; font-size:var(--fs-small); white-space:nowrap;}
-  /* ---- theme tiles: a small page of each theme — its page colour, "Aa" in its text colour, two
-     lines of secondary text, the panel as a strip along the bottom with the lamp as a button on
-     it — and the name under it. Four to a row in the popover, three in the sheet on a phone. The
-     edge is the theme's own text colour faded into its page, so a dark page on a dark sheet (or a
-     light one on a light sheet) always has one. The one on screen: an accent ring set off by a gap,
-     and a check in the corner, so it is marked by more than colour ---- */
-  .tiles{display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px 8px; padding:6px 2px 2px;}
-  .tiles[hidden]{display:none;}
+  /* Day and Night in the theme picker's head and in Settings › Theme: a segmented control whose
+     pressed half is the half on screen, a sun and a moon by the words; 40px buttons, 48px on a
+     phone. E-ink hides it (applyTheme) */
+  .dn-seg{flex:none;}
+  .dn-seg[hidden]{display:none;}
+  .dn-seg .chip{gap:6px; min-height:40px; padding:4px 14px 4px 11px;}
+  .dn-seg .chip svg{width:18px; height:18px; flex:none;}
+  @media (max-width:560px){ .dn-seg .chip{min-height:48px;} }
+  /* ---- theme tiles: a theme as a small page in its colours — "Aa" in its text colour and the title
+     face, two lines of secondary text beside it and two under it, the panel as a strip along the
+     bottom with the lamp lit on it — and the name under it. A look's tile is two such pages as one
+     drawing, its day theme on the left and its night theme on the right; a theme's own tile is one
+     page, the same size. Two to a row, wherever the picker is. Each page's edge is its own text
+     colour faded into it, so a light page on a light sheet (or a dark one on a dark sheet) always
+     has one. The pressed one: an accent ring set off by a gap of the sheet colour, a check in the
+     corner and its name in bold, so it is marked by more than colour ---- */
+  .looks{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px 12px; padding:6px 2px 2px;}
   .chip.tile{
     display:grid; grid-template-columns:minmax(0, 1fr); align-content:start; gap:6px; min-width:0; min-height:0; padding:0;
-    border:0; border-radius:var(--r-md); background:transparent; text-align:center; font-weight:500;
+    border:0; border-radius:var(--r-md); background:transparent; text-align:center; font-weight:400;
   }
-  :is(.chip.tile > i, .dn-sw){
-    position:relative; display:block; margin:0; overflow:hidden; forced-color-adjust:none;
-    background:var(--sw-bg, var(--bg)); border:1px solid color-mix(in oklab, var(--sw-ink, var(--ink)) 22%, var(--sw-bg, var(--bg)));
-    box-shadow:none; transition:box-shadow var(--t-fade);
+  /* the drawing: one page, or a look's two side by side with no edge where they meet */
+  .chip.tile > i{
+    position:relative; display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0, 1fr); width:100%; height:68px; margin:0; border-radius:12px;
+    forced-color-adjust:none; box-shadow:none; transition:box-shadow var(--t-fade);
   }
-  .chip.tile > i{width:100%; height:52px; border-radius:12px;}
-  .dn-sw{width:44px; height:40px; border-radius:9px;}
-  /* "Aa" in the theme's text colour and title face */
-  :is(.chip.tile > i, .dn-sw) > b::before{content:"Aa";}
-  :is(.chip.tile > i, .dn-sw) > b{position:absolute; left:7px; top:4px; font-family:var(--title-font); font-weight:600; font-size:20px; line-height:1; color:var(--sw-ink, var(--ink));}
-  .dn-sw > b{left:5px; top:3px; font-size:14px;}
-  /* two lines of secondary text */
-  :is(.chip.tile > i, .dn-sw) > s{position:absolute; height:3px; border-radius:2px; background:var(--sw-mut, var(--muted)); left:36px; right:8px; top:9px;}
-  :is(.chip.tile > i, .dn-sw) > s + s{top:17px; right:16px;}
-  .dn-sw > s{left:24px; right:5px; top:6px; height:2px;}
-  .dn-sw > s + s{top:11px; right:9px;}
-  /* the panel strip, and the lamp as a button on it */
-  :is(.chip.tile > i, .dn-sw)::before{content:""; position:absolute; left:0; right:0; bottom:0; height:16px; background:var(--sw-pan, var(--panel));}
-  .chip.tile > i::after, .dn-sw::after{content:""; position:absolute; inset:auto 7px 3px auto; width:26px; height:10px; border-radius:var(--r-pill); background:var(--sw-acc, var(--accent));}
-  .dn-sw::before{height:13px;}
-  .dn-sw::after{inset:auto 5px 3px auto; width:16px; height:7px;}
-  .tile-n{display:block; min-width:0; font-size:13px; line-height:1.25; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .tile .pg{position:relative; display:block; overflow:hidden; background:var(--sw-bg); border:1px solid color-mix(in oklab, var(--sw-ink) 22%, var(--sw-bg)); border-radius:12px;}
+  .tile .pg + .pg{border-left:0; border-radius:0 12px 12px 0;}
+  .tile .pg:has(+ .pg){border-right:0; border-radius:12px 0 0 12px;}
+  /* "Aa" in the theme's text colour and title face, and its secondary text as lines */
+  .pg > b{position:absolute; left:7px; top:4px; font-family:var(--title-font); font-weight:600; font-size:20px; line-height:1; color:var(--sw-ink);}
+  .pg > b::before{content:"Aa";}
+  .pg > s{position:absolute; left:36px; right:8px; top:9px; height:3px; border-radius:2px; background:var(--sw-mut);}
+  .pg > s + s{top:17px; right:16px;}
+  .pg > q{position:absolute; left:7px; right:8px; top:33px; height:3px; border-radius:2px; background:var(--sw-mut); opacity:.75;}
+  .pg > q + q{top:41px; right:22px;}
+  .pg > q::before, .pg > q::after{content:none;}
+  /* the panel strip, and the lamp lit on it: a dot with a soft glow in its own colour */
+  .pg > u{position:absolute; left:0; right:0; bottom:0; height:16px; background:var(--sw-pan);}
+  .pg > em{position:absolute; right:8px; bottom:3px; width:10px; height:10px; border-radius:50%; background:var(--sw-acc); box-shadow:0 0 5px 1px color-mix(in srgb, var(--sw-acc) 45%, transparent);}
+  .tile-n{display:block; min-width:0; font-size:var(--fs-body); line-height:1.25; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   @media (hover:hover){
     .chip.tile:hover{background:transparent;}
     .chip.tile:hover > i{box-shadow:0 0 0 2px var(--raise), 0 0 0 4px var(--ctl-line);}
@@ -814,16 +801,33 @@
   .chip.tile:focus-visible{outline:none;}
   .chip.tile:focus-visible > i{outline:var(--ring) solid var(--accent); outline-offset:4px;}
   /* New theme: a dashed empty page with a plus */
-  .chip-new.tile > i{background:transparent; border:1.5px dashed var(--ctl-line);}
-  .chip-new.tile > i::before{display:none;}
-  .chip-new.tile > i::after{content:"+"; inset:0; width:auto; height:auto; border-radius:0; background:none; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:300; line-height:1; color:var(--muted);}
-  /* the sheet: three to a row on a phone, as many as fit on a wider screen */
-  #themeChips .tiles{grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:14px 10px;}
+  .chip-new.tile > i{display:flex; align-items:center; justify-content:center; background:transparent; border:1.5px dashed var(--ctl-line);}
+  .chip-new.tile > i::after{content:"+"; font-size:28px; font-weight:300; line-height:1; color:var(--muted);}
+  /* a phone: the pages 76px tall, and what is drawn on them a little larger */
+  @media (max-width:560px){
+    .looks{gap:16px 12px;}
+    .chip.tile > i{height:76px;}
+    .pg > b{left:8px; top:6px; font-size:21px;}
+    .pg > s{left:38px; top:11px;}
+    .pg > s + s{top:19px;}
+    .pg > q{left:8px; top:35px;}
+    .pg > q + q{top:43px;}
+    .pg > u{height:17px;}
+    .pg > em{bottom:3.5px;}
+  }
+  /* Settings' groups of single themes: as many to a row as fit, three on a phone */
+  #themeChips .tiles{display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:14px 10px; padding:6px 2px 2px;}
   @media (max-width:560px){ #themeChips .tiles{grid-template-columns:repeat(3, minmax(0, 1fr));} }
-  :root[data-tone="contrast"] :is(.chip.tile > i, .dn-sw){border-width:2px; border-color:var(--ink);}
+  /* the contrast tone: each page's edge 2px in the text colour */
+  :root[data-tone="contrast"] .tile .pg{border-width:2px; border-color:var(--ink);}
+  :root[data-tone="contrast"] .tile .pg + .pg{border-left-width:0;}
+  :root[data-tone="contrast"] .tile .pg:has(+ .pg){border-right-width:0;}
+  /* e-ink: the pressed tile stays on the white of the sheet, its name, ring and check black; the
+     ring is an outline, as e-ink draws no shadows */
   body.eink .chip.tile:is(.on, [aria-pressed="true"]){background:transparent !important; color:#000 !important; --ink:#000; --accent:#000; --on-fill:#fff; --raise:#fff;}
+  body.eink .chip.tile:is(.on, [aria-pressed="true"]) > i{outline:3px solid #000; outline-offset:2px;}
   @media (forced-colors: active){
-    :is(.chip.tile > i, .dn-sw){outline:1px solid ButtonText; outline-offset:1px;}
+    .chip.tile > i{outline:1px solid ButtonText; outline-offset:1px;}
     .chip.tile:is(.on, [aria-pressed="true"]) > i{outline:3px solid Highlight; outline-offset:2px;}
   }
   /* a step in from the popover: the rows most readers set once (weight, letter and word spacing) */
@@ -2458,9 +2462,9 @@
   body.eink.dragging::after{background:transparent !important;}
   /* a hover adds nothing (a chosen or filled control keeps its fill) */
   body.eink :is(button, a, summary, [role="button"], [role="tab"], .tab-x, .toc-item, .find-item, .figrow):hover:not(.primary):not(.on):not(.cur):not(.go):not(.dot):not(.sw):not(#updateReload):not(#einkYes):not([aria-pressed="true"]):not([aria-selected="true"]):not([aria-expanded="true"]){background-color:transparent !important;}
-  /* a chosen control: white on black */
-  body.eink :is(.chip.on, .chip[aria-pressed="true"], .tab.on, .sheet-tabs button.on, .font-item[aria-pressed="true"], #side .side-switch button[aria-pressed="true"],
-    .dn[aria-pressed="true"], #tts .tts-speed[aria-expanded="true"], #actRow .ctl[aria-expanded="true"],
+  /* a chosen control: white on black (a theme tile has its own black ring instead, with the tiles) */
+  body.eink :is(.chip.on:not(.tile), .chip[aria-pressed="true"]:not(.tile), .tab.on, .sheet-tabs button.on, .font-item[aria-pressed="true"], #side .side-switch button[aria-pressed="true"],
+    #tts .tts-speed[aria-expanded="true"], #actRow .ctl[aria-expanded="true"],
     .bar .ctl[aria-expanded="true"], .find-item.cur, #dictCard [role=tab][aria-selected=true], #dictCard .pill.acc, #dictCard .chg[aria-expanded=true],
     #dictCard .figrow[aria-pressed=true], #dictCard .act[aria-pressed=true]){
     --ink:#fff; --muted:#fff; --accent:#fff; --line:#fff; --lamp:#fff; background:#000 !important; color:#fff !important; border-color:#000 !important;
@@ -2685,25 +2689,13 @@
 
   @media print{ #recap, #rsvp{display:none !important;} }
   @media (forced-colors: active){
-    .dn, .bk-row, .snd-tiles .chip, body.phonebar #actRow .ctl, #tts .tts-speed, #toast .toast-act{border:1px solid ButtonText;}
-    .dn[aria-pressed="true"], .bk-row.on, .snd-tiles .chip[aria-pressed="true"], #themePop .strip .chip[aria-pressed="true"]{border:2px solid Highlight;}
+    .bk-row, .snd-tiles .chip, body.phonebar #actRow .ctl, #tts .tts-speed, #toast .toast-act{border:1px solid ButtonText;}
+    .bk-row.on, .snd-tiles .chip[aria-pressed="true"]{border:2px solid Highlight;}
     #tts .tts-sleep{forced-color-adjust:none; background:CanvasText; color:Canvas;}
   }
 
-  /* ---- themes: Previous, the five groups, Mine with its actions, Make my own, Day and night ---- */
+  /* ---- themes: the picker's head, Mine with its actions, Day and night ---- */
   #themePop .pop-head{gap:var(--sp-2);}
-  .q-prev{min-height:32px; padding:2px 12px 2px 8px; gap:6px; font-size:var(--fs-small); max-width:65%; overflow:hidden;}
-  .q-prev[hidden]{display:none;}
-  .q-prev svg{width:16px; height:16px; flex:none;}
-  .q-prev span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  /* six tabs: each keeps its whole label; they share the width when there is room and scroll
-     sideways when there is not (showGroup brings the chosen one into view) */
-  .q-groups{grid-template-columns:repeat(6, minmax(max-content, 1fr)); overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none;}
-  /* Collections: Dutch, Nature and seasons, Cozy and Textured, each under its own small label */
-  .q-colls{display:grid; gap:var(--sp-2);}
-  .q-colls[hidden]{display:none;}
-  .q-coll .plabel{font-size:var(--fs-small); color:var(--muted); padding:0 2px;}
-  .q-coll .tiles{padding-top:4px;}
   /* ---- the Textured themes: a faint paper or cloth behind the text, on a fixed layer under the
      page (bars, sheets and cards keep their own plain colours). Small inline SVG noise and CSS
      lines, nothing that moves; applyTheme sets data-texture only outside e-ink mode, the
@@ -2734,8 +2726,6 @@
     background-size:100% 100%, 240px 240px;
   }
   @media print{ :root[data-texture] body::before{display:none;} }
-  .q-groups::-webkit-scrollbar{display:none;}
-  .q-groups .chip{padding:4px 6px;}
   /* an own theme's tile with its ⋯ in the corner of the small page */
   .mine-t{position:relative; min-width:0;}
   .mine-t > .chip.tile{width:100%;}
@@ -2752,17 +2742,8 @@
   .q-acts-n{flex:1 0 100%; font-size:var(--fs-small); font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .q-acts .chip{min-height:40px; padding:4px 12px; background:var(--raise);}
   .q-acts .chip.danger{color:var(--ink); border-color:var(--ink); font-weight:600;}
-  .q-make{justify-self:start; gap:8px; min-height:40px; padding:4px 14px 4px 10px;}
-  .q-make svg{width:18px; height:18px; flex:none;}
-  /* day and night: the two themes as pickers, each a small page with a native list over it */
+  /* day and night: its rows a little apart, and a step down from Mine */
   #themePop .q-auto{gap:var(--sp-2); margin-top:var(--sp-1);}
-  .dn-pair[hidden]{display:none;}
-  label.dn{cursor:pointer;}
-  .dn-sel{position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; margin:0; font-size:16px;}
-  .dn .dn-t{font-size:var(--fs-small); font-weight:600; color:var(--muted);}
-  .dn .dn-n{font-size:var(--fs-body); color:var(--ink); font-weight:700; display:block !important;}
-  .dn.on{border:var(--bw-sel, 2px) solid var(--accent);}
-  .dn:focus-within{outline:var(--ring) solid var(--accent); outline-offset:2px;}
   .q-now{margin:0; color:var(--ink);}
   .q-now:empty{display:none;}
 
