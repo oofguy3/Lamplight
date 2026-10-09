@@ -626,11 +626,14 @@
     .sw{position:relative;}
     .sw::after{content:""; position:absolute; inset:-2px;}
   }
-  /* forced colours: the native controls, which the system palette draws properly */
+  /* forced colours: the native controls, which the system palette draws properly. A slider's focus
+     ring is a box-shadow round its thumb, which forced colours does not draw, so a slider the
+     keyboard focuses is outlined in the system's highlight instead */
   @media (forced-colors: active){
     input[type=range], input[type=checkbox], input[type=checkbox][role=switch], select.sel{-webkit-appearance:auto; appearance:auto; background-image:none;}
     input[type=checkbox]::before{display:none;}
     .chip.on::before, .chip[aria-pressed="true"]::before{background:Highlight;}
+    input[type=range]:focus-visible{outline:2px solid Highlight; outline-offset:2px;}
   }
 
   /* ---------- popovers ---------- */
@@ -2506,11 +2509,13 @@
   /* switches: a 1px black track; a black knob while off, a white knob on a black track while on */
   body.eink input[type=checkbox][role=switch]{background-image:radial-gradient(circle closest-side, #000 8.5px, transparent 9.5px) !important;}
   body.eink input[type=checkbox][role=switch]:checked{background-color:#000 !important; background-image:radial-gradient(circle closest-side, #fff 9px, transparent 10px) !important;}
-  /* sliders: a white track in a black rule, black up to the thumb */
+  /* sliders: a white track in a black rule, black up to the thumb. The thumb is a pseudo-element,
+     which the rule above that stops every transition does not reach, so it is stopped here and its
+     focus ring shows at once */
   body.eink input[type=range]{--track:#fff;}
   body.eink input[type=range]::-webkit-slider-runnable-track{border:1px solid #000;}
   body.eink input[type=range]::-moz-range-track{border:1px solid #000;}
-  body.eink input[type=range]::-webkit-slider-thumb{border-width:2px;}
+  body.eink input[type=range]::-webkit-slider-thumb{border-width:2px; transition:none !important;}
   body.eink .dim-row input[type=range]::-webkit-slider-runnable-track{border-style:dashed;}
   body.eink .dim-row input[type=range]{opacity:1;}
   /* a select keeps its chevron */
@@ -2550,6 +2555,8 @@
 
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}
+    /* a slider's thumb is a pseudo-element, which * does not reach: its focus ring shows at once too */
+    input[type=range]::-webkit-slider-thumb{transition:none !important;}
   }
 
   /* ---------- print ---------- */

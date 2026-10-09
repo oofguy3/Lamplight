@@ -13,7 +13,8 @@
    table, the first paint is Day's, the title bar's colour in the markup and the manifest is Dusk's
    page, the editors' swatches come from the set, and the contrast and dark tones have their own ring,
    sliders, Day and Night buttons and yellow highlight. The lamp's focus ring clears its ring, and the
-   dock's handle shows its focus ring in every tone.
+   dock's handle shows its focus ring in every tone, at once with reduced motion and in e-ink; under
+   forced colours a focused slider is outlined instead.
      NODE_PATH=$(npm root -g) node tests/looks.js */
 const { serve, browser, openFixture, makeReport, parseColor } = require("./lib");
 
@@ -1120,10 +1121,65 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       await ctx.close();
     });
     await guard("outside the table, the dock's handle and the keyboard", async () => {
-      /* the dock's place slider takes keys (an arrow moves a page), so its handle shows a focus ring on every page:
-         in each tone, a picture of the slider's box with the focus on the dock itself, and one with the slider
-         focused from the keyboard; the focus ring is what differs */
+      /* the dock's place slider takes keys (an arrow moves a page), so its handle shows a focus ring on every page.
+         Three pictures of the slider's box: with the focus on the dock itself; just after the keyboard focuses the
+         slider, with the page's animations held still; and once they have run. The focus ring is what the last adds
+         to the first. With reduced motion (this context's) and in e-ink nothing fades, so the ring is in the held
+         picture already and the last adds nothing to it; e-ink is checked with motion allowed, on its own rule */
       const ctx = await context(b, PHONE, { ll_prefs: { auto: "off" }, ll_tips: "seen", ll_tip_doc: "1" });
+      const page = await open(ctx, url);
+      const cdp = await ctx.newCDPSession(page);
+      await openFixture(page, "sample.md");
+      await page.tap("#dockBtn"); await page.waitForTimeout(250);
+      const seen = {};
+      const focusHandle = async (key) => {
+        const box = await page.evaluate(() => { const r = document.getElementById("dockPos").getBoundingClientRect(); return { x: r.left - 8, y: r.top, width: r.width + 16, height: r.height }; });
+        const before = await page.screenshot({ clip: box });
+        await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
+        await page.keyboard.press("Shift"); await page.focus("#dockPos"); await page.waitForTimeout(100);
+        const held = await page.screenshot({ clip: box });
+        await cdp.send("Animation.setPlaybackRate", { playbackRate: 1 });
+        await page.waitForTimeout(400);
+        const after = await page.screenshot({ clip: box });
+        const at = await page.evaluate(() => ({ tone: document.documentElement.dataset.tone, eink: document.body.classList.contains("eink"), open: document.body.classList.contains("dock-open"),
+          focusVisible: document.getElementById("dockPos").matches(":focus-visible") }));
+        seen[key] = Object.assign(at, { changed: await changedPixels(page, before, after), late: await changedPixels(page, held, after) });
+      };
+      for (const id of ["day", "dusk", "hicon"]){
+        await page.evaluate((k) => { window.llThemes.pick(k); document.getElementById("phoneDock").focus(); }, id);
+        await page.waitForTimeout(150);
+        await focusHandle(id);
+      }
+      await page.evaluate(() => { window.llThemes.pick("day"); document.getElementById("phoneDock").focus(); });
+      await page.waitForTimeout(150);
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.evaluate(() => { window.__ll.Eink.set(true); document.getElementById("phoneDock").focus(); });
+      await page.waitForTimeout(300);
+      await focusHandle("eink");
+      const tones = [seen.day, seen.dusk, seen.hicon];
+      /* the ring changes about 270 to 360 pixels here, by tone; without one nothing changes */
+      R.check("the dock's handle shows a focus ring from the keyboard in the light, dark and contrast tones", seen.day.tone === "light" && seen.dusk.tone === "dark" && seen.hicon.tone === "contrast" &&
+        tones.every((s) => s.open && s.focusVisible && s.changed >= 100), JSON.stringify(seen));
+      /* a ring that fades in is missing from the held picture: the last adds about 250 to 360 pixels to it */
+      R.check("with reduced motion, and in e-ink with motion allowed, the handle's focus ring shows at once: nothing fades in", seen.eink.eink && seen.eink.open && seen.eink.focusVisible &&
+        Object.values(seen).every((s) => s.late === 0), JSON.stringify(seen));
+      /* Chromium computes no style for the handle, so its rule for the light and dark tones is looked up (the
+         contrast tone's own two are checked above): the accent, outside a 2px ring of the panel, as wide as the
+         focus ring everywhere (--ring: 2px, 3px on a dark page) */
+      const shadow = await page.evaluate(() => {
+        const walk = (rules) => [...rules].flatMap((r) => [r].concat(r.cssRules ? walk(r.cssRules) : []));
+        const rule = [...document.styleSheets].flatMap((s) => { try { return walk(s.cssRules); } catch (_){ return []; } })
+          .find((r) => r.selectorText === "#dockPos:focus-visible::-webkit-slider-thumb");
+        return rule ? rule.style.boxShadow : null;
+      });
+      R.check("light and dark tones: the handle's focus ring is the accent, 2px clear of the handle and as wide as the focus ring",
+        shadow === "0 0 0 2px var(--panel), 0 0 0 calc(2px + var(--ring)) var(--accent)", shadow);
+      await ctx.close();
+    });
+    await guard("outside the table, a slider's focus under forced colours", async () => {
+      /* forced colours draws no box-shadow, so no handle shows its ring there: a slider the keyboard focuses is
+         outlined in the system's Highlight instead, 2px off it and 2px wide (the dock's, in each tone) */
+      const ctx = await context(b, Object.assign({ forcedColors: "active" }, PHONE), { ll_prefs: { auto: "off" }, ll_tips: "seen", ll_tip_doc: "1" });
       const page = await open(ctx, url);
       await openFixture(page, "sample.md");
       await page.tap("#dockBtn"); await page.waitForTimeout(250);
@@ -1131,16 +1187,23 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       for (const id of ["day", "dusk", "hicon"]){
         await page.evaluate((k) => { window.llThemes.pick(k); document.getElementById("phoneDock").focus(); }, id);
         await page.waitForTimeout(150);
-        const box = await page.evaluate(() => { const r = document.getElementById("dockPos").getBoundingClientRect(); return { x: r.left - 8, y: r.top, width: r.width + 16, height: r.height }; });
+        const box = await page.evaluate(() => { const r = document.getElementById("dockPos").getBoundingClientRect(); return { x: r.left - 8, y: r.top - 4, width: r.width + 16, height: r.height + 8 }; });
         const before = await page.screenshot({ clip: box });
         await page.keyboard.press("Shift"); await page.focus("#dockPos"); await page.waitForTimeout(100);
         const after = await page.screenshot({ clip: box });
-        const at = await page.evaluate(() => ({ tone: document.documentElement.dataset.tone, open: document.body.classList.contains("dock-open"), focusVisible: document.getElementById("dockPos").matches(":focus-visible") }));
+        const at = await page.evaluate(() => {
+          const el = document.getElementById("dockPos"), cs = getComputedStyle(el), probe = document.createElement("i");
+          probe.style.color = "Highlight"; document.body.appendChild(probe);
+          const hl = getComputedStyle(probe).color; probe.remove();
+          return { forced: matchMedia("(forced-colors: active)").matches, tone: document.documentElement.dataset.tone, open: document.body.classList.contains("dock-open"),
+            focusVisible: el.matches(":focus-visible"), outline: [cs.outlineStyle, cs.outlineWidth, cs.outlineOffset].join(" "), highlight: cs.outlineColor === hl };
+        });
         seen[id] = Object.assign(at, { changed: await changedPixels(page, before, after) });
       }
-      /* the ring changes about 270 to 470 pixels here, by tone; without one nothing changes */
-      R.check("the dock's handle shows a focus ring from the keyboard in the light, dark and contrast tones", seen.day.tone === "light" && seen.dusk.tone === "dark" && seen.hicon.tone === "contrast" &&
-        Object.values(seen).every((s) => s.open && s.focusVisible && s.changed >= 100), JSON.stringify(seen));
+      /* the outline changes about 1,600 pixels here; without it nothing changes */
+      R.check("forced colours: a slider the keyboard focuses is outlined in Highlight, 2px off it and 2px wide, in the light, dark and contrast tones",
+        seen.day.tone === "light" && seen.dusk.tone === "dark" && seen.hicon.tone === "contrast" &&
+        Object.values(seen).every((s) => s.forced && s.open && s.focusVisible && s.outline === "solid 2px 2px" && s.highlight && s.changed >= 100), JSON.stringify(seen));
       await ctx.close();
     });
     await guard("outside the table, the dark tone", async () => {

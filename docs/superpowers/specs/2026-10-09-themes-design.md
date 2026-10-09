@@ -640,6 +640,7 @@ These come from the design file and are reproduced in Appendix A:
    - Every slider is a hollow capsule: a 2px rule in the edge colour around a 2px gap, with a 6px fill.
    - The dock's handle gets a ring in the panel colour, and a focus ring in the accent outside that.
    - **Added in review.** The handle's focus ring shows in every tone, not only this one: the dock's own `box-shadow:none` hid it on light and dark pages too. There it is 2px clear of the handle and as wide as the focus ring everywhere, 2px (3px on a dark page).
+   - **Added in review.** With reduced motion and in e-ink, every slider's handle shows its focus ring at once instead of fading it in: the rules that stop every transition there do not reach the handle, a pseudo-element, so it is named in each. Forced colours draws no box-shadow, so there a slider the keyboard focuses is outlined in the system's Highlight, 2px off it and 2px wide.
 3. **The Contrast pair: the dock's Day and Night.** These become two outlined buttons. Before, they were the accent's edge drawn inside the well's own rule.
 4. **The dark tone: the yellow highlight.** In the dark tone it is drawn at 38%, not 42%, so text on it reads at 4.73:1 or more on every night theme. The light tone and the contrast tone keep 42%, Contrast dark included.
 5. **The dark tone: the dock's position slider.** Its unfilled track is 35% of the edge colour mixed into the line, as on every other slider. Before, it was the line alone, at 1.33–1.39:1, so the part of the book still to read did not show at night.
@@ -971,7 +972,9 @@ Several checks read colours that come from an oklab mix, so the computed style i
   - in the contrast tone, the dock handle's two rules (24px in the panel's ring, and the accent's focus ring outside it), and the lamp's focus ring 2px clear of its ring and on screen;
   - in the dark tone, the yellow highlight is 38% and the dock's track is the mix;
   - in the light tone and in Contrast dark, 42%;
-  - in the light, dark and contrast tones, the dock's handle shows a focus ring when the keyboard focuses it.
+  - in the light, dark and contrast tones, the dock's handle shows a focus ring when the keyboard focuses it, and the light and dark tones' rule for it is the accent, 2px clear of the handle and as wide as the focus ring;
+  - with reduced motion, and in e-ink with motion allowed, that ring is there at once: a picture taken with the page's animations held still already has it;
+  - under forced colours, the slider the keyboard focuses is outlined in Highlight, 2px off it and 2px wide.
 
 ### 13.4 Existing tests to change
 
@@ -1086,6 +1089,7 @@ The owner said "Don't ask me questions", so the open choices were settled as bel
 | Dock tool names in the contrast tone | Stage 1's rule stays: 15px, wrapping without clipping | review |
 | The lamp's focus ring in the Contrast pair | Drawn 9px off the button, outside the moved ring, which covers the place it had | review |
 | The dock handle's focus ring | Shown in every tone, as in the contrast tone; the dock's own rule hid it on light and dark pages | review |
+| A slider's focus ring with reduced motion, in e-ink and under forced colours | At once, not faded in, with reduced motion and in e-ink; under forced colours, which draws no box-shadow, an outline in Highlight | review |
 | The app icons | Keep their pixels, on the old Dusk page; a redraw on #0D121C is left for a later stage | review |
 | `llThemes.select` | A raw setter for tests; the pick paths carry the rules | review |
 | Textures and Plain background | Removed | ruling |
@@ -1124,4 +1128,4 @@ Appended to app.css as the design file gives it (comments shortened):
 :root[data-tone="dark"] #dockPos{--track:color-mix(in srgb, var(--edge) 35%, var(--line));}
 ```
 
-Review added one rule to this block, right after the ring's: `:root[data-tone="contrast"] #dockBtn:focus-visible{outline-offset:9px;}` (9.3, item 1). The dock handle's focus ring for the other tones sits with the phone dock's own rules in app.css (9.3, item 2).
+Review added one rule to this block, right after the ring's: `:root[data-tone="contrast"] #dockBtn:focus-visible{outline-offset:9px;}` (9.3, item 1). The dock handle's focus ring for the other tones sits with the phone dock's own rules in app.css, the stops for a handle's fade in the e-ink and reduced-motion rules, and the forced-colours outline with the rule for the native controls (9.3, item 2).
