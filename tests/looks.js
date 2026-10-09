@@ -3,12 +3,21 @@
    pair and shows its theme for the half on screen; Day and Night change the half; a pair that is no
    look gets a tile of its own, first.
      NODE_PATH=$(npm root -g) node tests/looks.js */
-const { serve, browser, makeReport } = require("./lib");
+const { serve, browser, openFixture, makeReport } = require("./lib");
 
 const st = (page) => page.evaluate(() => { const s = window.__ll.state; return { theme: s.theme, autoDay: s.autoDay, autoNight: s.autoNight, auto: s.auto, hold: s.dnHold }; });
 const prefs = (page) => page.evaluate(() => localStorage.getItem("ll_prefs"));
 /* the look tiles in a grid, in order: { id, name, on } */
 const looksIn = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s + " .tile.look")].map((t) => ({ id: t.dataset.look, name: (t.querySelector(".tile-n") || {}).textContent, on: t.getAttribute("aria-pressed") === "true" })), sel);
+/* a tile's name: its text, whether it is wider than its box, and whether the box cuts it there with an
+   ellipsis (on one line, clipped); `css` shows the three values */
+const nameCut = (page, sel) => page.evaluate((s) => {
+  const n = document.querySelector(s + " .tile-n");
+  if (!n) return null;
+  const cs = getComputedStyle(n);
+  return { name: n.textContent, sw: n.scrollWidth, cw: n.clientWidth, wider: n.scrollWidth > n.clientWidth,
+    cut: /^(hidden|clip)$/.test(cs.overflowX) && cs.whiteSpace === "nowrap" && cs.textOverflow === "ellipsis", css: [cs.overflowX, cs.whiteSpace, cs.textOverflow].join(" ") };
+}, sel);
 /* a Day/Night switch's state: "day:true,night:false" */
 const dnIn = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s + " [data-dn]")].map((b) => b.dataset.dn + ":" + b.getAttribute("aria-pressed")).join(","), sel);
 const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Contrast"];
@@ -92,18 +101,22 @@ async function tapLook(page, id){ await openTheme(page); await page.click('#qLoo
       await ctx.close();
     });
     await guard("picker, Dutch at 320px", async () => {
-      /* Dutch, 320px, the contrast tone: the head and the longest name fit (Review Focus 2) */
-      const ctx = await context(b, { viewport: { width: 320, height: 700 }, hasTouch: true, isMobile: true, locale: "nl-NL" }, { ll_prefs: { auto: "off", theme: "hicon", autoDay: "hicon", autoNight: "hidark" } });
+      /* Dutch, 320px, the contrast tone (Review Focus 2): the head and the sheet fit, and a name too
+         long for its tile ends in an ellipsis inside it. At the regular weight the longest look name,
+         "Zeelucht & Grachten", just fits, so the seed is a mixed pair, Sea air by day and Contrast
+         dark by night, with Contrast dark on screen: the pressed tile, first, is the pair's, its name
+         "Zeelucht & Contrast donker" in bold and far wider than the tile */
+      const ctx = await context(b, { viewport: { width: 320, height: 700 }, hasTouch: true, isMobile: true, locale: "nl-NL" }, { ll_prefs: { auto: "off", theme: "hidark", autoDay: "seaair", autoNight: "hidark" } });
       const page = await open(ctx, url);
       await openTheme(page);
       await page.waitForTimeout(300);
       const fit = await page.evaluate(() => {
         const pop = document.getElementById("pop"), head = document.querySelector("#themePop .pop-head"), dn = document.getElementById("qDN");
-        const t = document.querySelector('#qLooks [data-look="seaair"]'), n = t && t.querySelector(".tile-n"), tr = t && t.getBoundingClientRect(), nr = n && n.getBoundingClientRect();
-        return { tone: document.documentElement.dataset.tone, name: n && n.textContent, pop: pop.scrollWidth <= pop.clientWidth, head: !!head && head.scrollWidth <= head.clientWidth,
-          dn: !!dn && dn.scrollWidth <= dn.clientWidth, inside: !!t && nr.right <= tr.right + 0.5, ellipsis: n && getComputedStyle(n).textOverflow };
+        return { tone: document.documentElement.dataset.tone, pop: pop.scrollWidth <= pop.clientWidth, head: !!head && head.scrollWidth <= head.clientWidth, dn: !!dn && dn.scrollWidth <= dn.clientWidth };
       });
-      R.check("Dutch, 320px, contrast tone: no sideways scroll, long name ellipsized", fit.tone === "contrast" && fit.name === "Zeelucht & Grachten" && fit.pop && fit.head && fit.dn && fit.inside && fit.ellipsis === "ellipsis", JSON.stringify(fit));
+      const pair = await nameCut(page, '#qLooks [data-look="pair"][aria-pressed="true"]');
+      R.check("Dutch, 320px, contrast tone: no sideways scroll, long name ellipsized", fit.tone === "contrast" && fit.pop && fit.head && fit.dn &&
+        !!pair && pair.name === "Zeelucht & Contrast donker" && pair.wider && pair.cut, JSON.stringify({ fit, pair }));
       /* the same head in Settings › Theme: "Thema" and the switch on one row, inside the group (the
          sheet's other groups are not this test's business) */
       await page.keyboard.press("Escape"); await page.waitForTimeout(200);
@@ -114,6 +127,12 @@ async function tapLook(page, id){ await openTheme(page); await page.click('#qLoo
         return { row: !!(lr && dr) && dr.top < lr.bottom && dr.bottom > lr.top && dr.left >= lr.right - 0.5, group: !!g && g.scrollWidth <= g.clientWidth, dn: !!d && d.scrollWidth <= d.clientWidth, right: !!(d && g) && dr.right <= g.getBoundingClientRect().right + 0.5 };
       });
       R.check("Dutch, 320px, contrast tone: Settings' Thema and its switch share a row inside the group", set.row && set.group && set.dn && set.right, JSON.stringify(set));
+      /* the longest look name itself: pressed, so in bold, it no longer fits, and is cut the same way */
+      await page.evaluate(() => window.llPop.sheet(false)); await page.waitForTimeout(400);
+      await tapLook(page, "seaair"); await page.waitForTimeout(200);
+      const sea = await nameCut(page, '#qLooks [data-look="seaair"][aria-pressed="true"]');
+      const seaPop = await page.evaluate(() => { const p = document.getElementById("pop"); return p.scrollWidth <= p.clientWidth; });
+      R.check('Dutch, 320px: "Zeelucht & Grachten", pressed, ends in an ellipsis inside its tile', !!sea && sea.name === "Zeelucht & Grachten" && sea.wider && sea.cut && seaPop, JSON.stringify({ sea, seaPop }));
       await ctx.close();
     });
 
@@ -133,6 +152,11 @@ async function tapLook(page, id){ await openTheme(page); await page.click('#qLoo
       await tapLook(page, "sepia");
       const after = await prefs(page);
       R.check("a tap on the pressed look changes nothing", after === before && (await st(page)).theme === "cocoa", before + " → " + after);
+      /* opened again with Sepia & Cocoa pressed, the third tile: the focus is on it, not on the first */
+      await page.keyboard.press("Escape"); await page.waitForTimeout(150);
+      await openTheme(page);
+      const f = await page.evaluate(() => { const a = document.activeElement; return { look: a && a.dataset.look, on: a && a.getAttribute("aria-pressed"), first: document.querySelector("#qLooks .chip")?.dataset.look }; });
+      R.check("popover: opened over Sepia & Cocoa, focus is on its tile, not the first", f.look === "sepia" && f.on === "true" && f.first === "day", JSON.stringify(f));
       await ctx.close();
     });
     await guard("a look, Auto on", async () => {
@@ -209,6 +233,35 @@ async function tapLook(page, id){ await openTheme(page); await page.click('#qLoo
       await tapLook(page, "sage");
       const s = await st(page), t = await toasts(page);
       R.check("a look over a look pair: no toast", s.theme === "sage" && s.autoDay === "sage" && s.autoNight === "forest" && t.length === 0, JSON.stringify(s) + JSON.stringify(t));
+      await ctx.close();
+    });
+
+    /* ---------------- the tiles' drawing stays in the tiles ---------------- */
+    await guard("a book's own class pg", async () => {
+      /* a book keeps its own class names (an EPUB chapter's markup goes through DOMPurify, which
+         keeps class), so a paragraph of class "pg" in a book must not be drawn as a tile's page */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url);
+      await openFixture(page, "sample.epub");
+      await page.evaluate(() => {
+        const at = document.querySelector("#doc .ll-chapter") || document.getElementById("doc"), para = document.createElement("p");
+        para.className = "pg"; para.id = "pgProbe";
+        para.innerHTML = "She was <em>not</em> <q>fine</q>, <b>truly</b>, <s>gone</s> or <u>here</u>.";
+        at.appendChild(para);
+      });
+      /* each child's position and top, whether the bold word keeps the paragraph's size, the bold word's
+         ::before and the quote's */
+      const read = () => page.evaluate(() => {
+        const para = document.getElementById("pgProbe"), bold = para.querySelector("b");
+        return { set: [...para.children].map((c) => c.tagName.toLowerCase() + ":" + getComputedStyle(c).position + "/" + getComputedStyle(c).top).join(","),
+          size: getComputedStyle(bold).fontSize === getComputedStyle(para).fontSize, aa: getComputedStyle(bold, "::before").content, quote: getComputedStyle(para.querySelector("q"), "::before").content };
+      });
+      const desk = await read();
+      await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(200);
+      const phone = await read();
+      const text = (p) => p.set === "em:static/auto,q:static/auto,b:static/auto,s:static/auto,u:static/auto" && p.size && p.aa === "none" && p.quote === "open-quote";
+      R.check('a book\'s paragraph of class "pg" stays text, also on a phone: nothing lifted out of the line, no "Aa", its quote marks kept',
+        text(desk) && text(phone), JSON.stringify({ desk, phone }));
       await ctx.close();
     });
 

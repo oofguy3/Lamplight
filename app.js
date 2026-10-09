@@ -11749,8 +11749,9 @@
     a.unshift(prev);
     Store.set("ll_theme_recent", JSON.stringify(a.slice(0, 6)));
   }
-  /* opts.dayNight: the caller has set the pair (a Day/Night switch, a look), so this neither rewrites
-     it nor counts as a recent pick */
+  /* opts.dayNight: the pair is already right (a Day/Night switch keeps it, a look has just set it),
+     so this neither rewrites the pair, nor ends a Day/Night hold (the switch sets one, a look
+     carries one over), nor counts as a recent pick */
   function selectTheme(theme, opts){
     var dn = !!(opts && opts.dayNight);
     if (theme !== state.theme && !dn) noteTheme(state.theme);

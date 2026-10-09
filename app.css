@@ -774,17 +774,19 @@
   .tile .pg{position:relative; display:block; overflow:hidden; background:var(--sw-bg); border:1px solid color-mix(in oklab, var(--sw-ink) 22%, var(--sw-bg)); border-radius:12px;}
   .tile .pg + .pg{border-left:0; border-radius:0 12px 12px 0;}
   .tile .pg:has(+ .pg){border-right:0; border-radius:12px 0 0 12px;}
-  /* "Aa" in the theme's text colour and title face, and its secondary text as lines */
-  .pg > b{position:absolute; left:7px; top:4px; font-family:var(--title-font); font-weight:600; font-size:20px; line-height:1; color:var(--sw-ink);}
-  .pg > b::before{content:"Aa";}
-  .pg > s{position:absolute; left:36px; right:8px; top:9px; height:3px; border-radius:2px; background:var(--sw-mut);}
-  .pg > s + s{top:17px; right:16px;}
-  .pg > q{position:absolute; left:7px; right:8px; top:33px; height:3px; border-radius:2px; background:var(--sw-mut); opacity:.75;}
-  .pg > q + q{top:41px; right:22px;}
-  .pg > q::before, .pg > q::after{content:none;}
+  /* "Aa" in the theme's text colour and title face, and its secondary text as lines. These rules,
+     and the phone's below, start from .tile: a book keeps its own class names, so a paragraph of
+     class "pg" in a book keeps its bold, quotes and emphasis as text */
+  .tile .pg > b{position:absolute; left:7px; top:4px; font-family:var(--title-font); font-weight:600; font-size:20px; line-height:1; color:var(--sw-ink);}
+  .tile .pg > b::before{content:"Aa";}
+  .tile .pg > s{position:absolute; left:36px; right:8px; top:9px; height:3px; border-radius:2px; background:var(--sw-mut);}
+  .tile .pg > s + s{top:17px; right:16px;}
+  .tile .pg > q{position:absolute; left:7px; right:8px; top:33px; height:3px; border-radius:2px; background:var(--sw-mut); opacity:.75;}
+  .tile .pg > q + q{top:41px; right:22px;}
+  .tile .pg > q::before, .tile .pg > q::after{content:none;}
   /* the panel strip, and the lamp lit on it: a dot with a soft glow in its own colour */
-  .pg > u{position:absolute; left:0; right:0; bottom:0; height:16px; background:var(--sw-pan);}
-  .pg > em{position:absolute; right:8px; bottom:3px; width:10px; height:10px; border-radius:50%; background:var(--sw-acc); box-shadow:0 0 5px 1px color-mix(in srgb, var(--sw-acc) 45%, transparent);}
+  .tile .pg > u{position:absolute; left:0; right:0; bottom:0; height:16px; background:var(--sw-pan);}
+  .tile .pg > em{position:absolute; right:8px; bottom:3px; width:10px; height:10px; border-radius:50%; background:var(--sw-acc); box-shadow:0 0 5px 1px color-mix(in srgb, var(--sw-acc) 45%, transparent);}
   .tile-n{display:block; min-width:0; font-size:var(--fs-body); line-height:1.25; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   @media (hover:hover){
     .chip.tile:hover{background:transparent;}
@@ -807,13 +809,13 @@
   @media (max-width:560px){
     .looks{gap:16px 12px;}
     .chip.tile > i{height:76px;}
-    .pg > b{left:8px; top:6px; font-size:21px;}
-    .pg > s{left:38px; top:11px;}
-    .pg > s + s{top:19px;}
-    .pg > q{left:8px; top:35px;}
-    .pg > q + q{top:43px;}
-    .pg > u{height:17px;}
-    .pg > em{bottom:3.5px;}
+    .tile .pg > b{left:8px; top:6px; font-size:21px;}
+    .tile .pg > s{left:38px; top:11px;}
+    .tile .pg > s + s{top:19px;}
+    .tile .pg > q{left:8px; top:35px;}
+    .tile .pg > q + q{top:43px;}
+    .tile .pg > u{height:17px;}
+    .tile .pg > em{bottom:3.5px;}
   }
   /* Settings' groups of single themes: as many to a row as fit, three on a phone */
   #themeChips .tiles{display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:14px 10px; padding:6px 2px 2px;}
