@@ -1,7 +1,10 @@
-/* Themes in the browser: every built-in applies, the lamp cycles, the custom editor (New…, pickers
-   and hex fields, the contrast meter and Fix contrast, rename / duplicate / save as / delete),
-   the old scratch theme's migration, persistence across a reload, the day / night lists and the
-   theme-color meta. Screenshots of the editor go to $LL_SHOTS (default: the OS temp dir). */
+/* Themes in the browser: every built-in applies; the six looks, in the settings sheet and the lamp's
+   popover (their names, each drawn as its day theme and night theme side by side, the look on
+   screen marked); t between day and night; the custom editor on a theme made with llThemes.create
+   (pickers and hex fields, the contrast meter and Fix contrast, rename / duplicate / save as /
+   delete); New theme opening the maker; the old scratch theme's migration, persistence across a
+   reload, the day / night lists and the theme-color meta. Screenshots of the editor go to $LL_SHOTS
+   (default: the OS temp dir). */
 const { serve, browser, newPage, makeReport } = require("./lib");
 const path = require("path"), os = require("os");
 const SHOTS = process.env.LL_SHOTS || os.tmpdir();
@@ -23,6 +26,11 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
   const text = (sel) => page.$eval(sel, (e) => e.textContent);
   const openSheet = () => page.evaluate(() => { window.llPop.sheet(true); });
   const pick = (sel, v) => page.$eval(sel, (el, v) => { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); }, v);
+  /* a look, t or a built-in picked by id cross-fades (the theme lands a frame or two later): wait for it */
+  const settle = (k) => page.waitForFunction((t) => window.__ll.state.theme === t, k, { timeout: 1500 }).catch(() => {});
+  /* a hex colour as getComputedStyle gives it */
+  const asRgb = (h) => "rgb(" + [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ") + ")";
+  const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Contrast"];
   try {
     /* 1. every built-in theme applies */
     const THEMES = await page.evaluate(() => window.llThemes.THEMES);
@@ -34,32 +42,40 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
           (await cssVar("--raise")).toLowerCase() === THEMES[id].raise.toLowerCase() && (await cssVar("--lamp")).toLowerCase() === THEMES[id].lamp.toLowerCase()) applied++; else wrong.push(id);
     }
     R.check("every built-in theme applies, its raised surface and lamp too (" + applied + " of " + ids.length + ")", applied === ids.length && ids.length >= 25, wrong.join(","));
-    const groups = await page.evaluate(() => window.llThemes.groups().map((g) => g.name + ":" + g.ids.length).join(","));
-    R.check("built-ins are grouped light / dark / colour / high contrast", /^Light:\d+,Dark:\d+,Colour:\d+,High contrast:2$/.test(groups), groups);
+    /* the looks: a day theme and a night theme each, in the picker's order */
+    const LOOKS = await page.evaluate(() => window.llThemes.LOOKS);
+    const pairs = LOOKS.map((l) => l.id + ":" + l.day + "/" + l.night).join(",");
+    R.check("the looks pair the built-ins, day half first: Day & Dusk, Paper & Ink, Sepia & Cocoa, Sage & Forest, Sea air & Canals, Contrast",
+      pairs === "day:day/dusk,paper:paper/ink,sepia:sepia/cocoa,sage:sage/forest,seaair:seaair/canals,hicon:hicon/hidark" && LOOKS.every((l) => THEMES[l.day] && THEMES[l.night]), pairs);
+    await page.evaluate(() => window.llThemes.pick("day")); await settle("day");
     await openSheet();
-    const labels = await page.$$eval("#themeChips .chip-group-label", (els) => els.map((e) => e.textContent).join("|"));
-    R.check("chip groups are labelled", labels === "Light|Dark|Colour|High contrast|Custom", labels);
-    const chips = await page.$$eval("#themeChips .chip[data-theme]", (els) => els.length);
-    R.check("one chip per built-in theme", chips === ids.length, String(chips));
-    const sw = await page.$eval('#themeChips .chip[data-theme="ember"] i', (i) => getComputedStyle(i).backgroundColor + " / " + getComputedStyle(i, "::after").backgroundColor);
-    R.check("a chip's swatch shows the page colour and the accent", sw === "rgb(26, 18, 16) / rgb(242, 129, 46)", sw);
-    const pressed = await page.$$eval("#themeChips .chip[aria-pressed=true]", (els) => els.map((e) => e.dataset.theme).join(","));
-    R.check("the selected chip is marked", pressed === ids[ids.length - 1], pressed);
+    const tiles = await page.evaluate(() => ({ names: Array.from(document.querySelectorAll("#themeChips .tile.look .tile-n")).map((n) => n.textContent),
+      labels: Array.from(document.querySelectorAll("#themeChips .sub-label")).map((l) => l.textContent), looks: document.querySelectorAll("#themeChips .tile.look").length,
+      own: document.querySelectorAll("#themeChips .chip[data-theme]").length, pages: Array.from(document.querySelectorAll("#themeChips .tile.look .pg")).map((g) => g.dataset.t).join(",") }));
+    R.check("the sheet's tiles are named for the six looks, then Mine", tiles.names.join("|") === NAMES.join("|") && tiles.labels.join("|") === "Mine", JSON.stringify(tiles));
+    R.check("one tile per look, drawing its two themes, and none for a single built-in", tiles.looks === 6 && tiles.own === 0 && tiles.pages === LOOKS.map((l) => l.day + "," + l.night).join(","), JSON.stringify(tiles));
+    /* each half is a small page in its theme's colours: the page, "Aa" in the text colour, lines of
+       secondary text, the panel strip and the lamp on it (the expected values from the table) */
+    const sw = await page.$$eval('#themeChips [data-look="sepia"] .pg', (pgs) => pgs.map((g) => ({ t: g.dataset.t, bg: getComputedStyle(g).backgroundColor, ink: getComputedStyle(g.querySelector("b")).color,
+      muted: getComputedStyle(g.querySelector("s")).backgroundColor, panel: getComputedStyle(g.querySelector("u")).backgroundColor, lamp: getComputedStyle(g.querySelector("em")).backgroundColor, x: g.getBoundingClientRect().left })));
+    const want = (id) => ({ t: id, bg: asRgb(THEMES[id].bg), ink: asRgb(THEMES[id].ink), muted: asRgb(THEMES[id].muted), panel: asRgb(THEMES[id].panel), lamp: asRgb(THEMES[id].lamp) });
+    R.check("the Sepia & Cocoa tile draws Sepia on the left and Cocoa on the right: page, text, secondary text, panel and lamp",
+      sw.length === 2 && sw[0].x < sw[1].x && ["sepia", "cocoa"].every((id, i) => Object.entries(want(id)).every(([k, v]) => sw[i][k] === v)), JSON.stringify(sw));
+    await page.evaluate(() => window.llThemes.pick("hidark")); await settle("hidark");
+    const pressed = await page.$$eval('#themeChips .chip[aria-pressed="true"]', (els) => els.map((e) => e.dataset.look || e.dataset.theme).join(","));
+    R.check("the look of the theme on screen is marked, and only it", pressed === "hicon", pressed);
 
-    /* 2. the lamp opens the theme popover; t switches day / night */
-    const CYCLE = await page.evaluate(() => window.llThemes.CYCLE);
-    await page.evaluate(() => window.llThemes.select("day"));
+    /* 2. the lamp opens the theme popover on the look on screen; t switches day / night */
+    await page.evaluate(() => window.llThemes.pick("cocoa")); await settle("cocoa");
     await page.click("#lamp"); await page.waitForTimeout(150);
     R.check("the lamp opens the theme popover", await page.evaluate(() => window.llPop.is("theme") && document.getElementById("pop").classList.contains("open") && document.getElementById("lamp").getAttribute("aria-expanded") === "true"));
-    const rows = await page.evaluate(() => ({ light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length, colour: document.querySelectorAll("#qColour .chip").length, hi: document.querySelectorAll("#qHi .chip").length,
-      on: Array.from(document.querySelectorAll("#pop .strip .chip[aria-pressed=true]")).map((c) => c.dataset.theme).join(",") }));
-    const gs = await page.evaluate(() => window.llThemes.pickerGroups());
-    R.check("the popover lists the light, dark, colour and high-contrast themes, each in its pane, with the current one marked", rows.light === gs[0].ids.length && rows.dark === gs[1].ids.length && rows.colour === gs[2].ids.length && rows.hi === gs[3].ids.length && rows.on === "day", JSON.stringify(rows));
-    const panes = await page.evaluate(() => ["qLight", "qDark", "qColour", "qHi"].map((id) => id + ":" + (document.getElementById(id).hidden ? "hidden" : "shown")).join(",") + " / " + document.querySelector("#qGroups [aria-selected=true]").id);
-    R.check("the popover opens on the current theme's group, the others hidden", panes === "qLight:shown,qDark:hidden,qColour:hidden,qHi:hidden / qTabLight", panes);
+    const rows = await page.evaluate(() => ({ looks: Array.from(document.querySelectorAll("#qLooks .tile.look")).map((c) => c.dataset.look).join(","), names: Array.from(document.querySelectorAll("#qLooks .tile.look .tile-n")).map((n) => n.textContent).join("|"),
+      on: Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')).map((c) => c.dataset.look).join(","), focus: document.activeElement && document.activeElement.dataset.look }));
+    R.check("the popover lists the six looks in order, with the current one marked", rows.looks === LOOKS.map((l) => l.id).join(",") && rows.names === NAMES.join("|") && rows.on === "sepia", JSON.stringify(rows));
+    R.check("the popover opens on the current look: its tile has the focus", rows.focus === "sepia", JSON.stringify(rows));
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
-    /* t cross-fades (a view transition), so the theme lands a moment after the key */
-    const settle = (k) => page.waitForFunction((t) => window.__ll.state.theme === t, k, { timeout: 1500 }).catch(() => {});
+    /* back to Day & Dusk, with Day on screen; t cross-fades too */
+    await page.evaluate(() => window.llThemes.pick("day")); await settle("day");
     await page.keyboard.press("t"); await settle("dusk");
     R.check("the t key goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
     await page.keyboard.press("t"); await settle("day");
@@ -67,18 +83,17 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     await page.evaluate(() => window.llThemes.select("paper"));
     await page.keyboard.press("t"); await settle("dusk");
     R.check("from a light theme that is neither, t goes to the night theme", (await state("theme")) === "dusk", await state("theme"));
-    const order = await page.evaluate(() => window.llThemes.groups().reduce((a, g) => a.concat(g.ids), []).join(","));
-    R.check("the theme order is lights, then darks, then colours, then high contrast", CYCLE.join(",") === order && CYCLE[0] === "day" && CYCLE[CYCLE.length - 1] === "hidark" && CYCLE.indexOf("dusk") > CYCLE.indexOf("mist") && CYCLE.indexOf("rose") > CYCLE.indexOf("candle"), CYCLE.join(","));
 
     /* 7. theme-color meta */
     await page.evaluate(() => window.llThemes.select("dusk"));
     R.check("theme-color meta follows the panel", (await meta()) === THEMES.dusk.panel.toLowerCase(), await meta());
 
-    /* 3. New… creates a saved theme from the colours on screen */
+    /* 3. a saved theme from the colours on screen (llThemes.create; New theme opens the maker, 3b
+       below), and the editor on it */
     await page.evaluate(() => window.llThemes.select("paper"));
-    await page.click("#themeChips .chip-new");
+    await page.evaluate(() => window.llThemes.create());
     let theme = await state("theme"), list = await customs();
-    R.check("New… creates a saved theme and selects it", /^c:/.test(theme) && list.length === 1 && theme === "c:" + list[0].id, theme);
+    R.check("llThemes.create() makes a saved theme and selects it", /^c:/.test(theme) && list.length === 1 && theme === "c:" + list[0].id, theme);
     R.check("it is named Custom 1 and starts from the current colours", list[0].name === "Custom 1" && list[0].bg === THEMES.paper.bg.toLowerCase() && list[0].accent === THEMES.paper.accent.toLowerCase(), JSON.stringify(list[0]));
     R.check("the editor is shown with the theme's name", (await page.$eval("#customRow", (r) => r.classList.contains("show"))) && (await text("#cName")) === "Custom 1");
     R.check("the new theme's chip has focus", await page.evaluate(() => document.activeElement && document.activeElement.dataset.theme === window.__ll.state.theme));
@@ -155,8 +170,9 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
 
     /* 6. the day / night lists */
     await page.click('#autoChips .chip[data-auto="time"]');
-    const opts = await page.$$eval("#autoDay optgroup", (gs) => gs.map((g) => g.label + ":" + g.querySelectorAll("option").length).join(","));
-    R.check("the day list is grouped and lists the saved themes", /^Light:\d+,Dark:\d+,Colour:\d+,High contrast:2,Custom:2$/.test(opts), opts);
+    const og = await page.$$eval("#autoDay optgroup", (gs) => gs.map((g) => ({ label: g.label, n: g.querySelectorAll("option").length })));
+    R.check("the day list is grouped Light, Dark and Mine, every built-in under Light or Dark, and lists the saved themes",
+      og.map((g) => g.label).join(",") === "Light,Dark,Mine" && og[0].n + og[1].n === ids.length && og[2].n === 2, JSON.stringify(og));
     const night = await page.$eval("#autoNight", (s, id) => { const o = s.querySelector('option[value="c:' + id + '"]'); return o && o.textContent; }, list[0].id);
     R.check("the night list has the saved theme by name", night === "Night reading", String(night));
     await page.selectOption("#autoNight", "c:" + list[0].id);
@@ -193,12 +209,28 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     for (const seed of ["day", "newsprint", "paper"]){
       await page.evaluate((s) => window.llThemes.select(s), seed);
       await openSheet();
-      await page.click("#themeChips .chip-new"); await page.waitForTimeout(100);
+      await page.evaluate(() => window.llThemes.create()); await page.waitForTimeout(100);
       const got = await page.evaluate(() => { const st = document.documentElement.style; return { muted: st.getPropertyValue("--muted").trim(), panel: st.getPropertyValue("--panel").trim(), bg: st.getPropertyValue("--bg").trim(),
         low: Array.from(document.querySelectorAll("#cMeter .meter-row.low")).map((r) => r.dataset.k), rows: document.querySelectorAll("#cMeter .meter-row").length, panelRow: !!document.querySelector('#cMeter [data-k="mutedPanel"]') }; });
       const onPanel = ratio(got.muted, got.panel), onBg = ratio(got.muted, got.bg);
       R.check("saved from " + seed + ": secondary text reads on the panel (" + onPanel.toFixed(2) + ") and the background (" + onBg.toFixed(2) + "), no meter row low", onPanel >= 4.5 && onBg >= 4.5 && !got.low.length && got.panelRow, JSON.stringify(got));
     }
+
+    /* 3b. New theme opens the maker on the colours on screen, and Save puts the new theme on screen,
+       in the half on screen */
+    await page.evaluate(() => window.llThemes.select("paper"));
+    await openSheet();
+    const n0 = (await customs()).length;
+    await page.click("#themeChips .chip-new");
+    await page.waitForFunction(() => window.__ll.Side.is("maker") && document.getElementById("mkSave"), null, { timeout: 5000 }).catch(() => {});
+    const mk = await page.evaluate(() => ({ title: document.getElementById("sideTitle").textContent, name: (document.getElementById("mkName") || {}).value, draft: window.llThemes.maker.draft() }));
+    await page.click("#mkSave");
+    await page.waitForFunction((n) => { const c = window.llThemes.customs(); return c.length === n + 1 && window.__ll.state.theme === "c:" + c[n].id; }, n0, { timeout: 5000 }).catch(() => {});
+    const made = await page.evaluate(() => { const c = window.llThemes.customs(), last = c[c.length - 1];
+      return { n: c.length, theme: window.__ll.state.theme, id: last ? "c:" + last.id : null, name: last && last.name, bg: last && last.bg, day: window.__ll.state.autoDay, maker: window.__ll.Side.is("maker") }; });
+    R.check("New theme opens the maker on the colours on screen, and Save puts the new theme on screen",
+      mk.title === "Your own theme" && mk.name === "My Paper" && !!mk.draft && mk.draft.bg === THEMES.paper.bg.toLowerCase() &&
+      made.n === n0 + 1 && made.theme === made.id && made.day === made.id && made.name === "My Paper" && made.bg === THEMES.paper.bg.toLowerCase() && !made.maker, JSON.stringify({ mk, made }));
 
     /* 8. screenshots of the editor: desktop and phone, light and dark */
     await page.evaluate(() => localStorage.removeItem("ll_prefs"));

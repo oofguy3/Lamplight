@@ -176,54 +176,58 @@ const SPEECH_STUB = `(() => {
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await page.click("#lamp"); await page.waitForTimeout(250);
-    const rows = await page.evaluate(() => { const g = window.llThemes.pickerGroups(); return { light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length, gl: g[0].ids.length, gd: g[1].ids.length,
-      on: Array.from(document.querySelectorAll("#pop .strip .chip[aria-pressed=true]")).map((c) => c.dataset.theme).join(","), auto: document.querySelector('#qAuto .chip[aria-pressed="true"]').dataset.auto }; });
-    R.check("the lamp opens the theme popover with light and dark groups, the current theme and auto choice marked", (await page.evaluate(() => window.llPop.is("theme"))) && rows.light === rows.gl && rows.dark === rows.gd && rows.light >= 7 && rows.on === "day" && rows.auto === "off", JSON.stringify(rows));
+    const rows = await page.evaluate(() => ({ looks: Array.from(document.querySelectorAll("#qLooks .tile.look")).map((c) => c.dataset.look).join(","),
+      on: Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')).map((c) => c.dataset.look).join(","), auto: document.querySelector('#qAuto .chip[aria-pressed="true"]').dataset.auto }));
+    R.check("the lamp opens the theme popover with the six looks, the current look and auto choice marked", (await page.evaluate(() => window.llPop.is("theme"))) && rows.looks === "day,paper,sepia,sage,seaair,hicon" && rows.on === "day" && rows.auto === "off", JSON.stringify(rows));
     const bg0 = await page.evaluate(() => document.documentElement.style.getPropertyValue("--bg"));
-    /* another family is one more tap: its tab, then the tile */
-    await page.click("#qTabColour"); await page.waitForTimeout(100);
-    await page.click('#qColour .chip[data-theme="ocean"]'); await page.waitForTimeout(100);
+    /* a choice cross-fades (the theme lands a frame or two later), so wait for it rather than a fixed pause */
+    const settle = (k) => page.waitForFunction((x) => window.__ll.state.theme === x, k, { timeout: 1500 }).catch(() => {});
+    /* another look is one tap: with Day on screen it shows its day theme */
+    await page.click('#qLooks [data-look="seaair"]'); await settle("seaair");
     const bg1 = await page.evaluate(() => document.documentElement.style.getPropertyValue("--bg"));
-    R.check("picking a tile applies the theme at once and the popover stays open", bg1 !== bg0 && (await page.evaluate(() => window.__ll.state.theme)) === "ocean" && (await page.$eval('#qColour .chip[data-theme="ocean"]', (c) => c.getAttribute("aria-pressed") === "true")) && (await page.evaluate(() => window.llPop.is("theme"))), bg0 + " -> " + bg1);
-    R.check("the sheet's chips follow", await page.$eval('#themeChips .chip[data-theme="ocean"]', (c) => c.classList.contains("on")));
+    R.check("picking a look applies its theme at once and the popover stays open", bg1 !== bg0 && (await page.evaluate(() => window.__ll.state.theme)) === "seaair" && (await page.$eval('#qLooks [data-look="seaair"]', (c) => c.getAttribute("aria-pressed") === "true")) && (await page.evaluate(() => window.llPop.is("theme"))), bg0 + " -> " + bg1);
+    R.check("the sheet's tiles follow", await page.$eval('#themeChips [data-look="seaair"]', (c) => c.classList.contains("on")));
     await page.click('#qAuto [data-auto="system"]'); await page.waitForTimeout(100);
     R.check("the Auto segment calls the same handler as the sheet", (await page.evaluate(() => window.__ll.state.auto)) === "system" && (await page.$eval('#autoChips .chip[data-auto="system"]', (c) => c.classList.contains("on"))));
     await page.click('#qAuto [data-auto="off"]'); await page.waitForTimeout(100);
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
-    await page.evaluate(() => window.llThemes.select("day"));
-    /* t cross-fades (the theme lands a frame or two later), so wait for it rather than a fixed pause */
-    const settle = (k) => page.waitForFunction((x) => window.__ll.state.theme === x, k, { timeout: 1500 }).catch(() => {});
+    /* back to Day & Dusk, with Day on screen */
+    await page.evaluate(() => window.llThemes.pick("day")); await settle("day");
     await page.keyboard.press("t"); await settle("dusk");
     const tn = await page.evaluate(() => window.__ll.state.theme);
     await page.keyboard.press("t"); await settle("day");
     R.check("t toggles day / night", tn === "dusk" && (await page.evaluate(() => window.__ll.state.theme)) === "day", tn);
-    /* a saved custom theme joins the row of its lightness */
-    await page.evaluate(() => { window.llThemes.select("midnight"); window.llThemes.create(); });
+    /* a saved custom theme joins Mine, ahead of New theme */
+    await page.evaluate(() => window.llThemes.create());
     await page.click("#lamp"); await page.waitForTimeout(250);
-    const custom = await page.evaluate(() => { const last = document.querySelector("#qDark .chip:last-child"); return { theme: last.dataset.theme, on: last.getAttribute("aria-pressed"), name: last.textContent.trim() }; });
-    R.check("a saved custom theme appears at the end of the dark row, selected", /^c:/.test(custom.theme) && custom.on === "true" && custom.name === "Custom 1", JSON.stringify(custom));
+    const custom = await page.evaluate(() => { const own = Array.from(document.querySelectorAll("#qMine .chip[data-theme]")), last = own[own.length - 1], next = last && last.closest("#qMine > *").nextElementSibling;
+      return last ? { theme: last.dataset.theme, on: last.getAttribute("aria-pressed"), name: last.textContent.trim(), n: own.length, beforeNew: !!(next && next.classList.contains("chip-new")) } : null; });
+    R.check("a saved custom theme appears in Mine before New theme, selected", !!custom && /^c:/.test(custom.theme) && custom.on === "true" && custom.name === "Custom 1" && custom.n === 1 && custom.beforeNew, JSON.stringify(custom));
     await page.click("#themeMore"); await page.waitForTimeout(700);
-    R.check("All themes and the editor… opens the sheet at the Theme group", (await sheetOpen(page)) && (await page.$eval('#sheetTabs [data-group="themeGroup"]', (b) => b.classList.contains("on"))) && (await page.$eval("#customRow", (r) => r.classList.contains("show"))));
+    R.check("More theme settings… opens the sheet at the Theme group", (await sheetOpen(page)) && (await page.$eval('#sheetTabs [data-group="themeGroup"]', (b) => b.classList.contains("on"))) && (await page.$eval("#customRow", (r) => r.classList.contains("show"))));
     await page.keyboard.press("Escape");
     R.check("Escape on the sheet opened from the popover's footer hands focus back to the lamp", await page.evaluate(() => document.activeElement && document.activeElement.id === "lamp"), await page.evaluate(() => document.activeElement && document.activeElement.id));
     R.check("no page errors (theme)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
-    /* a theme far down the list: the popover opens on its group, so its tile is in view */
+    /* a built-in picked by id brings its look, marked: the popover opens with the focus on that tile,
+       in view, and the window does not move */
     const ctx2 = await b.newContext({ viewport: { width: 1200, height: 800 } });
-    await ctx2.addInitScript(() => { try { localStorage.setItem("ll_prefs", JSON.stringify({ theme: "terminal" })); } catch(_){} });
     const p2 = await newPage(ctx2, url);
     await openFixture(p2, "sample.md");
+    await p2.evaluate(() => window.llThemes.pick("canals"));
+    await p2.waitForFunction(() => window.__ll.state.theme === "canals", null, { timeout: 1500 }).catch(() => {});
     await p2.click("#lamp"); await p2.waitForTimeout(250);
-    const cur = await p2.evaluate(() => { const on = document.querySelector("#pop .strip .chip.on"), r = on.getBoundingClientRect(), s = on.closest(".strip").getBoundingClientRect(); return { theme: on.dataset.theme, inside: r.left >= s.left - 1 && r.right <= s.right + 1, y: window.scrollY }; });
-    R.check("with Terminal on, its tile is in view when the popover opens and the window did not move", cur.theme === "terminal" && cur.inside && cur.y === 0, JSON.stringify(cur));
+    const cur = await p2.evaluate(() => { const on = Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')), t = on[0], s = window.__ll.state, p = document.getElementById("pop").getBoundingClientRect(), r = t ? t.getBoundingClientRect() : null;
+      return { on: on.map((c) => c.dataset.look).join(","), pair: s.autoDay + "/" + s.autoNight, theme: s.theme, label: t ? t.getAttribute("aria-label") : null, focus: !!t && document.activeElement === t, inside: !!r && r.top >= p.top && r.bottom <= p.bottom, y: window.scrollY }; });
+    R.check("a built-in picked by id marks its look: Canals gives Sea air & Canals, pressed, with the focus and in view when the popover opens, and the window did not move",
+      cur.on === "seaair" && cur.pair === "seaair/canals" && cur.theme === "canals" && cur.label === "Sea air & Canals, current theme" && cur.focus && cur.inside && cur.y === 0, JSON.stringify(cur));
     R.check("the theme popover fits too", (await popFits(p2)).fits, JSON.stringify(await popFits(p2)));
-    /* the tiles are a grid now (no sideways strip): the popover opens on Terminal's group, and a
-       wheel over it scrolls the popover, never the page (which would close it) */
-    const grp = await p2.evaluate(() => document.querySelector("#qGroups [aria-selected=true]").id + (document.getElementById("qColour").hidden ? "" : "+qColour"));
-    const st = await rect(p2, "#qColour");
+    /* the tiles are a grid (no sideways strip): a wheel over them scrolls the popover, never the page
+       (which would close it) */
+    const st = await rect(p2, "#qLooks");
     await p2.mouse.move(st.left + st.width / 2, st.top + st.height / 2); await p2.mouse.wheel(0, 120); await p2.waitForTimeout(300);
     const wh = await p2.evaluate(() => ({ open: document.getElementById("pop").classList.contains("open"), y: window.scrollY }));
-    R.check("with Terminal on, the popover opens on the Colour group, and a wheel over its tiles keeps the popover open and the page still", grp === "qTabColour+qColour" && wh.open && wh.y === 0, grp + " " + JSON.stringify(wh));
+    R.check("a wheel over the looks keeps the popover open and the page still", wh.open && wh.y === 0, JSON.stringify(wh));
     await ctx2.close();
   });
 

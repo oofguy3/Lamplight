@@ -58,6 +58,14 @@ async function menuItem(page, label){
   await page.click("#moreMenu button:has-text('" + label + "')");
 }
 function fixtures(){ return fs.readdirSync(path.join(__dirname, "fixtures")).filter((f) => /\.(txt|md|html|epub|docx|pdf)$/.test(f)); }
+/* show the day or the night half of the reader's pair ("day" or "night": Day or Dusk on a fresh
+   profile) with Settings › Theme's Day/Night switch, clicked inside the page without opening the
+   sheet, so the panel, the word card, zen or the print layout a suite has open stays as it is
+   (opening the sheet would close it). It is the switch's own click: the theme cross-fades in a
+   moment later (unless motion is reduced), and with switching on it holds as a tap there would */
+function dayNight(page, which){
+  return page.evaluate((w) => document.querySelector('#sDN [data-dn="' + w + '"]').click(), which);
+}
 /* a colour as getComputedStyle reports it, for the contrast checks: { rgb: [r, g, b] on 0-255, unrounded,
    a: 0-1 }, or null when it can't be read. It reads rgb()/rgba(), #rrggbb, color(srgb r g b / α), which
    a color-mix in srgb computes to, and oklab(L a b / α), which a color-mix in oklab computes to (the dark
@@ -96,4 +104,4 @@ function makeReport(){
     results
   };
 }
-module.exports = { serve, browser, newPage, openFixture, menuItem, fixtures, makeReport, parseColor, PARSE_COLOR, ROOT };
+module.exports = { serve, browser, newPage, openFixture, menuItem, fixtures, dayNight, makeReport, parseColor, PARSE_COLOR, ROOT };

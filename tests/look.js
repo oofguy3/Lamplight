@@ -38,10 +38,11 @@ const uppers = (page) => page.evaluate(() => [...document.querySelectorAll("body
     let u = await uppers(page); R.check("no uppercase labels: library", u.length === 0, u.slice(0, 6).join(", "));
     await page.keyboard.press("s"); await page.waitForTimeout(400);
     u = await uppers(page); R.check("no uppercase labels: settings sheet", u.length === 0, u.slice(0, 6).join(", "));
-    const fsLabel = await page.evaluate(() => getComputedStyle(document.querySelector("#themeChips .chip-group-label")).fontSize);
+    /* the theme group's Mine label stands for the sheet's small labels */
+    const fsLabel = await page.evaluate(() => getComputedStyle(document.querySelector("#themeChips .sub-label")).fontSize);
     R.check("labels at --fs-small (13px)", fsLabel === "13px", fsLabel);
     await page.evaluate(() => window.llThemes.select("hicon")); await page.waitForTimeout(150);
-    const fsHi = await page.evaluate(() => getComputedStyle(document.querySelector("#themeChips .chip-group-label")).fontSize);
+    const fsHi = await page.evaluate(() => getComputedStyle(document.querySelector("#themeChips .sub-label")).fontSize);
     R.check("contrast tone: labels 15px", fsHi === "15px", fsHi);
     await page.evaluate(() => window.llThemes.select("day"));
     await page.keyboard.press("Escape"); await page.waitForTimeout(250);

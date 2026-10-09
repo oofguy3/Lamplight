@@ -67,7 +67,8 @@ const tabState = (page) => page.evaluate(() => Array.from(document.querySelector
   tabindex: b.tabIndex, badge: (b.querySelector(".bdg") || {}).textContent || null, dot: !!b.querySelector(".dot"), controls: b.getAttribute("aria-controls"),
   panelHidden: document.getElementById(b.getAttribute("aria-controls")).hidden, focused: document.activeElement === b })));
 const footer = (page) => page.$$eval("#dictMarkActs button", (bs) => bs.map((b) => b.dataset.m + ":" + b.textContent.trim()));
-const theme = (page, k) => page.evaluate((k) => document.querySelector('#themeChips [data-theme="' + k + '"]').click(), k);
+/* any theme on screen by its id, at once (the raw setter: no cross-fade, the pair left alone) */
+const theme = (page, k) => page.evaluate((k) => window.llThemes.select(k), k);
 /* contrast of an element's text against what is painted behind it (tints are composited over the panel;
    null when a colour can't be read) */
 const CONTRAST = `(el, behind) => {

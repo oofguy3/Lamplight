@@ -3,7 +3,7 @@
    a count under way); the syllable and sentence heuristics; a 200 000-word text is counted
    without freezing the page; screenshots at two widths and themes. */
 const path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.ABOUT_SHOTS || path.join(require("os").tmpdir(), "lamplight-about-shots");
 const fs = require("fs");
 
@@ -64,12 +64,12 @@ const num = (s) => parseFloat(String(s || "").replace(/,/g, ""));
   await page.screenshot({ path: path.join(SHOTS, "about-desktop-day.png") });
   await page.evaluate(() => { document.getElementById("sideBody").scrollTop = 1e6; });
   await page.screenshot({ path: path.join(SHOTS, "about-desktop-day-words.png") });
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(SHOTS, "about-desktop-dusk-words.png") });
   await page.evaluate(() => { document.getElementById("sideBody").scrollTop = 0; });
   await page.screenshot({ path: path.join(SHOTS, "about-desktop-dusk.png") });
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="day"]').click());
+  await dayNight(page, "day");
 
   /* 2. the copy summary */
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: url.replace(/\/$/, "") }).catch(() => null);
@@ -195,7 +195,7 @@ const num = (s) => parseFloat(String(s || "").replace(/,/g, ""));
   const fits = await page.evaluate(() => document.getElementById("side").scrollWidth <= window.innerWidth + 1 && document.getElementById("sideBody").scrollWidth <= document.getElementById("sideBody").clientWidth + 1);
   R.check("phone: no horizontal overflow in the panel", fits);
   await page.screenshot({ path: path.join(SHOTS, "about-phone-day.png") });
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(SHOTS, "about-phone-dusk.png") });
   await page.evaluate(() => { document.getElementById("sideBody").scrollTop = 1e6; });

@@ -4,7 +4,7 @@
    window.print(), a PDF opens in a new tab; the entry only shows with a document open.
    Screenshots go to $LL_SHOTS (default: the OS temp dir).   NODE_PATH=$(npm root -g) node tests/print.js */
 const path = require("path"), fs = require("fs"), os = require("os");
-const { serve, browser, newPage, openFixture, menuItem, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-print");
 
 const menuLabels = (page) => page.evaluate(() => { document.getElementById("more").click(); const items = Array.from(document.querySelectorAll("#moreMenu button")).map((b) => b.textContent); document.getElementById("more").click(); return items; });
@@ -70,7 +70,7 @@ const layout = (page) => page.evaluate(() => {
   R.check("beforeprint: body.printing in Pages flow", bp.printing);
   await page.screenshot({ path: path.join(SHOTS, "print-desktop-day.png") });
   /* a dark theme prints the same */
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await page.waitForTimeout(450);
   const dark = await layout(page);
   R.check("print: still black on white in a dark theme", dark.bodyBg === "rgb(255, 255, 255)" && dark.bodyColor === "rgb(0, 0, 0)", dark.bodyBg + " / " + dark.bodyColor);
@@ -134,7 +134,7 @@ const layout = (page) => page.evaluate(() => {
   const ph = await layout(page);
   R.check("phone print: one column, black on white, title line", ph.columns === "auto" && ph.bodyBg === "rgb(255, 255, 255)" && ph.head.text === "The Lamp" && !ph.wide, JSON.stringify({ columns: ph.columns, bg: ph.bodyBg, head: ph.head, wide: ph.wide }));
   await page.screenshot({ path: path.join(SHOTS, "print-phone-day.png") });
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(SHOTS, "print-phone-dusk.png") });
   R.check("no page errors (phone)", !(page._errors || []).length, (page._errors || []).join(" | "));

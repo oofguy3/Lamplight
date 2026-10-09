@@ -2,8 +2,8 @@
    switcher, long presses on the speaker and the lamp, swipe down to close a bottom sheet, the
    settings as a bottom sheet, the bars in Pages flow (vertical swipes and the edge strips, never the
    dictionary from blank space), the one-row player's speed chip, Undo in the toast (bookmark, book,
-   highlight), background sounds in one tap, the theme popover's Day / Night pair, recent and
-   high-contrast rows, the rows that follow a switch, and the progress pill that fades.
+   highlight), background sounds in one tap, the theme popover's Day/Night switch and its six looks,
+   the rows that follow a switch, and the progress pill that fades.
      NODE_PATH=$(npm root -g) node tests/qol.js                                                    */
 const path = require("path");
 const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
@@ -183,20 +183,21 @@ const STUB = `(() => {
     await page.evaluate(() => window.llSounds.setOn(false));
   });
   await part("theme", async () => {
-    /* the theme popover: Day ⇄ Night, recent, high contrast, a grid of swatches */
+    /* the theme popover: Day | Night in its head, then the six looks, each a day theme and a night
+       theme drawn side by side, Contrast's the high-contrast pair */
     await dock(page); await page.tap("#lamp"); await page.waitForTimeout(400);
-    const tp = await page.evaluate(() => ({ dn: Array.from(document.querySelectorAll("#qDayNight .dn")).map((x) => x.querySelector(".dn-t").textContent + ":" + x.querySelector(".dn-n").textContent + (x.classList.contains("on") ? "*" : "")),
-      hi: Array.from(document.querySelectorAll("#qHi .chip")).map((x) => x.dataset.theme), recent: Array.from(document.querySelectorAll("#qRecent .chip")).map((x) => x.dataset.theme),
-      tileH: Math.round(document.querySelector("#qLight .chip").getBoundingClientRect().height), cols: getComputedStyle(document.getElementById("qLight")).gridTemplateColumns.split(" ").length,
-      grid: getComputedStyle(document.getElementById("qLight")).display, nameUnder: (() => { const c = document.querySelector("#qLight .chip"), i = c.querySelector("i").getBoundingClientRect(), n = c.querySelector(".tile-n").getBoundingClientRect(); return n.top >= i.bottom && n.height > 10; })(),
-      badge: (() => { const on = document.querySelector('#qLight .chip[aria-pressed="true"]'); if (!on) return ""; const b = getComputedStyle(on, "::before"); return b.content + " " + b.width + " " + b.backgroundColor; })(),
+    const tp = await page.evaluate(() => ({ dn: Array.from(document.querySelectorAll("#themePop .pop-head #qDN [data-dn]")).map((x) => x.textContent.trim() + (x.getAttribute("aria-pressed") === "true" ? "*" : "")),
+      looks: Array.from(document.querySelectorAll("#qLooks .chip")).map((x) => x.dataset.look), hi: Array.from(document.querySelectorAll('#qLooks [data-look="hicon"] .pg')).map((x) => x.dataset.t),
+      gone: ["qDayNight", "qRecentSec", "qHi", "qLight"].filter((id) => document.getElementById(id)),
+      tileH: Math.round(document.querySelector("#qLooks .chip").getBoundingClientRect().height), cols: getComputedStyle(document.getElementById("qLooks")).gridTemplateColumns.split(" ").length,
+      grid: getComputedStyle(document.getElementById("qLooks")).display, nameUnder: (() => { const c = document.querySelector("#qLooks .chip"), i = c.querySelector("i").getBoundingClientRect(), n = c.querySelector(".tile-n").getBoundingClientRect(); return n.top >= i.bottom && n.height > 10; })(),
+      badge: (() => { const on = document.querySelector('#qLooks .chip[aria-pressed="true"]'); if (!on) return ""; const b = getComputedStyle(on, "::before"); return b.content + " " + b.width + " " + b.backgroundColor; })(),
       accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
-    /* one recent theme is no choice: the Recent row waits for two */
-    R.check("the theme popover leads with the day and night pickers (the half on screen marked), a high-contrast group, and no Recent row for a single theme",
-      tp.dn.join() === "Day theme:Day*,Night theme:Dusk" && tp.hi.join() === "hicon,hidark" && tp.recent.join() === "", JSON.stringify(tp));
+    R.check("the theme popover leads with the Day/Night switch (the half on screen pressed) and the six looks, Contrast the high-contrast pair; the pickers, Recent and the groups are gone",
+      tp.dn.join() === "Day*,Night" && tp.looks.join() === "day,paper,sepia,sage,seaair,hicon" && tp.hi.join() === "hicon,hidark" && !tp.gone.length, JSON.stringify(tp));
     const hex = (h) => "rgb(" + [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ") + ")";
-    R.check("phone: the themes as a grid of preview tiles at least 44px tall, four to a row, the name under each and a check badge on the one on screen",
-      tp.grid === "grid" && tp.cols === 4 && tp.tileH >= 44 && tp.nameUnder && /^"(\\2713|\u2713)" 20px /.test(tp.badge) && tp.badge.endsWith(hex(tp.accent)), JSON.stringify(tp));
+    R.check("phone: the looks as a grid of preview tiles at least 44px tall, two to a row, the name under each and a check badge on the one on screen",
+      tp.grid === "grid" && tp.cols === 2 && tp.tileH >= 44 && tp.nameUnder && /^"(\\2713|\u2713)" 20px /.test(tp.badge) && tp.badge.endsWith(hex(tp.accent)), JSON.stringify(tp));
 
     /* the rows that follow Extra dim */
     const d0 = await page.evaluate(() => ({ lvl: document.getElementById("qDimLevelRow").inert, night: document.getElementById("qDimNightRow").inert, cls: document.getElementById("qDimNightRow").classList.contains("dim-row") }));
