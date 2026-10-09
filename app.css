@@ -1444,8 +1444,13 @@
   .glass{fill:var(--lamp);}
   body.phonebar #readFoot{
     display:block; position:fixed; left:0; right:0; bottom:0; z-index:15; height:calc(92px + env(safe-area-inset-bottom));
-    background:var(--bg); transition:background var(--t-theme) ease;
+    background:var(--bg); transition:transform .22s var(--ease-out), opacity .22s ease, background var(--t-theme) ease;
   }
+  /* it steps away while the reader reads on (strip-away, set by PhoneBar: a scroll down, a page
+     turned, zen) and comes back on a scroll up: it slides out past the screen's edge, and nothing in
+     it takes a tap meanwhile. A keyboard focus inside brings it back; read aloud and the dock keep it,
+     and so does e-ink mode, whose taps all turn pages and which has no swipes to bring it back by */
+  body.phonebar.strip-away:not(.tts-on):not(.dock-open):not(.eink) #readFoot:not(:has(:focus-visible)){transform:translateY(calc(100% + 12px)); opacity:0; pointer-events:none;}
   #leftNote{
     position:absolute; left:24px; right:96px; bottom:calc(28px + env(safe-area-inset-bottom)); height:56px; margin:0;
     display:flex; align-items:center; font-family:var(--ui-font); font-size:var(--fs-small); line-height:1.35; color:var(--muted);
@@ -1484,10 +1489,10 @@
     max-height:calc(100vh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
     max-height:calc(100dvh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
   }
-  /* zen: only the text, and a faint lamp to leave by (clear while a key has brought the focus to it:
-     after a tap in the More sheet the focus comes back to it, and it stays faint); no note, no ring */
-  body.phonebar.zen #dockBtn{opacity:.4;}
-  body.phonebar.zen #dockBtn:focus-visible{opacity:1;}
+  /* zen: only the text. The strip is away from the start, and what a scroll up brings back is the lamp
+     alone, on no band of its own, to leave by; no note, no ring */
+  body.phonebar.zen #readFoot{background:transparent; pointer-events:none;}
+  body.phonebar.zen #dockBtn{pointer-events:auto;}
   body.phonebar.zen #leftNote, body.phonebar.zen #dockBtn > .ring{display:none;}
   /* the "Opening …" screen between two books keeps the phone's chrome, without the strip */
   body.phonebar[data-mode="status"] #readFoot{display:none;}

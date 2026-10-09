@@ -2277,6 +2277,8 @@
   }
   function turn(dir){
     if (!pagedActive()) return;
+    /* a phone: reading on sends the strip away (a swipe down brings it back) */
+    if (PhoneBar && document.body.classList.contains("phonebar")) PhoneBar.away(true);
     /* on from the last page: the reader is done with it (the "Finished" card need not wait) */
     if (dir > 0 && Journal && (state.mode === "doc" ? state.page >= state.totalPages - 1 : state.pdfPageNum + (state.perPage || 1) - 1 >= state.pdfDoc.numPages)) Journal.pastEnd();
     if (state.mode === "doc"){ gotoPage(state.page + dir, true); }
@@ -9867,16 +9869,22 @@
       /* on a phone the dock gives way (a key pressed in it leaves the focus on the page) */
       if (PhoneBar && PhoneBar.isDockOpen()){ PhoneBar.closeDock({ focus: false }); $("#main").focus({ preventScroll: true }); }
       document.body.classList.add("zen");
+      /* a phone: the strip steps away at once; a scroll up (a swipe down in Pages flow) brings the lamp back to leave by */
+      if (PhoneBar) PhoneBar.away(true);
       goFull();
       relayout(off);
-      /* a phone has no keys to press: the faint lamp is the way out */
-      if (!toasted){ toasted = true; Marks.toast(document.body.classList.contains("phonebar") ? _t("Zen mode — tap the lamp to leave") : _t("Zen mode — press z or Esc to leave")); }
+      if (!toasted){
+        toasted = true;
+        Marks.toast(!document.body.classList.contains("phonebar") ? _t("Zen mode — press z or Esc to leave")
+          : pagedActive() ? _t("Zen mode — swipe down and tap the lamp to leave") : _t("Zen mode — scroll up and tap the lamp to leave"));
+      }
     }
     function exit(){
       if (!on) return;
       var off = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null;
       on = false;
       document.body.classList.remove("zen", "hidebar");
+      if (PhoneBar) PhoneBar.away(false);
       setSheet(false);            /* the sheet is hidden in zen; it must not spring out on the way back */
       leaveFull();
       if (docOpen()) relayout(off);
@@ -9905,6 +9913,8 @@
       var r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
       if (x < 0.35 || x > 0.65) return;
       e.stopImmediatePropagation();
+      /* a phone: the tap brings the lamp back too */
+      if (PhoneBar && document.body.classList.contains("phonebar")) PhoneBar.away(false);
       if (!hinted){ hinted = true; Marks.toast(document.body.classList.contains("phonebar") ? _t("Tap the lamp to leave zen mode") : _t("Press z or Esc to leave zen mode")); }
     }
     $("#docView").addEventListener("click", middleTap);
@@ -11427,9 +11437,31 @@
       clearTimeout(seenT);
       seenT = setTimeout(function(){ seenOff = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null; }, 150);
     }, { passive: true });
+    /* ---- the strip steps away while the reader reads on (a scroll down, a page turned, zen) and
+       comes back when they scroll up (in Pages flow, a swipe down), the way a browser's own bars do:
+       the screen is the text, and the lamp is there when it is wanted. The app's own scrolls (a
+       relayout, auto-scroll, read aloud following the text) come without the reader's finger, so only
+       a scroll within a second of a touch, the wheel or a key moves it. A keyboard focus inside the
+       strip brings it back, and read aloud keeps it up (app.css) ---- */
+    var away = false, lastY = window.scrollY, moved = 0, userAt = 0;
+    function setAway(v){
+      away = !!v; moved = 0;
+      document.body.classList.toggle("strip-away", away);
+    }
+    ["touchstart", "touchmove", "wheel", "keydown"].forEach(function(t){ window.addEventListener(t, function(){ userAt = Date.now(); }, { passive: true, capture: true }); });
+    window.addEventListener("scroll", function(){
+      var y = window.scrollY, d = y - lastY;
+      lastY = y;
+      if (!d || !document.body.classList.contains("phonebar") || pagedActive() || isDockOpen() || Date.now() - userAt > 1000) return;
+      moved = (moved < 0) === (d < 0) ? moved + d : d;
+      if (moved >= 24 && !away) setAway(true);
+      else if (moved <= -24 && away) setAway(false);
+    }, { passive: true });
     function place(){
       var want = on(), was = document.body.classList.contains("phonebar");
       if (state.mode !== placedMode) seenOff = null;
+      /* a book opened, or another one: the strip shows (zen sends it away again) */
+      if (state.mode !== placedMode && !(Zen && Zen.isOn())) setAway(false);
       var off = want !== was && state.mode === placedMode && state.mode === "doc" && state.flow !== "pages" ? (seenOff !== null ? seenOff : Library.topCharOffset()) : null;
       placedMode = state.mode;
       /* nothing moves unless phone reading starts or ends (a move on every view change re-inserted
@@ -11481,12 +11513,14 @@
       btn.setAttribute("aria-expanded", "false");
       hold(false);
       Pace.noteBlock("dock");
+      /* the lamp the dock came from is in view again (not in zen, which keeps the strip away) */
+      if (!document.body.classList.contains("zen")) setAway(false);
       if (!opts || opts.focus !== false) btn.focus({ preventScroll: true });
     }
     function toggleDock(){ if (isDockOpen()) closeDock(); else openDock(); }
     /* focus that would go back to a control in the closed dock goes to the lamp instead */
     function returnTarget(el){ return el && dock.contains(el) && !isDockOpen() && document.body.classList.contains("phonebar") ? btn : el; }
-    /* in zen the faint lamp is the way out, and nothing opens the dock */
+    /* in zen the lamp (brought back by a scroll up) is the way out, and nothing opens the dock */
     btn.addEventListener("click", function(){ if (document.body.classList.contains("zen")) Zen.exit(); else toggleDock(); });
     /* a tap outside closes it and does nothing else */
     scrim.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); closeDock(); });
@@ -11610,7 +11644,8 @@
     }
     swipeDownCloses(dock); swipeDownCloses(scrim);
     place();
-    return { place: place, on: on, openSwitcher: openSwitcher, openDock: openDock, closeDock: closeDock, toggleDock: toggleDock, isDockOpen: isDockOpen, returnTarget: returnTarget, syncPos: syncPos };
+    return { place: place, on: on, openSwitcher: openSwitcher, openDock: openDock, closeDock: closeDock, toggleDock: toggleDock, isDockOpen: isDockOpen, returnTarget: returnTarget, syncPos: syncPos,
+      away: setAway, isAway: function(){ return away; } };
   })();
   /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
      Scroll flow, opening it should push the text down so what was at the top reappears just
@@ -12450,8 +12485,14 @@
     else if (touchPage && Math.abs(dy) > 55 && Math.abs(dy) > Math.abs(dx) * 1.4 && state.eink !== true){
       var pdf = $("#pdf");
       if (state.mode === "pdf" && pdf.scrollHeight > pdf.clientHeight + 2) return;
-      /* a phone: up opens the dock (not in zen); there are no bars to bring down */
-      if (document.body.classList.contains("phonebar")){ if (dy < 0 && !document.body.classList.contains("zen")) PhoneBar.openDock(); return; }
+      /* a phone: down brings the strip back, up opens the dock (in zen, sends the strip away); there
+         are no bars to bring down */
+      if (document.body.classList.contains("phonebar")){
+        if (dy > 0) PhoneBar.away(false);
+        else if (document.body.classList.contains("zen")) PhoneBar.away(true);
+        else PhoneBar.openDock();
+        return;
+      }
       toggleBars(dy > 0);
     }
   }, {passive:true});
