@@ -127,3 +127,18 @@ Milestone 3 (Task 11, at de41d59): every suite run on its own.
   phone, spec 5.7; five checks added), themes-browser 65/65 (its editor pictures store Day and night off, so no
   first-pick toast covers them), looks 138/138, tests/themes.js 281/281 pairs. In all, 2424/2429, with the other
   suites as at de41d59: the fixes' app change touches only Warm at night, which only type2 turns on.
+
+After Task 12 (README, screenshots and version, at b39d8de): every suite run on its own.
+  2424/2429 checks passed, every suite as after Milestone 3's review fixes; tests/themes.js 281/281 pairs (the
+  twelve themes); looks 138/138, type2 69/69, themes-browser 65/65; regression 64/64, which serves sw.js with its
+  new VERSION.
+  Still failing, as in the baseline (five checks): i18n (audiobook.js keys), pace K6 (two checks), translate
+  (pack download), ui-c (the phone card's height).
+  Two flakes, each passing on its rerun: speak.js "Dramatic pushes the offsets harder", as in Milestones 1 and 3
+  (126/126), and fonts.js "offline, the message says so and the system face stands in" (89/89), which passed in
+  every earlier run. That check waits for the toast to be on, but the toast of the test's earlier font error is
+  still on (725 ms later in a probe; a toast stays 1800 ms), so it can read the toast before the offline message
+  is in. Its detail, read a moment later, shows the message and the system face it wants. The total counts both
+  suites at their reruns; counting the flakes gives 2422/2429.
+  The review fixes after it (3e4f833: the README's first-run wording, tests/screenshots.js and the two pictures
+  of the explain card) change no file a suite reads.
