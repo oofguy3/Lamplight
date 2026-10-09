@@ -1181,6 +1181,20 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       R.check("Keep after the reader tapped Night: the night half stays on screen", x.up && night.theme === "seaair" && mine.length === 2 && s.autoNight === P.k && s.theme === P.k && dn === "night",
         JSON.stringify({ night, mine, s, dn }));
       await x.ctx.close();
+      /* the commonest upgrade: Day and night off, Candle on screen outside the pair. The load makes Cocoa the night
+         theme; the reader goes to Day before answering, and Keep still brings Candle back, as the night theme,
+         with Day left on screen */
+      x = await withNotice({ auto: "off", theme: "candle", autoDay: "day", autoNight: "dusk" });
+      await x.page.evaluate(() => document.activeElement && document.activeElement.blur());
+      await x.page.keyboard.press("t"); await x.page.waitForTimeout(150);
+      const went = await st(x.page);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      mine = await own(x.page); s = await st(x.page); t = await toastNow(x.page);
+      const cd = named(mine, "Candle");
+      R.check("Candle on screen outside day/dusk, then t, then Keep: own Candle is the night theme, Day stays on screen, and the toast",
+        x.up && went.theme === "day" && went.autoNight === "cocoa" && mine.length === 1 && cd.cols === colsOf("candle") && s.autoDay === "day" && s.autoNight === cd.k && s.theme === "day" &&
+        !!t && t.text === "Your old colours are back, under Mine.", JSON.stringify({ went, mine, s, t }));
+      await x.ctx.close();
       /* On a schedule at noon, Night held on Cocoa, which Candle became: Keep puts the own Candle in the night half and on
          screen, and the hold carries over to it, its period and end unchanged; the automatic check keeps it there */
       x = await withNotice({ auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "candle", autoDay: "day", autoNight: "candle", dnHold: { theme: "candle", period: "day", until: AT_21 } }, null, NOON);
@@ -1695,6 +1709,28 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       const text = (p) => p.set === "em:static/auto,q:static/auto,b:static/auto,s:static/auto,u:static/auto" && p.size && p.aa === "none" && p.quote === "open-quote";
       R.check('a book\'s paragraph of class "pg" stays text, also on a phone: nothing lifted out of the line, no "Aa", its quote marks kept',
         text(desk) && text(phone), JSON.stringify({ desk, phone }));
+      await ctx.close();
+    });
+
+    await guard("the final review's fixes", async () => {
+      /* switching brings an own theme on screen by itself (On a schedule, at night): Settings' editor row shows it */
+      let ctx = await context(b, null, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00", customs: [EMBERS], theme: "day", autoDay: "day", autoNight: "c:" + EMBERS.id } });
+      let page = await open(ctx, url, NIGHT);
+      const ed = await page.evaluate(() => ({ theme: window.__ll.state.theme, name: document.getElementById("cName").textContent, row: document.getElementById("customRow").classList.contains("show") }));
+      R.check("an own theme that switching brings on screen fills Settings' editor row", ed.theme === "c:" + EMBERS.id && ed.name === EMBERS.name && ed.row, JSON.stringify(ed));
+      await ctx.close();
+      /* the chosen tile's focus ring stands clear of its chosen ring; every tile keeps its check disc inside it */
+      ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      page = await open(ctx, url);
+      await page.focus("#lamp"); await page.keyboard.press("Enter");
+      await page.waitForFunction(() => document.getElementById("pop").classList.contains("open"), null, { timeout: 5000 }); await page.waitForTimeout(150);
+      const ring = await page.evaluate(() => { const t = document.activeElement, i = t && t.querySelector(":scope > i"), cs = i && getComputedStyle(i), tc = t && getComputedStyle(t);
+        return t ? { look: t.dataset.look, fv: t.matches(":focus-visible"), offset: cs.outlineOffset, style: cs.outlineStyle, z: tc.zIndex, pos: tc.position } : null; });
+      R.check("keyboard focus on the chosen look: its ring is 7px out, clear of the chosen ring; the tile is its own stacking context",
+        !!ring && ring.look === "day" && ring.fv && ring.offset === "7px" && ring.style === "solid" && ring.z === "0" && ring.pos === "relative", JSON.stringify(ring));
+      await page.emulateMedia({ forcedColors: "active" }); await page.waitForTimeout(100);
+      const fc = await page.evaluate(() => { const t = document.activeElement, cs = getComputedStyle(t); return { style: cs.outlineStyle, width: cs.outlineWidth }; });
+      R.check("under forced colours the focused tile itself is outlined", fc.style === "solid" && fc.width === "2px", JSON.stringify(fc));
       await ctx.close();
     });
 

@@ -761,7 +761,10 @@
      has one. The pressed one: an accent ring set off by a gap of the sheet colour, a check in the
      corner and its name in bold, so it is marked by more than colour ---- */
   .looks{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px 12px; padding:6px 2px 2px;}
+  /* each tile is its own stacking context (z-index 0), so the chosen tile's check disc stays inside
+     it and never lands on Settings' sticky section strip when the sheet scrolls */
   .chip.tile{
+    position:relative; z-index:0;
     display:grid; grid-template-columns:minmax(0, 1fr); align-content:start; gap:6px; min-width:0; min-height:0; padding:0;
     border:0; border-radius:var(--r-md); background:transparent; text-align:center; font-weight:400;
   }
@@ -801,6 +804,8 @@
   }
   .chip.tile:focus-visible{outline:none;}
   .chip.tile:focus-visible > i{outline:var(--ring) solid var(--accent); outline-offset:4px;}
+  /* the chosen tile's ring reaches 5px out, so its focus ring stands 2px clear of it */
+  .chip.tile:is(.on, [aria-pressed="true"]):focus-visible > i{outline-offset:7px;}
   /* New theme: a dashed empty page with a plus */
   .chip-new.tile > i{display:flex; align-items:center; justify-content:center; background:transparent; border:1.5px dashed var(--ctl-line);}
   .chip-new.tile > i::after{content:"+"; font-size:28px; font-weight:300; line-height:1; color:var(--muted);}
@@ -828,9 +833,13 @@
      ring is an outline, as e-ink draws no shadows */
   body.eink .chip.tile:is(.on, [aria-pressed="true"]){background:transparent !important; color:#000 !important; --ink:#000; --accent:#000; --on-fill:#fff; --raise:#fff;}
   body.eink .chip.tile:is(.on, [aria-pressed="true"]) > i{outline:3px solid #000; outline-offset:2px;}
+  /* in e-ink and under forced colours the drawing's outline marks the chosen tile, so focus rings the
+     whole tile, drawing and name, instead */
+  body.eink .chip.tile:focus-visible{outline:2px dashed #000; outline-offset:3px;}
   @media (forced-colors: active){
     .chip.tile > i{outline:1px solid ButtonText; outline-offset:1px;}
     .chip.tile:is(.on, [aria-pressed="true"]) > i{outline:3px solid Highlight; outline-offset:2px;}
+    .chip.tile:focus-visible{outline:2px solid CanvasText; outline-offset:3px;}
   }
   /* a step in from the popover: the rows most readers set once (weight, letter and word spacing) */
   .pop-more{border:1px solid var(--line); border-radius:var(--r-md); padding:0 var(--sp-3);}

@@ -1026,9 +1026,11 @@
        cross-fades; at start-up it is simply there */
     function apply(fade){
       var t = wanted();
+      /* through selectTheme, so a theme of the reader's own that switching brings on screen fills
+         Settings' editor row too (syncCustomUI) */
       if (t && t !== state.theme && resolveTheme(t)){
-        if (fade === true) crossFade(function(){ state.theme = t; applyTheme(); syncUI(); });
-        else { state.theme = t; applyTheme(); }
+        if (fade === true) crossFade(function(){ selectTheme(t); syncUI(); });
+        else selectTheme(t);
       }
       syncUI();
       arm();
@@ -1341,12 +1343,24 @@
        Contrast on screen over Linen/Plum brought the contrast pair, and Linen and Plum are no longer
        part of what the reader uses */
     function listed(was){
-      var out = [], seen = {}, m;
+      var out = [], seen = {}, m, outside;
       if (!was) return out;
       m = movedTo(was);
+      /* the one on screen was outside its pair (an earlier version's pick with Day and night off): the
+         load's fold put what it became into a half, and it stays listed while it is on screen or still
+         in that half, even after Day, Night or t; `half` says which half holds it when it is not on screen */
+      outside = was.theme !== was.autoDay && was.theme !== was.autoNight;
       ["autoDay", "autoNight", "theme"].forEach(function(f){
-        var old = was[f];
-        if (retiredOf(old) && state[f] === m[f] && !seen[old]){ seen[old] = true; out.push({ field: f, old: old }); }
+        var old = was[f], half = null;
+        if (!retiredOf(old) || seen[old]) return;
+        if (f === "theme" && outside){
+          if (state.theme !== m.theme){
+            if (state.autoDay === m.theme) half = "day";
+            else if (state.autoNight === m.theme) half = "night";
+            else return;
+          }
+        } else if (state[f] !== m[f]) return;
+        seen[old] = true; out.push({ field: f, old: old, half: half });
       });
       return out;
     }
@@ -1373,7 +1387,7 @@
           panel: normHex(r.panel), muted: normHex(r.muted) }).id;
       });
       l.forEach(function(x){ if (x.field !== "theme") state[x.field] = made[x.old]; });
-      l.forEach(function(x){ if (x.field === "theme") state[h === "day" ? "autoDay" : "autoNight"] = made[x.old]; });
+      l.forEach(function(x){ if (x.field === "theme") state[(x.half || h) === "day" ? "autoDay" : "autoNight"] = made[x.old]; });
       to = h === "day" ? state.autoDay : state.autoNight;
       if (state.dnHold) state.dnHold.theme = to;
       selectTheme(to);
