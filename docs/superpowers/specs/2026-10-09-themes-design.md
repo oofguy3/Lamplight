@@ -334,10 +334,10 @@ Unchanged from today, and from stage 1, §6.7:
 
 ### 5.8 Picking a built-in by id
 
-Only code and the tests pick a built-in by id; the picker has no single built-in tiles. `pickTheme(id)` for a built-in therefore:
+Only code and the tests pick a built-in by id; the picker has no single built-in tiles. `pickTheme(id)` for a built-in therefore does two things in one step:
 
-1. picks that theme's look, as 5.1;
-2. then shows that half with `setDayNight`.
+1. it picks that theme's look, as 5.1;
+2. it shows that theme's half. With Auto on, this sets a hold when the period wants the other half, as a Day/Night switch would.
 
 For example, `llThemes.pick("ink")` gives the pair Paper/Ink and shows Ink, with a hold if Auto wants Day.
 
@@ -556,9 +556,10 @@ The warmth comment no longer names "tight" themes; the ceilings are computed.
 | `lookOf(id)` | the look a built-in belongs to |
 | `pairLook()` | the look equal to the pair, or `null` |
 | `lookName(l)` | a look's name: "{day} & {night}" from `themeName`, or `_tc("theme", "Contrast")` |
-| `lookTileHtml(l)` | a look or pair tile's markup |
-| `selectLook(day, night, opts)` | the tap of 5.1 and 5.2, with `opts.undo` for the toast |
-| `retireMove()` | inside `Prefs.load`: steps 3–5 and 7–8 of 7.2 |
+| `lookTileHtml(id, day, night)` | a look or pair tile's markup |
+| `looksHtml()`, `mineHtml(withActions)` | the looks (with the pair tile first when needed), and Mine with New theme |
+| `selectLook(day, night)` | the tap of 5.1, and the Undo toast of 5.2 |
+| `retireMove()`, `foldPair()` | inside `Prefs.load`: steps 3–5, and steps 7–8, of 7.2 |
 | `ThemeNotice` | the notice and Keep the old colours (7.4) |
 
 **Changed:**
@@ -813,7 +814,11 @@ Every change keeps the check's intent with the new set.
 
   Each moves to a kept theme with the same role: a dark theme outside the pair, a light page, and so on.
 - **Counts and lists:**
-  - type2.js 286-288: the count comes from the table, and the impossible "light ceiling under 0.2" check goes. Every ceiling still clears 4.5:1 through the film.
+  - type2.js 286-288: the count comes from the table. The "light ceiling under 0.2" check cannot hold any more: every new theme reaches the full film (35%, or 12% on a dark page). It becomes two checks:
+    - every built-in wears the full film;
+    - a custom theme with text at 4.54:1 wears almost none.
+
+    Every ceiling still clears 4.5:1 through the film.
   - fonts.js 159: 12 themes.
   - themes.js: rewritten (13.3).
 - **Fresh profiles now start with Follow phone (section 6).** Playwright's default scheme is light, so Day still shows. The checks that assumed Auto off on a fresh profile change:
