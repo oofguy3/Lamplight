@@ -47,16 +47,16 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   R.check("t: day → dusk → day", a === "dusk" && a2 === "day", a + " " + a2);
 
   /* 2. with switching on, t never rewrites the pair. The bug: at noon the first t wrote the night
-     theme into the day slot (sepia/ember became ember/ember), the second fell back to Day, and
+     theme into the day slot (sepia/cocoa became cocoa/cocoa), the second fell back to Day, and
      Sepia was gone. (With the default day/dusk pair the second press happens to repair it.) */
   await page.evaluate(() => { const s = window.__ll.state; s.nightFrom = "21:00"; s.nightTo = "07:00"; });
-  await setPair(page, "day", "sepia"); await setPair(page, "night", "ember");
+  await setPair(page, "day", "sepia"); await setPair(page, "night", "cocoa");
   await setMode(page, "time");
   const t0 = await theme(page);
   await press(page, "t"); const t1 = await theme(page); await press(page, "t"); const t2 = await theme(page);
   const p = await prefs(page);
-  R.check("Auto on schedule: two t presses keep the pair (sepia/ember)", p.autoDay === "sepia" && p.autoNight === "ember", p.autoDay + "/" + p.autoNight);
-  R.check("Auto on schedule: t goes sepia → ember → sepia", t0 === "sepia" && t1 === "ember" && t2 === "sepia", [t0, t1, t2].join(" "));
+  R.check("Auto on schedule: two t presses keep the pair (sepia/cocoa)", p.autoDay === "sepia" && p.autoNight === "cocoa", p.autoDay + "/" + p.autoNight);
+  R.check("Auto on schedule: t goes sepia → cocoa → sepia", t0 === "sepia" && t1 === "cocoa" && t2 === "sepia", [t0, t1, t2].join(" "));
   await setMode(page, "off");
   await setPair(page, "day", "day"); await setPair(page, "night", "dusk");
   await select(page, "day");
@@ -138,8 +138,8 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   const actx = await b.newContext({ viewport: { width: 1200, height: 800 }, reducedMotion: "reduce" });
   page = await openAt(actx, D(8, 22));
   await page.evaluate(() => { const s = window.__ll.state; s.nightFrom = "21:00"; s.nightTo = "07:00"; });
-  await setPair(page, "day", "sepia"); await setPair(page, "night", "ember"); await setMode(page, "time");
-  R.check("22:00: the night theme is on", (await theme(page)) === "ember", await theme(page));
+  await setPair(page, "day", "sepia"); await setPair(page, "night", "cocoa"); await setMode(page, "time");
+  R.check("22:00: the night theme is on", (await theme(page)) === "cocoa", await theme(page));
   await dn(page, "day"); const h1 = await theme(page);
   await page.clock.fastForward("00:31"); const h2 = await theme(page);
   R.check("setDayNight('day') at 22:00 → sepia, still after 31 s", h1 === "sepia" && h2 === "sepia", h1 + " " + h2);
@@ -151,14 +151,14 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   await page.clock.fastForward("08:00:30");
   R.check("07:00 passes: hold cleared", (await hold(page)) === null, JSON.stringify(await hold(page)));
   await page.clock.fastForward("14:00:00");
-  R.check("21:00 next evening: ember again", (await theme(page)) === "ember", await theme(page));
+  R.check("21:00 next evening: cocoa again", (await theme(page)) === "cocoa", await theme(page));
   await page.close();
   /* a hold left past its boundary while the app was closed: gone on the next night */
   page = await openAt(actx, D(10, 22));
   await dn(page, "day");
   await page.close();
   page = await openAt(actx, D(11, 22));
-  R.check("reopened the next night (past the boundary): no hold, ember", (await hold(page)) === null && (await theme(page)) === "ember", JSON.stringify(await hold(page)) + " " + await theme(page));
+  R.check("reopened the next night (past the boundary): no hold, cocoa", (await hold(page)) === null && (await theme(page)) === "cocoa", JSON.stringify(await hold(page)) + " " + await theme(page));
   /* any other choice carries the hold over to the theme it puts in the held half: an own theme picked
      during a Day hold (llThemes.create picks the one it makes) takes the day half, and the hold */
   await dn(page, "day");
@@ -167,17 +167,17 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   await page.clock.fastForward("00:31");
   const o1 = await st(page), oh = await hold(page);
   R.check("an own theme picked during a hold takes the held half and keeps the hold (still on screen after 31 s)",
-    !!held && held.theme === "sepia" && o1.theme === own && o1.autoDay === own && o1.autoNight === "ember" && !!oh && oh.theme === own && oh.period === held.period && oh.until === held.until,
+    !!held && held.theme === "sepia" && o1.theme === own && o1.autoDay === own && o1.autoNight === "cocoa" && !!oh && oh.theme === own && oh.period === held.period && oh.until === held.until,
     JSON.stringify({ held, o1, oh }));
   /* the lists: a change to the held half keeps the hold, now on the new theme; a change to the other half
      leaves the screen and the hold alone */
   await setPair(page, "day", "sepia");
   const l1 = await st(page), lh1 = await hold(page);
-  await setPair(page, "night", "cocoa");
+  await setPair(page, "night", "forest");
   const l2 = await st(page), lh2 = await hold(page);
   R.check("changing the held half keeps the hold on the new theme; changing the other half leaves it",
     l1.theme === "sepia" && l1.autoDay === "sepia" && !!lh1 && lh1.theme === "sepia" && lh1.until === held.until &&
-    l2.theme === "sepia" && l2.autoNight === "cocoa" && !!lh2 && lh2.theme === "sepia" && lh2.until === held.until, JSON.stringify({ l1, lh1, l2, lh2 }));
+    l2.theme === "sepia" && l2.autoNight === "forest" && !!lh2 && lh2.theme === "sepia" && lh2.until === held.until, JSON.stringify({ l1, lh1, l2, lh2 }));
   await dn(page, "day"); await setMode(page, "system");
   R.check("setMode during a hold clears it", (await hold(page)) === null, JSON.stringify(await hold(page)));
   await setMode(page, "time"); await dn(page, "day");
@@ -196,10 +196,10 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   /* Follow phone: the app cannot see the phone switch while it is closed, so a hold ends after 12 hours */
   const fctx = await b.newContext({ viewport: { width: 1200, height: 800 }, reducedMotion: "reduce", colorScheme: "dark" });
   page = await openAt(fctx, D(8, 12));
-  await setPair(page, "day", "sepia"); await setPair(page, "night", "ember"); await setMode(page, "system");
+  await setPair(page, "day", "sepia"); await setPair(page, "night", "cocoa"); await setMode(page, "system");
   await dn(page, "day"); const f1 = await theme(page);
   await page.clock.fastForward("12:00:31"); const f2 = await theme(page);
-  R.check("Follow phone (dark): Day holds, and after 12 h + 31 s night returns", f1 === "sepia" && f2 === "ember", f1 + " " + f2);
+  R.check("Follow phone (dark): Day holds, and after 12 h + 31 s night returns", f1 === "sepia" && f2 === "cocoa", f1 + " " + f2);
   await page.close();
   await fctx.close();
   await b.close();

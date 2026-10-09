@@ -289,6 +289,74 @@
     hicon:     {name:"Contrast",      family:"neutral", bg:"#FFFFFF", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
     hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
   };
+  /* the retired themes, by id. A reader of one moves on every load (Prefs.load, through movedTo) to `to`,
+     the nearest kept theme of the same tone, or to `alt`, the next nearest, where `to` would make the day
+     theme and the night theme one theme. `name` and the five colours are the retired theme's own (its
+     Dutch name stays in i18n.js), kept so that they can be offered back as a theme of the reader's own.
+     A literal of its own, since tests/themes.js reads THEMES alone; resolveTheme and the pickers never
+     look here */
+  var RETIRED = {
+    parchment:  {to:"sepia",  alt:"sage",   name:"Parchment",       bg:"#F1E4C6", panel:"#F7ECD4", ink:"#2C2114", muted:"#67563A", accent:"#8B2F2A"},
+    linen:      {to:"day",    alt:"sepia",  name:"Linen",           bg:"#F3EFE6", panel:"#FAF8F1", ink:"#2B2A26", muted:"#625F57", accent:"#5A6828"},
+    peach:      {to:"day",    alt:"seaair", name:"Peach",           bg:"#FBE7DA", panel:"#FDF1E8", ink:"#3B2A21", muted:"#72574A", accent:"#146C72"},
+    rose:       {to:"day",    alt:"sepia",  name:"Rose",            bg:"#F4E7E3", panel:"#F9EFEC", ink:"#44302D", muted:"#775D56", accent:"#A8495A"},
+    newsprint:  {to:"day",    alt:"sage",   name:"Newsprint",       bg:"#E3E2DC", panel:"#EBEAE5", ink:"#2B2B2B", muted:"#5A5A57", accent:"#A82424"},
+    mist:       {to:"seaair", alt:"day",    name:"Mist",            bg:"#E7EBEE", panel:"#F0F3F5", ink:"#25303A", muted:"#5A6773", accent:"#3C6E93"},
+    sky:        {to:"seaair", alt:"day",    name:"Sky",             bg:"#E2EDF7", panel:"#EEF5FB", ink:"#17293A", muted:"#4C5F71", accent:"#2068A8"},
+    lavender:   {to:"seaair", alt:"day",    name:"Lavender",        bg:"#ECE7F4", panel:"#F4F1FA", ink:"#29233A", muted:"#5D5573", accent:"#6A4DB5"},
+    mint:       {to:"sage",   alt:"day",    name:"Mint",            bg:"#DEF2E8", panel:"#EAF7F0", ink:"#153128", muted:"#45655A", accent:"#0D7566"},
+    ember:      {to:"cocoa",  alt:"dusk",   name:"Ember",           bg:"#1A1210", panel:"#221815", ink:"#EBDACD", muted:"#A68F80", accent:"#F2812E"},
+    candle:     {to:"cocoa",  alt:"canals", name:"Candle",          bg:"#2A1D14", panel:"#33251A", ink:"#F0DDB4", muted:"#B8A485", accent:"#E9C46A"},
+    amber:      {to:"cocoa",  alt:"dusk",   name:"Amber",           bg:"#0F0A03", panel:"#17100A", ink:"#FFB000", muted:"#B98319", accent:"#FFDF70"},
+    moss:       {to:"forest", alt:"dusk",   name:"Moss",            bg:"#161A10", panel:"#1D2215", ink:"#D7DBC2", muted:"#959C80", accent:"#B7C86A"},
+    ocean:      {to:"dusk",   alt:"forest", name:"Ocean",           bg:"#0D141E", panel:"#131C29", ink:"#CBD5E1", muted:"#8190A4", accent:"#5C9CD6"},
+    midnight:   {to:"dusk",   alt:"forest", name:"Midnight",        bg:"#0B1126", panel:"#111A36", ink:"#D8DDEE", muted:"#95A0BF", accent:"#9DB4FF"},
+    plum:       {to:"dusk",   alt:"canals", name:"Plum",            bg:"#17101F", panel:"#1E1628", ink:"#D8CDE3", muted:"#958AA3", accent:"#A97FD6"},
+    slate:      {to:"canals", alt:"cocoa",  name:"Slate",           bg:"#1C2229", panel:"#242B33", ink:"#D5DBE1", muted:"#97A3AE", accent:"#EF8C76"},
+    graphite:   {to:"forest", alt:"canals", name:"Graphite",        bg:"#1E1F22", panel:"#26272B", ink:"#D8D8D5", muted:"#A0A09C", accent:"#74D0B8"},
+    noir:       {to:"ink",    alt:"dusk",   name:"Noir",            bg:"#000000", panel:"#0B0B0B", ink:"#C6C6C6", muted:"#8E8E8E", accent:"#EDEDED"},
+    terminal:   {to:"ink",    alt:"dusk",   name:"Terminal",        bg:"#050805", panel:"#0A110A", ink:"#3FE86F", muted:"#2FA354", accent:"#D9FF6E"},
+    delft:      {to:"seaair", alt:"day",    name:"Delft blue",      bg:"#F2F4F3", panel:"#F8F9F8", ink:"#13285A", muted:"#4A5878", accent:"#2350B0"},
+    vermeer:    {to:"dusk",   alt:"canals", name:"Vermeer",         bg:"#11131B", panel:"#181B26", ink:"#ECE6D8", muted:"#A3A099", accent:"#8EA6F0"},
+    rembrandt:  {to:"cocoa",  alt:"canals", name:"Rembrandt",       bg:"#16140C", panel:"#1E1B11", ink:"#EBD9A8", muted:"#A99A76", accent:"#DE8A55"},
+    tulips:     {to:"day",    alt:"seaair", name:"Tulip field",     bg:"#FBF2E4", panel:"#FDF7EE", ink:"#2E1E1A", muted:"#6E5650", accent:"#2E6A3A"},
+    polder:     {to:"day",    alt:"seaair", name:"Polder",          bg:"#E2E5E4", panel:"#EBEDEC", ink:"#22282A", muted:"#565E61", accent:"#2D5F7F"},
+    autumn:     {to:"cocoa",  alt:"canals", name:"Autumn wood",     bg:"#1E2316", panel:"#252B1C", ink:"#EDE3CC", muted:"#ABA58C", accent:"#E8A04A"},
+    winter:     {to:"seaair", alt:"day",    name:"Winter morning",  bg:"#ECEFF4", panel:"#F4F6F9", ink:"#1B2733", muted:"#536070", accent:"#2C5F8A"},
+    aurora:     {to:"dusk",   alt:"forest", name:"Northern lights", bg:"#0A1218", panel:"#0F1A22", ink:"#D5E4E6", muted:"#8CA3A8", accent:"#5EE0A5"},
+    blossom:    {to:"day",    alt:"sepia",  name:"Cherry blossom",  bg:"#FBEDF1", panel:"#FDF5F7", ink:"#3A2229", muted:"#78545E", accent:"#5A3A33"},
+    coffee:     {to:"sepia",  alt:"sage",   name:"Coffee house",    bg:"#E6D5C3", panel:"#EEE2D5", ink:"#2E2018", muted:"#654F40", accent:"#8A3B22"},
+    library:    {to:"canals", alt:"cocoa",  name:"Old library",     bg:"#0F231B", panel:"#152B22", ink:"#E8DFC6", muted:"#A7A38C", accent:"#E0947F"},
+    rain:       {to:"dusk",   alt:"canals", name:"Rainy evening",   bg:"#151C26", panel:"#1B2430", ink:"#D3D9E0", muted:"#929BA6", accent:"#9CC0E6"},
+    cabin:      {to:"cocoa",  alt:"canals", name:"Candle cabin",    bg:"#3A2516", panel:"#432C1C", ink:"#FBE9CC", muted:"#D0B698", accent:"#F7A891"},
+    nighttrain: {to:"cocoa",  alt:"dusk",   name:"Night train",     bg:"#1A0F14", panel:"#22141B", ink:"#EADBD8", muted:"#AE959B", accent:"#9DBDF0"},
+    handmade:   {to:"day",    alt:"seaair", name:"Handmade paper",  bg:"#F1EEE7", panel:"#F7F5F0", ink:"#222120", muted:"#5D5A55", accent:"#24508F"},
+    bookcloth:  {to:"day",    alt:"seaair", name:"Book cloth",      bg:"#E4E6DE", panel:"#ECEEE7", ink:"#23261F", muted:"#565B51", accent:"#3F5D7A"},
+    laid:       {to:"day",    alt:"sepia",  name:"Laid paper",      bg:"#EEEBDC", panel:"#F5F3E8", ink:"#26251C", muted:"#5E5B4A", accent:"#6B3F86"},
+    vellum:     {to:"day",    alt:"seaair", name:"Vellum",          bg:"#F2E9DE", panel:"#F8F2EA", ink:"#2A2019", muted:"#66584C", accent:"#2B4C9A"}
+  };
+  /* a retired theme's entry, or null for any other id: a kept theme, one of the reader's own, or junk
+     read from storage (an own property only, so "constructor" is no retired theme) */
+  function retiredOf(id){ return typeof id === "string" && Object.prototype.hasOwnProperty.call(RETIRED, id) ? RETIRED[id] : null; }
+  /* what the move off the retired themes gives the theme on screen, the day theme and the night theme,
+     from their stored ids (`was`: { theme, autoDay, autoNight }). Each retired id becomes its `to`.
+     Where that would make the two halves one theme, and they were two, the half that was retired takes
+     its `alt` instead (the night half, when both were), so the pair stays two themes, each in its own
+     tone: Linen/Peach becomes Day/Sea air. The theme on screen follows its half, so the half on screen
+     stays the half on screen: Peach on screen over Linen/Peach becomes Sea air. Prefs.load moves the
+     stored ids with this; it reads nothing but `was` and the table, so the same ids always give the
+     same answer */
+  function movedTo(was){
+    function to(k){ var r = retiredOf(k); return r ? r.to : k; }
+    var m = { theme: to(was.theme), autoDay: to(was.autoDay), autoNight: to(was.autoNight) };
+    if (was.autoDay !== was.autoNight && m.autoDay === m.autoNight){
+      if (retiredOf(was.autoNight)) m.autoNight = retiredOf(was.autoNight).alt;
+      else m.autoDay = retiredOf(was.autoDay).alt;
+    }
+    if (was.theme === was.autoDay) m.theme = m.autoDay;
+    else if (was.theme === was.autoNight) m.theme = m.autoNight;
+    return m;
+  }
   /* the looks: a day theme and a night theme that belong together, in the picker's order. A tap on
      one makes it the reader's pair (selectLook). Its id is its day half; its name is its two themes'
      names joined, "Day & Dusk" (lookName), unless it has a name of its own */
@@ -425,6 +493,10 @@
     /* a Day/Night switch made while switching is on: { theme, period: "day" | "night", until: ms },
        kept until the next automatic change (see AutoTheme.hold) */
     dnHold:null,
+    /* the theme on screen, the day theme and the night theme as they were stored before a load moved
+       the reader off a retired theme ({ theme, autoDay, autoNight }, see movedTo), kept until the reader
+       has been told; null when there is nothing to tell */
+    themeWas:null,
     zoom:1, soften:true, plainBg:false,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
     mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
@@ -433,7 +505,7 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "plainBg", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked", "dnHold"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "plainBg", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked", "dnHold", "themeWas"];
     var loading = false;
     /* a number inside its range, or the default when the stored value is nonsense */
     function num(v, lo, hi, dflt){
@@ -462,6 +534,11 @@
       });
       return out;
     }
+    /* the ids a move off a retired theme noted (retireMove) from storage: three strings, or null */
+    function validWas(w){
+      return w && typeof w === "object" && typeof w.theme === "string" && typeof w.autoDay === "string" && typeof w.autoNight === "string"
+        ? { theme: w.theme, autoDay: w.autoDay, autoNight: w.autoNight } : null;
+    }
     /* the single scratch "Custom" theme of earlier versions becomes a saved theme, once: afterwards
        the scratch colours are back at their defaults and nothing points at "custom" any more */
     function migrateCustom(){
@@ -474,6 +551,43 @@
       ["theme", "autoDay", "autoNight"].forEach(function(k){ if (state[k] === "custom") state[k] = theme || (k === "autoNight" ? "dusk" : "day"); });
       state.custom = Object.assign({}, d);
     }
+    /* a reader of a retired theme moves to the nearest kept one (movedTo): the theme on screen, the day
+       theme and the night theme, and a Day/Night hold with the half it holds (any other hold through
+       `to`). The ids as they were are noted in themeWas the first time this moves one, and a note still
+       waiting there is never written over. Once nothing stored is retired, it changes nothing */
+    function retireMove(){
+      var was = { theme: state.theme, autoDay: state.autoDay, autoNight: state.autoNight }, m = movedTo(was), h = state.dnHold, r;
+      state.theme = m.theme; state.autoDay = m.autoDay; state.autoNight = m.autoNight;
+      if (h && typeof h === "object" && typeof h.theme === "string"){
+        r = retiredOf(h.theme);
+        h.theme = h.theme === was.autoDay ? m.autoDay : h.theme === was.autoNight ? m.autoNight : r ? r.to : h.theme;
+      }
+      if (state.themeWas === null && (retiredOf(was.theme) || retiredOf(was.autoDay) || retiredOf(was.autoNight))) state.themeWas = was;
+    }
+    /* what earlier versions could leave, repaired once the checks in load have run: a pair that is one
+       theme twice, a theme on screen outside the pair, a hold on neither half. Nothing in the app makes
+       these now; only the raw llThemes.select (the tests) can still put a theme outside the pair. A
+       built-in twice becomes its look (Ember/Ember, moved to Cocoa/Cocoa, becomes Sepia & Cocoa); a theme
+       of the reader's own twice keeps the half its page colour says, and the other half goes back to Day
+       or Dusk. Contrast or Contrast dark outside the pair brings the contrast pair, so a reader of high
+       contrast stays in it; any other theme outside becomes the half its page colour says (Paper over
+       Day/Dusk gives Paper/Dusk), so the reader keeps what they see. A hold only ever holds a half */
+    function foldPair(){
+      var k = state.autoDay, l, t;
+      if (k === state.autoNight){
+        l = lookOf(k); t = resolveTheme(k);
+        if (l){ state.autoDay = l.day; state.autoNight = l.night; }
+        else if (t && isDarkColor(t.bg)) state.autoDay = "day";
+        else state.autoNight = "dusk";
+      }
+      k = state.theme;
+      if (k !== state.autoDay && k !== state.autoNight){
+        if (HICON.indexOf(k) >= 0){ state.autoDay = "hicon"; state.autoNight = "hidark"; }
+        else if (isDarkColor(currentTheme().bg)) state.autoNight = k;
+        else state.autoDay = k;
+      }
+      if (state.dnHold && state.dnHold.theme !== state.autoDay && state.dnHold.theme !== state.autoNight) state.dnHold = null;
+    }
     function load(){
       var o = null;
       try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
@@ -483,10 +597,14 @@
         if (o[f] === undefined || o[f] === null) return;
         if (f === "custom"){ if (typeof o.custom === "object") state.custom = Object.assign({}, state.custom, o.custom); return; }
         if (f === "customs"){ state.customs = validCustoms(o.customs); return; }
+        if (f === "themeWas"){ state.themeWas = validWas(o.themeWas); return; }
         if (typeof state[f] === "number" && typeof o[f] !== "number") return;
+        /* a theme is an id: anything else keeps the default, so the move below only meets strings */
+        if ((f === "theme" || f === "autoDay" || f === "autoNight") && typeof o[f] !== "string") return;
         state[f] = o[f];
       });
       migrateCustom();
+      retireMove();
       if (!resolveTheme(state.theme)) state.theme = "day";
       if (!/^(off|system|time)$/.test(state.auto)) state.auto = "off";
       if (!resolveTheme(state.autoDay)) state.autoDay = "day";
@@ -496,6 +614,7 @@
       var h = state.dnHold;
       state.dnHold = h && typeof h === "object" && typeof h.theme === "string" && resolveTheme(h.theme) && (h.period === "day" || h.period === "night") && typeof h.until === "number" && isFinite(h.until)
         ? { theme: h.theme, period: h.period, until: h.until } : null;
+      foldPair();
       if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
@@ -520,7 +639,7 @@
       if (state.eink) state.flow = "pages";
       loading = false;
     }
-    return { save: save, load: load };
+    return { save: save, load: load, foldPair: foldPair };
   })();
 
   /* ---------- color helpers ---------- */
@@ -12145,7 +12264,7 @@
   });
   $("#cFix").addEventListener("click", fixContrast);
   /* exposed for tests (not a public API) */
-  window.llThemes = { THEMES: THEMES, LOOKS: LOOKS, contrast: contrast, resolve: resolveTheme, current: currentTheme,
+  window.llThemes = { THEMES: THEMES, LOOKS: LOOKS, RETIRED: RETIRED, contrast: contrast, resolve: resolveTheme, current: currentTheme,
     customs: function(){ return state.customs; }, select: selectTheme, pick: pickTheme, look: selectLook, create: createCustom, fix: fixContrast,
     remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight, hold: function(){ return state.dnHold; } };
 

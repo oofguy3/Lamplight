@@ -6,7 +6,9 @@
    to the half on screen shows at once, and a Day/Night hold carries over to it. An own theme picked,
    made or copied takes the place of the theme on screen in its half, and deleting one shows that
    half's fallback; a built-in picked by id brings its look. After every choice the theme on screen is
-   one of the pair's two themes, and the two differ.
+   one of the pair's two themes, and the two differ. On load, a reader of a retired theme moves to the
+   nearest kept one, and what earlier versions left (a pair that is one theme twice, a theme on screen
+   outside the pair, a hold on neither half) is folded back into that rule.
      NODE_PATH=$(npm root -g) node tests/looks.js */
 const fs = require("fs"), path = require("path");
 const { serve, browser, openFixture, makeReport } = require("./lib");
@@ -34,8 +36,22 @@ const lists = (page) => page.evaluate(() => Object.fromEntries(["autoDay", "auto
 })));
 const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Contrast"];
 const DAYS = ["day", "paper", "sepia", "sage", "seaair", "hicon"], NIGHTS = ["dusk", "ink", "cocoa", "forest", "canals", "hidark"];
-/* a light theme of the reader's own, "c:t3a" */
+/* a light theme of the reader's own, "c:t3a", and a dark one, "c:t6d" */
 const LAMP = { id: "t3a", name: "Reading lamp", bg: "#F4ECD8", ink: "#2A2118", autoInk: false, accent: "#7A3E12" };
+const EMBERS = { id: "t6d", name: "Embers", bg: "#1E1611", ink: "#EADBC8", autoInk: false, accent: "#D9964A" };
+/* spec §7.1, where each retired theme goes, copied here rather than read from the app's own table */
+const MOVES = Object.fromEntries(Object.entries({
+  day: "linen peach handmade tulips bookcloth laid polder vellum blossom rose newsprint", sepia: "parchment coffee", sage: "mint",
+  seaair: "winter sky mist lavender delft", dusk: "rain vermeer aurora ocean midnight plum", ink: "noir terminal",
+  cocoa: "autumn candle ember rembrandt cabin nighttrain amber", forest: "moss graphite", canals: "library slate"
+}).flatMap(([to, ids]) => ids.split(" ").map((id) => [id, to])));
+/* what a stored profile became once loaded: the theme, the pair, the hold and themeWas, in the state
+   (with the half of the theme on screen) and as boot saved them */
+const moved = (page) => page.evaluate(() => {
+  const pick = (o) => ({ theme: o.theme, autoDay: o.autoDay, autoNight: o.autoNight, hold: o.dnHold, was: o.themeWas });
+  const s = window.__ll.state;
+  return { s: Object.assign(pick(s), { dn: window.llThemes.dnOf(s.theme) }), saved: pick(JSON.parse(localStorage.getItem("ll_prefs") || "{}")) };
+});
 /* the Dutch for "Mine" as i18n.js has it, whichever apostrophe that is */
 const MINE_NL = (/"Mine":\s*"([^"]*)"/.exec(fs.readFileSync(path.join(__dirname, "..", "i18n.js"), "utf8")) || [])[1];
 const NOON = new Date(2026, 9, 9, 12, 0, 0);
@@ -799,6 +815,138 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       const r2 = await recent(), s = await st(page);
       R.check("ll_theme_recent is removed at boot and never written", r0 === null && r1 === null && r2 === null && s.theme === "ink" && s.autoDay === "c:t3a", JSON.stringify({ r0, r1, r2, s }));
       await ctx.close();
+    });
+
+    /* ---------------- moving readers (§7.2) ---------------- */
+    /* each case stores a profile and loads it once. A pair case puts one of the pair's own themes on screen (its
+       day theme, unless the theme on screen is what the case is about), so the fold of a theme outside the pair
+       (step 7) cannot stand in for the rule under test. A hold is seeded at noon with the period that holds
+       then. What the load gave is read live and as boot saved it */
+    const loadAs = async (seed, clock) => {
+      const ctx = await context(b, null, { ll_prefs: seed });
+      const page = await open(ctx, url, clock);
+      const r = await moved(page);
+      await ctx.close();
+      return r;
+    };
+    const both = (r, fn) => fn(r.s) && fn(r.saved);
+    /* the end of a hold made at noon: On a schedule (night 21:00–07:00) the next boundary, and with Follow phone
+       12 hours on, midnight */
+    const AT_21 = new Date(2026, 9, 9, 21, 0, 0).getTime(), MIDNIGHT = new Date(2026, 9, 10, 0, 0, 0).getTime();
+    await guard("moving readers, every retired id", async () => {
+      /* one tab: the profile is stored afresh before each load (nothing writes ll_prefs on the way out) */
+      const ctx = await context(b, null);
+      const page = await open(ctx, url);
+      const wrong = [];
+      for (const [id, to] of Object.entries(MOVES)){
+        await page.evaluate((p) => localStorage.setItem("ll_prefs", JSON.stringify(p)), { auto: "off", theme: id });
+        await page.reload({ waitUntil: "load" });
+        const r = await moved(page);
+        if (r.s.theme !== to || r.saved.theme !== to) wrong.push(id + " → " + r.s.theme + "/" + r.saved.theme);
+      }
+      R.check("every retired id as theme (Auto off) loads as its target", Object.keys(MOVES).length === 38 && wrong.length === 0, wrong.join(", "));
+      await ctx.close();
+    });
+    await guard("moving readers, pairs", async () => {
+      /* Follow phone on a light phone at noon, Night held until midnight: the hold moves with its half, and shows */
+      const a = await loadAs({ auto: "system", theme: "linen", autoDay: "linen", autoNight: "candle", dnHold: { theme: "candle", period: "day", until: MIDNIGHT } }, NOON);
+      R.check("pair linen/candle → day/cocoa; hold on candle (Auto on, until tomorrow) → cocoa, same until",
+        both(a, (x) => x.autoDay === "day" && x.autoNight === "cocoa" && x.theme === "cocoa" && !!x.hold && x.hold.theme === "cocoa" && x.hold.period === "day" && x.hold.until === MIDNIGHT), JSON.stringify(a));
+      const lp = await loadAs({ auto: "off", theme: "linen", autoDay: "linen", autoNight: "peach" });
+      const ce = await loadAs({ auto: "off", theme: "candle", autoDay: "candle", autoNight: "ember" });
+      R.check("move-made one theme twice: linen/peach → day/seaair; candle/ember → cocoa/dusk",
+        both(lp, (x) => x.theme === "day" && x.autoDay === "day" && x.autoNight === "seaair") && both(ce, (x) => x.theme === "cocoa" && x.autoDay === "cocoa" && x.autoNight === "dusk"), JSON.stringify({ lp, ce }));
+      const pp = await loadAs({ auto: "off", theme: "peach", autoDay: "linen", autoNight: "peach" });
+      R.check("the theme on screen follows its half: theme peach over linen/peach → seaair on screen (night half)",
+        both(pp, (x) => x.theme === "seaair" && x.autoDay === "day" && x.autoNight === "seaair") && pp.s.dn === "night", JSON.stringify(pp));
+      const ph = await loadAs({ auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "peach", autoDay: "linen", autoNight: "peach", dnHold: { theme: "peach", period: "day", until: AT_21 } }, NOON);
+      R.check("a hold follows its half: Auto on (time, noon), Night held on peach over linen/peach → hold on seaair, Sea air on screen",
+        both(ph, (x) => x.theme === "seaair" && x.autoDay === "day" && x.autoNight === "seaair" && !!x.hold && x.hold.theme === "seaair" && x.hold.period === "day" && x.hold.until === AT_21), JSON.stringify(ph));
+    });
+    await guard("moving readers, collapsed pairs and the fold", async () => {
+      const dd = await loadAs({ auto: "off", theme: "day", autoDay: "day", autoNight: "day" });
+      const ee = await loadAs({ auto: "off", theme: "ember", autoDay: "ember", autoNight: "ember" });
+      const cc = await loadAs({ auto: "off", theme: "c:t3a", autoDay: "c:t3a", autoNight: "c:t3a", customs: [LAMP] });
+      R.check("legacy collapsed: day/day → day/dusk; ember/ember → sepia/cocoa; c:x/c:x (light) → c:x/dusk",
+        both(dd, (x) => x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk") && both(ee, (x) => x.theme === "cocoa" && x.autoDay === "sepia" && x.autoNight === "cocoa") &&
+        both(cc, (x) => x.theme === "c:t3a" && x.autoDay === "c:t3a" && x.autoNight === "dusk"), JSON.stringify({ dd, ee, cc }));
+      const dk = await loadAs({ auto: "off", theme: "c:t6d", autoDay: "c:t6d", autoNight: "c:t6d", customs: [EMBERS] });
+      R.check("legacy collapsed, a dark own theme: c:y/c:y → day/c:y, still on screen, in the night half",
+        both(dk, (x) => x.theme === "c:t6d" && x.autoDay === "day" && x.autoNight === "c:t6d") && dk.s.dn === "night", JSON.stringify(dk));
+      const pa = await loadAs({ auto: "off", theme: "paper" });
+      R.check("fold: theme paper with day/dusk (Auto off) → paper/dusk", both(pa, (x) => x.theme === "paper" && x.autoDay === "paper" && x.autoNight === "dusk"), JSON.stringify(pa));
+      const fo = await loadAs({ auto: "off", theme: "forest" });
+      R.check("fold: a dark theme outside the pair (forest over day/dusk) → day/forest", both(fo, (x) => x.theme === "forest" && x.autoDay === "day" && x.autoNight === "forest"), JSON.stringify(fo));
+      const hi = await loadAs({ auto: "off", theme: "hicon" }), hd = await loadAs({ auto: "off", theme: "hidark" });
+      R.check("fold: theme hicon with day/dusk → hicon/hidark", both(hi, (x) => x.theme === "hicon" && x.autoDay === "hicon" && x.autoNight === "hidark"), JSON.stringify(hi));
+      R.check("fold: theme hidark with day/dusk → hicon/hidark, Contrast dark on screen", both(hd, (x) => x.theme === "hidark" && x.autoDay === "hicon" && x.autoNight === "hidark"), JSON.stringify(hd));
+    });
+    await guard("moving readers, an own theme outside the pair", async () => {
+      /* Review Focus 5: an own theme on screen outside the pair, Auto off, at the upgrade. It takes the half its
+         page colour says; on screen after the load, the pair's tile shows it pressed, and so does its Mine tile */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "c:t3a", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      const mineOn = (sel) => page.evaluate((s) => { const x = document.querySelector(s); return x ? x.getAttribute("aria-pressed") : "none"; }, sel);
+      const r = await moved(page), set = await looksIn(page, "#themeChips"), setMine = await mineOn('#themeChips .q-mine [data-theme="c:t3a"]');
+      await openTheme(page);
+      const pop = await looksIn(page, "#qLooks"), popMine = await mineOn('#qMine [data-theme="c:t3a"]');
+      R.check("fold: a light own theme on screen outside day/dusk → c:x/dusk, still on screen, its Mine tile pressed",
+        both(r, (x) => x.theme === "c:t3a" && x.autoDay === "c:t3a" && x.autoNight === "dusk") && pairFirst(set, "Reading lamp & Dusk") && pairFirst(pop, "Reading lamp & Dusk") && setMine === "true" && popMine === "true",
+        JSON.stringify({ r, set: set.slice(0, 2), pop: pop.slice(0, 2), setMine, popMine }));
+      await ctx.close();
+    });
+    await guard("moving readers, holds and unknown ids", async () => {
+      const ho = await loadAs({ auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "day", dnHold: { theme: "paper", period: "day", until: AT_21 } }, NOON);
+      R.check("a hold on a theme outside the pair is dropped", both(ho, (x) => x.hold === null && x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk"), JSON.stringify(ho));
+      const un = await loadAs({ auto: "off", theme: "gone7" });
+      R.check("unknown id → day", both(un, (x) => x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk"), JSON.stringify(un));
+      /* the checks make an unknown day theme Day, over a night theme that is Day (on screen): only a fold that
+         runs after them sees the pair one theme twice, and repairs it */
+      const uh = await loadAs({ auto: "off", theme: "day", autoDay: "gone8", autoNight: "day" });
+      R.check("an unknown half that the checks make the other half's theme: gone/day → day/dusk", both(uh, (x) => x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk"), JSON.stringify(uh));
+    });
+    await guard("moving readers, a second load", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "peach", autoDay: "linen", autoNight: "peach" } });
+      const page = await open(ctx, url);
+      const p1 = await prefs(page);
+      await page.reload({ waitUntil: "load" }); await page.waitForTimeout(100);
+      const p2 = await prefs(page);
+      R.check("a second load changes nothing", p1 === p2 && JSON.parse(p1).theme === "seaair", p1 + " → " + p2);
+      await ctx.close();
+    });
+    await guard("moving readers, themeWas", async () => {
+      const W = { theme: "candle", autoDay: "day", autoNight: "candle" }, same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+      const ctx = await context(b, null, { ll_prefs: Object.assign({ auto: "off" }, W) });
+      const page = await open(ctx, url);
+      const r1 = await moved(page);
+      await page.reload({ waitUntil: "load" });
+      const r2 = await moved(page);
+      await ctx.close();
+      /* a note an earlier load left, not yet acted on, stays as it was when more retired ids come (an old copy
+         of the app wrote them since); the ids still move */
+      const OLD = { theme: "plum", autoDay: "linen", autoNight: "plum" };
+      const r3 = await loadAs({ auto: "off", theme: "ember", autoDay: "day", autoNight: "ember", themeWas: OLD });
+      R.check("themeWas records the originals once",
+        both(r1, (x) => same(x.was, W) && x.theme === "cocoa" && x.autoDay === "day" && x.autoNight === "cocoa") && both(r2, (x) => same(x.was, W)) &&
+        both(r3, (x) => same(x.was, OLD) && x.theme === "cocoa" && x.autoNight === "cocoa"), JSON.stringify({ r1, r2, r3 }));
+    });
+    await guard("moving readers, junk", async () => {
+      /* Review Focus 3: a themeWas that is a number, an array, or an object with a wrong or missing field; a
+         retired id only in the hold; theme fields that are no ids at all, or a name every object inherits.
+         Load never throws, and a note it makes holds three ids, even beside a half that was junk */
+      const before = errors.length, same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+      const junk = [];
+      for (const w of [5, [], { theme: 1 }, { theme: "candle", autoDay: "day" }]) junk.push(await loadAs({ auto: "off", themeWas: w }));
+      const hold = await loadAs({ auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "day", dnHold: { theme: "candle", period: "day", until: AT_21 } }, NOON);
+      const odd = await loadAs({ auto: "off", theme: ["candle"], autoDay: {}, autoNight: 7, dnHold: 5, themeWas: "candle" });
+      const inherited = await loadAs({ auto: "off", theme: "constructor", autoNight: "toString" });
+      const mixed = await loadAs({ auto: "off", theme: "candle", autoDay: 5, autoNight: "dusk" });
+      R.check("junk themeWas (5, [], {theme:1}) loads as null; a retired id only in dnHold gives themeWas null; no page error",
+        junk.every((r) => both(r, (x) => x.was === null)) && both(hold, (x) => x.was === null && x.hold === null && x.theme === "day") &&
+        both(odd, (x) => x.was === null && x.hold === null && x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk") &&
+        both(inherited, (x) => x.was === null && x.theme === "day" && x.autoNight === "dusk") &&
+        both(mixed, (x) => same(x.was, { theme: "candle", autoDay: "day", autoNight: "dusk" }) && x.theme === "cocoa" && x.autoDay === "day" && x.autoNight === "cocoa") && errors.length === before,
+        JSON.stringify({ junk: junk.map((r) => [r.s.was, r.saved.was].map((v) => v === undefined ? "undefined" : v)), hold, odd, inherited, mixed, errors: errors.slice(before) }));
     });
 
     /* ---------------- the tiles' drawing stays in the tiles ---------------- */
