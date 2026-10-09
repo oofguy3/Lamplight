@@ -10,8 +10,8 @@
    nearest kept one, and what earlier versions left (a pair that is one theme twice, a theme on screen
    outside the pair, a hold on neither half) is folded back into that rule. Once, a notice then says
    what became of the retired themes the reader can still see, and offers them back as the reader's
-   own, where they were, keeping the half on screen; it never shows beside the e-ink offer, and toasts
-   step up over it. Every built-in applies the
+   own, where they were, keeping the half on screen; it never shows beside the e-ink offer, toasts
+   step up over it, and speed reading hides it and the offers until it closes. Every built-in applies the
    colours of the spec's table, and nothing is left of the textures and Plain background. Outside the
    table, the first paint is Day's, the title bar's colour in the markup and the manifest is Dusk's
    page, the editors' swatches come from the set, and the contrast and dark tones have their own ring,
@@ -95,8 +95,8 @@ async function context(b, opts, seed){
   return ctx;
 }
 /* a page, its clock set to `clock` when given, with every toast's text kept in window.__toasts. A `still` page's
-   clock stands still from before its boot, and through reloads: no timer of the app's fires, so a read sees what
-   the load left, and not the notice (800 ms on) clearing themeWas */
+   clock stands still from before its boot, and through reloads: no timer of the app's fires, so the notice (800 ms
+   on) can neither clear themeWas before a read nor save the page over a profile stored for the next load */
 async function open(ctx, url, clock, still){
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -872,9 +872,10 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
        12 hours on, midnight */
     const AT_21 = new Date(2026, 9, 9, 21, 0, 0).getTime(), MIDNIGHT = new Date(2026, 9, 10, 0, 0, 0).getTime();
     await guard("moving readers, every retired id", async () => {
-      /* one tab: the profile is stored afresh before each load (nothing writes ll_prefs on the way out) */
+      /* one tab: the profile is stored afresh before each load. The clock stands still, so the notice the load before
+         set off (800 ms on) cannot save that page's state over the profile just stored */
       const ctx = await context(b, null);
-      const page = await open(ctx, url);
+      const page = await open(ctx, url, null, true);
       const wrong = [];
       for (const [id, to] of Object.entries(MOVES)){
         await page.evaluate((p) => localStorage.setItem("ll_prefs", JSON.stringify(p)), { auto: "off", theme: id });
@@ -1309,6 +1310,39 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       R.check('Dutch: "De thema’s zijn veranderd: Kaars is nu Cacao."', x.up && !!nl && nl.text === "De thema’s zijn veranderd: Kaars is nu Cacao." && nl.keep === "Oude kleuren houden" &&
         nl.no === "Nee, bedankt" && mine.map((c) => c.name).join() === "Kaars" && !!t && t.text === "Je oude kleuren zijn terug, onder Mijn thema’s.", JSON.stringify({ nl, mine, t }));
       await x.ctx.close();
+    });
+    await guard("the notice and speed reading", async () => {
+      /* speed reading covers the page and makes the rest of it inert, the small toast aside. The notice sits above it,
+         on a phone over its progress bar and Play button, where it could not be used and a tap on it would reach the
+         control under it: it waits out of sight, unanswered, and takes no room until speed reading closes. So do the
+         update offer (the real one, which reports its height too) and the e-ink offer (a stand-in with its id, as the
+         real one never shows beside the notice) */
+      const ctx = await context(b, PHONE, { ll_prefs: LINEN_PEACH, ll_tips: "seen", ll_tip_doc: "1" });
+      const page = await open(ctx, url);
+      const up = await noticeUp(page);
+      await openFixture(page, "sample.txt");
+      await page.evaluate(() => window.__ll.Updates.offer()); await page.waitForTimeout(100);
+      /* whether the notice and the two offers show, whether the notice is inert, and the room the notice and the
+         update offer report on the body against their heights */
+      const seen = () => page.evaluate(() => {
+        const shown = (n) => !!n && n.getClientRects().length > 0, n = document.getElementById("themeToast"), u = document.getElementById("updateToast");
+        const probe = document.createElement("div"); probe.id = "einkToast"; document.body.appendChild(probe);
+        const eink = shown(probe); probe.remove();
+        return { rsvp: window.llRsvp.isOpen(), notice: shown(n), update: shown(u), eink, inert: !!n && n.inert,
+          noticeH: document.body.style.getPropertyValue("--noticeH"), h: n ? n.offsetHeight : null, updateH: document.body.style.getPropertyValue("--updateH"), uh: u ? u.offsetHeight : null };
+      });
+      const before = await seen();
+      await page.evaluate(() => window.llRsvp.open()); await page.waitForTimeout(150);
+      const during = await seen();
+      await page.evaluate(() => window.llRsvp.close()); await page.waitForTimeout(150);
+      const after = await seen();
+      await page.click("#themeKeep"); await page.waitForTimeout(150);
+      const mine = (await own(page)).map((c) => c.name);
+      await ctx.close();
+      const all = (x) => !x.rsvp && x.notice && x.update && x.eink && !x.inert && x.noticeH === (x.h + 8) + "px" && x.updateH === (x.uh + 8) + "px";
+      R.check("speed reading hides the notice and the two offers, and their room, until it closes; the notice comes back unanswered, and Keep works",
+        up && all(before) && during.rsvp && !during.notice && !during.update && !during.eink && during.noticeH === "" && during.updateH === "" && all(after) && mine.join() === "Linen,Peach",
+        JSON.stringify({ before, during, after, mine }));
     });
 
     /* ---------------- the colours (§3.1), and no textures (§8) ---------------- */

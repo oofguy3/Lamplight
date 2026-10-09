@@ -2669,6 +2669,11 @@
   }
   #rsvp[hidden]{display:none;}
   body.rsvp-on{overflow:hidden;}
+  /* the rest of the page is inert while it is up, the small toast aside (Rsvp in app.js). The update offer, the
+     e-ink offer and the notice after a retired theme sit above it, on a phone over its progress bar and Play
+     button, where they could not be used and a tap on them would reach the control under them: they wait out of
+     sight until it closes, unanswered, and the two that report their height report none meanwhile (app.js) */
+  body.rsvp-on :is(#updateToast, #einkToast, #themeToast){display:none;}
   .rsvp-top{width:100%; max-width:920px; display:flex; align-items:center; gap:12px; min-height:48px;}
   .rsvp-title{font-family:var(--title-font); font-weight:600; font-size:var(--fs-subtitle);}
   .rsvp-where{flex:1; min-width:0; text-align:right; font-size:var(--fs-small); color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}

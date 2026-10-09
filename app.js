@@ -1392,7 +1392,12 @@
       /* the two buttons are one box (.tn-acts), so they wrap under the words together (app.css) */
       el.innerHTML = '<span class="tn-msg">' + escapeHtml(_t("Themes have changed: {changes}.", { changes: I18N.list(parts) })) + '</span><span class="tn-acts"><button type="button" id="themeKeep">' + escapeHtml(_t("Keep the old colours")) + '</button>' +
         '<button type="button" id="themeNo" aria-label="' + escapeHtml(_t("No thanks")) + '" title="' + escapeHtml(_t("No thanks")) + '">' + ICONS.close + '</button></span>';
-      setH = function(){ if (el && el.isConnected) document.body.style.setProperty("--noticeH", (el.offsetHeight + 8) + "px"); };
+      /* the room it takes, its height and 8px; none while speed reading hides it (app.css) */
+      setH = function(){
+        if (!el || !el.isConnected) return;
+        if (el.offsetHeight) document.body.style.setProperty("--noticeH", (el.offsetHeight + 8) + "px");
+        else document.body.style.removeProperty("--noticeH");
+      };
       setH();
       if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(el); }
       el.querySelector("#themeKeep").addEventListener("click", function(){ keep(was); });
@@ -11003,7 +11008,8 @@
       if (Auto.isOn()) Auto.stop();
       Side.close(); Pop.close(true); Menu.close(); setSheet(false);
       opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
-      /* modal: the rest of the page is inert while the overlay is up */
+      /* modal: the rest of the page is inert while the overlay is up, the small toast aside; the offers
+         and the notice, which would sit over its controls, are hidden meanwhile (app.css) */
       held = [];
       Array.prototype.forEach.call(document.body.children, function(n){ if (n !== el && n.id !== "toast" && !n.inert){ n.inert = true; held.push(n); } });
       open = true; playing = false;
@@ -14425,8 +14431,13 @@
         '<button type="button" id="updateLater" aria-label="' + escapeHtml(_t("Later")) + '" title="' + escapeHtml(_t("Later")) + '">' + ICONS.close + '</button>';
       document.body.appendChild(toastEl);
       /* the offer keeps the bottom row and reports its height (--updateH, like the dock's --dockH):
-         the small toast and the translation pill step up over it instead of hiding behind it */
-      var ro = null, setH = function(){ if (toastEl && toastEl.isConnected) document.body.style.setProperty("--updateH", (toastEl.offsetHeight + 8) + "px"); };
+         the small toast and the translation pill step up over it instead of hiding behind it. It
+         reports none while speed reading hides it (app.css) */
+      var ro = null, setH = function(){
+        if (!toastEl || !toastEl.isConnected) return;
+        if (toastEl.offsetHeight) document.body.style.setProperty("--updateH", (toastEl.offsetHeight + 8) + "px");
+        else document.body.style.removeProperty("--updateH");
+      };
       setH();
       if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(toastEl); }
       toastEl.querySelector("#updateReload").addEventListener("click", function(){
