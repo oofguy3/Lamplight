@@ -196,6 +196,8 @@ const STATS = (() => {
       window.llDict.explainSentence(t.slice(i, j), { start: i, end: j });
     });
     await page.waitForTimeout(2500);
+    /* the card takes the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "explain-phone");
     await ctx.close();
   }
@@ -215,6 +217,8 @@ const STATS = (() => {
     await page.waitForTimeout(1200);
     await page.evaluate(() => { const b = document.querySelector('#simpLevels [data-l="kid"]'); if (b) b.click(); });
     await page.waitForTimeout(1600);
+    /* the card took the focus as it opened, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "simplify");
     await ctx.close();
   }
@@ -236,6 +240,11 @@ const STATS = (() => {
     await theme(page, "sage");
     await page.keyboard.press("i");
     await page.waitForFunction(() => /Flesch/.test(document.getElementById("sideBody").textContent), null, { timeout: 40000 });
+    /* a moment after it opens, the panel gives the focus, for a keyboard, to its first control, its body
+       or its close button, by how far the analysis of the text has got; the picture shows the panel at
+       rest, so the focus is let land and then taken away */
+    await page.waitForFunction(() => document.getElementById("side").contains(document.activeElement));
+    await page.evaluate(() => document.activeElement.blur());
     await shot(page, "about");
     await ctx.close();
   }
