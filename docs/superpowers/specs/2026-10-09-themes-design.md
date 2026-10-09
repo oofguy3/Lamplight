@@ -296,7 +296,7 @@ This happens when the pair:
 
 A tap on it changes nothing.
 
-When a tap on a look replaces such a pair, a toast says "{name} for day and night" (the look's name) with **Undo**. Undo restores the previous pair, the theme on screen and the hold, directly. This is the only toast a look tap shows.
+When a tap on a look replaces such a pair, a toast says "{name} for day and night" (the look's name) with **Undo**. Undo restores the previous pair, the theme on screen and the hold, directly. A look tapped while that toast is still up replaces the same pair: the toast then names the new look, and its Undo still restores that pair. This is the only toast a look tap shows.
 
 ### 5.3 The Day/Night switches
 

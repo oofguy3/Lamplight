@@ -11187,7 +11187,8 @@
      reader whose pair has no contrast theme stays in high contrast, and a pair left collapsed
      (the same theme twice) still reaches Dusk or Day. It never rewrites the pair; t and the hold
      say where they went (opts.toast), and a theme of the reader's own just saved shows without the
-     cross-fade (opts.noFade, from pickOwn) */
+     cross-fade (opts.noFade, from pickOwn). Settings' "Now: …" line, which names the theme on
+     screen, is drawn again once the theme shows (the popover's own line follows applyTheme) */
   function setDayNight(which, opts){
     var cur = state.theme, day = state.autoDay, night = state.autoNight, to;
     if (which !== "day" && which !== "night") return;
@@ -11196,7 +11197,8 @@
     else to = which === "day" ? day : night;
     if (to === cur && dnOf(cur) !== which) to = which === "day" ? "day" : "dusk";
     if (!resolveTheme(to)) to = which === "day" ? "day" : "dusk";
-    if (to !== cur){ if (opts && opts.noFade) selectTheme(to); else crossFade(function(){ selectTheme(to); }); }
+    function show(){ selectTheme(to); AutoTheme.syncUI(); }
+    if (to !== cur){ if (opts && opts.noFade) show(); else crossFade(show); }
     AutoTheme.hold(to);
     if (opts && opts.toast) Marks.toast(_t("{name} theme", { name: themeName(to) || resolveTheme(to).name }));
   }
@@ -11800,8 +11802,7 @@
     var h = halfOnScreen();
     if (h === "day") state.autoDay = k; else state.autoNight = k;
     if (state.dnHold) state.dnHold.theme = k;
-    /* saved here too: applyTheme does not save while the maker's draft is on screen */
-    var go = function(){ selectTheme(k); Prefs.save(); pairChanged(); };
+    var go = function(){ selectTheme(k); pairChanged(); };
     if (noFade) go(); else crossFade(go);
     if (state.auto !== "off" && Store.get("ll_auto_asked") !== "1"){
       Store.set("ll_auto_asked", "1");
@@ -11811,20 +11812,29 @@
       } });
     }
   }
+  /* the Undo a look's toast offers (selectLook): what it puts back, and the toast's button. It counts
+     only while that toast is up with that button: not once the toast has timed out, been used, or
+     given way to another toast */
+  var lookUndo = null;
   /* a look: it becomes the reader's pair, and its theme for the half on screen shows; a Day/Night
      hold carries over to that theme, its period and end unchanged. With `half` ("day" or "night")
      that half shows instead, and with switching on it holds as a Day/Night switch would. The pair,
      the hold and the theme change together, inside the cross-fade. A look that replaces a pair that
      was no look (the pair's own tile was showing) says so in a toast, whose Undo puts that pair, the
-     theme on screen and the hold back as they were */
+     theme on screen and the hold back as they were. Another look tapped while that toast is up
+     replaces the same pair: the toast then names the new look, and its Undo still goes back to that
+     pair */
   function selectLook(day, night, half){
     if (!resolveTheme(day) || !resolveTheme(night) || day === night) return;
     var shown = (half || halfOnScreen()) === "night" ? night : day;
     if (!half && day === state.autoDay && night === state.autoNight && shown === state.theme) return;
     /* a pair that was no look, replaced: what Undo puts back, taken before the change (the hold a
-       copy, since carrying it over changes it) */
-    var was = !pairLook() && (day !== state.autoDay || night !== state.autoNight) ?
-      { day: state.autoDay, night: state.autoNight, theme: state.theme, hold: state.dnHold ? Object.assign({}, state.dnHold) : null } : null;
+       copy, since carrying it over changes it); or, over a look, the Undo of the toast still up */
+    var was = null, t = $("#toast");
+    if (day !== state.autoDay || night !== state.autoNight){
+      if (!pairLook()) was = { day: state.autoDay, night: state.autoNight, theme: state.theme, hold: state.dnHold ? Object.assign({}, state.dnHold) : null };
+      else if (lookUndo && document.contains(lookUndo.btn) && t && t.classList.contains("on")) was = lookUndo.was;
+    }
     crossFade(function(){
       state.autoDay = day; state.autoNight = night;
       if (!half && state.dnHold) state.dnHold.theme = shown;
@@ -11833,7 +11843,9 @@
       Prefs.save();
       pairChanged();
     });
-    if (was) Marks.toast(_t("{name} for day and night", { name: lookName(lookFor(day, night) || { day: day, night: night }) }), { undo: function(){
+    if (!was) return;
+    Marks.toast(_t("{name} for day and night", { name: lookName(lookFor(day, night) || { day: day, night: night }) }), { undo: function(){
+      lookUndo = null;
       crossFade(function(){
         state.autoDay = was.day; state.autoNight = was.night;
         state.dnHold = was.hold ? Object.assign({}, was.hold) : null;
@@ -11842,6 +11854,7 @@
         pairChanged();
       });
     } });
+    lookUndo = { was: was, btn: $("#toast .toast-act") };
   }
   /* a tap on a look's tile; the pair's own tile is the pair already, so a tap on it does nothing */
   function chooseLook(id){
@@ -11854,17 +11867,24 @@
      grid, so the focus moves to the same tile drawn anew, where a keyboard left off. It looks for that
      tile, not the pressed one: Settings' looks and Mine share one grid (#themeChips), and its first
      pressed tile, a look's, would pull the focus up from an own theme in Mine. When the tile has gone
-     (the pair's own, once the pair is a look), the focus moves to the grid's pressed tile, or its first */
+     (the pair's own, once the pair is a look), the focus moves to the grid's pressed tile, or its first.
+     The popover's row of actions under Mine (#qActs) is drawn again with the tiles: the focus stays on
+     the action pressed (Rename, Duplicate), or, when the row has gone with its theme (Delete), moves to
+     the pressed look, as after Delete in Settings' editor (focusChip) */
   function pairChanged(){
     /* which tile a tile is: its look (or the pair's), its own theme, or New theme */
     function key(ch){ return ch.dataset.look ? "look:" + ch.dataset.look : ch.dataset.theme ? "theme:" + ch.dataset.theme : ch.dataset.new ? "new" : ""; }
-    var a = document.activeElement, grid = a && a.closest ? a.closest("#qLooks, #qMine, #themeChips") : null, was = grid ? key(a) : "";
+    var a = document.activeElement, grid = a && a.closest ? a.closest("#qLooks, #qMine, #themeChips") : null, was = grid ? key(a) : "",
+      act = a && a.closest && a.closest("#qActs") ? a.dataset.act || "" : "", to;
     buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes(); markDayNight();
-    if (!grid || document.contains(a)) return;
-    grid = document.getElementById(grid.id);
-    if (!grid) return;
-    var tiles = Array.prototype.slice.call(grid.querySelectorAll(".chip"));
-    var to = tiles.filter(function(ch){ return was && key(ch) === was; })[0] || grid.querySelector('.chip[aria-pressed="true"]') || tiles[0];
+    if ((!grid && !act) || document.contains(a)) return;
+    if (act) to = $('#qActs:not([hidden]) [data-act="' + act + '"]') || $('#qLooks .chip[aria-pressed="true"]') || $("#qMine .chip");
+    else {
+      grid = document.getElementById(grid.id);
+      if (!grid) return;
+      var tiles = Array.prototype.slice.call(grid.querySelectorAll(".chip"));
+      to = tiles.filter(function(ch){ return was && key(ch) === was; })[0] || grid.querySelector('.chip[aria-pressed="true"]') || tiles[0];
+    }
     if (to) to.focus({ preventScroll: true });
   }
   /* Edit, Rename, Duplicate and Delete for one of the reader's own themes */

@@ -241,6 +241,24 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       R.check("Settings' Night shows Dusk", s.theme === "dusk" && s.dn === "day:false,night:true" && s.pair === "day/dusk", JSON.stringify(s));
       await ctx.close();
     });
+    await guard("switches, Settings' Now line", async () => {
+      /* the line under the lists names the theme on screen: it follows a Day/Night switch, and an own theme
+         that is already a half, which shows the way the switch would show it (Follow phone, a light phone) */
+      let ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      let page = await open(ctx, url, NOON);
+      await openSettings(page);
+      await page.click('#sDN [data-dn="night"]'); await page.waitForTimeout(150);
+      const sw = await page.evaluate(() => document.getElementById("autoHint").textContent);
+      await ctx.close();
+      ctx = await context(b, null, { ll_prefs: { auto: "system", theme: "day", autoDay: "day", autoNight: "c:t3a", customs: [LAMP] } });
+      page = await open(ctx, url, NOON);
+      await openSettings(page);
+      await page.click('#themeChips [data-theme="c:t3a"]'); await page.waitForTimeout(150);
+      const own = { theme: (await st(page)).theme, hint: await page.evaluate(() => document.getElementById("autoHint").textContent) };
+      R.check('Settings\' Now line follows the theme on screen: Night gives "Now: Dusk, day and night", and an own theme that is already a half "Now: Reading lamp, while your phone is set to light"',
+        sw === "Now: Dusk, day and night" && own.theme === "c:t3a" && own.hint === "Now: Reading lamp, while your phone is set to light", JSON.stringify({ sw, own }));
+      await ctx.close();
+    });
 
     /* ---------------- the pair tile (§5.2) ---------------- */
     await guard("pair tile", async () => {
@@ -553,6 +571,23 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
         pop === "c:t3a:true in qMine, pair tile true" && set === "c:t3a:true in themeChips, pair tile true", JSON.stringify({ pop, set }));
       await ctx.close();
     });
+    await guard("focus, the actions row", async () => {
+      /* Rename, Duplicate and Delete in the row under Mine draw the tiles and the row again: the focus stays on
+         the action pressed, or, after Delete, whose row goes with the theme, moves to the pressed look */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "c:t3a", autoDay: "c:t3a", autoNight: "dusk", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      answer(page, "Lamp renamed");
+      const focused = () => page.evaluate(() => { const a = document.activeElement;
+        return !a ? null : a.closest("#qActs") ? "act:" + a.dataset.act : a.closest("#qLooks") ? "look:" + a.dataset.look + ":" + a.getAttribute("aria-pressed") : a.tagName; });
+      await openTheme(page);
+      await page.click('#qMine .mine-ed[data-acts="c:t3a"]'); await page.waitForTimeout(100);
+      const enter = async (act) => { await page.focus('#qActs [data-act="' + act + '"]'); await page.keyboard.press("Enter"); await page.waitForTimeout(150); return focused(); };
+      const ren = await enter("rename"), dup = await enter("dup"), del = await enter("del");
+      const s = await st(page), names = await page.evaluate(() => window.llThemes.customs().map((c) => c.name).join("|"));
+      R.check("the popover's Rename and Duplicate keep the focus on the action pressed; Delete moves it to the pressed look",
+        ren === "act:rename" && dup === "act:dup" && del === "look:day:true" && names === "Lamp renamed copy" && s.theme === "day" && s.autoDay === "day", JSON.stringify({ ren, dup, del, names, s }));
+      await ctx.close();
+    });
 
     /* ---------------- deleting an own theme (§5.6) ---------------- */
     await guard("delete, Auto on", async () => {
@@ -686,6 +721,36 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
         s0.theme === "day" && held(s0.hold, "day") && s1.theme === "sepia" && held(s1.hold, "sepia") &&
         s2.theme === "day" && s2.autoDay === "day" && s2.autoNight === "cocoa" && held(s2.hold, "day") && saved.theme === "day" && saved.autoNight === "cocoa" && held(saved.dnHold, "day") &&
         pairFirst(set, "Day & Cocoa") && pairFirst(pop, "Day & Cocoa") && s3.theme === "day", JSON.stringify({ s0, s1, s2, s3, set: set.slice(0, 1), pop: pop.slice(0, 1) }));
+      await ctx.close();
+    });
+    await guard("pair tile, Undo after a second look", async () => {
+      /* a second look tapped while the first one's toast is up: the toast names the look now on screen, and its
+         Undo still goes back to the pair that was no look. Once that toast has gone (its time ran out, or another
+         toast took its place), a look over a look shows none */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "day", autoDay: "day", autoNight: "cocoa" } });
+      const page = await open(ctx, url, NOON);
+      await tapLook(page, "sepia");
+      await tapLook(page, "paper");
+      const s1 = await st(page), t1 = await toastNow(page);
+      await page.click("#toast .toast-act"); await page.waitForTimeout(150);
+      const s2 = await st(page);
+      R.check('a second look while the toast is up: it reads "Paper & Ink for day and night", and Undo restores day/cocoa with Day',
+        s1.theme === "paper" && s1.autoDay === "paper" && s1.autoNight === "ink" && !!t1 && t1.text === "Paper & Ink for day and night" && t1.act === "Undo" &&
+        s2.theme === "day" && s2.autoDay === "day" && s2.autoNight === "cocoa", JSON.stringify({ s1, t1, s2 }));
+      await tapLook(page, "sepia");
+      await page.clock.fastForward("00:05"); await page.waitForTimeout(100);
+      const out = await toastNow(page);
+      await tapLook(page, "sage");
+      const t2 = await toastNow(page);
+      await page.evaluate(() => window.__ll.AutoTheme.setPair("night", "cocoa"));
+      await tapLook(page, "paper");
+      const t3 = await toastNow(page);
+      await page.evaluate(() => window.__ll.Marks.toast("Something else"));
+      await tapLook(page, "seaair");
+      const t4 = await toastNow(page), s4 = await st(page);
+      R.check("once that toast has gone, or another has taken its place, a look over a look shows none",
+        out === null && t2 === null && !!t3 && t3.text === "Paper & Ink for day and night" && !!t4 && t4.text === "Something else" && t4.act === "" && s4.theme === "seaair" && s4.autoNight === "canals",
+        JSON.stringify({ out, t2, t3, t4, s4 }));
       await ctx.close();
     });
 

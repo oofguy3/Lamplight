@@ -80,8 +80,7 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   R.check("pair day/hidark: from hidark t goes to day", (await theme(page)) === "day", await theme(page));
   await setPair(page, "night", "dusk");
 
-  /* 6. the lists keep the pair two themes: each refuses the other half's theme, so nothing changes
-     (a pair that earlier versions left collapsed is repaired when the prefs load, tests/looks.js) */
+  /* 6. the lists keep the pair two themes: each refuses the other half's theme, so nothing changes */
   await select(page, "day");
   const p6 = JSON.stringify(await prefs(page));
   await setPair(page, "night", "day");
