@@ -48,7 +48,7 @@
 - The library and start screen, and the other panels and sheets (later stages).
 - A theme per book.
 - New textures. Textures are removed, not redesigned (section 8).
-- The phone reading screen. It keeps its behaviour from stage 1. Its colours come from the new table, and the Contrast pair gets the ring and slider fixes (9.3).
+- The phone reading screen. It keeps its behaviour from stage 1. Its colours come from the new table, the Contrast pair gets the ring and slider fixes (9.3), and the dock's handle shows its focus ring in every tone (9.3, item 2).
 
 ## 3. The twelve themes
 
@@ -608,6 +608,7 @@ The second choices, by retired id:
   The first paint and the Lighthouse run use these.
 - **Dusk's page colour.** The meta `theme-color` in index.html and the manifest's `background_color` and `theme_color` change from #14161B (the old Dusk) to #0D121C (the new Dusk).
 - **The favicon** keeps Dusk's amber, #D8A24A, which is unchanged.
+- **The app icons** (icon-192.png and icon-512.png, the second also the maskable one) keep their pixels, drawn on the old Dusk page #14161B. On the install splash they now sit on #0D121C, 2.15 apart in OKLab (×100), which is just visible (3.3). Redrawing them on the new page is left for a later stage.
 
 ### 9.2 The interface's own picks
 
@@ -634,9 +635,11 @@ These come from the design file and are reproduced in Appendix A:
 1. **The Contrast pair: the lamp's progress ring.**
    - The ring sits 3px outside the button's edge, at 4px. The arc app.js measures still holds.
    - Before, it was drawn on the edge and showed only as a change of hue: 2.35:1 and 1.43:1.
+   - **Added in review.** The lamp's keyboard focus ring moves out past the ring, to 9px off the button, 2px clear of it. The ring, in the accent's colour here, now covers the place 2px off the button where the focus ring is drawn.
 2. **The Contrast pair: every slider.**
    - Every slider is a hollow capsule: a 2px rule in the edge colour around a 2px gap, with a 6px fill.
    - The dock's handle gets a ring in the panel colour, and a focus ring in the accent outside that.
+   - **Added in review.** The handle's focus ring shows in every tone, not only this one: the dock's own `box-shadow:none` hid it on light and dark pages too. There it is 2px clear of the handle and as wide as the focus ring everywhere, 2px (3px on a dark page).
 3. **The Contrast pair: the dock's Day and Night.** These become two outlined buttons. Before, they were the accent's edge drawn inside the well's own rule.
 4. **The dark tone: the yellow highlight.** In the dark tone it is drawn at 38%, not 42%, so text on it reads at 4.73:1 or more on every night theme. The light tone and the contrast tone keep 42%, Contrast dark included.
 5. **The dark tone: the dock's position slider.** Its unfilled track is 35% of the edge colour mixed into the line, as on every other slider. Before, it was the line alone, at 1.33–1.39:1, so the part of the book still to read did not show at night.
@@ -965,8 +968,10 @@ Several checks read colours that come from an oklab mix, so the computed style i
   - the `:root` defaults.
 - **Appendix A:**
   - in the contrast tone, the ring's box is 68 × 68 with its left and top 6px outside the button's, and the sliders' track rule has a 2px edge (Chromium writes the selector as `input[type="range"]`);
+  - in the contrast tone, the dock handle's two rules (24px in the panel's ring, and the accent's focus ring outside it), and the lamp's focus ring 2px clear of its ring and on screen;
   - in the dark tone, the yellow highlight is 38% and the dock's track is the mix;
-  - in the light tone and in Contrast dark, 42%.
+  - in the light tone and in Contrast dark, 42%;
+  - in the light, dark and contrast tones, the dock's handle shows a focus ring when the keyboard focuses it.
 
 ### 13.4 Existing tests to change
 
@@ -1079,6 +1084,9 @@ The owner said "Don't ask me questions", so the open choices were settled as bel
 | The popover's hours | End a hold, like Settings' hours, through one setter | review |
 | Settings' Duplicate and Save as new | Follow 5.0 like every other own-theme choice | review |
 | Dock tool names in the contrast tone | Stage 1's rule stays: 15px, wrapping without clipping | review |
+| The lamp's focus ring in the Contrast pair | Drawn 9px off the button, outside the moved ring, which covers the place it had | review |
+| The dock handle's focus ring | Shown in every tone, as in the contrast tone; the dock's own rule hid it on light and dark pages | review |
+| The app icons | Keep their pixels, on the old Dusk page; a redraw on #0D121C is left for a later stage | review |
 | `llThemes.select` | A raw setter for tests; the pick paths carry the rules | review |
 | Textures and Plain background | Removed | ruling |
 | First run | Follow phone; Contrast pair with `prefers-contrast: more` | research recommendation, ruling |
@@ -1115,3 +1123,5 @@ Appended to app.css as the design file gives it (comments shortened):
 /* night pages: the dock's unfilled track, 35% of the edge into the line, like every other slider */
 :root[data-tone="dark"] #dockPos{--track:color-mix(in srgb, var(--edge) 35%, var(--line));}
 ```
+
+Review added one rule to this block, right after the ring's: `:root[data-tone="contrast"] #dockBtn:focus-visible{outline-offset:9px;}` (9.3, item 1). The dock handle's focus ring for the other tones sits with the phone dock's own rules in app.css (9.3, item 2).

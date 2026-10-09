@@ -1445,7 +1445,7 @@
   }
   #dockBtn > svg{width:24px; height:24px;}
   /* the ring sits on the button's edge and starts at 12 o'clock (the contrast tone moves it out
-     past the edge, at the end of this file) */
+     past the edge, and the focus ring out past it, at the end of this file) */
   #dockBtn > .ring{
     position:absolute; left:calc(-1 * var(--bw)); top:calc(-1 * var(--bw)); width:56px; height:56px; transform:rotate(-90deg); pointer-events:none;
     fill:none; stroke:var(--lamp-mark, var(--lamp)); stroke-width:2; stroke-linecap:round; stroke-dasharray:0 170;
@@ -1517,6 +1517,10 @@
   #dockPos::-moz-range-progress{height:4px; border-radius:2px; background:var(--lamp-mark, var(--lamp));}
   #dockPos::-webkit-slider-thumb{width:20px; height:20px; margin-top:-8px; border:0; background:var(--ink); box-shadow:none;}
   #dockPos::-moz-range-thumb{width:20px; height:20px; border:0; background:var(--ink); box-shadow:none;}
+  /* keyboard focus on the handle: a ring in the accent, 2px clear of it and 2px wide (3px on a dark
+     page), as the focus ring is everywhere; the box-shadow:none above would otherwise hide it */
+  #dockPos:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 calc(2px + var(--ring)) var(--accent);}
+  #dockPos:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 calc(2px + var(--ring)) var(--accent);}
   .pd-cap{display:flex; justify-content:space-between; gap:var(--sp-3); margin:0; font-size:var(--fs-small); line-height:1.35; color:var(--muted); font-variant-numeric:tabular-nums;}
   #dockLeft{text-align:right;}
   /* Day and Night: two buttons in a well, the half on screen lifted with the accent's edge (in the
@@ -2757,12 +2761,15 @@
   ::view-transition-old(root), ::view-transition-new(root){animation-duration:200ms;}
   @media (prefers-reduced-motion: reduce){ ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*){animation:none !important;} }
 
-  /* ---------- the contrast and dark tones: the lamp's ring, the sliders, the dock's Day and Night and
-     the yellow highlight, each made to read in that tone (after the phone dock's and the marks' own
-     rules, which they adjust) ---------- */
+  /* ---------- the contrast and dark tones: the lamp's ring and its focus ring, the sliders, the dock's
+     Day and Night and the yellow highlight, each made to read in that tone (after the phone dock's and
+     the marks' own rules, which they adjust) ---------- */
   /* the Contrast pair: the lamp's progress ring 4px, about 3px clear of the button's 2px edge; the SVG
      grows from 56px to 68px about the same centre, so the arc app.js measures still holds */
   :root[data-tone="contrast"] #dockBtn > .ring{left:calc(-6px - var(--bw)); top:calc(-6px - var(--bw)); width:68px; height:68px; stroke-width:3.3; overflow:visible;}
+  /* the lamp's keyboard focus ring, 9px off the button: the ring, in the same colour, now covers the
+     place 2px off it where the focus ring is drawn, so it goes outside, 2px clear of the ring */
+  :root[data-tone="contrast"] #dockBtn:focus-visible{outline-offset:9px;}
   /* every slider: a hollow capsule (a 2px rule in the edge colour round a 2px gap of the panel, a 6px fill) */
   :root[data-tone="contrast"] input[type=range], :root[data-tone="contrast"] #dockPos{--track:transparent;}
   :root[data-tone="contrast"] input[type=range]::-webkit-slider-runnable-track,

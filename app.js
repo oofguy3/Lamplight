@@ -408,9 +408,9 @@
   function fontName(f){ return f === FONTS.sans || f === FONTS.mono ? _t(f.name) : f.name; }
   function fontNote(f){ return _t(f.note); }
   function fontGroupName(g){ return _t(g.name); }
-  /* the quick colours of both theme editors (Settings' and the Maker): the pages of the five looks'
-     day themes and a lavender the set lacks, then their night themes' pages and a violet; and eight
-     accents, Dusk's amber, Canals' coral and Forest's green among them */
+  /* the quick colours of both theme editors (Settings' and the Maker): the day pages of every look but
+     Contrast (Day, Paper, Sepia, Sage, Sea air) and a lavender the set lacks, then the same looks' night
+     pages and a violet; and eight accents, Dusk's amber, Canals' coral and Forest's green among them */
   var BG_SWATCHES = ["#F5EFE3","#FAFAF7","#F0E4CB","#DFE7D8","#DCEDF0","#EDE7F3",
                      "#0D121C","#000000","#261914","#0E1A13","#0E1F22","#171021"];
   var ACC_SWATCHES = ["#D8A24A","#E58E6C","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7AB785","#C9A227"];

@@ -12,7 +12,8 @@
    colours of the spec's table, and nothing is left of the textures and Plain background. Outside the
    table, the first paint is Day's, the title bar's colour in the markup and the manifest is Dusk's
    page, the editors' swatches come from the set, and the contrast and dark tones have their own ring,
-   sliders, Day and Night buttons and yellow highlight.
+   sliders, Day and Night buttons and yellow highlight. The lamp's focus ring clears its ring, and the
+   dock's handle shows its focus ring in every tone.
      NODE_PATH=$(npm root -g) node tests/looks.js */
 const { serve, browser, openFixture, makeReport, parseColor } = require("./lib");
 
@@ -124,6 +125,16 @@ async function tapLook(page, id){ await openTheme(page); await page.click('#qLoo
 async function openSettings(page){ await page.evaluate(() => window.llPop.sheet(true)); await page.waitForTimeout(400); }
 /* the pair's own tile is first and the one pressed, named `name`, with the six looks after it */
 const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].name === name && lk[0].on && lk.filter((l) => l.on).length === 1 && lk.slice(1).map((l) => l.id).join() === DAYS.join();
+/* how many pixels differ between two screenshots of the same box (decoded and compared in the page) */
+const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
+  const load = (s) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = "data:image/png;base64," + s; });
+  const imgs = await Promise.all([load(x), load(y)]), c = document.createElement("canvas"), g = c.getContext("2d");
+  c.width = imgs[0].width; c.height = imgs[0].height;
+  const [p, q] = imgs.map((img) => { g.clearRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; });
+  let n = 0;
+  for (let k = 0; k < p.length; k += 4) if (p[k] !== q[k] || p[k + 1] !== q[k + 1] || p[k + 2] !== q[k + 2]) n++;
+  return n;
+}, [a.toString("base64"), b.toString("base64")]);
 
 (async () => {
   const { server, url } = await serve();
@@ -1015,9 +1026,9 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
     });
 
     /* ---------------- outside the table (§9.1-9.3, Appendix A) ---------------- */
-    /* spec §9.2: the editors' page row is the pages of the five looks' day themes and a lavender, then of
-       their night themes and a violet; the accent row keeps its eight, Canals' coral and Forest's green in
-       place of the two it had; the Maker's text row is seven of the set's text colours, and white */
+    /* spec §9.2: the editors' page row is the day pages of every look but Contrast and a lavender, then the
+       same looks' night pages and a violet; the accent row keeps its eight, Canals' coral and Forest's green
+       in place of the two it had; the Maker's text row is seven of the set's text colours, and white */
     const SW_BG = ["day", "paper", "sepia", "sage", "seaair"].map((id) => TABLE[id].bg).concat("#EDE7F3", ["dusk", "ink", "cocoa", "forest", "canals"].map((id) => TABLE[id].bg), "#171021");
     const SW_ACC = ["#D8A24A", "#E58E6C", "#C25B78", "#A97FD6", "#5C9CD6", "#3FA08C", "#7AB785", "#C9A227"];
     const SW_INK = ["paper", "day", "sepia", "seaair", "ink", "cocoa", "canals"].map((id) => TABLE[id].ink).concat("#FFFFFF");
@@ -1066,18 +1077,23 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       const near = (x, y) => Math.abs(x - y) < 0.05;
       R.check("contrast tone: the ring is 68 × 68, its left and top 6px outside the lamp button's", ring.tone === "contrast" && ring.phone &&
         near(ring.ring.width, 68) && near(ring.ring.height, 68) && near(ring.ring.left, ring.btn.left - 6) && near(ring.ring.top, ring.btn.top - 6), JSON.stringify(ring));
-      /* Chromium computes no style for the track's pseudo-element, so the rule itself is looked up (Chromium writes
-         the attribute selector with quotes); --track, the colour of the part not yet filled, does compute, and the
-         tone makes it transparent on every slider, the dock's included */
+      /* Chromium computes no style for a slider's pseudo-elements, so the rules themselves are looked up (Chromium
+         writes the attribute selector with quotes): the track's, and the dock's handle with and without keyboard
+         focus. --track, the colour of the part not yet filled, does compute, and the tone makes it transparent on
+         every slider, the dock's included */
       const track = await page.evaluate(() => {
         const walk = (rules) => [...rules].flatMap((r) => [r].concat(r.cssRules ? walk(r.cssRules) : []));
-        const rule = [...document.styleSheets].flatMap((s) => { try { return walk(s.cssRules); } catch (_){ return []; } })
-          .find((r) => (r.selectorText || "").includes(':root[data-tone="contrast"] input[type="range"]::-webkit-slider-runnable-track'));
+        const rules = [...document.styleSheets].flatMap((s) => { try { return walk(s.cssRules); } catch (_){ return []; } });
+        const rule = rules.find((r) => (r.selectorText || "").includes(':root[data-tone="contrast"] input[type="range"]::-webkit-slider-runnable-track'));
+        const handle = (state) => { const r = rules.find((x) => x.selectorText === ':root[data-tone="contrast"] #dockPos' + state + "::-webkit-slider-thumb"); return r ? { size: r.style.width + " " + r.style.height, shadow: r.style.boxShadow } : null; };
         const tr = (id) => getComputedStyle(document.getElementById(id)).getPropertyValue("--track").trim();
-        return { sel: rule ? rule.selectorText : null, border: rule ? rule.style.border : null, height: rule ? rule.style.height : null, padding: rule ? rule.style.padding : null, dock: tr("dockPos"), warmth: tr("qWarm") };
+        return { sel: rule ? rule.selectorText : null, border: rule ? rule.style.border : null, height: rule ? rule.style.height : null, padding: rule ? rule.style.padding : null, dock: tr("dockPos"), warmth: tr("qWarm"),
+          handle: handle(""), focus: handle(":focus-visible") };
       });
       R.check("contrast tone: the range track rule is in place", track.border === "2px solid var(--edge)" && track.height === "14px" && track.padding === "2px" &&
         !!track.sel && track.sel.includes("#dockPos::-webkit-slider-runnable-track") && track.dock === "transparent" && track.warmth === "transparent", JSON.stringify(track));
+      R.check("contrast tone: the dock's handle is 24px in a 2px ring of the panel, with the accent's focus ring outside that", !!track.handle && track.handle.size === "24px 24px" &&
+        track.handle.shadow === "0 0 0 2px var(--panel)" && !!track.focus && track.focus.shadow === "0 0 0 2px var(--panel), 0 0 0 4px var(--accent)", JSON.stringify({ handle: track.handle, focus: track.focus }));
       /* the dock's Day and Night: no well round them, each its own outline in the line colour, the half on screen's in the accent */
       const dn = await page.evaluate(() => {
         const col = (v) => { const p = document.createElement("i"); p.style.color = v; document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; };
@@ -1087,6 +1103,44 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       });
       R.check("contrast tone: the dock's Day and Night are two outlined buttons, the half on screen in the accent", dn.well === "0px 0px 8px" && dn.day === "true" &&
         dn.on === dn.accent && dn.off === dn.line && dn.on !== dn.off && dn.width === "2px", JSON.stringify(dn));
+      /* the lamp's keyboard focus ring, the accent 2px off the button in the other tones: here the ring, in the same
+         colour, covers that place, so the focus ring is drawn outside the ring's outer edge (the circle's radius and
+         half its stroke, in the viewBox's units scaled to the SVG's size), 2px clear of it, and still on screen */
+      await page.keyboard.press("Shift");
+      await page.focus("#dockBtn");
+      const lamp = await page.evaluate(() => {
+        const btn = document.getElementById("dockBtn"), svg = btn.querySelector(".ring"), c = svg.querySelector("circle"), cs = getComputedStyle(btn), b = btn.getBoundingClientRect();
+        const ring = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width * (c.r.baseVal.value + parseFloat(getComputedStyle(c).strokeWidth) / 2);
+        const from = b.width / 2 + parseFloat(cs.outlineOffset), to = from + parseFloat(cs.outlineWidth), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+        return { focusVisible: btn.matches(":focus-visible"), outline: [cs.outlineStyle, cs.outlineWidth, cs.outlineOffset].join(" "), ring: +ring.toFixed(2), from, to,
+          onScreen: cx - to >= 0 && cy - to >= 0 && cx + to <= innerWidth && cy + to <= innerHeight };
+      });
+      R.check("contrast tone: the lamp's focus ring is drawn outside its progress ring, 2px clear of it, and on screen", lamp.focusVisible && /^solid /.test(lamp.outline) &&
+        lamp.to - lamp.from >= 2 && lamp.from - lamp.ring >= 2 && lamp.onScreen, JSON.stringify(lamp));
+      await ctx.close();
+    });
+    await guard("outside the table, the dock's handle and the keyboard", async () => {
+      /* the dock's place slider takes keys (an arrow moves a page), so its handle shows a focus ring on every page:
+         in each tone, a picture of the slider's box with the focus on the dock itself, and one with the slider
+         focused from the keyboard; the focus ring is what differs */
+      const ctx = await context(b, PHONE, { ll_prefs: { auto: "off" }, ll_tips: "seen", ll_tip_doc: "1" });
+      const page = await open(ctx, url);
+      await openFixture(page, "sample.md");
+      await page.tap("#dockBtn"); await page.waitForTimeout(250);
+      const seen = {};
+      for (const id of ["day", "dusk", "hicon"]){
+        await page.evaluate((k) => { window.llThemes.pick(k); document.getElementById("phoneDock").focus(); }, id);
+        await page.waitForTimeout(150);
+        const box = await page.evaluate(() => { const r = document.getElementById("dockPos").getBoundingClientRect(); return { x: r.left - 8, y: r.top, width: r.width + 16, height: r.height }; });
+        const before = await page.screenshot({ clip: box });
+        await page.keyboard.press("Shift"); await page.focus("#dockPos"); await page.waitForTimeout(100);
+        const after = await page.screenshot({ clip: box });
+        const at = await page.evaluate(() => ({ tone: document.documentElement.dataset.tone, open: document.body.classList.contains("dock-open"), focusVisible: document.getElementById("dockPos").matches(":focus-visible") }));
+        seen[id] = Object.assign(at, { changed: await changedPixels(page, before, after) });
+      }
+      /* the ring changes about 270 to 470 pixels here, by tone; without one nothing changes */
+      R.check("the dock's handle shows a focus ring from the keyboard in the light, dark and contrast tones", seen.day.tone === "light" && seen.dusk.tone === "dark" && seen.hicon.tone === "contrast" &&
+        Object.values(seen).every((s) => s.open && s.focusVisible && s.changed >= 100), JSON.stringify(seen));
       await ctx.close();
     });
     await guard("outside the table, the dark tone", async () => {
