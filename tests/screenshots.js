@@ -106,20 +106,40 @@ const STATS = (() => {
     await shot(page, "notes");
     await ctx.close();
   }
-  /* ---- themes: the sheet's Theme group with the editor open ---- */
+  /* ---- themes: Settings › Theme, from its head row (the title and the Day/Night switch) through the
+         six looks, Mine and Day and night, down to where Warmth starts. The device is set to dark, so
+         Follow phone (where a first run starts) wants the night half, and Sea air & Canals is picked:
+         Canals on screen, Night pressed. A theme of one's own waits under Mine: made from Canals, given
+         the editor's lavender page and violet accent, and then replaced on screen by Canals again from
+         the Night theme list. A 640px window still has the sheet's desktop form, and its tiles stay large
+         enough to read at the README's width of 410px ---- */
   if (want("themes")){
-    const ctx = await quiet(await b.newContext({ viewport: { width: 1000, height: 2200 } })), page = await newPage(ctx, url);
+    const ctx = await quiet(await b.newContext({ viewport: { width: 640, height: 2000 }, colorScheme: "dark" })), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "canals");
-    await page.evaluate(() => window.llThemes.create());
-    await page.waitForTimeout(400);
-    /* the whole editor in one picture: the sheet's own cap (78vh, 900px) lifted, as themes-browser.js does */
+    await page.evaluate(() => window.llThemes.pick("canals"));
+    await page.waitForTimeout(600);
+    /* clicked inside the page: the swatches recolour the theme on screen, and a change of the list is
+       what choosing Canals there does */
+    await page.evaluate(() => {
+      window.llThemes.create();
+      document.querySelector('#bgSwatches .sw[data-c="#EDE7F3"]').click();
+      document.querySelector('#accSwatches .sw[data-c="#A97FD6"]').click();
+      const night = document.getElementById("autoNight");
+      night.value = "canals"; night.dispatchEvent(new Event("change"));
+    });
+    await page.waitForTimeout(900);
+    /* the sheet's own cap (78vh, 900px) lifted, as themes-browser.js does, so the group lies in the
+       window rather than in the sheet's scroll */
     await page.addStyleTag({ content: "#sheet{max-height:none !important;}" });
     await page.evaluate(() => window.llPop.sheetAt("#themeGroup"));
     await page.waitForTimeout(900);
-    const box = await page.evaluate(() => { const a = document.getElementById("themeChips").getBoundingClientRect(), m = document.getElementById("cPrev").getBoundingClientRect();
-      return { x: 0, y: Math.max(0, a.top - 40), w: window.innerWidth, h: Math.min(1750, m.bottom - a.top + 60) }; });
-    await shot(page, "themes", { x: box.x, y: box.y, width: box.w, height: box.h });
+    /* the sheet gives the pressed look the focus, for a keyboard; the picture shows the picker at rest */
+    await page.evaluate(() => document.activeElement.blur());
+    const box = await page.evaluate(() => { const a = document.getElementById("themeL").getBoundingClientRect(), z = document.getElementById("warmRow").getBoundingClientRect();
+      return { y: Math.max(0, a.top - 16), h: z.top - Math.max(0, a.top - 16), vh: window.innerHeight }; });
+    /* a clip past the window's foot comes out cut short, so a picker grown that tall stops the run */
+    if (box.y + box.h > box.vh) throw new Error("themes: the picker ends below the window (" + Math.round(box.y + box.h) + " > " + box.vh + ")");
+    await shot(page, "themes", { x: 0, y: box.y, width: 640, height: box.h });
     await ctx.close();
   }
   /* ---- the type popover: size, spacing, width, weight, letters, words ---- */
