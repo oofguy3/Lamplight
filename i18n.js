@@ -1817,6 +1817,12 @@
     "Deleted \u201C{name}\u201D": "\u201C{name}\u201D verwijderd",
     /* a look tapped over a pair that was no look; the toast offers Undo */
     "{name} for day and night": "{name} voor dag en nacht",
+    /* the notice after a move off a retired theme (ThemeNotice): "Kaars is nu Cacao", the changes joined
+       as a list, and its button */
+    "Themes have changed: {changes}.": "De thema’s zijn veranderd: {changes}.",
+    "{old} is now {new}": "{old} is nu {new}",
+    "Keep the old colours": "Oude kleuren houden",
+    "Your old colours are back, under Mine.": "Je oude kleuren zijn terug, onder Mijn thema’s.",
     "Saved \u201C{name}\u201D": "\u201C{name}\u201D opgeslagen",
     "{what}: any colour": "{what}: elke kleur",
     "Chapter three": "Hoofdstuk drie",

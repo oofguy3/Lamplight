@@ -1466,8 +1466,9 @@
   body.phonebar.tts-on{--aboveDock:calc(var(--dockH, 0px) + 92px + 12px);}
   body.phonebar.dock-open{--toastRow:calc(var(--pdH, 0px) + 12px);}
   body.phonebar.dock-open #finish{bottom:calc(var(--aboveDock) + var(--updateH, 0px));}
-  body.phonebar.dock-open.fin-on #toast, body.phonebar.dock-open.fin-on #einkToast{bottom:calc(var(--toastRow) + var(--updateH, 0px));}
-  body.phonebar.dock-open.fin-on #trStatus{bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px));}
+  body.phonebar.dock-open.fin-on #toast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px));}
+  body.phonebar.dock-open.fin-on #einkToast, body.phonebar.dock-open.fin-on #themeToast{bottom:calc(var(--toastRow) + var(--updateH, 0px));}
+  body.phonebar.dock-open.fin-on #trStatus{bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px) + var(--noticeH, 0px));}
   /* Previously… hangs from the top of the screen, under the status bar, and stops above the strip */
   body.phonebar #recap{
     top:max(10px, env(safe-area-inset-top));
@@ -2222,14 +2223,16 @@
   /* ---------- toasts and status pills ---------- */
   /* one shape — an inverse pill (the page colour on the text colour, a pair every theme audits at
      4.5:1), a 44px row, a 12px step above the dock or the home bar: the small toast (#toast), the
-     update offer (#updateToast), the e-ink offer (#einkToast) and the translation progress pill
-     (#trStatus, made by translate.js), which sits one step higher so the two can coexist */
+     update offer (#updateToast), the e-ink offer (#einkToast), the notice after a retired theme
+     (#themeToast) and the translation progress pill (#trStatus, made by translate.js), which sits one
+     step higher so the two can coexist */
   /* the bottom row: above the dock, and above the auto-scroll pill while it runs. The update offer
-     keeps that row and reports its height (--updateH, set by app.js); the toast and the
-     translation pill step up over it, so it never hides them */
+     keeps that row and reports its height (--updateH, set by app.js); the e-ink offer and the notice
+     sit just above it, and the notice reports its own height (--noticeH). The toast and the
+     translation pill step up over both, so neither hides them */
   body{--toastRow:var(--aboveDock);}
   body.auto-on{--toastRow:calc(var(--aboveDock) + 60px);}
-  #toast, #updateToast, #trStatus, #einkToast{
+  #toast, #updateToast, #trStatus, #einkToast, #themeToast{
     position:fixed; left:50%; bottom:var(--toastRow); z-index:70; transform:translateX(-50%);
     display:flex; align-items:center; justify-content:center; gap:10px; width:max-content; max-width:calc(100% - 32px); min-height:44px;
     background:var(--ink); color:var(--bg); border:0; border-radius:var(--r-pill);
@@ -2237,8 +2240,8 @@
     font-family:var(--ui-font); font-size:var(--fs-body); line-height:1.35;
     transition:opacity var(--t-fade), transform var(--t-fade) var(--ease-out), background var(--t-theme) ease;
   }
-  :root[data-tone="contrast"] :is(#toast, #updateToast, #trStatus, #einkToast){border:2px solid var(--line);}
-  #toast{opacity:0; pointer-events:none; transform:translateX(-50%) translateY(12px); text-align:center; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
+  :root[data-tone="contrast"] :is(#toast, #updateToast, #trStatus, #einkToast, #themeToast){border:2px solid var(--line);}
+  #toast{opacity:0; pointer-events:none; transform:translateX(-50%) translateY(12px); text-align:center; bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px));}
   #toast.on{opacity:1; transform:translateX(-50%);}
   /* its leading icon: 18px, the toast's own colour, the heavier stroke of the small size */
   #toast .toast-ic{display:inline-flex; flex:none; margin-left:-4px;}
@@ -2255,13 +2258,25 @@
   #toast .toast-act:focus-visible{outline-color:var(--bg);}
   @media (pointer: coarse){ #toast .toast-act{min-height:40px;} #toast .toast-act::after{content:""; position:absolute; inset:-4px;} }
   #updateToast{z-index:71; padding:6px 6px 6px 20px;}
-  /* the one-time offer of e-ink mode (Eink in app.js): the update offer's shape, over it if both show */
-  #einkToast{z-index:72; padding:6px 6px 6px 20px; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
-  #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px)); padding:6px 6px 6px 20px; font-variant-numeric:tabular-nums;}
+  /* the one-time offer of e-ink mode (Eink in app.js), and the one-time notice after a retired theme
+     (ThemeNotice), which never shows beside it: the update offer's shape, over it if both show. Their
+     own place leaves --noticeH out, so the notice never lifts itself */
+  #einkToast, #themeToast{z-index:72; padding:6px 6px 6px 20px; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
+  /* the notice's words are longer than the offer's, and so is its Keep the old colours: where they do not
+     fit on one row beside the buttons (a phone, or two changes in Dutch), the words take a row of their own
+     and the buttons go under them at the right. Its corners stop at 24px, which on one 48px row is still
+     the offer's pill: a pill's round ends would cut into lines of text. On their own row the words stop
+     20px from the right edge, as they start 20px from the left (the pill's 6px on the right is for the
+     round close button); the auto margin keeps them at the left. The 6px above and below the words sit
+     inside the buttons' height on one row, and keep them clear of the edge on two */
+  #themeToast{flex-wrap:wrap; justify-content:flex-end; border-radius:var(--r-xl);}
+  #themeToast > span{max-width:calc(100% - 14px); margin-right:auto; padding:6px 0;}
+  #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px) + var(--noticeH, 0px)); padding:6px 6px 6px 20px; font-variant-numeric:tabular-nums;}
   /* the "Finished" card (Journal in app.js) takes the foot of the page: the pill and the toasts sit above it meanwhile,
      so its date, Not now and Save stay in reach (--finishH: the card's height, set while it is up) */
-  body.fin-on #trStatus{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
-  body.fin-on #toast, body.fin-on #einkToast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
+  body.fin-on #trStatus{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px) + var(--finishH, 0px) + 8px);}
+  body.fin-on #toast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px) + var(--finishH, 0px) + 8px);}
+  body.fin-on #einkToast, body.fin-on #themeToast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
   #trStatus.on{display:flex;}
   #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   #trStatus .tr-hide{flex:none; width:36px; height:36px; margin-left:2px; border:0; border-radius:50%; background:transparent; color:var(--bg);
@@ -2269,27 +2284,27 @@
   #trStatus .tr-hide:hover{background:color-mix(in srgb, var(--bg) 14%, transparent);}
   #trStatus .tr-hide:focus-visible{outline-color:var(--bg);}
   body.eink #trStatus .tr-hide{color:#fff;}
-  /* their buttons are chips in the pill's own colours: an outlined one, the offer's yes filled with
-     the page colour, the close a quiet round */
-  #updateToast button, #trStatus .tr-x, #einkToast button{
+  /* their buttons are chips in the pill's own colours: an outlined one, the offer's yes (and the
+     notice's Keep the old colours) filled with the page colour, the close a quiet round */
+  #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button{
     flex:none; min-height:36px; border:1.5px solid color-mix(in srgb, var(--bg) 45%, transparent); border-radius:var(--r-pill); padding:0 14px; background:transparent; color:var(--bg);
     font-family:var(--ui-font); font-size:var(--fs-small); font-weight:600; cursor:pointer; transition:background-color var(--t-fade);
   }
-  #updateToast button:hover, #trStatus .tr-x:hover, #einkToast button:hover{background:color-mix(in srgb, var(--bg) 14%, transparent);}
-  #updateToast button:focus-visible, #trStatus .tr-x:focus-visible, #einkToast button:focus-visible{outline-color:var(--bg);}
-  #updateToast #updateReload, #einkToast #einkYes{background:var(--bg); border-color:var(--bg); color:var(--ink);}
-  #updateToast #updateReload:hover, #einkToast #einkYes:hover{background:var(--bg); box-shadow:0 0 0 3px color-mix(in srgb, var(--bg) 30%, transparent);}
-  #updateToast #updateLater, #einkToast #einkNo{width:36px; height:36px; padding:0; border-color:transparent; display:inline-flex; align-items:center; justify-content:center; font-size:1.125rem; font-weight:400; line-height:1; color:var(--bg);}
-  #updateToast #updateLater svg, #einkToast #einkNo svg{width:var(--icon-sm); height:var(--icon-sm); stroke-width:2;}
+  #updateToast button:hover, #trStatus .tr-x:hover, #einkToast button:hover, #themeToast button:hover{background:color-mix(in srgb, var(--bg) 14%, transparent);}
+  #updateToast button:focus-visible, #trStatus .tr-x:focus-visible, #einkToast button:focus-visible, #themeToast button:focus-visible{outline-color:var(--bg);}
+  #updateToast #updateReload, #einkToast #einkYes, #themeToast #themeKeep{background:var(--bg); border-color:var(--bg); color:var(--ink);}
+  #updateToast #updateReload:hover, #einkToast #einkYes:hover, #themeToast #themeKeep:hover{background:var(--bg); box-shadow:0 0 0 3px color-mix(in srgb, var(--bg) 30%, transparent);}
+  #updateToast #updateLater, #einkToast #einkNo, #themeToast #themeNo{width:36px; height:36px; padding:0; border-color:transparent; display:inline-flex; align-items:center; justify-content:center; font-size:1.125rem; font-weight:400; line-height:1; color:var(--bg);}
+  #updateToast #updateLater svg, #einkToast #einkNo svg, #themeToast #themeNo svg{width:var(--icon-sm); height:var(--icon-sm); stroke-width:2;}
   @media (pointer: coarse){
-    #updateToast button, #trStatus .tr-x, #einkToast button{min-height:40px;}
-    #updateToast #updateLater, #einkToast #einkNo{width:40px; height:40px;}
-    #updateToast button::after, #trStatus .tr-x::after, #einkToast button::after{content:""; position:absolute; inset:-4px;}
-    #updateToast button, #trStatus .tr-x, #einkToast button{position:relative;}
+    #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button{min-height:40px;}
+    #updateToast #updateLater, #einkToast #einkNo, #themeToast #themeNo{width:40px; height:40px;}
+    #updateToast button::after, #trStatus .tr-x::after, #einkToast button::after, #themeToast button::after{content:""; position:absolute; inset:-4px;}
+    #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button{position:relative;}
   }
   @media (forced-colors: active){
-    #toast, #updateToast, #trStatus, #einkToast, #progressInfo, #autoBar, #moreMenu, #moreMenu button, #side .side-switch button, #side .side-x{border:1px solid ButtonText;}
-    #updateToast button, #trStatus .tr-x, #einkToast button, #autoBar button{border:1px solid ButtonText;}
+    #toast, #updateToast, #trStatus, #einkToast, #themeToast, #progressInfo, #autoBar, #moreMenu, #moreMenu button, #side .side-switch button, #side .side-x{border:1px solid ButtonText;}
+    #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button, #autoBar button{border:1px solid ButtonText;}
     #moreMenu button.on::before{background:Highlight;}
     #side .side-switch button[aria-pressed="true"]{border-width:2px; border-color:Highlight;}
   }
@@ -2472,7 +2487,7 @@
   body.eink #popScrim, body.eink #moreScrim, body.eink #sideScrim, body.eink #dictScrim, body.eink #ruler .rt, body.eink #ruler .rb,
   body.eink.dragging::after{background:transparent !important;}
   /* a hover adds nothing (a chosen or filled control keeps its fill) */
-  body.eink :is(button, a, summary, [role="button"], [role="tab"], .tab-x, .toc-item, .find-item, .figrow):hover:not(.primary):not(.on):not(.cur):not(.go):not(.dot):not(.sw):not(#updateReload):not(#einkYes):not([aria-pressed="true"]):not([aria-selected="true"]):not([aria-expanded="true"]){background-color:transparent !important;}
+  body.eink :is(button, a, summary, [role="button"], [role="tab"], .tab-x, .toc-item, .find-item, .figrow):hover:not(.primary):not(.on):not(.cur):not(.go):not(.dot):not(.sw):not(#updateReload):not(#einkYes):not(#themeKeep):not([aria-pressed="true"]):not([aria-selected="true"]):not([aria-expanded="true"]){background-color:transparent !important;}
   /* a chosen control: white on black (a theme tile has its own black ring instead, with the tiles) */
   body.eink :is(.chip.on:not(.tile), .chip[aria-pressed="true"]:not(.tile), .tab.on, .sheet-tabs button.on, .font-item[aria-pressed="true"], #side .side-switch button[aria-pressed="true"],
     #tts .tts-speed[aria-expanded="true"], #actRow .ctl[aria-expanded="true"],
@@ -2520,11 +2535,12 @@
   body.eink .dim-row input[type=range]{opacity:1;}
   /* a select keeps its chevron */
   body.eink select.sel{background-image:linear-gradient(45deg, transparent 50%, #000 50%), linear-gradient(135deg, #000 50%, transparent 50%) !important;}
-  /* the toasts: white, held by a black rule, black words; the offer's yes filled black */
-  body.eink :is(#toast, #updateToast, #trStatus, #einkToast){background:#fff; color:#000; border:1px solid #000;}
-  body.eink :is(#updateToast button, #trStatus .tr-x, #einkToast button){color:#000; border-color:#000;}
-  body.eink :is(#updateToast #updateReload, #einkToast #einkYes){background:#000 !important; color:#fff;}
-  body.eink :is(#updateToast #updateLater, #einkToast #einkNo){border-color:transparent;}
+  /* the toasts: white, held by a black rule, black words; the offer's yes (and Keep the old colours) filled
+     black, and the close a black cross (its own rule above, two ids strong, would leave it white on white) */
+  body.eink :is(#toast, #updateToast, #trStatus, #einkToast, #themeToast){background:#fff; color:#000; border:1px solid #000;}
+  body.eink :is(#updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button){color:#000; border-color:#000;}
+  body.eink :is(#updateToast #updateReload, #einkToast #einkYes, #themeToast #themeKeep){background:#000 !important; color:#fff;}
+  body.eink :is(#updateToast #updateLater, #einkToast #einkNo, #themeToast #themeNo){border-color:transparent; color:#000;}
   body.eink #toast .toast-act{color:#000; border-color:#000;}
   /* a playing sound's tile is white on black already: its icon keeps a plain line, no grey fill */
   body.eink .snd-tiles .chip[aria-pressed="true"] svg{fill:none;}
@@ -2569,7 +2585,7 @@
     html, body{background:#fff !important; color:#000 !important; height:auto !important; min-height:0 !important; overflow:visible !important;}
     *{transition:none !important; animation:none !important;}
     header, #sheet, #sheetScrim, #pager, #tts, #actRow, #autoBar, #side, #sideScrim, #dictCard, #dictScrim, #dictPill, #markPop, #progress, #progressInfo,
-    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #einkToast, #pdf, .skip,
+    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #einkToast, #themeToast, #pdf, .skip,
     #readFoot, #phoneDockScrim, #phoneDock, #moreMenu, #moreScrim{display:none !important;}
     body > main{padding:0 !important;}
     #docView{display:block !important; position:static !important; width:auto !important; max-width:none !important; height:auto !important; overflow:visible !important; padding:0 !important; margin:0 !important;}

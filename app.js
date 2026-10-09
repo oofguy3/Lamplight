@@ -307,8 +307,8 @@
      its `alt` instead (the night half, when both were), so the pair stays two themes, each in its own
      tone: Linen/Peach becomes Day/Sea air. The theme on screen follows its half, so the half on screen
      stays the half on screen: Peach on screen over Linen/Peach becomes Sea air. Prefs.load moves the
-     stored ids with this; it reads nothing but `was` and the table, so the same ids always give the
-     same answer */
+     stored ids with this, and ThemeNotice asks it which fields still hold what the move gave them; it
+     reads nothing but `was` and the table, so the same ids always give the same answer */
   function movedTo(was){
     function to(k){ var r = retiredOf(k); return r ? r.to : k; }
     var m = { theme: to(was.theme), autoDay: to(was.autoDay), autoNight: to(was.autoNight) };
@@ -438,7 +438,7 @@
     dnHold:null,
     /* the theme on screen, the day theme and the night theme as they were stored before a load moved
        the reader off a retired theme ({ theme, autoDay, autoNight }, see movedTo), kept until the reader
-       has been told; null when there is nothing to tell */
+       has been told (ThemeNotice); null when there is nothing to tell */
     themeWas:null,
     zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
@@ -514,7 +514,8 @@
        of the reader's own twice keeps the half its page colour says, and the other half goes back to Day
        or Dusk. Contrast or Contrast dark outside the pair brings the contrast pair, so a reader of high
        contrast stays in it; any other theme outside becomes the half its page colour says (Paper over
-       Day/Dusk gives Paper/Dusk), so the reader keeps what they see. A hold only ever holds a half */
+       Day/Dusk gives Paper/Dusk), so the reader keeps what they see. A hold only ever holds a half.
+       Keep the old colours (ThemeNotice) runs this too, as a net under what it changes */
     function foldPair(){
       var k = state.autoDay, l, t;
       if (k === state.autoNight){
@@ -1296,9 +1297,11 @@
       Prefs.save();
       dismiss();
     }
-    /* the one-time offer on a slow-refreshing screen: a toast with a button, until it is answered */
+    /* the one-time offer on a slow-refreshing screen: a toast with a button, until it is answered. It
+       never shows beside the notice about the retired themes (ThemeNotice): while that is up the offer
+       waits for the next boot, and is not marked as asked */
     function offer(){
-      if (offerEl || state.eink !== null || state.einkAsked) return;
+      if (offerEl || state.eink !== null || state.einkAsked || document.getElementById("themeToast")) return;
       state.einkAsked = true; Prefs.save();
       offerEl = document.createElement("div");
       offerEl.id = "einkToast"; offerEl.setAttribute("role", "status");
@@ -1316,6 +1319,93 @@
     $("#cEink").addEventListener("change", function(e){ set(e.target.checked); });
     $("#qEink").addEventListener("change", function(e){ set(e.target.checked); });
     return { on: on, set: set, apply: apply, boot: boot, offer: offer, dismiss: dismiss };
+  })();
+  /* ---------- the notice after a move off a retired theme: "Keep the old colours" ----------
+     A load that moved the reader off a retired theme noted the ids as they were (state.themeWas, see
+     retireMove in Prefs). The next boot says what became of them, once, about 800 ms after the first
+     screen: "Themes have changed: Candle is now Cocoa." Keep the old colours makes each of those
+     retired themes again as a theme of the reader's own, from the colours RETIRED keeps, and puts it
+     back where it was; the close button keeps the new themes. The note is cleared the moment the
+     notice shows, so it never shows twice. It never shows beside the e-ink offer either: whichever
+     comes first shows, and the other waits for the next boot. It has the e-ink offer's look and the
+     update offer's place: it keeps the bottom row and reports its height (--noticeH), and the toast and
+     the translation pill step up over it (app.css) */
+  var ThemeNotice = (function(){
+    var el = null, ro = null;
+    /* what the notice tells of: each retired id among the noted ones, once (the day theme's, then the
+       night theme's, then the one on screen), where its field still holds what the move gave it
+       (movedTo). A field the load's fold replaced, or one the reader has changed since, is left out:
+       Contrast on screen over Linen/Plum brought the contrast pair, and Linen and Plum are no longer
+       part of what the reader uses */
+    function listed(was){
+      var out = [], seen = {}, m;
+      if (!was) return out;
+      m = movedTo(was);
+      ["autoDay", "autoNight", "theme"].forEach(function(f){
+        var old = was[f];
+        if (retiredOf(old) && state[f] === m[f] && !seen[old]){ seen[old] = true; out.push({ field: f, old: old }); }
+      });
+      return out;
+    }
+    function close(){
+      if (ro){ ro.disconnect(); ro = null; }
+      document.body.style.removeProperty("--noticeH");
+      if (el){ el.remove(); el = null; }
+    }
+    /* Keep the old colours. The notice may have been up a while, so what it tells of is checked again,
+       and a field the reader has changed since is left alone (when that leaves nothing, nothing comes
+       back). Each retired theme still listed comes back as a theme of the reader's own, named as it was
+       in the interface's language ("Candle 2" when that name is taken), and takes its half; the one that
+       was on screen takes the half on screen, ahead of that half's own, so the reader keeps seeing what
+       they saw (Peach on screen over Linen/Dusk gives Peach/Dusk, and Linen waits under Mine). The half
+       on screen stays the half on screen, and a Day/Night hold carries over to the theme that now stands
+       in it. The notice goes first, so the toast that says so lands in the bottom row */
+    function keep(was){
+      var l = listed(was), h = halfOnScreen(), made = {}, to;
+      close();
+      if (!l.length) return;
+      l.forEach(function(x){
+        var r = retiredOf(x.old);
+        made[x.old] = "c:" + addCustom({ name: customName(_tc("theme", r.name)), bg: normHex(r.bg), ink: normHex(r.ink), autoInk: false, accent: normHex(r.accent),
+          panel: normHex(r.panel), muted: normHex(r.muted) }).id;
+      });
+      l.forEach(function(x){ if (x.field !== "theme") state[x.field] = made[x.old]; });
+      l.forEach(function(x){ if (x.field === "theme") state[h === "day" ? "autoDay" : "autoNight"] = made[x.old]; });
+      to = h === "day" ? state.autoDay : state.autoNight;
+      if (state.dnHold) state.dnHold.theme = to;
+      selectTheme(to);
+      /* nothing above leaves a theme outside the pair or a hold on neither half; the fold is the net under that */
+      Prefs.foldPair();
+      applyTheme(); Prefs.save(); pairChanged();
+      Marks.toast(_t("Your old colours are back, under Mine."));
+    }
+    /* the notice, worded from the pair as it is now: "Linen is now Day and Peach is now Sea air" */
+    function show(){
+      var was = state.themeWas, l = listed(was), parts, setH;
+      state.themeWas = null; Prefs.save();
+      if (!l.length) return;
+      parts = l.map(function(x){ return _t("{old} is now {new}", { old: _tc("theme", retiredOf(x.old).name), "new": themeName(state[x.field]) }); });
+      el = document.createElement("div");
+      el.id = "themeToast"; el.setAttribute("role", "status");
+      document.body.appendChild(el);
+      el.innerHTML = '<span>' + escapeHtml(_t("Themes have changed: {changes}.", { changes: I18N.list(parts) })) + '</span><button type="button" id="themeKeep">' + escapeHtml(_t("Keep the old colours")) + '</button>' +
+        '<button type="button" id="themeNo" aria-label="' + escapeHtml(_t("No thanks")) + '" title="' + escapeHtml(_t("No thanks")) + '">' + ICONS.close + '</button>';
+      setH = function(){ if (el && el.isConnected) document.body.style.setProperty("--noticeH", (el.offsetHeight + 8) + "px"); };
+      setH();
+      if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(el); }
+      el.querySelector("#themeKeep").addEventListener("click", function(){ keep(was); });
+      el.querySelector("#themeNo").addEventListener("click", close);
+    }
+    /* at boot: a note that tells of nothing is cleared now; otherwise the notice comes once the first
+       screen is up, unless the e-ink offer (at 600 ms) came first, and then the note waits for the next boot */
+    function boot(){
+      if (!listed(state.themeWas).length){
+        if (state.themeWas !== null){ state.themeWas = null; Prefs.save(); }
+        return;
+      }
+      setTimeout(function(){ if (!el && !document.getElementById("einkToast")) show(); }, 800);
+    }
+    return { boot: boot };
   })();
   /* ---------- keep the screen on while a document is open ---------- */
   var Wake = (function(){
@@ -14299,6 +14389,7 @@
   applyTheme();
   applyType();
   Eink.boot();
+  ThemeNotice.boot();
   Dim.apply();
   $("#cSpread").checked = state.spread !== false;
   $("#cWake").checked = state.wake !== false;

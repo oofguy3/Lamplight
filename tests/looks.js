@@ -8,7 +8,10 @@
    half's fallback; a built-in picked by id brings its look. After every choice the theme on screen is
    one of the pair's two themes, and the two differ. On load, a reader of a retired theme moves to the
    nearest kept one, and what earlier versions left (a pair that is one theme twice, a theme on screen
-   outside the pair, a hold on neither half) is folded back into that rule. Every built-in applies the
+   outside the pair, a hold on neither half) is folded back into that rule. Once, a notice then says
+   what became of the retired themes the reader can still see, and offers them back as the reader's
+   own, where they were, keeping the half on screen; it never shows beside the e-ink offer, and toasts
+   step up over it. Every built-in applies the
    colours of the spec's table, and nothing is left of the textures and Plain background. Outside the
    table, the first paint is Day's, the title bar's colour in the markup and the manifest is Dusk's
    page, the editors' swatches come from the set, and the contrast and dark tones have their own ring,
@@ -16,7 +19,7 @@
    dock's handle shows its focus ring in every tone, at once with reduced motion and in e-ink; under
    forced colours a focused slider is outlined instead.
      NODE_PATH=$(npm root -g) node tests/looks.js */
-const { serve, browser, openFixture, makeReport, parseColor } = require("./lib");
+const { serve, browser, openFixture, dayNight, makeReport, parseColor } = require("./lib");
 
 const st = (page) => page.evaluate(() => { const s = window.__ll.state; return { theme: s.theme, autoDay: s.autoDay, autoNight: s.autoNight, auto: s.auto, hold: s.dnHold }; });
 const prefs = (page) => page.evaluate(() => localStorage.getItem("ll_prefs"));
@@ -989,6 +992,278 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
         both(inherited, (x) => x.was === null && x.theme === "day" && x.autoNight === "dusk") &&
         both(mixed, (x) => same(x.was, { theme: "candle", autoDay: "day", autoNight: "dusk" }) && x.theme === "cocoa" && x.autoDay === "day" && x.autoNight === "cocoa") && errors.length === before,
         JSON.stringify({ junk: junk.map((r) => [r.s.was, r.saved.was].map((v) => v === undefined ? "undefined" : v)), hold, odd, inherited, mixed, errors: errors.slice(before) }));
+    });
+
+    /* ---------------- the notice: "Keep the old colours" (§7.4) ---------------- */
+    /* the colours of the retired themes these cases use, the five a theme of the reader's own keeps, as the table
+       had them before the set changed: copied here rather than read from the app's own table */
+    const GONE = {
+      linen:  { bg: "#F3EFE6", panel: "#FAF8F1", ink: "#2B2A26", muted: "#625F57", accent: "#5A6828" },
+      peach:  { bg: "#FBE7DA", panel: "#FDF1E8", ink: "#3B2A21", muted: "#72574A", accent: "#146C72" },
+      candle: { bg: "#2A1D14", panel: "#33251A", ink: "#F0DDB4", muted: "#B8A485", accent: "#E9C46A" }
+    };
+    const FIVE = ["bg", "panel", "ink", "muted", "accent"], colsOf = (id) => FIVE.map((k) => GONE[id][k]).join(" ");
+    /* waits for the notice (it comes about 800 ms after boot): true once it is there, false when it has not come in `ms` */
+    const noticeUp = (page, ms) => page.waitForSelector("#themeToast", { timeout: ms || 4000 }).then(() => true, () => false);
+    /* the notice: its role, its words, its two buttons (inside it), and the room it reports on the body
+       (--noticeH) against its height; null when there is none */
+    const notice = (page) => page.evaluate(() => {
+      const n = document.getElementById("themeToast"), keep = document.getElementById("themeKeep"), no = document.getElementById("themeNo");
+      return n ? { role: n.getAttribute("role"), text: (n.querySelector("span") || {}).textContent, keep: keep && n.contains(keep) ? keep.textContent : null,
+        no: no && n.contains(no) ? no.getAttribute("aria-label") : null, room: document.body.style.getPropertyValue("--noticeH"), h: n.offsetHeight } : null;
+    });
+    const room = (page) => page.evaluate(() => document.body.style.getPropertyValue("--noticeH"));
+    /* the notice's shape: whether its words and buttons stay inside it, and its words clear its rounded corners (each
+       corner of each line's box inside the curve, the radius as drawn, no more than half the box); how many rows (the
+       buttons beside the words, or under them) and lines of words; whether its corners round its whole height (a
+       pill); whether words on a row of their own keep 20px from both sides; whether the buttons sit at the right, Keep
+       before the close button */
+    const shape = (page) => page.evaluate(() => {
+      const n = document.getElementById("themeToast"), b = n.getBoundingClientRect(), r = Math.min(parseFloat(getComputedStyle(n).borderTopLeftRadius), b.height / 2, b.width / 2);
+      const curve = (x, y) => { const cx = Math.min(Math.max(x, b.left + r), b.right - r), cy = Math.min(Math.max(y, b.top + r), b.bottom - r); return Math.hypot(x - cx, y - cy) <= r + 0.5; };
+      const within = (q) => q.left >= b.left - 0.5 && q.right <= b.right + 0.5 && q.top >= b.top - 0.5 && q.bottom <= b.bottom + 0.5;
+      const range = document.createRange(); range.selectNodeContents(n.querySelector("span"));
+      const lines = [...range.getClientRects()], keep = document.getElementById("themeKeep").getBoundingClientRect(), no = document.getElementById("themeNo").getBoundingClientRect();
+      const bottom = Math.max(...lines.map((q) => q.bottom)), left = Math.min(...lines.map((q) => q.left)), right = Math.max(...lines.map((q) => q.right));
+      return { tone: document.documentElement.dataset.tone, w: Math.round(b.width), h: Math.round(b.height), r, lines: new Set(lines.map((q) => Math.round(q.top))).size,
+        inside: lines.concat([keep, no]).every(within), clear: lines.every((q) => [[q.left, q.top], [q.right, q.top], [q.left, q.bottom], [q.right, q.bottom]].every(([x, y]) => curve(x, y))),
+        overflow: n.scrollWidth > n.clientWidth, rows: keep.top >= bottom ? 2 : 1, pill: r >= b.height / 2 - 0.5,
+        inset: Math.round(left - b.left) >= 20 && Math.round(b.right - right) >= 20, right: keep.right <= no.left + 0.5 && b.right - no.right <= 8.5 && (keep.top >= bottom || keep.left >= right) };
+    });
+    /* the reader's own themes, in order: their "c:" id, name, autoInk and five colours */
+    const own = (page) => page.evaluate((five) => window.__ll.state.customs.map((c) => ({ k: "c:" + c.id, name: c.name, autoInk: c.autoInk,
+      cols: five.map((x) => String(c[x]).toUpperCase()).join(" ") })), FIVE);
+    const named = (list, name) => list.find((c) => c.name === name) || {};
+    /* a profile stored and loaded, its clock held at `clock` when given, and the notice waited for */
+    const withNotice = async (seed, opts, clock) => {
+      const ctx = await context(b, opts, { ll_prefs: seed });
+      const page = await open(ctx, url, clock);
+      return { ctx, page, up: await noticeUp(page) };
+    };
+    const LINEN_PEACH = { auto: "off", theme: "linen", autoDay: "linen", autoNight: "peach" }, CANDLE = { auto: "off", theme: "candle", autoDay: "day", autoNight: "candle" };
+    await guard("the notice, its words", async () => {
+      let x = await withNotice(CANDLE);
+      const one = await notice(x.page), was = await moved(x.page);
+      R.check('candle seeded: notice "Themes have changed: Candle is now Cocoa." with Keep and No thanks', x.up && !!one && one.role === "status" &&
+        one.text === "Themes have changed: Candle is now Cocoa." && one.keep === "Keep the old colours" && one.no === "No thanks", JSON.stringify(one));
+      /* shown once: the note is cleared and saved the moment it shows, and the notice reports the room it takes */
+      R.check("the notice clears themeWas as it shows, and reports its height and 8px as --noticeH", both(was, (s) => s.was === null) && !!one && one.room === (one.h + 8) + "px",
+        JSON.stringify({ was, room: one && one.room, h: one && one.h }));
+      await x.ctx.close();
+      x = await withNotice(LINEN_PEACH);
+      const two = await notice(x.page);
+      R.check('linen/peach seeded (Auto off, theme linen): "Linen is now Day and Peach is now Sea air"', x.up && !!two && two.text === "Themes have changed: Linen is now Day and Peach is now Sea air.", JSON.stringify(two));
+      await x.ctx.close();
+      x = await withNotice({ auto: "off", theme: "peach", autoDay: "linen", autoNight: "peach" });
+      const pp = await notice(x.page), ps = await st(x.page);
+      R.check("theme peach over linen/peach: the same text, Sea air on screen", x.up && !!pp && pp.text === "Themes have changed: Linen is now Day and Peach is now Sea air." && ps.theme === "seaair",
+        JSON.stringify({ pp, ps }));
+      await x.ctx.close();
+      /* the contrast fold replaced both retired halves: nothing the reader sees came from them, so the note is
+         cleared at boot and nothing comes */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "hicon", autoDay: "linen", autoNight: "plum" } });
+      const page = await open(ctx, url);
+      const hi = await moved(page), up = await noticeUp(page, 1600);
+      R.check("hicon on screen with linen/plum: no notice, themeWas cleared", !up && both(hi, (s) => s.was === null && s.theme === "hicon" && s.autoDay === "hicon" && s.autoNight === "hidark"),
+        JSON.stringify({ up, hi }));
+      await ctx.close();
+    });
+    await guard("the notice, Keep", async () => {
+      let x = await withNotice(LINEN_PEACH);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      let mine = await own(x.page), s = await st(x.page), t = await toastNow(x.page), left = await notice(x.page), saved = JSON.parse(await prefs(x.page));
+      let L = named(mine, "Linen"), P = named(mine, "Peach");
+      R.check('Keep: customs "Linen" and "Peach" with the retired colours (bg, ink, accent, panel, muted equal RETIRED); the pair is them; the half on screen is kept; toast',
+        x.up && mine.length === 2 && L.cols === colsOf("linen") && P.cols === colsOf("peach") && L.autoInk === false && P.autoInk === false &&
+        s.autoDay === L.k && s.autoNight === P.k && s.theme === L.k && saved.autoDay === L.k && saved.autoNight === P.k && saved.theme === L.k && saved.customs.length === 2 &&
+        !!t && t.text === "Your old colours are back, under Mine." && left === null && (await room(x.page)) === "", JSON.stringify({ mine, s, t, left }));
+      await x.ctx.close();
+      /* the reader has gone to Night since the notice came: Keep leaves the night half on screen */
+      x = await withNotice(LINEN_PEACH);
+      await dayNight(x.page, "night"); await x.page.waitForTimeout(150);
+      const night = await st(x.page);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      mine = await own(x.page); s = await st(x.page); P = named(mine, "Peach");
+      const dn = await x.page.evaluate(() => window.llThemes.dnOf(window.__ll.state.theme));
+      R.check("Keep after the reader tapped Night: the night half stays on screen", x.up && night.theme === "seaair" && mine.length === 2 && s.autoNight === P.k && s.theme === P.k && dn === "night",
+        JSON.stringify({ night, mine, s, dn }));
+      await x.ctx.close();
+      /* On a schedule at noon, Night held on Cocoa, which Candle became: Keep puts the own Candle in the night half and on
+         screen, and the hold carries over to it, its period and end unchanged; the automatic check keeps it there */
+      x = await withNotice({ auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "candle", autoDay: "day", autoNight: "candle", dnHold: { theme: "candle", period: "day", until: AT_21 } }, null, NOON);
+      const held = await st(x.page);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      await x.page.evaluate(() => window.__ll.AutoTheme.apply()); await x.page.waitForTimeout(100);
+      mine = await own(x.page); s = await st(x.page);
+      const C = named(mine, "Candle");
+      R.check("Keep with Auto on (time, noon) and Night held on cocoa over day/cocoa (candle originally): own Candle on screen, still held",
+        x.up && held.theme === "cocoa" && !!held.hold && held.hold.theme === "cocoa" && mine.length === 1 && C.cols === colsOf("candle") &&
+        s.autoDay === "day" && s.autoNight === C.k && s.theme === C.k && !!s.hold && s.hold.theme === C.k && s.hold.period === "day" && s.hold.until === AT_21, JSON.stringify({ held, mine, s }));
+      await x.ctx.close();
+      /* the night theme changed in the list after the notice came: that half is left alone, and only Linen comes back */
+      x = await withNotice({ auto: "off", theme: "linen", autoDay: "linen", autoNight: "candle" });
+      const said = await notice(x.page);
+      await x.page.evaluate(() => window.__ll.AutoTheme.setPair("night", "forest")); await x.page.waitForTimeout(150);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      mine = await own(x.page); s = await st(x.page); L = named(mine, "Linen");
+      R.check("Keep when the reader changed the night theme to Forest since: Forest stays", x.up && !!said && said.text === "Themes have changed: Linen is now Day and Candle is now Cocoa." &&
+        mine.length === 1 && L.cols === colsOf("linen") && s.autoDay === L.k && s.autoNight === "forest" && s.theme === L.k, JSON.stringify({ said, mine, s }));
+      await x.ctx.close();
+      /* everything it told of changed since (Cocoa, on screen, is now Forest): Keep only closes it, and makes and says nothing */
+      x = await withNotice(CANDLE);
+      await x.page.evaluate(() => window.__ll.AutoTheme.setPair("night", "forest")); await x.page.waitForTimeout(150);
+      await x.page.evaluate(() => { window.__toasts = []; });
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      mine = await own(x.page); s = await st(x.page);
+      const none = { left: await notice(x.page), room: await room(x.page), toasts: await toasts(x.page) };
+      R.check("Keep when everything it told of has changed since: the notice goes, nothing is made, no toast", x.up && mine.length === 0 && s.theme === "forest" && s.autoNight === "forest" &&
+        none.left === null && none.room === "" && none.toasts.length === 0, JSON.stringify({ mine, s, none }));
+      await x.ctx.close();
+    });
+    await guard("the notice, Keep with the theme on screen", async () => {
+      /* an earlier version's Day on screen over Linen/Dusk: Linen is listed (the day half), and comes back where it was */
+      let x = await withNotice({ auto: "off", theme: "day", autoDay: "linen", autoNight: "dusk" });
+      const d = await notice(x.page);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      let mine = await own(x.page), s = await st(x.page);
+      const L = named(mine, "Linen");
+      R.check("day on screen over linen/dusk (theme day): own Linen/Dusk with own Linen on screen", x.up && !!d && d.text === "Themes have changed: Linen is now Day." &&
+        mine.length === 1 && s.autoDay === L.k && s.autoNight === "dusk" && s.theme === L.k, JSON.stringify({ d, mine, s }));
+      await x.ctx.close();
+      /* Peach on screen outside Linen/Dusk: both are listed; Peach, on screen, takes the day half ahead of Linen, so the
+         reader keeps seeing it, and Linen waits under Mine */
+      x = await withNotice({ auto: "off", theme: "peach", autoDay: "linen", autoNight: "dusk" });
+      const p = await notice(x.page);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      mine = await own(x.page); s = await st(x.page);
+      const PL = named(mine, "Linen"), PP = named(mine, "Peach");
+      const tiles = await x.page.evaluate(() => [...document.querySelectorAll("#themeChips .q-mine .chip[data-theme]")].map((t) => t.dataset.theme + ":" + t.getAttribute("aria-pressed")));
+      const set = await looksIn(x.page, "#themeChips");
+      R.check("peach on screen outside linen/dusk (Auto off): own Peach/Dusk with own Peach on screen; own Linen made too, under Mine", x.up && !!p &&
+        p.text === "Themes have changed: Linen is now Day and Peach is now Day." && mine.length === 2 && PL.cols === colsOf("linen") && PP.cols === colsOf("peach") &&
+        s.autoDay === PP.k && s.autoNight === "dusk" && s.theme === PP.k && tiles.join() === PL.k + ":false," + PP.k + ":true" && pairFirst(set, "Peach & Dusk"),
+        JSON.stringify({ p, mine, s, tiles, set: set.slice(0, 2) }));
+      await x.ctx.close();
+    });
+    await guard("the notice, No thanks and never twice", async () => {
+      const x = await withNotice(LINEN_PEACH);
+      await x.page.click("#themeNo"); await x.page.waitForTimeout(150);
+      const mine = await own(x.page), s = await st(x.page), left = await notice(x.page), r = await room(x.page);
+      R.check("No thanks: no customs; theme stays day", x.up && mine.length === 0 && s.theme === "day" && s.autoDay === "day" && s.autoNight === "seaair" && left === null && r === "",
+        JSON.stringify({ mine, s, left, r }));
+      await x.ctx.close();
+      /* answered either way, or shown and left unanswered: a reload brings no notice */
+      const seen = {};
+      for (const how of ["keep", "no", "unanswered"]){
+        const y = await withNotice(LINEN_PEACH);
+        if (how !== "unanswered"){ await y.page.click(how === "keep" ? "#themeKeep" : "#themeNo"); await y.page.waitForTimeout(150); }
+        await y.page.reload({ waitUntil: "load" });
+        seen[how] = { first: y.up, again: await noticeUp(y.page, 1600) };
+        await y.ctx.close();
+      }
+      R.check("never twice: after Keep, after No thanks, or shown and the page reloaded, no #themeToast", Object.values(seen).every((v) => v.first && !v.again), JSON.stringify(seen));
+    });
+    await guard("the notice and the e-ink offer", async () => {
+      /* a screen that says it redraws slowly is offered e-ink mode 600 ms after boot. No suite triggers that offer
+         otherwise, so for the first boot only matchMedia answers yes to (update: slow) and passes every other query on */
+      const ctx = await context(b, null, { ll_prefs: LINEN_PEACH });
+      await ctx.addInitScript(() => {
+        if (sessionStorage.getItem("__slow")) return;
+        sessionStorage.setItem("__slow", "1");
+        const real = window.matchMedia.bind(window);
+        window.matchMedia = (q) => /\(\s*update\s*:\s*slow\s*\)/.test(q) ? { matches: true, media: q, onchange: null, addListener(){}, removeListener(){},
+          addEventListener(){}, removeEventListener(){}, dispatchEvent(){ return false; } } : real(q);
+      });
+      const page = await open(ctx, url);
+      const offered = await page.waitForSelector("#einkToast", { timeout: 4000 }).then(() => true, () => false);
+      await page.waitForTimeout(1000);
+      const first = await page.evaluate(() => ({ eink: !!document.getElementById("einkToast"), notice: !!document.getElementById("themeToast"), was: window.__ll.state.themeWas,
+        saved: JSON.parse(localStorage.getItem("ll_prefs")).themeWas }));
+      await page.reload({ waitUntil: "load" });
+      const again = await noticeUp(page), second = await page.evaluate(() => ({ eink: !!document.getElementById("einkToast"), text: (document.querySelector("#themeToast span") || {}).textContent }));
+      R.check("the e-ink offer up: no notice this boot; next boot it shows", offered && first.eink && !first.notice && !!first.was && !!first.saved && again && !second.eink &&
+        second.text === "Themes have changed: Linen is now Day and Peach is now Sea air.", JSON.stringify({ offered, first, again, second }));
+      await ctx.close();
+      /* the other way round: the offer, asked for while the notice is up, shows nothing and is not marked asked; once
+         the notice has gone it shows */
+      const x = await withNotice(LINEN_PEACH);
+      await x.page.evaluate(() => window.__ll.Eink.offer()); await x.page.waitForTimeout(150);
+      const wait = await x.page.evaluate(() => ({ eink: !!document.getElementById("einkToast"), asked: window.__ll.state.einkAsked, saved: JSON.parse(localStorage.getItem("ll_prefs")).einkAsked }));
+      await x.page.click("#themeNo"); await x.page.waitForTimeout(100);
+      await x.page.evaluate(() => window.__ll.Eink.offer()); await x.page.waitForTimeout(150);
+      const then = await x.page.evaluate(() => ({ eink: !!document.getElementById("einkToast"), asked: window.__ll.state.einkAsked }));
+      R.check("the e-ink offer waits for the notice", x.up && !wait.eink && wait.asked === false && wait.saved === false && then.eink && then.asked === true, JSON.stringify({ wait, then }));
+      await x.ctx.close();
+    });
+    await guard("the notice's place", async () => {
+      const x = await withNotice(LINEN_PEACH);
+      await x.page.evaluate(() => window.__ll.Marks.toast("x")); await x.page.waitForTimeout(150);
+      const at = await x.page.evaluate(() => {
+        const n = document.getElementById("themeToast"), t = document.getElementById("toast");
+        /* the e-ink offer's own place, read off a stand-in with its id (the real one never shows beside the notice) */
+        const probe = document.createElement("div"); probe.id = "einkToast"; document.body.appendChild(probe);
+        const eink = getComputedStyle(probe).bottom; probe.remove();
+        return { on: t.classList.contains("on"), toastBottom: t.getBoundingClientRect().bottom, noticeTop: n.getBoundingClientRect().top,
+          bottom: getComputedStyle(n).bottom, eink, toast: getComputedStyle(t).bottom, room: document.body.style.getPropertyValue("--noticeH") };
+      });
+      R.check("a toast while the notice is up sits above it", x.up && at.on && at.toastBottom <= at.noticeTop, JSON.stringify(at));
+      R.check("the notice keeps the bottom row", x.up && at.bottom === at.eink && parseFloat(at.toast) === parseFloat(at.bottom) + parseFloat(at.room), JSON.stringify(at));
+      const desk = await shape(x.page);
+      await x.ctx.close();
+      /* its words are longer than the e-ink offer's: on a desktop the three parts share one row, the offer's pill; on a
+         phone the words take a row of their own, with the buttons under them at the right. Either way nothing leaves
+         the notice and no line of its words runs into its rounded corners, and on their own row the words keep 20px
+         from both sides. Three changes in Dutch on a phone from 320 to 420px wide (where the lines break, and so how
+         near the right edge one ends, moves with the width), and 320px in the contrast tone */
+      const three = await withNotice({ auto: "off", theme: "peach", autoDay: "linen", autoNight: "candle" }, Object.assign({ locale: "nl-NL" }, PHONE));
+      await three.page.evaluate(() => document.fonts.ready.then(() => true));
+      const sweep = [];
+      for (let w = 320; w <= 420; w += 2){
+        await three.page.setViewportSize({ width: w, height: 844 });
+        sweep.push(Object.assign({ at: w }, await shape(three.page)));
+      }
+      await three.ctx.close();
+      const narrow = await withNotice({ auto: "off", theme: "hicon", autoDay: "hicon", autoNight: "plum" }, Object.assign({ locale: "nl-NL" }, PHONE, { viewport: { width: 320, height: 700 } }));
+      const nl320 = await shape(narrow.page);
+      await narrow.ctx.close();
+      const kept = (s) => s.inside && s.clear && !s.overflow, phone = (s) => kept(s) && s.rows === 2 && s.inset && s.right;
+      const bad = sweep.filter((s) => !phone(s) || s.lines < 2);
+      R.check("the notice on a desktop: one row, words then Keep then the close button, a pill", x.up && kept(desk) && desk.rows === 1 && desk.right && desk.pill, JSON.stringify(desk));
+      R.check("the notice on a phone: the words on a row of their own, 20px in, the buttons under them at the right, nothing cut",
+        three.up && narrow.up && sweep.length === 51 && !bad.length && phone(nl320) && nl320.tone === "contrast", JSON.stringify({ bad: bad.slice(0, 3), nl320 }));
+    });
+    await guard("the notice, a name taken, e-ink and Dutch", async () => {
+      let x = await withNotice(Object.assign({ customs: [{ id: "k1", name: "Candle", bg: "#3A2A1A", ink: "#F2E6D0", autoInk: false, accent: "#E0A040" }] }, CANDLE));
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      let mine = await own(x.page), s = await st(x.page);
+      R.check('"Candle" taken: Keep makes "Candle 2"', x.up && mine.map((c) => c.name).join() === "Candle,Candle 2" && named(mine, "Candle 2").cols === colsOf("candle") &&
+        s.autoNight === named(mine, "Candle 2").k && s.theme === s.autoNight, JSON.stringify({ mine, s }));
+      await x.ctx.close();
+      /* Review Focus 4: e-ink mode on, with a retired theme saved. The pill is white there, and so its two buttons
+         are black: Keep filled, and the close button's cross */
+      x = await withNotice(Object.assign({ eink: true }, CANDLE));
+      const e = await notice(x.page);
+      const ink = await x.page.evaluate(() => { const c = (sel, k) => getComputedStyle(document.querySelector(sel))[k];
+        return { pill: c("#themeToast", "backgroundColor"), keep: c("#themeKeep", "backgroundColor") + " / " + c("#themeKeep", "color"), no: c("#themeNo", "color"), cross: c("#themeNo svg", "stroke") }; });
+      R.check("e-ink on: the notice is white, Keep black, and the close button's cross black", ink.pill === "rgb(255, 255, 255)" && ink.keep === "rgb(0, 0, 0) / rgb(255, 255, 255)" &&
+        ink.no === "rgb(0, 0, 0)" && ink.cross === "rgb(0, 0, 0)", JSON.stringify(ink));
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      mine = await own(x.page); s = await st(x.page);
+      const page = await x.page.evaluate(() => { const cs = getComputedStyle(document.documentElement), bs = getComputedStyle(document.body);
+        return { eink: window.__ll.state.eink, cls: document.body.classList.contains("eink"), bg: cs.getPropertyValue("--bg").trim().toUpperCase(), ink: cs.getPropertyValue("--ink").trim().toUpperCase(),
+          body: bs.backgroundColor + " / " + bs.color }; });
+      R.check("e-ink on: notice shows, Keep restores, e-ink stays on, page #FFFFFF/#000000", x.up && !!e && e.text === "Themes have changed: Candle is now Cocoa." && mine.length === 1 &&
+        named(mine, "Candle").cols === colsOf("candle") && s.theme === named(mine, "Candle").k && s.autoNight === s.theme && page.eink === true && page.cls &&
+        page.bg === "#FFFFFF" && page.ink === "#000000" && page.body === "rgb(255, 255, 255) / rgb(0, 0, 0)", JSON.stringify({ e, mine, s, page }));
+      await x.ctx.close();
+      x = await withNotice(CANDLE, { locale: "nl-NL" });
+      const nl = await notice(x.page);
+      await x.page.click("#themeKeep"); await x.page.waitForTimeout(150);
+      mine = await own(x.page);
+      const t = await toastNow(x.page);
+      R.check('Dutch: "De thema’s zijn veranderd: Kaars is nu Cacao."', x.up && !!nl && nl.text === "De thema’s zijn veranderd: Kaars is nu Cacao." && nl.keep === "Oude kleuren houden" &&
+        nl.no === "Nee, bedankt" && mine.map((c) => c.name).join() === "Kaars" && !!t && t.text === "Je oude kleuren zijn terug, onder Mijn thema’s.", JSON.stringify({ nl, mine, t }));
+      await x.ctx.close();
     });
 
     /* ---------------- the colours (§3.1), and no textures (§8) ---------------- */
