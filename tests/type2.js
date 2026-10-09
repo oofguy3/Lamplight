@@ -291,8 +291,9 @@ function fakeClock(iso){
     /* a theme of the reader's own with no contrast to spare: grey text at 4.54:1 on white (llThemes.create
        makes it; it is recoloured here). Its panel and secondary text are derived as for any own theme, and
        the panel, a shade darker (#f8f8f8), already holds the text at 4.28:1 with no film at all, so the
-       ceiling steps down to nothing whatever the film does. This check pins that step down; the next one,
-       where nothing but the film can bring the text under 4.5:1, covers the film */
+       ceiling steps down to nothing whatever the film does. This check pins that the ceiling counts the
+       panel: worked out on the page alone it would be 0.06 here. The next one, where nothing but the film
+       can bring the text under 4.5:1, covers the film */
     const tight = await page.evaluate(() => {
       const T = window.llThemes, W = window.llType.warmth, keep = window.__ll.state.theme;
       const c = T.create();
