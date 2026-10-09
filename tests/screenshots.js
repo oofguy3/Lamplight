@@ -88,6 +88,9 @@ const STATS = (() => {
     /* pin the first book so the Pinned and Recent groups both show */
     await page.evaluate(() => { const p = document.querySelector('#libList [data-pin]'); if (p) p.click(); });
     await page.waitForTimeout(700);
+    /* the list, drawn again after the pin, puts the focus on the pin, for a keyboard; the picture shows
+       the library at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "library");
     await ctx.close();
   }
@@ -103,6 +106,8 @@ const STATS = (() => {
     await page.waitForTimeout(900);
     await page.evaluate(() => window.__ll.Marks.openPanel());
     await page.waitForTimeout(900);
+    /* the panel gives its search field the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "notes");
     await ctx.close();
   }
@@ -163,6 +168,9 @@ const STATS = (() => {
     await page.evaluate(() => window.llFonts.openPanel());
     await page.waitForTimeout(2200);
     await page.evaluate(() => { document.getElementById("sideBody").scrollTop = 0; });
+    /* the panel gives its first font the focus as it opens, for a keyboard, and the ring would read as a
+       second chosen font; the picture shows the panel at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "fonts");
     await ctx.close();
   }
@@ -256,6 +264,8 @@ const STATS = (() => {
     await openFixture(page, "sample.md");
     await theme(page, "canals");
     await page.keyboard.press("g"); await page.waitForTimeout(1100);
+    /* the panel gives its first control the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "stats");
     await ctx.close();
   }
@@ -270,6 +280,8 @@ const STATS = (() => {
     await theme(page, "forest");
     await page.evaluate(() => window.llStorage.openPanel());
     await page.waitForTimeout(2500);
+    /* the panel gives its first control the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "storage");
     await ctx.close();
   }

@@ -140,5 +140,6 @@ After Task 12 (README, screenshots and version, at b39d8de): every suite run on 
   still on (725 ms later in a probe; a toast stays 1800 ms), so it can read the toast before the offline message
   is in. Its detail, read a moment later, shows the message and the system face it wants. The total counts both
   suites at their reruns; counting the flakes gives 2422/2429.
-  The review fixes after it (3e4f833: the README's first-run wording, tests/screenshots.js and the two pictures
-  of the explain card) change no file a suite reads.
+  The review fixes after it change no file a suite reads: 3e4f833 (the README's first-run wording,
+  tests/screenshots.js and the two pictures of the explain card), and the one that shows five more pictures at
+  rest (tests/screenshots.js and the library, notes, fonts, stats and storage pictures).
