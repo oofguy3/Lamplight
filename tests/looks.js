@@ -8,7 +8,8 @@
    half's fallback; a built-in picked by id brings its look. After every choice the theme on screen is
    one of the pair's two themes, and the two differ. On load, a reader of a retired theme moves to the
    nearest kept one, and what earlier versions left (a pair that is one theme twice, a theme on screen
-   outside the pair, a hold on neither half) is folded back into that rule.
+   outside the pair, a hold on neither half) is folded back into that rule. Every built-in applies the
+   colours of the spec's table, and nothing is left of the textures and Plain background.
      NODE_PATH=$(npm root -g) node tests/looks.js */
 const fs = require("fs"), path = require("path");
 const { serve, browser, openFixture, makeReport } = require("./lib");
@@ -45,6 +46,22 @@ const MOVES = Object.fromEntries(Object.entries({
   seaair: "winter sky mist lavender delft", dusk: "rain vermeer aurora ocean midnight plum", ink: "noir terminal",
   cocoa: "autumn candle ember rembrandt cabin nighttrain amber", forest: "moss graphite", canals: "library slate"
 }).flatMap(([to, ids]) => ids.split(" ").map((id) => [id, to])));
+/* spec §3.1, each built-in's colours, copied here rather than read from the app's own table */
+const COLS = ["bg", "panel", "raise", "ink", "muted", "line", "accent", "lamp"];
+const TABLE = Object.fromEntries(Object.entries({
+  day:    "#F5EFE3 #FBF8F0 #FEFCF8 #2D2924 #645F58 #DED8CB #2C5D45 #875C0C",
+  dusk:   "#0D121C #141A26 #1C2330 #DAD7CF #A6A39B #2A313E #D8A24A #D8A24A",
+  paper:  "#FAFAF7 #FFFFFF #FFFFFF #141414 #5C5C58 #DCDCD5 #A8261F #A8261F",
+  ink:    "#000000 #151413 #1F1E1C #D6D2C5 #A3A097 #302F2C #E87A69 #E87A69",
+  sepia:  "#F0E4CB #F7EDD8 #FAF4E6 #2E1E11 #695544 #DFCDAE #7C2623 #855510",
+  cocoa:  "#261914 #30201A #3A2920 #EEDFCB #AEA394 #49372C #D8A067 #D8A067",
+  sage:   "#DFE7D8 #EAF0E5 #F4F7F0 #1A261F #4E5C51 #C7D2BE #9C4925 #124830",
+  forest: "#0E1A13 #14221A #1A2B21 #D4DACC #9DA595 #283B2E #7AB785 #7AB785",
+  seaair: "#DCEDF0 #E9F5F6 #F4FAFA #112126 #41545A #C2DCE0 #0B5A74 #984121",
+  canals: "#0E1F22 #13292D #193337 #D0DCD8 #9DB1B0 #24403F #E58E6C #F2C66B",
+  hicon:  "#FFFFFF #FFFFFF #FFFFFF #000000 #3A3A3A #000000 #0033CC #0033CC",
+  hidark: "#000000 #000000 #000000 #F2F2F2 #D0D0D0 #F2F2F2 #FFC72C #FFC72C"
+}).map(([id, s]) => [id, Object.fromEntries(s.split(" ").map((c, i) => [COLS[i], c]))]));
 /* what a stored profile became once loaded: the theme, the pair, the hold and themeWas, in the state
    (with the half of the theme on screen) and as boot saved them */
 const moved = (page) => page.evaluate(() => {
@@ -958,6 +975,41 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
         both(inherited, (x) => x.was === null && x.theme === "day" && x.autoNight === "dusk") &&
         both(mixed, (x) => same(x.was, { theme: "candle", autoDay: "day", autoNight: "dusk" }) && x.theme === "cocoa" && x.autoDay === "day" && x.autoNight === "cocoa") && errors.length === before,
         JSON.stringify({ junk: junk.map((r) => [r.s.was, r.saved.was].map((v) => v === undefined ? "undefined" : v)), hold, odd, inherited, mixed, errors: errors.slice(before) }));
+    });
+
+    /* ---------------- the colours (§3.1), and no textures (§8) ---------------- */
+    await guard("colours", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url);
+      const wrong = [], textured = [];
+      for (const [id, want] of Object.entries(TABLE)){
+        await page.evaluate((k) => window.llThemes.pick(k), id);
+        await page.waitForFunction((k) => window.__ll.state.theme === k, id, { timeout: 2000 }).catch(() => {});
+        const got = await page.evaluate(() => {
+          const cs = getComputedStyle(document.documentElement);
+          return { theme: window.__ll.state.theme, texture: document.documentElement.getAttribute("data-texture"),
+            tokens: Object.fromEntries(["bg", "ink", "muted", "panel", "line", "accent", "lamp", "raise"].map((k) => [k, cs.getPropertyValue("--" + k).trim().toUpperCase()])) };
+        });
+        const off = COLS.filter((k) => got.tokens[k] !== want[k]);
+        if (got.theme !== id || off.length) wrong.push(id + (got.theme !== id ? " (on screen: " + got.theme + ")" : "") + (off.length ? ": " + off.map((k) => k + " " + got.tokens[k] + " not " + want[k]).join(", ") : ""));
+        if (got.texture !== null) textured.push(id + ":" + got.texture);
+      }
+      R.check("every built-in applies its tokens", Object.keys(TABLE).length === 12 && wrong.length === 0, wrong.join(" | "));
+      /* nothing left of the textures: no attribute on the page, no rule that would draw one, and no Plain background switch */
+      const left = await page.evaluate(() => {
+        const walk = (rules) => [...rules].flatMap((r) => [r].concat(r.cssRules ? walk(r.cssRules) : []));
+        const rules = [...document.styleSheets].flatMap((s) => { try { return walk(s.cssRules); } catch (_){ return []; } });
+        return { rules: rules.filter((r) => /data-texture/.test(r.selectorText || "")).map((r) => r.selectorText).slice(0, 3), plainBg: !!document.getElementById("plainBg") };
+      });
+      R.check("no data-texture, no #plainBg", !textured.length && !left.rules.length && !left.plainBg, JSON.stringify({ textured, left }));
+      await ctx.close();
+      /* §7.6: the Plain background switch's stored value is no longer read, and the next save leaves it out */
+      const ctx2 = await context(b, null, { ll_prefs: { auto: "off", plainBg: true } });
+      const page2 = await open(ctx2, url);
+      await page2.evaluate(() => window.llThemes.pick("paper")); await page2.waitForTimeout(100);
+      const pb = await page2.evaluate(() => ({ state: "plainBg" in window.__ll.state, saved: "plainBg" in JSON.parse(localStorage.getItem("ll_prefs") || "{}"), theme: window.__ll.state.theme }));
+      R.check("a stored plainBg is not read, and not saved again", !pb.state && !pb.saved && pb.theme === "paper", JSON.stringify(pb));
+      await ctx2.close();
     });
 
     /* ---------------- the tiles' drawing stays in the tiles ---------------- */

@@ -19,11 +19,12 @@
        every built-in theme, every custom one and e-ink mode (body.eink below) get their own.
        --accent is "chosen / interactive" (a selected chip, a switch that is on, a slider's fill,
        links, the focus ring); --lamp is "light, brand and now" (the progress line, the wordmark,
-       primary actions, the stars, the progress rings) and is the theme's own: brass in the warm
-       themes, blue in Sky, green in Forest. Text on an accent or lamp fill is --on-fill (the panel
-       colour); text on a --lamp-soft or --accent-soft tint is --ink, never the lamp or --muted
-       (lamp on lamp-soft is only about 4.2:1 on a light page). --line is a decorative divider only;
-       a boundary that carries meaning is --edge or the accent. tests/themes.js audits every pair. */
+       primary actions, the stars, the progress rings) and is the theme's own: brass, amber or
+       caramel in the warm themes, green in Sage and Forest, red in Paper. Text on an accent or lamp
+       fill is --on-fill (the panel colour); text on a --lamp-soft or --accent-soft tint is --ink,
+       never the lamp or --muted (the lamp on its own tint is for icons: an empty state's round, the
+       word card's mark). --line is a decorative divider only; a boundary that carries meaning is
+       --edge or the accent. tests/themes.js audits every pair. */
     --lamp-soft: color-mix(in srgb, var(--lamp) 14%, var(--panel));
     --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
     --glow: color-mix(in srgb, var(--lamp) 30%, transparent);           /* halos only; never carries meaning */
@@ -103,8 +104,8 @@
   /* keyboard shortcuts panel */
   .keys{display:grid; gap:6px;}
   .key-row{display:grid; grid-template-columns:minmax(72px, auto) 1fr; gap:12px; align-items:center; font-size:var(--fs-body); padding:8px 4px; border-bottom:1px solid var(--line);}
-  /* one key pill for the shortcuts panel and the menu's hints; its text is ink (muted on the ink
-     tint misses 4.5:1 on Day and seven other themes) */
+  /* one key pill for the shortcuts panel and the menu's hints; its text is ink, as on every tint (a
+     custom theme's secondary text is made to read on its page and its panel, not on this tint) */
   .key-row kbd, #moreMenu kbd{
     flex:none; min-width:24px; padding:2px 7px; border:1px solid var(--line); border-radius:var(--r-xs); text-align:center; white-space:nowrap;
     font-family:var(--ui-font); font-size:var(--fs-eyebrow); font-variant-numeric:tabular-nums; color:var(--ink); background:color-mix(in srgb, var(--ink) 6%, transparent);
@@ -2694,36 +2695,6 @@
 
   /* ---- themes: the picker's head, Mine with its actions, Day and night ---- */
   #themePop .pop-head{gap:var(--sp-2);}
-  /* ---- the Textured themes: a faint paper or cloth behind the text, on a fixed layer under the
-     page (bars, sheets and cards keep their own plain colours). Small inline SVG noise and CSS
-     lines, nothing that moves; applyTheme sets data-texture only outside e-ink mode, the
-     high-contrast themes and Plain background ---- */
-  :root[data-texture] body::before{content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;}
-  /* paper grain: fine speckled fibres */
-  :root[data-texture="grain"] body::before{
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32 0 0 0 0 .28 0 0 0 0 .22 0 0 0 .16 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  /* book cloth: a linen weave of fine threads both ways, a little uneven */
-  :root[data-texture="linen"] body::before{
-    background-image:
-      repeating-linear-gradient(0deg, rgba(50,60,40,.045) 0 1px, transparent 1px 3px),
-      repeating-linear-gradient(90deg, rgba(50,60,40,.04) 0 1px, transparent 1px 4px),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.04 .5' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .2 0 0 0 0 .24 0 0 0 0 .16 0 0 0 .1 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  /* laid paper: the close laid lines across, the chain lines down every few centimetres */
-  :root[data-texture="laid"] body::before{
-    background-image:
-      repeating-linear-gradient(0deg, rgba(90,80,40,.05) 0 1px, transparent 1px 4px),
-      repeating-linear-gradient(90deg, transparent 0 94px, rgba(90,80,40,.07) 94px 96px, transparent 96px 120px);
-  }
-  /* vellum: soft cloudy mottling and a darker, deckled edge round the page */
-  :root[data-texture="vellum"] body::before{
-    background-image:
-      radial-gradient(ellipse at center, transparent 62%, rgba(120,84,40,.10) 100%),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .36 0 0 0 0 .2 0 0 0 .13 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size:100% 100%, 240px 240px;
-  }
-  @media print{ :root[data-texture] body::before{display:none;} }
   /* an own theme's tile with its ⋯ in the corner of the small page */
   .mine-t{position:relative; min-width:0;}
   .mine-t > .chip.tile{width:100%;}

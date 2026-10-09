@@ -41,7 +41,7 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
       if ((await cssVar("--bg")) === THEMES[id].bg.toLowerCase() && (await cssVar("--panel")) === THEMES[id].panel.toLowerCase() &&
           (await cssVar("--raise")).toLowerCase() === THEMES[id].raise.toLowerCase() && (await cssVar("--lamp")).toLowerCase() === THEMES[id].lamp.toLowerCase()) applied++; else wrong.push(id);
     }
-    R.check("every built-in theme applies, its raised surface and lamp too (" + applied + " of " + ids.length + ")", applied === ids.length && ids.length >= 25, wrong.join(","));
+    R.check("every built-in theme applies, its raised surface and lamp too (" + applied + " of " + ids.length + ")", applied === ids.length && ids.length === 12, wrong.join(","));
     /* the looks: a day theme and a night theme each, in the picker's order */
     const LOOKS = await page.evaluate(() => window.llThemes.LOOKS);
     const pairs = LOOKS.map((l) => l.id + ":" + l.day + "/" + l.night).join(",");

@@ -115,8 +115,9 @@
    bookmark(s) ............ bladwijzer(s)
    highlights, notes and bookmarks together ... aantekeningen
    theme / themes ......... thema / thema’s (Day → Dag, Night → Nacht, Light → Licht, Dark → Donker,
-                            High contrast → Hoog contrast, Custom → Eigen, Auto → Automatisch,
-                            Manual → Handmatig, Follow system → Systeem volgen, By time → Op tijd)
+                            Mine → Mijn thema’s, Custom → Eigen; a look is named for its two themes,
+                            Day & Dusk → Dag & Schemer; Day and night → Dag en nacht, with Off → Uit,
+                            Follow phone → Volg telefoon, On a schedule → Op schema)
    colours ................ Background → Achtergrond, Accent → Accentkleur, Panel → Paneel,
                             Secondary text → Secundaire tekst, colour → kleur
    type (text settings) ... tekst (Text settings → Tekstinstellingen; font → lettertype; Size →
@@ -227,7 +228,6 @@
     "Recent": "Recent",
     "Light": "Licht",
     "Dark": "Donker",
-    "High contrast": "Hoog contrast",
     "Auto": "Automatisch",
     "Manual": "Handmatig",
     "System": "Systeem",
@@ -235,7 +235,6 @@
     "Switch by itself": "Vanzelf wisselen",
     "Follow phone": "Volg telefoon",
     "Current": "Huidig",
-    "Theme groups": "Themagroepen",
     "Day and night": "Dag en nacht",
     "{name}, current theme": "{name}, huidig thema",
     "Warmth": "Warmte",
@@ -244,7 +243,6 @@
     "Dim": "Dimmen",
     "Only at night": "Alleen ’s nachts",
     "E-ink mode": "E-inkmodus",
-    "All themes and the editor…": "Alle thema’s en de editor…",
     "More theme settings…": "Meer thema-instellingen…",
     "Reading settings": "Leesinstellingen",
     "Reading": "Lezen",
@@ -368,6 +366,8 @@
 
   /* ==== 2. app.js, part A ==== */
   add({
+    /* the themes' names: the twelve built-ins, and the retired ones (RETIRED in app.js), kept so that a
+       retired theme can still be named to its readers */
     "theme|Day": "Dag",
     "Sepia": "Sepia",
     "Mist": "Mist",
@@ -398,9 +398,6 @@
     "Noir": "Noir",
     "theme|Contrast": "Contrast",
     "Contrast dark": "Contrast donker",
-    /* a look: its day theme and its night theme, "Dag & Schemer" */
-    "{day} & {night}": "{day} & {night}",
-    /* the four collections (Settings › Theme) */
     "Delft blue": "Delfts blauw",
     "Vermeer": "Vermeer",
     "Rembrandt": "Rembrandt",
@@ -421,17 +418,10 @@
     "Book cloth": "Boekenlinnen",
     "Laid paper": "Vergé",
     "Vellum": "Velijn",
-    "Collections": "Collecties",
-    "theme group|Dutch": "Hollands",
-    "Nature and seasons": "Natuur en seizoenen",
-    "Cozy": "Gezellig",
-    "Textured": "Met textuur",
-    "Plain background": "Effen achtergrond",
-    "Leaves out the paper or cloth texture of the Textured themes.": "Laat de papier- of stofstructuur van de thema’s met textuur weg.",
+    /* a look: its day theme and its night theme, "Dag & Schemer" */
+    "{day} & {night}": "{day} & {night}",
     "Light": "Licht",
     "Dark": "Donker",
-    "Colour": "Kleur",
-    "High contrast": "Hoog contrast",
     "name|Custom": "Eigen thema",
     "My theme": "Mijn thema",
     "Custom {n}": "Eigen thema {n}",
@@ -1805,16 +1795,13 @@
     "pos|proper noun": "eigennaam"
   });
 
-  /* ==== 9. themes: Mine, the maker, Previous, day and night ==== */
+  /* ==== 9. themes: Mine, the maker, day and night ==== */
   add({
-    "Mine": "Mijn thema's",
+    "Mine": "Mijn thema’s",
     "Make my own from this one": "Maak hier je eigen thema van",
     "Actions for {name}": "Acties voor {name}",
     "Edit, rename, duplicate or delete": "Bewerken, naam wijzigen, dupliceren of verwijderen",
     "Edit": "Bewerken",
-    "Back to {name}": "Terug naar {name}",
-    "Previous theme": "Vorig thema",
-    "Day and night themes": "Dag- en nachtthema",
     "On a schedule": "Op schema",
     "Day theme": "Dagthema",
     "Night theme": "Nachtthema",

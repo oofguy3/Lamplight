@@ -219,75 +219,36 @@
     }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
-  /* Built-in themes. Every pair the reader meets is at least 4.5:1 — tests/themes.js audits this
+  /* Built-in themes: twelve, which pair into the six looks (LOOKS below), each look's day theme before
+     its night theme. Every pair the reader meets is at least 4.5:1 — tests/themes.js audits this
      table: text, secondary text, the accent and the lamp on the page, the panel and the raised
-     surface; the panel colour on a lamp or accent fill; the text on the soft lamp and accent tints.
-     `panel` is the bars and sheets, `raise` the cards and sheets on top of them (a touch brighter on
-     a light page, a lift in the theme's own hue on a dark one). `line` is a decorative divider only:
-     a boundary that carries meaning is drawn in --edge (the secondary text colour) or the accent.
-     `lamp` is the "light, brand and now" colour (the progress line, the wordmark, the primary
-     buttons, the stars) and it belongs to the theme: brass or honey in the warm family, the theme's
-     own hue in the cool one (sky is blue, forest green, plum purple), the one signal colour of a
-     neutral one (paper's red ink, terminal's phosphor). `family` (warm, cool, neutral) records which;
-     a custom theme's lamp is its accent. */
+     surface; the panel colour on a lamp or accent fill, and the page colour on an accent fill; the
+     text on the soft lamp and accent tints, on a found word, on the sentence read aloud and on the
+     yellow highlight; the lamp on its own soft tint. It also checks that no two themes of one tone
+     are near-duplicates. `panel` is the bars and sheets, `raise` the cards and sheets on top of them
+     (a touch brighter on a light page, a lift in the theme's own hue on a dark one). `line` is a
+     decorative divider only: a boundary that carries meaning is drawn in --edge (the secondary text
+     colour) or the accent. `lamp` is the "light, brand and now" colour (the progress line, the
+     wordmark, the primary buttons, the stars) and it belongs to the theme: brass, amber or caramel
+     in the warm ones, green in Sage and Forest, a warm signal on the cool pages of Sea air and
+     Canals, the one signal colour of a neutral one (Paper's red ink, Ink's coral, the contrast
+     pair's blue and yellow). `family` (warm, cool, neutral) notes a theme's character; nothing
+     reads it. A custom theme's lamp is its accent. */
   var THEMES = {
-    /* light */
-    day:       {name:"Day",           family:"warm",    bg:"#EDEDE6", panel:"#F5F5EF", raise:"#FBFBF7", ink:"#1F2323", muted:"#5E6562", line:"#D8D9CF", accent:"#2F6D5B", lamp:"#955F0F"},
-    sepia:     {name:"Sepia",         family:"warm",    bg:"#E9DDC5", panel:"#F0E7D2", raise:"#F6EFDF", ink:"#40331F", muted:"#6A5B3F", line:"#D6C7A4", accent:"#86551A", lamp:"#86551A"},
-    parchment: {name:"Parchment",     family:"warm",    bg:"#F1E4C6", panel:"#F7ECD4", raise:"#FBF3E2", ink:"#2C2114", muted:"#67563A", line:"#DCCBA3", accent:"#8B2F2A", lamp:"#8B590E"},
-    linen:     {name:"Linen",         family:"warm",    bg:"#F3EFE6", panel:"#FAF8F1", raise:"#FDFCF8", ink:"#2B2A26", muted:"#625F57", line:"#DDD8CB", accent:"#5A6828", lamp:"#955F0F"},
-    peach:     {name:"Peach",         family:"warm",    bg:"#FBE7DA", panel:"#FDF1E8", raise:"#FFF8F3", ink:"#3B2A21", muted:"#72574A", line:"#EBD1C0", accent:"#146C72", lamp:"#A0461D"},
-    rose:      {name:"Rose",          family:"warm",    bg:"#F4E7E3", panel:"#F9EFEC", raise:"#FDF7F5", ink:"#44302D", muted:"#775D56", line:"#E3CFC9", accent:"#A8495A", lamp:"#A13F52"},
-    paper:     {name:"Paper",         family:"neutral", bg:"#FAFAF7", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#141414", muted:"#5C5C58", line:"#E1E1DA", accent:"#BE2A24", lamp:"#B3261E"},
-    newsprint: {name:"Newsprint",     family:"neutral", bg:"#E3E2DC", panel:"#EBEAE5", raise:"#F2F1ED", ink:"#2B2B2B", muted:"#5A5A57", line:"#CDCCC5", accent:"#A82424", lamp:"#9E2020"},
-    mist:      {name:"Mist",          family:"cool",    bg:"#E7EBEE", panel:"#F0F3F5", raise:"#F7F9FA", ink:"#25303A", muted:"#5A6773", line:"#D1D9DF", accent:"#3C6E93", lamp:"#2F6388"},
-    sky:       {name:"Sky",           family:"cool",    bg:"#E2EDF7", panel:"#EEF5FB", raise:"#F7FAFD", ink:"#17293A", muted:"#4C5F71", line:"#C7D8E7", accent:"#2068A8", lamp:"#1D5F9C"},
-    lavender:  {name:"Lavender",      family:"cool",    bg:"#ECE7F4", panel:"#F4F1FA", raise:"#FAF8FD", ink:"#29233A", muted:"#5D5573", line:"#D6CFE4", accent:"#6A4DB5", lamp:"#6446AE"},
-    mint:      {name:"Mint",          family:"cool",    bg:"#DEF2E8", panel:"#EAF7F0", raise:"#F5FBF8", ink:"#153128", muted:"#45655A", line:"#C1DFD1", accent:"#0D7566", lamp:"#0B6E60"},
-    sage:      {name:"Sage",          family:"cool",    bg:"#E3EADD", panel:"#EDF2E8", raise:"#F6F9F3", ink:"#1F2A22", muted:"#526055", line:"#CAD5C3", accent:"#A2502E", lamp:"#3E6A44"},
-    /* dark */
-    dusk:      {name:"Dusk",          family:"warm",    bg:"#14161B", panel:"#1B1E25", raise:"#25262B", ink:"#D6D3C8", muted:"#8E9088", line:"#33343A", accent:"#D8A24A", lamp:"#D8A24A"},
-    ink:       {name:"Ink",           family:"warm",    bg:"#050506", panel:"#0E0E11", raise:"#17171B", ink:"#C7C3B6", muted:"#86837A", line:"#24242A", accent:"#C08D3F", lamp:"#C08D3F"},
-    cocoa:     {name:"Cocoa",         family:"warm",    bg:"#1B1411", panel:"#241B17", raise:"#2D221D", ink:"#E9DBCF", muted:"#A6958A", line:"#3F312A", accent:"#D8A067", lamp:"#D8A067"},
-    ember:     {name:"Ember",         family:"warm",    bg:"#1A1210", panel:"#221815", raise:"#2B1F1B", ink:"#EBDACD", muted:"#A68F80", line:"#3F2D25", accent:"#F2812E", lamp:"#F2812E"},
-    candle:    {name:"Candle",        family:"warm",    bg:"#2A1D14", panel:"#33251A", raise:"#3B2B1F", ink:"#F0DDB4", muted:"#B8A485", line:"#4C3A2A", accent:"#E9C46A", lamp:"#E9C46A"},
-    amber:     {name:"Amber",         family:"warm",    bg:"#0F0A03", panel:"#17100A", raise:"#20170E", ink:"#FFB000", muted:"#B98319", line:"#302311", accent:"#FFDF70", lamp:"#FFDF70"},
-    forest:    {name:"Forest",        family:"cool",    bg:"#101711", panel:"#161F17", raise:"#1C271D", ink:"#CDD8C6", muted:"#86937F", line:"#2A3727", accent:"#7FB069", lamp:"#8FC274"},
-    moss:      {name:"Moss",          family:"cool",    bg:"#161A10", panel:"#1D2215", raise:"#242A1B", ink:"#D7DBC2", muted:"#959C80", line:"#343C29", accent:"#B7C86A", lamp:"#B7C86A"},
-    ocean:     {name:"Ocean",         family:"cool",    bg:"#0D141E", panel:"#131C29", raise:"#1A2533", ink:"#CBD5E1", muted:"#8190A4", line:"#26354A", accent:"#5C9CD6", lamp:"#6AAAE6"},
-    midnight:  {name:"Midnight",      family:"cool",    bg:"#0B1126", panel:"#111A36", raise:"#172142", ink:"#D8DDEE", muted:"#95A0BF", line:"#243056", accent:"#9DB4FF", lamp:"#9DB4FF"},
-    plum:      {name:"Plum",          family:"cool",    bg:"#17101F", panel:"#1E1628", raise:"#261D32", ink:"#D8CDE3", muted:"#958AA3", line:"#342846", accent:"#A97FD6", lamp:"#B78DE6"},
-    slate:     {name:"Slate",         family:"cool",    bg:"#1C2229", panel:"#242B33", raise:"#2B333C", ink:"#D5DBE1", muted:"#97A3AE", line:"#39434E", accent:"#EF8C76", lamp:"#EF8C76"},
-    graphite:  {name:"Graphite",      family:"neutral", bg:"#1E1F22", panel:"#26272B", raise:"#2D2E33", ink:"#D8D8D5", muted:"#A0A09C", line:"#3A3B41", accent:"#74D0B8", lamp:"#74D0B8"},
-    noir:      {name:"Noir",          family:"neutral", bg:"#000000", panel:"#0B0B0B", raise:"#141414", ink:"#C6C6C6", muted:"#8E8E8E", line:"#262626", accent:"#EDEDED", lamp:"#EDEDED"},
-    terminal:  {name:"Terminal",      family:"neutral", bg:"#050805", panel:"#0A110A", raise:"#0F190F", ink:"#3FE86F", muted:"#2FA354", line:"#183018", accent:"#D9FF6E", lamp:"#D9FF6E"},
-    /* Dutch: Delft blue, Vermeer, Rembrandt, the tulip fields, the polder and the canals at dusk */
-    delft:      {name:"Delft blue",  family:"cool",   bg:"#F2F4F3", panel:"#F8F9F8", raise:"#FFFFFF", ink:"#13285A", muted:"#4A5878", line:"#D2D9E6", accent:"#2350B0", lamp:"#1A3E8E"},
-    vermeer:    {name:"Vermeer",     family:"cool",   bg:"#11131B", panel:"#181B26", raise:"#202432", ink:"#ECE6D8", muted:"#A3A099", line:"#2D3243", accent:"#8EA6F0", lamp:"#F0D04C"},
-    rembrandt:  {name:"Rembrandt",   family:"warm",   bg:"#16140C", panel:"#1E1B11", raise:"#272317", ink:"#EBD9A8", muted:"#A99A76", line:"#383120", accent:"#DE8A55", lamp:"#F0B93A"},
-    tulips:     {name:"Tulip field", family:"warm",   bg:"#FBF2E4", panel:"#FDF7EE", raise:"#FFFCF7", ink:"#2E1E1A", muted:"#6E5650", line:"#ECDCC6", accent:"#2E6A3A", lamp:"#C0263A"},
-    polder:     {name:"Polder",      family:"cool",   bg:"#E2E5E4", panel:"#EBEDEC", raise:"#F3F4F4", ink:"#22282A", muted:"#565E61", line:"#CBD1D1", accent:"#2D5F7F", lamp:"#2E6B1F"},
-    canals:     {name:"Canals",      family:"cool",   bg:"#0E1F22", panel:"#13292D", raise:"#193337", ink:"#DCE6E2", muted:"#93A8A6", line:"#24403F", accent:"#E58E6C", lamp:"#F2C66B"},
-    /* nature and the seasons */
-    autumn:     {name:"Autumn wood", family:"warm",   bg:"#1E2316", panel:"#252B1C", raise:"#2D3422", ink:"#EDE3CC", muted:"#ABA58C", line:"#3A4229", accent:"#E8A04A", lamp:"#F08A4B"},
-    winter:     {name:"Winter morning", family:"cool",   bg:"#ECEFF4", panel:"#F4F6F9", raise:"#FAFBFD", ink:"#1B2733", muted:"#536070", line:"#D3D9E3", accent:"#2C5F8A", lamp:"#A93F55"},
-    aurora:     {name:"Northern lights", family:"cool",   bg:"#0A1218", panel:"#0F1A22", raise:"#15222C", ink:"#D5E4E6", muted:"#8CA3A8", line:"#1F3340", accent:"#5EE0A5", lamp:"#C49BFF"},
-    seaair:     {name:"Sea air",     family:"cool",   bg:"#E3EEF1", panel:"#EDF5F7", raise:"#F6FAFB", ink:"#12302F", muted:"#476663", line:"#C4DCE0", accent:"#0F5F7A", lamp:"#A6421B"},
-    blossom:    {name:"Cherry blossom", family:"warm",   bg:"#FBEDF1", panel:"#FDF5F7", raise:"#FFFAFB", ink:"#3A2229", muted:"#78545E", line:"#EFD5DC", accent:"#5A3A33", lamp:"#B3366A"},
-    /* cozy rooms */
-    coffee:     {name:"Coffee house", family:"warm",   bg:"#E6D5C3", panel:"#EEE2D5", raise:"#F6EFE7", ink:"#2E2018", muted:"#654F40", line:"#D5C0AA", accent:"#8A3B22", lamp:"#84490F"},
-    library:    {name:"Old library", family:"warm",   bg:"#0F231B", panel:"#152B22", raise:"#1B3429", ink:"#E8DFC6", muted:"#A7A38C", line:"#26402F", accent:"#E0947F", lamp:"#D6B05A"},
-    rain:       {name:"Rainy evening", family:"cool",   bg:"#151C26", panel:"#1B2430", raise:"#222C3A", ink:"#D3D9E0", muted:"#929BA6", line:"#323C4A", accent:"#9CC0E6", lamp:"#F3A04A"},
-    cabin:      {name:"Candle cabin", family:"warm",   bg:"#3A2516", panel:"#432C1C", raise:"#4C3322", ink:"#FBE9CC", muted:"#D0B698", line:"#5A4030", accent:"#F7A891", lamp:"#FFD27A"},
-    nighttrain: {name:"Night train", family:"warm",   bg:"#1A0F14", panel:"#22141B", raise:"#2B1A22", ink:"#EADBD8", muted:"#AE959B", line:"#3D2530", accent:"#9DBDF0", lamp:"#F2B45A"},
-    /* textured: a faint paper or cloth surface behind the text (app.css [data-texture]; off in e-ink, high contrast and with Plain background) */
-    handmade:   {name:"Handmade paper", family:"neutral",bg:"#F1EEE7", panel:"#F7F5F0", raise:"#FCFBF8", ink:"#222120", muted:"#5D5A55", line:"#DCD8CE", accent:"#24508F", lamp:"#8A5A14", texture:"grain"},
-    bookcloth:  {name:"Book cloth",  family:"cool",   bg:"#E4E6DE", panel:"#ECEEE7", raise:"#F4F5F1", ink:"#23261F", muted:"#565B51", line:"#CDD1C4", accent:"#3F5D7A", lamp:"#7A4E1C", texture:"linen"},
-    laid:       {name:"Laid paper",  family:"warm",   bg:"#EEEBDC", panel:"#F5F3E8", raise:"#FBFAF4", ink:"#26251C", muted:"#5E5B4A", line:"#D9D5C0", accent:"#6B3F86", lamp:"#8C5A12", texture:"laid"},
-    vellum:     {name:"Vellum",      family:"warm",   bg:"#F2E9DE", panel:"#F8F2EA", raise:"#FCF9F5", ink:"#2A2019", muted:"#66584C", line:"#E0D2C0", accent:"#2B4C9A", lamp:"#A3361C", texture:"vellum"},
-    /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
+    day:       {name:"Day",           family:"warm",    bg:"#F5EFE3", panel:"#FBF8F0", raise:"#FEFCF8", ink:"#2D2924", muted:"#645F58", line:"#DED8CB", accent:"#2C5D45", lamp:"#875C0C"},
+    dusk:      {name:"Dusk",          family:"warm",    bg:"#0D121C", panel:"#141A26", raise:"#1C2330", ink:"#DAD7CF", muted:"#A6A39B", line:"#2A313E", accent:"#D8A24A", lamp:"#D8A24A"},
+    paper:     {name:"Paper",         family:"neutral", bg:"#FAFAF7", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#141414", muted:"#5C5C58", line:"#DCDCD5", accent:"#A8261F", lamp:"#A8261F"},
+    ink:       {name:"Ink",           family:"neutral", bg:"#000000", panel:"#151413", raise:"#1F1E1C", ink:"#D6D2C5", muted:"#A3A097", line:"#302F2C", accent:"#E87A69", lamp:"#E87A69"},
+    sepia:     {name:"Sepia",         family:"warm",    bg:"#F0E4CB", panel:"#F7EDD8", raise:"#FAF4E6", ink:"#2E1E11", muted:"#695544", line:"#DFCDAE", accent:"#7C2623", lamp:"#855510"},
+    cocoa:     {name:"Cocoa",         family:"warm",    bg:"#261914", panel:"#30201A", raise:"#3A2920", ink:"#EEDFCB", muted:"#AEA394", line:"#49372C", accent:"#D8A067", lamp:"#D8A067"},
+    sage:      {name:"Sage",          family:"cool",    bg:"#DFE7D8", panel:"#EAF0E5", raise:"#F4F7F0", ink:"#1A261F", muted:"#4E5C51", line:"#C7D2BE", accent:"#9C4925", lamp:"#124830"},
+    forest:    {name:"Forest",        family:"cool",    bg:"#0E1A13", panel:"#14221A", raise:"#1A2B21", ink:"#D4DACC", muted:"#9DA595", line:"#283B2E", accent:"#7AB785", lamp:"#7AB785"},
+    seaair:    {name:"Sea air",       family:"cool",    bg:"#DCEDF0", panel:"#E9F5F6", raise:"#F4FAFA", ink:"#112126", muted:"#41545A", line:"#C2DCE0", accent:"#0B5A74", lamp:"#984121"},
+    canals:    {name:"Canals",        family:"cool",    bg:"#0E1F22", panel:"#13292D", raise:"#193337", ink:"#D0DCD8", muted:"#9DB1B0", line:"#24403F", accent:"#E58E6C", lamp:"#F2C66B"},
+    /* the contrast pair, for low vision or bright sunlight: black on pure white and a softened white on
+       pure black, each with one strong accent */
     hicon:     {name:"Contrast",      family:"neutral", bg:"#FFFFFF", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
-    hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
+    hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#F2F2F2", muted:"#D0D0D0", line:"#F2F2F2", accent:"#FFC72C", lamp:"#FFC72C"}
   };
   /* the retired themes, by id. A reader of one moves on every load (Prefs.load, through movedTo) to `to`,
      a kept theme of the same tone: the one its merges led to when fifty themes became twelve (Amber went
@@ -295,8 +256,8 @@
      always the nearest. Where `to` would make the day theme and the night theme one theme, the reader
      moves to `alt` instead, the nearest kept theme of that tone besides `to`. `name` and the five colours
      are the retired theme's own (its Dutch name stays in i18n.js), kept so that they can be offered back
-     as a theme of the reader's own. A literal of its own, since tests/themes.js reads THEMES alone;
-     resolveTheme and the pickers never look here */
+     as a theme of the reader's own. A literal of its own, since tests/themes.js reads THEMES as the set
+     of built-ins (and this table apart, to check each move); resolveTheme and the pickers never look here */
   var RETIRED = {
     parchment:  {to:"sepia",  alt:"sage",   name:"Parchment",       bg:"#F1E4C6", panel:"#F7ECD4", ink:"#2C2114", muted:"#67563A", accent:"#8B2F2A"},
     linen:      {to:"day",    alt:"sepia",  name:"Linen",           bg:"#F3EFE6", panel:"#FAF8F1", ink:"#2B2A26", muted:"#625F57", accent:"#5A6828"},
@@ -372,29 +333,6 @@
   ];
   /* the two high-contrast themes, which have a tone of their own (applyTheme) */
   var HICON = ["hicon", "hidark"];
-  /* the built-ins in the groups the picker showed before the looks. Nothing in the app uses them now:
-     the picker and Settings show the looks, and the day and night lists sort by page colour
-     (themeOptions). They stay while the table holds themes outside the looks, since tests/themes.js
-     still checks every built-in against these groups */
-  var THEME_GROUPS = {
-    light:  ["day", "paper", "sepia", "parchment", "linen", "newsprint", "mist"],
-    dark:   ["dusk", "ink", "graphite", "cocoa", "slate", "noir", "candle"],
-    colour: ["rose", "peach", "sage", "mint", "sky", "lavender", "forest", "moss", "ocean", "midnight", "plum", "ember", "terminal", "amber"],
-    /* the four collections */
-    dutch:   ["delft", "vermeer", "rembrandt", "tulips", "polder", "canals"],
-    nature:  ["autumn", "winter", "aurora", "seaair", "blossom"],
-    cozy:    ["coffee", "library", "rain", "cabin", "nighttrain"],
-    texture: ["handmade", "bookcloth", "laid", "vellum"]
-  };
-  var COLLECTIONS = ["dutch", "nature", "cozy", "texture"];
-  function themeGroups(){
-    return [{ id: "light", name: _t("Light"), ids: THEME_GROUPS.light.slice() }, { id: "dark", name: _t("Dark"), ids: THEME_GROUPS.dark.slice() },
-      { id: "colour", name: _t("Colour"), ids: THEME_GROUPS.colour.slice() },
-      { id: "dutch", name: _tc("theme group", "Dutch"), ids: THEME_GROUPS.dutch.slice() }, { id: "nature", name: _t("Nature and seasons"), ids: THEME_GROUPS.nature.slice() },
-      { id: "cozy", name: _t("Cozy"), ids: THEME_GROUPS.cozy.slice() }, { id: "texture", name: _t("Textured"), ids: THEME_GROUPS.texture.slice() },
-      { id: "hicon", name: _t("High contrast"), ids: HICON.slice() }];
-  }
-  var CYCLE = themeGroups().reduce(function(all, g){ return all.concat(g.ids); }, []);
   /* a theme's name on screen: a built-in's in the interface's language (the table above keeps the
      English), a saved one's as the reader named it */
   function themeName(theme){
@@ -499,7 +437,7 @@
        the reader off a retired theme ({ theme, autoDay, autoNight }, see movedTo), kept until the reader
        has been told; null when there is nothing to tell */
     themeWas:null,
-    zoom:1, soften:true, plainBg:false,
+    zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
     mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
   };
@@ -507,7 +445,7 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "plainBg", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked", "dnHold", "themeWas"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked", "dnHold", "themeWas"];
     var loading = false;
     /* a number inside its range, or the default when the stored value is nonsense */
     function num(v, lo, hi, dflt){
@@ -636,7 +574,6 @@
       state.eink = state.eink === true ? true : state.eink === false ? false : null;
       if (state.einkFlow !== "scroll" && state.einkFlow !== "pages") state.einkFlow = null;
       state.einkAsked = state.einkAsked === true;
-      state.plainBg = state.plainBg === true;
       /* e-ink mode keeps the Pages flow */
       if (state.eink) state.flow = "pages";
       loading = false;
@@ -837,12 +774,10 @@
     if (t && customById(state.theme)) Array.prototype.forEach.call(root.querySelectorAll(".pg"), function(p){ if (p.dataset.t === state.theme) p.setAttribute("style", tileVars(t)); });
   }
   /* <option>s for the Day theme and Night theme lists (Settings › Theme): Light, the looks' day
-     themes and then any other built-in with a light page, in the table's order; Dark, the same for
-     the night themes and dark pages; and the reader's own under Mine. In each list AutoTheme.syncUI
-     disables the other half's theme, so the pair stays two themes */
+     themes, and Dark, their night themes, each in the looks' order; then the reader's own under Mine.
+     In each list AutoTheme.syncUI disables the other half's theme, so the pair stays two themes */
   function themeOptions(){
     var light = LOOKS.map(function(l){ return l.day; }), dark = LOOKS.map(function(l){ return l.night; });
-    Object.keys(THEMES).forEach(function(k){ if (light.indexOf(k) < 0 && dark.indexOf(k) < 0) (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
     function group(name, ids){
       if (!ids.length) return "";
       return '<optgroup label="' + escapeHtml(name) + '">' + ids.map(function(k){ return '<option value="' + escapeHtml(k) + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
@@ -997,9 +932,6 @@
     for (var k = 1; k <= 20 && contrast(mark, c.panel) < 3; k++) mark = mix(lampC, c.ink, k * 0.05);
     r.setProperty("--lamp-mark", mark);
     root.setAttribute("data-tone", tone);
-    /* a textured theme's faint paper or cloth behind the text (app.css); none in e-ink mode, in the
-       high-contrast themes or with Plain background */
-    if (t.texture && !eink && tone !== "contrast" && !state.plainBg) root.setAttribute("data-texture", t.texture); else root.removeAttribute("data-texture");
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
     themeColor();
@@ -1184,8 +1116,8 @@
      much lower strength (a dark page multiplied by amber only turns muddy). Warmth is a
      percentage of the theme's ceiling, and that ceiling is whatever the theme can give up
      without any of its text — ink and secondary text, on the page and on the panel — falling
-     under 4.5:1 once the film is over it. Roomy themes reach the full 35 % (12 % dark); tight
-     ones (Sepia, Rose, Ink) stop earlier. */
+     under 4.5:1 once the film is over it. Every built-in reaches the full 35 % (12 % on a dark
+     page); a custom theme with less contrast to spare stops earlier. */
   var Warmth = (function(){
     var el = $("#warmth"), MAX_LIGHT = 0.35, MAX_DARK = 0.12, WARM = [255, 150, 50];
     var PAIRS = [["ink", "bg"], ["ink", "panel"], ["muted", "bg"], ["muted", "panel"]];
@@ -12309,8 +12241,6 @@
     $("#vZoom").textContent = e.target.value + " %";
     queueRerender();
   });
-  /* Plain background: the textured themes without their paper or cloth */
-  $("#plainBg").addEventListener("change", function(e){ state.plainBg = e.target.checked; applyTheme(); });
   $("#softenPdf").addEventListener("change", function(e){
     state.soften = e.target.checked;
     applyTheme();
@@ -14358,7 +14288,6 @@
   buildCustomUI();
   syncCustomUI();
   $("#softenPdf").checked = !!state.soften;
-  $("#plainBg").checked = !!state.plainBg;
   document.querySelectorAll("#flowChips .chip").forEach(function(ch){
     var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
   });
