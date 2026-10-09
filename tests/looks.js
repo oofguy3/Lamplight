@@ -11,7 +11,6 @@
    outside the pair, a hold on neither half) is folded back into that rule. Every built-in applies the
    colours of the spec's table, and nothing is left of the textures and Plain background.
      NODE_PATH=$(npm root -g) node tests/looks.js */
-const fs = require("fs"), path = require("path");
 const { serve, browser, openFixture, makeReport } = require("./lib");
 
 const st = (page) => page.evaluate(() => { const s = window.__ll.state; return { theme: s.theme, autoDay: s.autoDay, autoNight: s.autoNight, auto: s.auto, hold: s.dnHold }; });
@@ -69,8 +68,8 @@ const moved = (page) => page.evaluate(() => {
   const s = window.__ll.state;
   return { s: Object.assign(pick(s), { dn: window.llThemes.dnOf(s.theme) }), saved: pick(JSON.parse(localStorage.getItem("ll_prefs") || "{}")) };
 });
-/* the Dutch for "Mine" as i18n.js has it, whichever apostrophe that is */
-const MINE_NL = (/"Mine":\s*"([^"]*)"/.exec(fs.readFileSync(path.join(__dirname, "..", "i18n.js"), "utf8")) || [])[1];
+/* the Dutch for "Mine", with the curly apostrophe the glossary asks for (spec §11) */
+const MINE_NL = "Mijn thema’s";
 const NOON = new Date(2026, 9, 9, 12, 0, 0);
 /* 22:00 the same day, and the end of a hold made then (On a schedule, night 21:00–07:00) */
 const NIGHT = new Date(2026, 9, 9, 22, 0, 0), NEXT_7 = new Date(2026, 9, 10, 7, 0, 0).getTime();
@@ -360,8 +359,8 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       const page = await open(ctx, url, NOON);
       await openSettings(page);
       const l = await lists(page), ids = await page.evaluate(() => Object.keys(window.llThemes.THEMES));
-      /* both lists: Light and Dark open with the looks' day and night themes, every built-in is offered once (the
-         others after the twelve), and Mine holds the reader's own */
+      /* both lists: Light and Dark hold the looks' day and night themes, every built-in once, and Mine holds
+         the reader's own */
       const ok = (x) => x.groups.map((g) => g.label).join() === "Light,Dark,Mine" && x.groups[0].ids.slice(0, 6).join() === DAYS.join() && x.groups[1].ids.slice(0, 6).join() === NIGHTS.join() &&
         x.groups[2].ids.join() === "c:t3a" && ids.every((k) => x.groups[0].ids.concat(x.groups[1].ids).filter((v) => v === k).length === 1) && x.groups[0].ids.length + x.groups[1].ids.length === ids.length;
       R.check("lists: Light, Dark, Mine groups with the twelve first", ok(l.autoDay) && ok(l.autoNight), JSON.stringify(l.autoDay.groups.map((g) => g.label + ":" + g.ids.slice(0, 7).join(" "))));
@@ -380,7 +379,7 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       const page = await open(ctx, url);
       await openSettings(page);
       const lab = await page.evaluate(() => { const l = document.querySelector("#themeChips > .sub-label#tg-custom"); return l ? l.textContent : null; });
-      R.check("Settings' Mine label is in Dutch on a Dutch device", !!MINE_NL && /^Mijn thema/.test(MINE_NL) && lab === MINE_NL, lab + " / " + MINE_NL);
+      R.check("Settings' Mine label is in Dutch on a Dutch device", lab === MINE_NL, lab);
       await ctx.close();
     });
     await guard("settings, More theme settings…", async () => {

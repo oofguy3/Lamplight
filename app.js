@@ -12680,7 +12680,8 @@
       "  text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
       "#dictCard .chg[aria-expanded=true]{background:var(--accent-soft);}",
-      /* text on the ink tint is ink: muted slips under 4.5:1 on the tint on eight themes */
+      /* text on the ink tint is ink, as on every tint: a custom theme's secondary text is made to read
+         on its page and its panel, not on this tint */
       "#dictCard .chgnote{",
       "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
       "  font-family:var(--ui-font); font-size:var(--fs-small); line-height:1.5; color:var(--ink);",
