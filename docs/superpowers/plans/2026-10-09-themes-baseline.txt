@@ -1,0 +1,75 @@
+Themes stage: test baseline before any change
+Code: commit 7c5a1a4 (the spec commit; app code as at 41ec995). Recorded 2026-10-09.
+Run: each suite on its own with NODE_PATH=$(npm root -g) and LL_SHOTS set to a scratch folder (plan Task 0).
+
+Per suite (passed/total):
+  about.js: 47/47
+  daynight.js: 34/34
+  explain2-node.js: 55/55
+  explain2.js: 30/30
+  fonts.js: 86/88
+  i18n.js: 11/12
+  journal.js: 44/44
+  library2.js: 45/45
+  look.js: 18/18
+  notes2.js: 35/35
+  pace.js: 367/369
+  phonedock.js: 143/143
+  print.js: 32/32
+  qol.js: 40/40
+  reading.js: 11/11
+  regression.js: 64/64
+  simplify-node.js: 30/30
+  simplify.js: 29/29
+  smoke.js: 29/29
+  speak.js: 126/126
+  stats.js: 47/47
+  stats2.js: 31/31
+  textsheet.js: 65/65
+  themes-browser.js: 11/16
+  themes.js: 50 themes, 900/900 pairs pass
+  translate.js: 73/74
+  type2.js: 60/62
+  ui-a.js: 112/114
+  ui-b.js: 117/117
+  ui-c.js: 46/50
+  wordparts-browser.js: 28/28
+  wordparts.js: 303/303
+  zen.js: 40/40
+
+Browser and node suites with check counts: 2209/2228 checks passed (tests/themes.js counts pairs, listed separately).
+
+Failing checks (verbatim):
+  fonts.js:
+    FAIL the note on the current row reads at 4.5:1 or better on all 50 themes (min 0.00)  -- dusk null/null, ink null/null, cocoa null/null, ember null/null, candle null/null, amber null/null, forest null/null, moss null/null, ocean null/null, midnight null/null, plum null/null, slate null/null, graphite null/null, noir null/null, terminal null/null, vermeer null/null, rembrandt null/null, canals nul
+    FAIL the note on a hovered row reads at 4.5:1 or better on every theme (min 0.00)  -- dusk null/null, ink null/null, cocoa null/null, ember null/null, candle null/null, amber null/null, forest null/null, moss null/null, ocean null/null, midnight null/null, plum null/null, slate null/null, graphite null/null, noir null/null, terminal null/null, vermeer null/null, rembrandt null/null, canals null/nu
+  i18n.js:
+    FAIL table: every literal key in the scripts has Dutch  -- audiobook.js: Keep Lamplight open until it finishes | audiobook.js: Downloading — this carries on if you close Lamplight | audiobook.js: Best natural voices | audiobook.js: Fast natural voices | audiobook.js: Downloading… {pct}% · carries on if you close Lamplight | audiobook.js: The natural voices are still downloading — the device voice 
+  pace.js:
+    FAIL K6: one key press is one move, not a dozen animation frames  -- [["navigation",2],["skimmed",6]]
+    FAIL K6: nothing skimmed  -- 3087
+  themes-browser.js:
+    FAIL built-ins are grouped light / dark / colour / high contrast  -- Light:7,Dark:7,Colour:14,Dutch:6,Nature and seasons:5,Cozy:5,Textured:4,High contrast:2
+    FAIL chip groups are labelled  -- Light|Dark|Colour|Dutch|Nature and seasons|Cozy|Textured|High contrast|Mine
+    FAIL the popover lists the light, dark, colour and high-contrast themes, each in its pane, with the current one marked  -- {"light":7,"dark":7,"colour":14,"hi":2,"on":"day,day"}
+    FAIL New… creates a saved theme and selects it  -- paper
+    FAIL (exception)  -- TypeError: Cannot read properties of undefined (reading 'name')
+  translate.js:
+    FAIL pack (exception)  -- TimeoutError: page.waitForFunction: Timeout 120000ms exceeded.
+  type2.js:
+    FAIL all 30 themes keep their text at 4.5:1 through a full-strength film
+    FAIL a roomy theme wears the full film, a tight one less  -- day:0.35 sepia:0.31 parchment:0.35 linen:0.35 peach:0.35 rose:0.34 paper:0.35 newsprint:0.35 mist:0.35 sky:0.35 lavender:0.35 mint:0.35 sage:0.35 dusk:0.12 ink:0.12 cocoa:0.12 ember:0.12 candle:0.12 amber:0.12 forest:0.12 moss:0.12 ocean:0.12 midnight:0.12 plum:0.12 slate:0.12 graphite:0.12 noir:0.12 terminal:0.12 delft:0.35 vermeer:0.12
+  ui-a.js:
+    FAIL All text settings… closes the popover and opens the sheet at the Text group  -- 86.09375
+    FAIL a saved custom theme appears at the end of the dark row, selected  -- {"theme":"candle","on":"false","name":"Candle"}
+  ui-c.js:
+    FAIL desktop (exception)  -- TimeoutError: page.waitForFunction: Timeout 20000ms exceeded.
+    FAIL keys (exception)  -- TimeoutError: page.waitForFunction: Timeout 20000ms exceeded.
+    FAIL phone: the card is a bottom sheet with a grab handle  -- {"left":0,"right":390,"bottom":844,"height":692.078125,"radius":"24px","grab":true,"maxH":"692.08px","tabW":[186,186],"tabH":[44,44],"scrim":"color(srgb 0.121569 0.137255 0.137255 / 0.3)","footH":61,"overflow":false}
+    FAIL screenshots (exception)  -- TimeoutError: page.waitForFunction: Timeout 30000ms exceeded.
+
+Known causes: themes-browser stops at its line 82 (New… now opens the Maker); type2 wants 30 themes and a light theme
+with a ceiling under 0.2; fonts' colour parser cannot read oklab(); ui-a's custom-theme row check and its
+smooth-scroll timing; i18n's audiobook.js keys; translate's pack download and ui-c's three timeouts and the
+dictionary card height depend on the machine and the network; pace's K6 counts animation frames. A check listed
+here may pass later; a check not listed must keep passing unless a task rewrites it.
