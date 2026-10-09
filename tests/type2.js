@@ -288,9 +288,11 @@ function fakeClock(iso){
     /* every built-in has the contrast to spare for the whole film: 35 % on a light page, 12 % on a dark one */
     R.check("every built-in wears the full film (0.35 light, 0.12 dark)", audit.every((t) => t.a === (t.screen ? 0.12 : 0.35)),
       audit.map((t) => t.id + ":" + t.a).join(" "));
-    /* a theme of the reader's own with no contrast to spare: grey text at 4.54:1 on white. Its panel and
-       secondary text are derived as for any own theme, and the panel, a shade darker, already holds the
-       text under 4.5:1, so its ceiling comes down to nothing (llThemes.create makes it; it is recoloured here) */
+    /* a theme of the reader's own with no contrast to spare: grey text at 4.54:1 on white (llThemes.create
+       makes it; it is recoloured here). Its panel and secondary text are derived as for any own theme, and
+       the panel, a shade darker (#f8f8f8), already holds the text at 4.28:1 with no film at all, so the
+       ceiling steps down to nothing whatever the film does. This check pins that step down; the next one,
+       where nothing but the film can bring the text under 4.5:1, covers the film */
     const tight = await page.evaluate(() => {
       const T = window.llThemes, W = window.llType.warmth, keep = window.__ll.state.theme;
       const c = T.create();
@@ -301,6 +303,24 @@ function fakeClock(iso){
       return out;
     });
     R.check("a custom theme with text at 4.54:1 wears almost none", tight.text === 4.54 && tight.a < 0.05, JSON.stringify(tight));
+    /* the same grey text with its panel set to the page and its secondary text to the text, so all four
+       pairs read 4.54:1 with no film and only the film can bring one under 4.5:1. The ceiling is the
+       strongest film, in 0.5 % steps, that keeps all four at 4.5:1: 0.06 here, well short of the full
+       0.35 and more than nothing; one step more and a pair falls under */
+    const film = await page.evaluate(() => {
+      const T = window.llThemes, W = window.llType.warmth, keep = window.__ll.state.theme;
+      const pairs = [["ink", "bg"], ["ink", "panel"], ["muted", "bg"], ["muted", "panel"]];
+      const c = T.create();
+      Object.assign(c, { bg: "#ffffff", ink: "#767676", panel: "#ffffff", muted: "#767676", autoInk: false, accent: "#0033cc" });
+      T.select("c:" + c.id); W.set(100);
+      const t = T.current(), a = W.opacity(), screen = document.body.classList.contains("warm-dark");
+      const lowest = (f) => Math.round(Math.min(...pairs.map((p) => T.contrast(W.through(t[p[0]], screen, f), W.through(t[p[1]], screen, f)))) * 1000) / 1000;
+      const out = { plain: lowest(0), a: a, at: lowest(a), next: lowest(a + 0.005) };
+      W.set(0); T.select(keep);
+      return out;
+    });
+    R.check("a custom theme at 4.54:1 on its page and on its panel stops the film early",
+      film.plain >= 4.5 && film.a > 0 && film.a < 0.1 && film.at >= 4.5 && film.next < 4.5, JSON.stringify(film));
 
     /* paper and forced colours have no evening */
     await page.evaluate(() => window.llType.warmth.set(100)); await page.waitForTimeout(400);
