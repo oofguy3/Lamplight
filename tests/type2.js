@@ -341,6 +341,9 @@ function fakeClock(iso){
   await guard("night", async () => {
     const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, timezoneId: "UTC" });
     await ctx.addInitScript(fakeClock(), "2024-01-15T22:00:00Z");
+    /* a profile with Day and night off, so the night window is 21:00–07:00. A first run follows the phone
+       now, and with Day and night on the window is its own: on a light phone, never night */
+    await ctx.addInitScript(() => { try { if (!localStorage.getItem("ll_prefs")) localStorage.setItem("ll_prefs", JSON.stringify({ auto: "off" })); } catch(_){} });
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await setTheme(page, "day");

@@ -6,7 +6,8 @@
    to the half on screen shows at once, and a Day/Night hold carries over to it. An own theme picked,
    made or copied takes the place of the theme on screen in its half, and deleting one shows that
    half's fallback; a built-in picked by id brings its look. After every choice the theme on screen is
-   one of the pair's two themes, and the two differ. On load, a reader of a retired theme moves to the
+   one of the pair's two themes, and the two differ. A first run follows the phone's dark mode, in the
+   contrast pair on a device that asks for more contrast. On load, a reader of a retired theme moves to the
    nearest kept one, and what earlier versions left (a pair that is one theme twice, a theme on screen
    outside the pair, a hold on neither half) is folded back into that rule. Once, a notice then says
    what became of the retired themes the reader can still see, and offers them back as the reader's
@@ -851,6 +852,87 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       await page.keyboard.press("t"); await page.waitForTimeout(150);
       const r2 = await recent(), s = await st(page);
       R.check("ll_theme_recent is removed at boot and never written", r0 === null && r1 === null && r2 === null && s.theme === "ink" && s.autoDay === "c:t3a", JSON.stringify({ r0, r1, r2, s }));
+      await ctx.close();
+    });
+
+    /* ---------------- first run (§6) ---------------- */
+    /* with no ll_prefs, Day and night starts on Follow phone and the theme on screen is the half the phone asks
+       for, set before the first theme is applied, so the page never shows Day and then turns to Dusk; a device
+       that asks for more contrast starts in the contrast pair. A stored profile keeps its own setting, even one
+       with no auto field, and Clear everything makes the next load a first run. Every --bg the page sets on its
+       root is noted from before app.js runs */
+    const firstRun = async (opts, seed) => {
+      const ctx = await context(b, opts, seed);
+      await ctx.addInitScript(() => {
+        window.__bgs = [];
+        const set = CSSStyleDeclaration.prototype.setProperty;
+        CSSStyleDeclaration.prototype.setProperty = function(k, v){
+          if (k === "--bg" && this === document.documentElement.style) window.__bgs.push(String(v).toUpperCase());
+          return set.apply(this, arguments);
+        };
+      });
+      return { ctx, page: await open(ctx, url) };
+    };
+    /* Auto, the theme and the pair; Settings' pressed Auto chip ("system:Follow phone") and its now line; the
+       --bg values set so far; the tone; the pressed look in Settings; and what is stored */
+    const firstState = (page) => page.evaluate(() => {
+      const s = window.__ll.state, chip = document.querySelector('#autoChips .chip[aria-pressed="true"]'), look = document.querySelector('#themeChips .tile.look[aria-pressed="true"]');
+      const saved = JSON.parse(localStorage.getItem("ll_prefs") || "null");
+      return { auto: s.auto, theme: s.theme, autoDay: s.autoDay, autoNight: s.autoNight, chips: chip ? chip.dataset.auto + ":" + chip.textContent.trim() : null,
+        now: document.getElementById("autoHint").textContent, bgs: window.__bgs.slice(), tone: document.documentElement.dataset.tone, look: look ? look.dataset.look : null,
+        saved: saved && { auto: saved.auto, theme: saved.theme, autoDay: saved.autoDay, autoNight: saved.autoNight } };
+    });
+    await guard("first run, a light phone", async () => {
+      const { ctx, page } = await firstRun(PHONE);
+      const f = await firstState(page);
+      await openTheme(page);
+      const q = await page.evaluate(() => { const c = document.querySelector('#qAuto .chip[aria-pressed="true"]'); return { auto: c ? c.dataset.auto : null, now: document.getElementById("qNow").textContent }; });
+      R.check("fresh, light phone: auto system, Day, chips show Follow phone", f.auto === "system" && f.theme === "day" && f.autoDay === "day" && f.autoNight === "dusk" && f.look === "day" &&
+        f.chips === "system:Follow phone" && q.auto === "system" && f.now === "Now: Day, while your phone is set to light" && q.now === f.now, JSON.stringify({ f, q }));
+      await ctx.close();
+    });
+    await guard("first run, a dark phone", async () => {
+      const { ctx, page } = await firstRun(Object.assign({ colorScheme: "dark" }, PHONE));
+      const f = await firstState(page);
+      R.check("fresh, dark phone (colorScheme dark): Dusk", f.auto === "system" && f.theme === "dusk" && f.autoDay === "day" && f.autoNight === "dusk" && f.tone === "dark" &&
+        f.chips === "system:Follow phone" && f.now === "Now: Dusk, while your phone is set to dark", JSON.stringify(f));
+      R.check("fresh, dark phone: Dusk is the first theme the page applies, not Day and then Dusk", f.bgs.length > 0 && f.bgs.every((c) => c === "#0D121C"), f.bgs.join(" "));
+      await ctx.close();
+    });
+    await guard("first run, more contrast", async () => {
+      const light = await firstRun({ contrast: "more" });
+      const l = await firstState(light.page);
+      await light.ctx.close();
+      const dark = await firstRun({ contrast: "more", colorScheme: "dark" });
+      const d = await firstState(dark.page);
+      await dark.ctx.close();
+      R.check("fresh, prefers-contrast more, light: hicon with hicon/hidark", l.auto === "system" && l.theme === "hicon" && l.autoDay === "hicon" && l.autoNight === "hidark" &&
+        l.tone === "contrast" && l.look === "hicon", JSON.stringify(l));
+      R.check("fresh, prefers-contrast more, dark: hidark with hicon/hidark, the first theme applied", d.auto === "system" && d.theme === "hidark" && d.autoDay === "hicon" && d.autoNight === "hidark" &&
+        d.tone === "contrast" && d.look === "hicon" && d.bgs.length > 0 && d.bgs.every((c) => c === "#000000"), JSON.stringify(d));
+    });
+    await guard("first run, a stored profile", async () => {
+      /* a light phone: a first run would show Day */
+      const { ctx, page } = await firstRun(null, { ll_prefs: { theme: "dusk" } });
+      const f = await firstState(page);
+      R.check('an existing profile with no auto field ({theme: "dusk"}) stays off, with Dusk on screen', f.auto === "off" && f.theme === "dusk" && f.autoDay === "day" && f.autoNight === "dusk" &&
+        f.chips === "off:Off" && f.bgs.length > 0 && f.bgs.every((c) => c === "#0D121C"), JSON.stringify(f));
+      await ctx.close();
+    });
+    await guard("first run, after Clear everything", async () => {
+      /* the Storage panel's Clear everything (both questions answered yes) empties the device and reloads */
+      const { ctx, page } = await firstRun(null, { ll_prefs: { auto: "off", theme: "dusk" } });
+      const before = await firstState(page);
+      page.on("dialog", (d) => d.accept());
+      await Promise.all([page.waitForNavigation({ waitUntil: "load", timeout: 20000 }), page.evaluate(() => window.llStorage.act("wipe")).catch(() => {})]);
+      await page.waitForTimeout(300);
+      const after = await firstState(page);
+      await page.reload({ waitUntil: "load" }); await page.waitForTimeout(150);
+      const again = await firstState(page);
+      R.check("Clear everything then reload: auto system", before.auto === "off" && before.theme === "dusk" && after.auto === "system" && after.theme === "day" && after.autoDay === "day" &&
+        after.autoNight === "dusk" && after.chips === "system:Follow phone", JSON.stringify({ before, after }));
+      R.check("a first run's Follow phone is stored: the next load is no first run, and keeps it", !!after.saved && after.saved.auto === "system" && after.saved.theme === "day" &&
+        again.auto === "system" && again.theme === "day", JSON.stringify({ saved: after.saved, again }));
       await ctx.close();
     });
 

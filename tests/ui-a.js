@@ -173,6 +173,9 @@ const SPEECH_STUB = `(() => {
   section("Theme popover");
   await guard("theme", async () => {
     const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
+    /* a profile with Day and night off, the setting these checks start from: a first run follows the
+       phone now. Stored only while nothing is, so a reload keeps what the page saved */
+    await ctx.addInitScript(() => { try { if (!localStorage.getItem("ll_prefs")) localStorage.setItem("ll_prefs", JSON.stringify({ auto: "off" })); } catch(_){} });
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await page.click("#lamp"); await page.waitForTimeout(250);

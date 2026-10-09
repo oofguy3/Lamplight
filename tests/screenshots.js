@@ -6,8 +6,9 @@ const { serve, browser, newPage, openFixture } = require("./lib");
 const OUT = process.env.LL_SHOT_DIR || path.join(__dirname, "..", "docs", "screenshots");
 fs.mkdirSync(OUT, { recursive: true });
 const only = process.argv.slice(2);
-/* the first-run tips and their toast belong in a first run, not in a picture of the app */
-const QUIET = `(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch (e){} })();`;
+/* the first-run tips and their toast belong in a first run, not in a picture of the app, and so does the
+   one-time toast a first theme of one's own brings while Day and night is on, as it is on a first run */
+const QUIET = `(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); localStorage.setItem("ll_auto_asked", "1"); } catch (e){} })();`;
 const want = (n) => !only.length || only.indexOf(n) >= 0;
 
 /* a believable set of voices: two women, two men, one of each "natural", one compact */

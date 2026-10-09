@@ -14382,9 +14382,14 @@
   Prefs.load();
   Store.remove("ll_apikey");   /* the key of the old online explainer: wiped from devices */
   Store.remove("ll_theme_recent");   /* the themes the picker's Recent row listed, which has gone */
-  /* first run on a device that asks for more contrast: start with the high-contrast theme */
-  if (!Store.get("ll_prefs") && window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){
-    state.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "hidark" : "hicon";
+  /* a first run (nothing stored, as after Clear everything): Day and night follows the phone, and the
+     theme on screen is the half the phone asks for, set before any theme is applied so the app never
+     opens in Day and then turns to Dusk. A device that asks for more contrast gets the contrast pair. A
+     stored profile keeps its own setting, even one with no auto field, since `state` starts Off */
+  if (!Store.get("ll_prefs")){
+    state.auto = "system";
+    if (window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){ state.autoDay = "hicon"; state.autoNight = "hidark"; }
+    state.theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? state.autoNight : state.autoDay;
   }
   headVar();
   buildThemeChips();
