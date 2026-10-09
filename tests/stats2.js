@@ -109,16 +109,16 @@ async function panel(page){
     r.spark.label === "Reading speed over 12 weeks: 198 to 245 words per minute", JSON.stringify(r.spark));
   R.check("the latest week is stated in words", r.now === "245 wpm", r.now);
   R.check("a rising trend reads as a percentage on last month", /Speed is up \d+ % on last month/.test(r.text),
-    (r.text.match(/READING SPEED[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
+    (r.text.match(/Reading speed[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
   r = await trend(weeks([220, 222, 218, 221, 219, 223, 220, 221, 222, 220, 219, 221]), "steady");
   R.check("a steady trend names the speed instead", /Steady at about 221 words per minute/.test(r.text),
-    (r.text.match(/READING SPEED[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
+    (r.text.match(/Reading speed[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
   r = await trend(weeks([null, null, null, null, null, null, null, null, null, null, 240, 200]), "thin");
   R.check("under three weeks of data it says so, and draws nothing", /Not enough reading yet to see a trend/.test(r.text) && r.spark === null,
-    (r.text.match(/READING SPEED[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
+    (r.text.match(/Reading speed[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
   r = await trend(weeks([260, 255, 258, 256, 230, 228, 232, 229]), "falling");
   R.check("a falling trend says down", /Speed is down \d+ % on last month/.test(r.text),
-    (r.text.match(/READING SPEED[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
+    (r.text.match(/Reading speed[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
 
   /* ---------- 3. the yearly goals ---------- */
   ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
@@ -127,7 +127,7 @@ async function panel(page){
   await panel(page);
   text = await bodyText(page);
   R.check("This year shows books and pages against the suggested goals",
-    /THIS YEAR\nBooks finished\n0 of 12\n/.test(text) && /Pages read\n\d/.test(text), (text.match(/THIS YEAR[\s\S]{0,140}/) || [""])[0].replace(/\n/g, " | "));
+    /This year\nBooks finished\n0 of 12\n/.test(text) && /Pages read\n\d/.test(text), (text.match(/This year[\s\S]{0,140}/) || [""])[0].replace(/\n/g, " | "));
   R.check("pages are estimated from words when no PDF was read", /Pages read\n\d+ pages?\n/.test(text),
     (text.match(/Pages read[\s\S]{0,40}/) || [""])[0].replace(/\n/g, " | "));
   const fields = await page.$$eval("#sideBody .st-yg-in", (els) => els.map((e) => e.id + "=" + e.value + "/" + e.getAttribute("aria-label")));
@@ -176,7 +176,7 @@ async function panel(page){
   await page.click("#finSave");
   await panel(page);
   text = await bodyText(page);
-  R.check("the books-finished count follows it", /Books finished\n1 of 12\n/.test(text), (text.match(/THIS YEAR[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
+  R.check("the books-finished count follows it", /Books finished\n1 of 12\n/.test(text), (text.match(/This year[\s\S]{0,80}/) || [""])[0].replace(/\n/g, " | "));
   R.check("the widget counts it too", / · 1 of 12 books this year$/.test((await page.evaluate(() => { const el = document.querySelector("#streak .st-widget"); return el ? el.innerText : ""; })) || " · 1 of 12 books this year"));
   await page.keyboard.press("Escape");
   /* a second, half-read book: the Books section lists both with a forecast */

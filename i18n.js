@@ -115,8 +115,9 @@
    bookmark(s) ............ bladwijzer(s)
    highlights, notes and bookmarks together ... aantekeningen
    theme / themes ......... thema / thema’s (Day → Dag, Night → Nacht, Light → Licht, Dark → Donker,
-                            High contrast → Hoog contrast, Custom → Eigen, Auto → Automatisch,
-                            Manual → Handmatig, Follow system → Systeem volgen, By time → Op tijd)
+                            Mine → Mijn thema’s, Custom → Eigen; a look is named for its two themes,
+                            Day & Dusk → Dag & Schemer; Day and night → Dag en nacht, with Off → Uit,
+                            Follow phone → Volg telefoon, On a schedule → Op schema)
    colours ................ Background → Achtergrond, Accent → Accentkleur, Panel → Paneel,
                             Secondary text → Secundaire tekst, colour → kleur
    type (text settings) ... tekst (Text settings → Tekstinstellingen; font → lettertype; Size →
@@ -176,6 +177,27 @@
     "Contents": "Inhoud",
     "Read aloud": "Voorlezen",
     "Text settings": "Tekstinstellingen",
+    "Close text settings": "Tekstinstellingen sluiten",
+    "Line spacing": "Regelafstand",
+    "Tight": "Krap",
+    "Normal": "Normaal",
+    "Airy": "Ruim",
+    "Narrow": "Smal",
+    "Wide": "Breed",
+    "Custom {v}": "Aangepast {v}",
+    "type|Custom": "Aangepast",
+    "All fonts": "Alle lettertypen",
+    "Reading controls": "Leesbediening",
+    "Back to library": "Terug naar de bibliotheek",
+    "Position in book": "Positie in het boek",
+    "Page {n} of {m}": "Pagina {n} van {m}",
+    "{p}% through the book": "{p}% van het boek gelezen",
+    "Under a minute left in chapter": "Nog geen minuut in dit hoofdstuk",
+    "{n} min left in chapter": "Nog {n} min in dit hoofdstuk",
+    "{h} h {m} min left in chapter": "Nog {h} u {m} min in dit hoofdstuk",
+    "{h} h left in chapter": "Nog {h} u in dit hoofdstuk",
+    "Fine-tune": "Fijnafstelling",
+    "Weight, letter and word spacing, focus reading": "Gewicht, letter- en woordafstand, focuslezen",
     "Theme": "Thema",
     "More actions": "Meer acties",
     "More": "Meer",
@@ -206,7 +228,6 @@
     "Recent": "Recent",
     "Light": "Licht",
     "Dark": "Donker",
-    "High contrast": "Hoog contrast",
     "Auto": "Automatisch",
     "Manual": "Handmatig",
     "System": "Systeem",
@@ -214,7 +235,6 @@
     "Switch by itself": "Vanzelf wisselen",
     "Follow phone": "Volg telefoon",
     "Current": "Huidig",
-    "Theme groups": "Themagroepen",
     "Day and night": "Dag en nacht",
     "{name}, current theme": "{name}, huidig thema",
     "Warmth": "Warmte",
@@ -223,7 +243,7 @@
     "Dim": "Dimmen",
     "Only at night": "Alleen ’s nachts",
     "E-ink mode": "E-inkmodus",
-    "All themes and the editor…": "Alle thema’s en de editor…",
+    "More theme settings…": "Meer thema-instellingen…",
     "Reading settings": "Leesinstellingen",
     "Reading": "Lezen",
     "Reading flow": "Leesweergave",
@@ -301,6 +321,8 @@
     "Tap a word for its meaning and its parts": "Tik op een woord voor de betekenis en de woorddelen",
     "Hold a sentence to explain, simplify or translate it": "Druk lang op een zin om hem uit te leggen, te vereenvoudigen of te vertalen",
     "Press ⋯ for read aloud, stats, zen mode and more": "Tik op ⋯ voor voorlezen, statistieken, zenmodus en meer",
+    "While reading, tap the lamp for read aloud, stats, zen mode and more.": "Tik tijdens het lezen op de lamp voor voorlezen, statistieken, zenmodus en meer.",
+    "Scroll: tap the lamp for your reading controls. Pages: tap the left or right edge, or swipe sideways, to turn; swipe up or tap the lamp for your reading controls.": "Scrollen: tik op de lamp voor je leesbediening. Pagina’s: tik op de linker- of rechterrand of veeg opzij om om te slaan; veeg omhoog of tik op de lamp voor je leesbediening.",
     "Got it": "Begrepen",
     "Recent files": "Recente bestanden",
     "The books you have finished": "De boeken die je hebt uitgelezen",
@@ -344,6 +366,8 @@
 
   /* ==== 2. app.js, part A ==== */
   add({
+    /* the themes' names: the twelve built-ins, and the retired ones (RETIRED in app.js), kept so that a
+       retired theme can still be named to its readers */
     "theme|Day": "Dag",
     "Sepia": "Sepia",
     "Mist": "Mist",
@@ -374,7 +398,6 @@
     "Noir": "Noir",
     "theme|Contrast": "Contrast",
     "Contrast dark": "Contrast donker",
-    /* the four collections (Settings › Theme and the picker’s Collections tab) */
     "Delft blue": "Delfts blauw",
     "Vermeer": "Vermeer",
     "Rembrandt": "Rembrandt",
@@ -395,17 +418,10 @@
     "Book cloth": "Boekenlinnen",
     "Laid paper": "Vergé",
     "Vellum": "Velijn",
-    "Collections": "Collecties",
-    "theme group|Dutch": "Hollands",
-    "Nature and seasons": "Natuur en seizoenen",
-    "Cozy": "Gezellig",
-    "Textured": "Met textuur",
-    "Plain background": "Effen achtergrond",
-    "Leaves out the paper or cloth texture of the Textured themes.": "Laat de papier- of stofstructuur van de thema’s met textuur weg.",
+    /* a look: its day theme and its night theme, "Dag & Schemer" */
+    "{day} & {night}": "{day} & {night}",
     "Light": "Licht",
     "Dark": "Donker",
-    "Colour": "Kleur",
-    "High contrast": "Hoog contrast",
     "name|Custom": "Eigen thema",
     "My theme": "Mijn thema",
     "Custom {n}": "Eigen thema {n}",
@@ -1003,7 +1019,7 @@
     "Not now": "Niet nu",
     "Save": "Opslaan",
     "Finished {title}. A card at the foot of the page asks for your stars.": "Je hebt {title} uitgelezen. Onder aan de pagina kun je sterren geven.",
-    "You can add it later: ⋯ › Mark as finished": "Je kunt het later toevoegen: ⋯ › Als uitgelezen markeren",
+    "You can add it later: More › Mark as finished": "Je kunt het later toevoegen: Meer › Als uitgelezen markeren",
     "Added to your reading journal": "Toegevoegd aan je leesdagboek",
     "Journal entry saved": "Opgeslagen in je leesdagboek",
     "Finished {date}": "Uitgelezen op {date}",
@@ -1031,6 +1047,8 @@
     "Hide reading ruler": "Leesliniaal verbergen",
     "Reading ruler": "Leesliniaal",
     "Zen mode — press z or Esc to leave": "Zenmodus — druk op z of Esc om te stoppen",
+    "Zen mode — tap the lamp to leave": "Zenmodus — tik op de lamp om te stoppen",
+    "Tap the lamp to leave zen mode": "Tik op de lamp om de zenmodus te verlaten",
     "Press z or Esc to leave zen mode": "Druk op z of Esc om de zenmodus te verlaten",
     "Leave zen mode": "Zenmodus verlaten",
     "Zen mode": "Zenmodus",
@@ -1107,6 +1125,7 @@
     "Close settings": "Instellingen sluiten",
     /* first-run tip, the theme editor, the type reset */
     "Tip: tap any word for its meaning": "Tip: tik op een woord voor de betekenis",
+    "Tap a word for its meaning. Tap the lamp for your reading controls.": "Tik op een woord voor de betekenis. Tik op de lamp voor je leesbediening.",
     "Name for this theme": "Naam voor dit thema",
     "{name} copy": "Kopie van {name}",
     "Copied as “{name}”": "Gekopieerd als “{name}”",
@@ -1776,16 +1795,13 @@
     "pos|proper noun": "eigennaam"
   });
 
-  /* ==== 9. themes: Mine, the maker, Previous, day and night ==== */
+  /* ==== 9. themes: Mine, the maker, day and night ==== */
   add({
-    "Mine": "Mijn thema's",
+    "Mine": "Mijn thema’s",
     "Make my own from this one": "Maak hier je eigen thema van",
     "Actions for {name}": "Acties voor {name}",
     "Edit, rename, duplicate or delete": "Bewerken, naam wijzigen, dupliceren of verwijderen",
     "Edit": "Bewerken",
-    "Back to {name}": "Terug naar {name}",
-    "Previous theme": "Vorig thema",
-    "Day and night themes": "Dag- en nachtthema",
     "On a schedule": "Op schema",
     "Day theme": "Dagthema",
     "Night theme": "Nachtthema",
@@ -1794,10 +1810,19 @@
     "Now: {name}, while your phone is set to dark": "Nu: {name}, zolang je telefoon op donker staat",
     "Now: {name}, while your phone is set to light": "Nu: {name}, zolang je telefoon op licht staat",
     "Now: {name}, day and night": "Nu: {name}, dag en nacht",
-    "Day and night is on: this theme lasts until the next switch.": "Dag en nacht staat aan: dit thema blijft tot de volgende wissel.",
+    "Day and night is on: {name} is now your night theme.": "Dag en nacht staat aan: {name} is nu je nachtthema.",
+    "Day and night is on: {name} is now your day theme.": "Dag en nacht staat aan: {name} is nu je dagthema.",
     "Turn off": "Uitzetten",
     "Day and night switching is off": "Wisselen tussen dag en nacht staat uit",
     "Deleted \u201C{name}\u201D": "\u201C{name}\u201D verwijderd",
+    /* a look tapped over a pair that was no look; the toast offers Undo */
+    "{name} for day and night": "{name} voor dag en nacht",
+    /* the notice after a move off a retired theme (ThemeNotice): "Kaars is nu Cacao", the changes joined
+       as a list, and its button */
+    "Themes have changed: {changes}.": "De thema’s zijn veranderd: {changes}.",
+    "{old} is now {new}": "{old} is nu {new}",
+    "Keep the old colours": "Oude kleuren houden",
+    "Your old colours are back, under Mine.": "Je oude kleuren zijn terug, onder Mijn thema’s.",
     "Saved \u201C{name}\u201D": "\u201C{name}\u201D opgeslagen",
     "{what}: any colour": "{what}: elke kleur",
     "Chapter three": "Hoofdstuk drie",

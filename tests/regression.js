@@ -138,7 +138,8 @@ async function textPoint(page, word){
     await page.keyboard.press("s"); await page.waitForTimeout(300);
     R.check("settings sheet opens with s", await page.$eval("#sheet", (s) => s.classList.contains("open")));
     const t0 = await page.evaluate(() => window.__ll.state.theme);
-    await page.keyboard.press("t"); await page.waitForTimeout(100);
+    /* t cross-fades: the theme lands a frame or two later */
+    await page.keyboard.press("t"); await page.waitForFunction((x) => window.__ll.state.theme === x, t0 === "day" ? "dusk" : "day", { timeout: 1500 }).catch(() => {});
     R.check("t switches between the day and night themes", (await page.evaluate(() => window.__ll.state.theme)) === (t0 === "day" ? "dusk" : "day"), t0 + " -> " + (await page.evaluate(() => window.__ll.state.theme)));
     const s0 = await page.evaluate(() => window.__ll.state.size);
     await page.keyboard.press("+"); await page.waitForTimeout(100);
@@ -300,6 +301,8 @@ async function textPoint(page, word){
     R.check("EPUB title from metadata", /The Lamp/.test(await page.$eval("#fname", (e) => e.textContent)), await page.$eval("#fname", (e) => e.textContent));
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     R.check("no horizontal overflow on a phone", !overflow);
+    /* on a phone the reading tools live in the dock the lamp opens */
+    await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250);
     await page.tap("#gear"); await page.waitForTimeout(300);
     R.check("the type popover opens as a bottom sheet on touch", await page.evaluate(() => document.getElementById("pop").classList.contains("open") && window.llPop.is("type")));
     /* near the top of the screen: the popover is a bottom sheet, and the middle of the scrim is

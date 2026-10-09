@@ -2,11 +2,11 @@
    (Explain · Simpler), the translation under the word or the quote, a footer of actions on the
    passage, and a two-button selection pill. Roles and keys, lazy panels, the badge and the dot, Copy and
    Say it, contrast of the new tints on the hardest themes, the bottom sheet on a phone.
-   Screenshots of every tab at 1200×800 and 390×844 in Day, Dusk, Newsprint and Terminal go
+   Screenshots of every tab at 1200×800 and 390×844 in Day, Dusk, Paper and Forest go
    to $LL_SHOTS (default: the OS temp dir).
      NODE_PATH=$(npm root -g) node tests/ui-c.js */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, makeReport, PARSE_COLOR } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-ui-c");
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -67,15 +67,17 @@ const tabState = (page) => page.evaluate(() => Array.from(document.querySelector
   tabindex: b.tabIndex, badge: (b.querySelector(".bdg") || {}).textContent || null, dot: !!b.querySelector(".dot"), controls: b.getAttribute("aria-controls"),
   panelHidden: document.getElementById(b.getAttribute("aria-controls")).hidden, focused: document.activeElement === b })));
 const footer = (page) => page.$$eval("#dictMarkActs button", (bs) => bs.map((b) => b.dataset.m + ":" + b.textContent.trim()));
-const theme = (page, k) => page.evaluate((k) => document.querySelector('#themeChips [data-theme="' + k + '"]').click(), k);
-/* contrast of an element's text against what is painted behind it (tints are composited over the panel) */
+/* any theme on screen by its id, at once (the raw setter: no cross-fade, the pair left alone) */
+const theme = (page, k) => page.evaluate((k) => window.llThemes.select(k), k);
+/* contrast of an element's text against what is painted behind it (tints are composited over the panel;
+   null when a colour can't be read) */
 const CONTRAST = `(el, behind) => {
-  const parse = (s) => { if (/^color\\(srgb/.test(s)){ const m = s.match(/[\\d.]+/g).map(Number); return { rgb: m.slice(0, 3).map((c) => c * 255), a: m.length > 3 ? m[3] : 1 }; }
-    const m = (s.match(/[\\d.]+/g) || [0, 0, 0]).map(Number); return { rgb: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; };
+  const parseColor = ${PARSE_COLOR};
   const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
   const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-  const cs = getComputedStyle(el), base = parse(getComputedStyle(behind).backgroundColor).rgb;
-  const bg = over(parse(cs.backgroundColor), base), fg = over(parse(cs.color), bg);
+  const cs = getComputedStyle(el), base = parseColor(getComputedStyle(behind).backgroundColor), wash = parseColor(cs.backgroundColor), ink = parseColor(cs.color);
+  if (!base || !wash || !ink) return null;
+  const bg = over(wash, base.rgb), fg = over(ink, bg);
   const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
 }`;
 
@@ -183,7 +185,7 @@ const CONTRAST = `(el, behind) => {
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
     /* the new tints on the hardest themes: selected and idle tabs, the badge, the primary chip, the quote */
-    for (const th of ["newsprint", "candle", "terminal", "hidark"]){
+    for (const th of ["sepia", "cocoa", "forest", "hidark"]){
       await theme(page, th); await page.waitForTimeout(150);
       await holdSentence(page, "Nobody could have");
       await page.waitForSelector("#dictQuote", { timeout: 10000 }).catch(() => null);
@@ -266,16 +268,18 @@ const CONTRAST = `(el, behind) => {
     R.check("the card follows the dock down when read aloud stops", d.card <= d.dock - 20 && d.card >= d.dock - 80, JSON.stringify(d));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     await page.keyboard.press("p"); await page.waitForTimeout(400);
-    /* the role labels and the change notes on the ink tint read on the themes where muted did not */
+    /* the role labels and the change notes on the ink tint read at 4.5:1 or better, on Day and on three dark
+       themes (Canals and Forest give the lowest ratios of the twelve) */
     const TINTED = `(el, tint, behind) => {
-      const parse = (s) => { if (/^color\\(srgb/.test(s)){ const m = s.match(/[\\d.]+/g).map(Number); return { rgb: m.slice(0, 3).map((c) => c * 255), a: m.length > 3 ? m[3] : 1 }; }
-        const m = (s.match(/[\\d.]+/g) || [0, 0, 0]).map(Number); return { rgb: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; };
+      const parseColor = ${PARSE_COLOR};
       const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
       const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-      const base = parse(getComputedStyle(behind).backgroundColor).rgb, bg = over(parse(getComputedStyle(tint).backgroundColor), base), fg = over(parse(getComputedStyle(el).color), bg);
+      const base = parseColor(getComputedStyle(behind).backgroundColor), wash = parseColor(getComputedStyle(tint).backgroundColor), ink = parseColor(getComputedStyle(el).color);
+      if (!base || !wash || !ink) return null;
+      const bg = over(wash, base.rgb), fg = over(ink, bg);
       const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
     }`;
-    for (const th of ["day", "ink", "slate", "forest"]){
+    for (const th of ["day", "ink", "canals", "forest"]){
       await theme(page, th); await page.waitForTimeout(150);
       await holdSentence(page, "Nobody could have");
       await page.waitForFunction(() => document.querySelector("#dictCard .role b"), null, { timeout: 20000 });
@@ -336,7 +340,7 @@ const CONTRAST = `(el, behind) => {
       await ctx.addInitScript(STUB);
       const page = await newPage(ctx, url);
       await openFixture(page, "sample.md");
-      for (const th of ["day", "dusk", "newsprint", "terminal"]){
+      for (const th of ["day", "dusk", "paper", "forest"]){
         await theme(page, th); await page.waitForTimeout(150);
         const shot = (n) => page.screenshot({ path: path.join(SHOTS, view.name + "-" + th + "-" + n + ".png") });
         await tapWord(page, "unexpected");

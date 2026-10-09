@@ -1,0 +1,145 @@
+Themes stage: test baseline before any change
+Code: commit 7c5a1a4 (the spec commit; app code as at 41ec995). Recorded 2026-10-09.
+Run: each suite on its own with NODE_PATH=$(npm root -g) and LL_SHOTS set to a scratch folder (plan Task 0).
+
+Per suite (passed/total):
+  about.js: 47/47
+  daynight.js: 34/34
+  explain2-node.js: 55/55
+  explain2.js: 30/30
+  fonts.js: 86/88
+  i18n.js: 11/12
+  journal.js: 44/44
+  library2.js: 45/45
+  look.js: 18/18
+  notes2.js: 35/35
+  pace.js: 367/369
+  phonedock.js: 143/143
+  print.js: 32/32
+  qol.js: 40/40
+  reading.js: 11/11
+  regression.js: 64/64
+  simplify-node.js: 30/30
+  simplify.js: 29/29
+  smoke.js: 29/29
+  speak.js: 126/126
+  stats.js: 47/47
+  stats2.js: 31/31
+  textsheet.js: 65/65
+  themes-browser.js: 11/16
+  themes.js: 50 themes, 900/900 pairs pass
+  translate.js: 73/74
+  type2.js: 60/62
+  ui-a.js: 112/114
+  ui-b.js: 117/117
+  ui-c.js: 46/50
+  wordparts-browser.js: 28/28
+  wordparts.js: 303/303
+  zen.js: 40/40
+
+Browser and node suites with check counts: 2209/2228 checks passed (tests/themes.js counts pairs, listed separately).
+
+Failing checks (verbatim):
+  fonts.js:
+    FAIL the note on the current row reads at 4.5:1 or better on all 50 themes (min 0.00)  -- dusk null/null, ink null/null, cocoa null/null, ember null/null, candle null/null, amber null/null, forest null/null, moss null/null, ocean null/null, midnight null/null, plum null/null, slate null/null, graphite null/null, noir null/null, terminal null/null, vermeer null/null, rembrandt null/null, canals nul
+    FAIL the note on a hovered row reads at 4.5:1 or better on every theme (min 0.00)  -- dusk null/null, ink null/null, cocoa null/null, ember null/null, candle null/null, amber null/null, forest null/null, moss null/null, ocean null/null, midnight null/null, plum null/null, slate null/null, graphite null/null, noir null/null, terminal null/null, vermeer null/null, rembrandt null/null, canals null/nu
+  i18n.js:
+    FAIL table: every literal key in the scripts has Dutch  -- audiobook.js: Keep Lamplight open until it finishes | audiobook.js: Downloading — this carries on if you close Lamplight | audiobook.js: Best natural voices | audiobook.js: Fast natural voices | audiobook.js: Downloading… {pct}% · carries on if you close Lamplight | audiobook.js: The natural voices are still downloading — the device voice 
+  pace.js:
+    FAIL K6: one key press is one move, not a dozen animation frames  -- [["navigation",2],["skimmed",6]]
+    FAIL K6: nothing skimmed  -- 3087
+  themes-browser.js:
+    FAIL built-ins are grouped light / dark / colour / high contrast  -- Light:7,Dark:7,Colour:14,Dutch:6,Nature and seasons:5,Cozy:5,Textured:4,High contrast:2
+    FAIL chip groups are labelled  -- Light|Dark|Colour|Dutch|Nature and seasons|Cozy|Textured|High contrast|Mine
+    FAIL the popover lists the light, dark, colour and high-contrast themes, each in its pane, with the current one marked  -- {"light":7,"dark":7,"colour":14,"hi":2,"on":"day,day"}
+    FAIL New… creates a saved theme and selects it  -- paper
+    FAIL (exception)  -- TypeError: Cannot read properties of undefined (reading 'name')
+  translate.js:
+    FAIL pack (exception)  -- TimeoutError: page.waitForFunction: Timeout 120000ms exceeded.
+  type2.js:
+    FAIL all 30 themes keep their text at 4.5:1 through a full-strength film
+    FAIL a roomy theme wears the full film, a tight one less  -- day:0.35 sepia:0.31 parchment:0.35 linen:0.35 peach:0.35 rose:0.34 paper:0.35 newsprint:0.35 mist:0.35 sky:0.35 lavender:0.35 mint:0.35 sage:0.35 dusk:0.12 ink:0.12 cocoa:0.12 ember:0.12 candle:0.12 amber:0.12 forest:0.12 moss:0.12 ocean:0.12 midnight:0.12 plum:0.12 slate:0.12 graphite:0.12 noir:0.12 terminal:0.12 delft:0.35 vermeer:0.12
+  ui-a.js:
+    FAIL All text settings… closes the popover and opens the sheet at the Text group  -- 86.09375
+    FAIL a saved custom theme appears at the end of the dark row, selected  -- {"theme":"candle","on":"false","name":"Candle"}
+  ui-c.js:
+    FAIL desktop (exception)  -- TimeoutError: page.waitForFunction: Timeout 20000ms exceeded.
+    FAIL keys (exception)  -- TimeoutError: page.waitForFunction: Timeout 20000ms exceeded.
+    FAIL phone: the card is a bottom sheet with a grab handle  -- {"left":0,"right":390,"bottom":844,"height":692.078125,"radius":"24px","grab":true,"maxH":"692.08px","tabW":[186,186],"tabH":[44,44],"scrim":"color(srgb 0.121569 0.137255 0.137255 / 0.3)","footH":61,"overflow":false}
+    FAIL screenshots (exception)  -- TimeoutError: page.waitForFunction: Timeout 30000ms exceeded.
+
+Known causes: themes-browser stops at its line 82 (New… now opens the Maker); type2 wants 30 themes and a light theme
+with a ceiling under 0.2; fonts' colour parser cannot read oklab(); ui-a's custom-theme row check and its
+smooth-scroll timing; i18n's audiobook.js keys; translate's pack download and ui-c's three timeouts and the
+dictionary card height depend on the machine and the network (After Task 1 below corrects this for the three
+timeouts); pace's K6 counts animation frames. A check listed here may pass later; a check not listed must keep
+passing unless a task rewrites it.
+
+After Task 1 (tests/lib.js's parseColor reads oklab(); fonts.js, ui-b.js and ui-c.js use it). These results
+replace the three suites' lines above:
+  fonts.js: 89/89 (one check added, "parseColor reads oklab"; its two oklab checks now pass, min 5.96 on both)
+  ui-b.js: 117/117
+  ui-c.js: 46/50, the same four failures as above
+
+Browser and node suites with check counts after Task 1: 2212/2229 checks passed (was 2209/2228).
+
+The fixed parser reveals no failing dark-theme check on today's colours. The ratios the old parser overstated
+come down but stay above 4.5:1. In ui-b, the current search result reads 7.18 on dusk (the old parser said
+10.95), 6.65 on terminal (11.54), 7.73 on ink (10.52) and 6.78 on slate (10.4).
+ui-c's two tint loops still stop at their timeouts before any dark theme, so the suite doesn't reach those
+checks here. A scratch copy that waits 900 ms after each theme click instead of 150 ms runs them all. They
+pass with the fixed parser: candle's quote 7.27 (was 15.7), its chip and badge 6.64 (11.33); terminal's quote
+7.75 (12.98), its chip and badge 6.65 (11.54); the lowest is terminal's idle tab at 5.56, which the old parser
+read the same. In that copy the three timeouts are gone. They come from the 150 ms wait ending inside the theme
+chip's 200 ms cross-fade, not from the machine or the network: with reduced motion (no fade) and the 150 ms
+wait kept, the desktop and keys sections also run through.
+
+Milestone 1 (Tasks 1-5, at ae119ad): every suite run on its own, as for the baseline.
+  2341/2349 checks passed (baseline 2209/2228); tests/themes.js 900/900 pairs; new tests/looks.js 65/65.
+  Up: fonts 89/89 (the oklab parser), themes-browser 65/65 (runs to its end), ui-c 56/57 (select, no fade), ui-a 114/114.
+  Still failing, as in the baseline: i18n (audiobook.js keys), pace K6 (two checks), translate (pack download),
+  type2 (two checks Task 10 rewrites), ui-c (the phone card's height).
+  Checks no longer present because a task rewrote or renamed them: daynight 7 (Tasks 2 and 4: collapsed pairs,
+  holds, the first-pick toast, Recent), qol 2, themes-browser 5 and ui-a 6 (Task 5: the tabs became the looks).
+  One flake: speak.js "Dramatic pushes the offsets harder" failed once in this run and passed in two reruns
+  (126/126); it runs before any line Task 5 changed, and no app change touches read aloud.
+
+Milestone 2 (Tasks 6-10, at 79a04aa): every suite run on its own.
+  2409/2416 checks passed; tests/themes.js 281/281 pairs (the twelve themes); tests/looks.js 130/130; type2 64/64.
+  Still failing, as in the baseline: i18n (audiobook.js keys), pace K6 (two checks), translate (pack download),
+  ui-c (the phone card's height). Checks renamed by Task 10 (retired ids in their names, now kept ones): daynight 5,
+  fonts 2, themes-browser 3, ui-b 28, ui-c 4.
+  ui-a failed two checks once ("the window did not move", y 8 against 0): the window was already 8px down before
+  the popover opened, after the book opened on a busy machine. Both checks now compare the window's position
+  before and after, as their names say (ui-a 114/114).
+
+Milestone 3 (Task 11, at de41d59): every suite run on its own.
+  2419/2424 checks passed. The 2424 are Milestone 2's 2416 and looks.js's eight first-run checks (looks 138/138).
+  ui-a's two window checks, which failed in Milestone 2's run, pass since 7e8276c (ui-a 114/114); type2 64/64.
+  Still failing, as in the baseline (five checks): i18n (audiobook.js keys), pace K6 (two checks), translate
+  (pack download), ui-c (the phone card's height).
+  Checks Task 11 rewrote, since a first run now follows the phone: they store Day and night off before the page
+  loads. ui-a's "the lamp opens the theme popover with the six looks, the current look and auto choice marked";
+  type2's "at 22:00 with Warm at night on, the film is on" and "the hint says the film is on now".
+  One flake, as in Milestone 1: speak.js "Dramatic pushes the offsets harder" failed once and passed on the rerun.
+  The total counts speak at its rerun (126/126); counting the flake, as Milestone 1's total did, gives 2418/2424.
+  After the review fixes, the suites they touch: type2 69/69 (Warm at night keeps 21:00–07:00 with Follow
+  phone, spec 5.7; five checks added), themes-browser 65/65 (its editor pictures store Day and night off, so no
+  first-pick toast covers them), looks 138/138, tests/themes.js 281/281 pairs. In all, 2424/2429, with the other
+  suites as at de41d59: the fixes' app change touches only Warm at night, which only type2 turns on.
+
+After Task 12 (README, screenshots and version, at b39d8de): every suite run on its own.
+  2424/2429 checks passed, every suite as after Milestone 3's review fixes; tests/themes.js 281/281 pairs (the
+  twelve themes); looks 138/138, type2 69/69, themes-browser 65/65; regression 64/64, which serves sw.js with its
+  new VERSION.
+  Still failing, as in the baseline (five checks): i18n (audiobook.js keys), pace K6 (two checks), translate
+  (pack download), ui-c (the phone card's height).
+  Two flakes, each passing on its rerun: speak.js "Dramatic pushes the offsets harder", as in Milestones 1 and 3
+  (126/126), and fonts.js "offline, the message says so and the system face stands in" (89/89), which passed in
+  every earlier run. That check waits for the toast to be on, but the toast of the test's earlier font error is
+  still on (725 ms later in a probe; a toast stays 1800 ms), so it can read the toast before the offline message
+  is in. Its detail, read a moment later, shows the message and the system face it wants. The total counts both
+  suites at their reruns; counting the flakes gives 2422/2429.
+  The review fixes after it change no file a suite reads: 3e4f833 (the README's first-run wording,
+  tests/screenshots.js and the two pictures of the explain card), and the one that shows five more pictures at
+  rest (tests/screenshots.js and the library, notes, fonts, stats and storage pictures).

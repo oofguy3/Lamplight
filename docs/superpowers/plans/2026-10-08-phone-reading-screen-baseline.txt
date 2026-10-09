@@ -1,0 +1,71 @@
+Test baseline before the phone redesign
+Commit d9caed1 (the plan), run in a separate worktree with:
+  NODE_PATH=$(npm root -g) node tests/<file>.js   (each suite on its own, one after another)
+Node v22.22.0, Playwright 1.56.1, Chromium; 2026-10-08.
+
+Note: this run shared the machine with another test run, so checks that wait on time
+(smooth scrolling, speech timing, page.waitForFunction timeouts) are less reliable than
+on a quiet machine. Differences from spec 12.1 are listed at the end.
+
+about.js: 47/47
+explain2-node.js: 55/55
+explain2.js: 30/30
+fonts.js: 83/85
+  FAIL the note on the current row reads at 4.5:1 or better on all 50 themes (min 0.00)  -- dusk null/null, ink null/null, cocoa null/null, ember null/null, candle null/null, amber null/null, forest null/null, moss null/null, ocean null/null, midnight null/null, plum null/null, slate null/null, graphite null/null, noir null/null, terminal null/null, vermeer null/null, rembrandt null/null, canals null/null, autumn null/null, aurora null/null, library null/null, rain null/null, cabin null/null, nighttrain null/null
+  FAIL the note on a hovered row reads at 4.5:1 or better on every theme (min 0.00)  -- dusk null/null, ink null/null, cocoa null/null, ember null/null, candle null/null, amber null/null, forest null/null, moss null/null, ocean null/null, midnight null/null, plum null/null, slate null/null, graphite null/null, noir null/null, terminal null/null, vermeer null/null, rembrandt null/null, canals null/null, autumn null/null, aurora null/null, library null/null, rain null/null, cabin null/null, nighttrain null/null
+i18n.js: 11/12
+  FAIL table: every literal key in the scripts has Dutch  -- audiobook.js: Keep Lamplight open until it finishes | audiobook.js: Downloading — this carries on if you close Lamplight | audiobook.js: Best natural voices | audiobook.js: Fast natural voices | audiobook.js: Downloading… {pct}% · carries on if you close Lamplight | audiobook.js: The natural voices are still downloading — the device voice reads until then | audiobook.js: Download stopped — tap Download to resume | translate.js: Dutch ↔ English: download stopped — tap Download to resume
+journal.js: 44/44
+library2.js: 45/45
+notes2.js: 35/35
+pace.js: 367/369
+  FAIL K6: one key press is one move, not a dozen animation frames  -- [["navigation",1],["skimmed",7]]
+  FAIL K6: nothing skimmed  -- 3599
+print.js: no count (stopped at tests/print.js:96: the click on More > Print timed out after 30 s, the open settings sheet took the pointer)
+  FAIL screen again: columns back, view height back, theme colours back  -- {"columns":"2","viewH":652,"bg":"rgb(255, 255, 255)"}
+qol.js: 33/35
+  FAIL the theme popover leads with Day ⇄ Night (the pair it goes to, the one on screen pressed), a high-contrast group, and no Recent row for a single theme  -- {"dn":["Day theme:Day","Night theme:Dusk"],"hi":["hicon","hidark"],"recent":["day","dusk"],"tileH":74,"cols":4,"grid":"grid","nameUnder":true,"badge":"\"✓\" 20px rgb(47, 109, 91)","accent":"#2F6D5B"}
+  FAIL phone (exception)  -- TimeoutError: page.tap: Timeout 30000ms exceeded.
+reading.js: 11/11
+regression.js: 64/64
+simplify-node.js: 30/30
+simplify.js: 29/29
+smoke.js: 29/29
+speak.js: 125/126
+  FAIL a speed change during the breath is honoured by the next sentence and doesn't replay the finished one  -- ["Chapter 1 @0.765","The lamp hums quietly as she turns the page. @1.104","One more chapter, @1.2"]
+stats.js: 47/47
+stats2.js: 31/31
+themes-browser.js: 11/16
+  FAIL built-ins are grouped light / dark / colour / high contrast  -- Light:7,Dark:7,Colour:14,Dutch:6,Nature and seasons:5,Cozy:5,Textured:4,High contrast:2
+  FAIL chip groups are labelled  -- Light|Dark|Colour|Dutch|Nature and seasons|Cozy|Textured|High contrast|Mine
+  FAIL the popover lists the light, dark, colour and high-contrast themes, each in its pane, with the current one marked  -- {"light":7,"dark":7,"colour":14,"hi":2,"on":"day,day"}
+  FAIL New… creates a saved theme and selects it  -- paper
+  FAIL (exception)  -- TypeError: Cannot read properties of undefined (reading 'name')
+themes.js: 900/900 contrast pairs (its own report; exit 0)
+translate.js: 73/74
+  FAIL pack (exception)  -- TimeoutError: page.waitForFunction: Timeout 120000ms exceeded.
+type2.js: 60/62
+  FAIL all 30 themes keep their text at 4.5:1 through a full-strength film
+  FAIL a roomy theme wears the full film, a tight one less  -- day:0.35 sepia:0.31 parchment:0.35 linen:0.35 peach:0.35 rose:0.34 paper:0.35 newsprint:0.35 mist:0.35 sky:0.35 lavender:0.35 mint:0.35 sage:0.35 dusk:0.12 ink:0.12 cocoa:0.12 ember:0.12 candle:0.12 amber:0.12 forest:0.12 moss:0.12 ocean:0.12 midnight:0.12 plum:0.12 slate:0.12 graphite:0.12 noir:0.12 terminal:0.12 delft:0.35 vermeer:0.12 rembrandt:0.12 tulips:0.35 polder:0.35 canals:0.12 autumn:0.12 winter:0.35 aurora:0.12 seaair:0.35 blossom:0.35 coffee:0.35 library:0.12 rain:0.12 cabin:0.12 nighttrain:0.12 handmade:0.35 bookcloth:0.35 laid:0.35 vellum:0.35 hicon:0.35 hidark:0.12
+ui-a.js: 112/114
+  FAIL All text settings… closes the popover and opens the sheet at the Text group  -- 84.25
+  FAIL a saved custom theme appears at the end of the dark row, selected  -- {"theme":"candle","on":"false","name":"Candle"}
+ui-b.js: 117/117
+ui-c.js: 45/50
+  FAIL desktop (exception)  -- TimeoutError: page.waitForFunction: Timeout 20000ms exceeded.
+  FAIL the pill is announced to a screen reader when it appears
+  FAIL keys (exception)  -- TimeoutError: page.waitForFunction: Timeout 20000ms exceeded.
+  FAIL phone: the card is a bottom sheet with a grab handle  -- {"left":0,"right":390,"bottom":844,"height":692.078125,"radius":"24px","grab":true,"maxH":"692.08px","tabW":[186,186],"tabH":[44,44],"scrim":"color(srgb 0.121569 0.137255 0.137255 / 0.3)","footH":61,"overflow":false}
+  FAIL screenshots (exception)  -- TimeoutError: page.waitForFunction: Timeout 30000ms exceeded.
+wordparts-browser.js: 28/28
+wordparts.js: 303/303
+zen.js: 40/40
+
+Differences from spec 12.1:
+- ui-a.js 112/114 here, 113/114 in the spec: 'All text settings… opens the sheet at the
+  Text group' also fails on the unchanged code (the smooth scroll has not finished when the
+  test measures; it measured 84 px here and 101 px in an earlier run, against < 80).
+- ui-c.js 45/50 here, 46/50 in the spec: 'the pill is announced to a screen reader when it
+  appears' failed this time and passed in another run of the same code (timing).
+- Not in the spec's table, red here: pace.js (K6), print.js (stops at More > Print),
+  speak.js (a speed change during the breath), translate.js (pack timeout).

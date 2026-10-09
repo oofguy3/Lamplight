@@ -6,7 +6,7 @@
    text or in Pages flow go in as one batch.
    Service workers are blocked in the test contexts so the requests seen are the page's own
    (the worker precaches every font by design). Screenshots go to $LL_SHOTS or the temp dir. */
-const { serve, browser, openFixture, makeReport, ROOT } = require("./lib");
+const { serve, browser, openFixture, makeReport, parseColor, PARSE_COLOR, ROOT } = require("./lib");
 const fs = require("fs"), path = require("path"), os = require("os");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-shots");
 const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
@@ -27,9 +27,10 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     return page;
   }
   const woff = (page) => page._reqs.filter((u) => /\.woff2(\?|$)/.test(u)).map((u) => u.split("/").pop());
-  /* the interface's own title face ('LL Title' in app.css: Literata, precached by the worker) is
-     part of the shell and loads with it; every reading font waits until it is chosen */
-  const TITLE_FACE = /^literata-latin-wght-(normal|italic)\.woff2$/;
+  /* the interface's own faces are part of the shell and load with it: the title face ('LL Title' in
+     app.css: Literata) and the interface face ('LL UI': Atkinson Hyperlegible), both precached by
+     the worker; every reading font waits until it is chosen */
+  const TITLE_FACE = /^(literata-latin-wght-(normal|italic)|AtkinsonHyperlegible-(Regular|Bold|Italic|BoldItalic))\.woff2$/;
   const readingWoff = (page) => woff(page).filter((f) => !TITLE_FACE.test(f));
   const family = (page, sel) => page.$eval(sel, (el) => getComputedStyle(el).fontFamily);
   const loaded = (page, id) => page.waitForFunction((i) => window.llFonts && window.llFonts.loaded(i), id, { timeout: 15000 }).then(() => true, () => false);
@@ -40,7 +41,7 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
   const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, serviceWorkers: "block" });
   let page = await open(ctx);
   try {
-    /* 1. the initial load fetches no reading font (only the interface's title face) */
+    /* 1. the initial load fetches no reading font (only the interface's own faces) */
     await openFixture(page, "sample.md");
     await page.waitForTimeout(700);                       /* the idle warm-up runs in here */
     R.check("initial load fetches no font file", readingWoff(page).length === 0, woff(page).join(", "));
@@ -122,25 +123,30 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     R.check("the panel choice is remembered", (await page.evaluate(() => JSON.parse(localStorage.getItem("ll_prefs")).font)) === "lora");
     R.check("a chosen font gets its italic face too", woff(page).indexOf("lora-latin-wght-italic.woff2") >= 0, woff(page).join(", "));
     R.check("a merely previewed font did not", woff(page).indexOf("source-serif-4-latin-wght-italic.woff2") < 0, woff(page).join(", "));
+    /* the shared colour parser reads what Chromium reports for a colour mixed in oklab (an oklab()
+       value, here Dusk's accent #D8A24A at 18%) and in srgb (a color(srgb …) value), and keeps the
+       minus signs: the blue #2E6DB4 has negative a and b, and a parser that drops them reads it as
+       an orange-brown */
+    const p = parseColor("oklab(0.7466 0.0274 0.1192 / 0.18)"), n = parseColor("oklab(0.5299 -0.0363 -0.1239)");
+    R.check("parseColor reads oklab", p && p.rgb.map(Math.round).join() === "216,162,74" && p.a === 0.18 &&
+      n && n.rgb.map(Math.round).join() === "46,109,180" &&
+      parseColor("oklab(0 0 0)").rgb.map(Math.round).join() === "0,0,0" && parseColor("oklab(1 0 0)").rgb.map(Math.round).join() === "255,255,255" &&
+      parseColor("color(srgb 1 0.5 0 / 0.5)").rgb.join() === "255,127.5,0", JSON.stringify([p, n]));
     /* the note on the current (tinted) row and on a hovered row must read at 4.5:1 on every theme:
-       the row's translucent background is composited over the panel, then WCAG contrast */
+       the row's translucent background is composited over the panel, then WCAG contrast. This runs
+       in the page, so it rebuilds the shared parser from its source */
     const noteContrast = async (sel, hover) => {
       if (hover) await page.hover(sel);
-      return page.$eval(sel, (row) => {
-        const parse = (c) => {
-          const m = /^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/.exec(c) || /^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)$/.exec(c);
-          if (!m) return null;
-          const k = /^color/.test(c) ? 255 : 1;
-          return { r: m[1] * k, g: m[2] * k, b: m[3] * k, a: m[4] === undefined ? 1 : +m[4] };
-        };
-        const over = (fg, bg) => ({ r: fg.r * fg.a + bg.r * (1 - fg.a), g: fg.g * fg.a + bg.g * (1 - fg.a), b: fg.b * fg.a + bg.b * (1 - fg.a) });
-        const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
-        const panel = parse(getComputedStyle(document.getElementById("side")).backgroundColor);
-        const rowBg = parse(getComputedStyle(row).backgroundColor), note = parse(getComputedStyle(row.querySelector(".font-note")).color);
+      return page.$eval(sel, (row, src) => {
+        const parseColor = eval("(" + src + ")");
+        const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
+        const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+        const panel = parseColor(getComputedStyle(document.getElementById("side")).backgroundColor);
+        const rowBg = parseColor(getComputedStyle(row).backgroundColor), note = parseColor(getComputedStyle(row.querySelector(".font-note")).color);
         if (!panel || !rowBg || !note) return null;
-        const l1 = lum(note), l2 = lum(over(rowBg, panel));
+        const l1 = lum(note.rgb), l2 = lum(over(rowBg, panel.rgb));
         return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-      });
+      }, PARSE_COLOR);
     };
     const themeBefore = await page.evaluate(() => window.__ll.state.theme);
     const themes = await page.evaluate(() => Object.keys(window.llThemes.THEMES));
@@ -155,7 +161,7 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     }
     await page.mouse.move(0, 0);
     await page.evaluate((id) => window.llThemes.select(id), themeBefore);
-    R.check("the note on the current row reads at 4.5:1 or better on all " + themes.length + " themes (min " + minPressed.toFixed(2) + ")", themes.length >= 25 && minPressed >= 4.5, lowNote.join(", "));
+    R.check("the note on the current row reads at 4.5:1 or better on all " + themes.length + " themes (min " + minPressed.toFixed(2) + ")", themes.length === 12 && minPressed >= 4.5, lowNote.join(", "));
     R.check("the note on a hovered row reads at 4.5:1 or better on every theme (min " + minHover.toFixed(2) + ")", minHover >= 4.5, lowNote.join(", "));
     /* keyboard: items are buttons; Escape closes the panel only — the sheet under it stays and
        focus returns to the browse button — and the close button does the same */
@@ -301,6 +307,19 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     const unlicensed = cat.filter((f) => f.files.length && lic.indexOf(f.name) < 0).map((f) => f.name);
     R.check("LICENSES.md names every bundled family", unlicensed.length === 0, unlicensed.join(", "));
     await page.close();
+
+    /* 8b. a phone: start-up fetches no reading font either, and the Text sheet's font row asks for
+       its previews only once the sheet opens */
+    {
+      const c = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
+      const p = await open(c);
+      await openFixture(p, "sample.md");
+      await p.waitForTimeout(700);
+      R.check("phone start-up loads no reading-font file", readingWoff(p).length === 0, woff(p).join(", "));
+      R.check("…and adds no preview face before the Text sheet opens", !(await p.evaluate(() => window.llFonts.loaded("literata"))));
+      R.check("phone start-up: no page errors", !(p._errors || []).length, (p._errors || []).join(" | "));
+      await c.close();
+    }
 
     /* 9. screenshots: the sheet with the menu and the browse panel, desktop and phone, light and dark */
     async function shots(vp, tag, sheetTheme, panelTheme){

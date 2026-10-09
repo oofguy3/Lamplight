@@ -7,7 +7,7 @@
    answered by page.route.
      NODE_PATH=$(npm root -g) node tests/translate.js        (LL_SHOTS=<dir> for the screenshots) */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-translate");
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -121,10 +121,6 @@ async function searchCount(page, q){
   const n = await page.evaluate(() => window.Search.results().length);
   await page.keyboard.press("Escape"); await page.waitForTimeout(200);
   return n;
-}
-async function theme(page, key){
-  await page.evaluate((k) => document.querySelector('#themeChips [data-theme="' + k + '"]').click(), key);
-  await page.waitForTimeout(400);
 }
 async function waitPrecache(page){
   await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 60000 }).catch(() => null);
@@ -279,9 +275,9 @@ const DUTCH = ["The Project Gutenberg eBook of Eline Vere. This eBook is for the
     R.check("a heading's translation follows the heading (not italic, larger)", heading);
     R.check("text unchanged after the change of view", (await snapshot(page)).text === before.text);
     await shot(page, "translate-page-desktop-day");
-    await theme(page, "dusk");
+    await dayNight(page, "night"); await page.waitForTimeout(400);
     await shot(page, "translate-page-desktop-dusk");
-    await theme(page, "day");
+    await dayNight(page, "day"); await page.waitForTimeout(400);
     m = await menu(page, /^Show original/);
     R.check("menu entry now says Show original", !!m.hit && !m.labels.some((l) => /^Translate book/.test(l)), m.labels.join(" / "));
     await page.waitForTimeout(300);
@@ -420,7 +416,7 @@ const DUTCH = ["The Project Gutenberg eBook of Eline Vere. This eBook is for the
     after = await snapshot(page);
     R.check("plain text, Translation only: originals wrapped and hidden, text and offsets unchanged", only.spans === paras && only.h && after.text === before.text && after.len === before.len && after.units === before.units, JSON.stringify(only));
     await shot(page, "translate-only-phone-day");
-    await theme(page, "dusk");
+    await dayNight(page, "night"); await page.waitForTimeout(400);
     await shot(page, "translate-only-phone-dusk");
     await page.evaluate(() => window.llTranslate.showOriginal());
     const merged = await page.evaluate(() => ({ nodes: document.querySelector("#doc .plain").childNodes.length, tr: document.querySelectorAll(".ll-tr, .ll-trsrc").length, text: document.getElementById("doc").textContent }));

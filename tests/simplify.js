@@ -4,7 +4,7 @@
    and Dusk go to $LL_SHOTS (default: the OS temp dir).
      NODE_PATH=$(npm root -g) node tests/simplify.js */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-simplify");
 
 /* a fake speech engine: headless Chromium has no voices; every utterance is logged */
@@ -70,7 +70,6 @@ async function openSimpler(page){
   const b = await browser();
   const R = makeReport();
   const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, name + ".png") });
-  const setTheme = (page, key) => page.evaluate((k) => document.querySelector('#themeChips [data-theme="' + k + '"]').click(), key);
 
   /* ---- desktop ---- */
   const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
@@ -172,7 +171,7 @@ async function openSimpler(page){
     await page.waitForTimeout(250);
 
     /* 10. dusk, and offline */
-    await setTheme(page, "dusk");
+    await dayNight(page, "night");
     await selectPhrase(page, SENTENCE);
     await openSimpler(page);
     await cardOpen(page);
@@ -205,7 +204,7 @@ async function openSimpler(page){
     const info = await cardInfo(page);
     R.check("phone: without a text span the footer has only Copy (no Highlight)", info.foot.join("|") === "Copy" && info.acts[0] === "Read aloud", info.foot.join("|") + " / " + info.acts.join("|"));
     await shot(page, "simplify-phone-day");
-    await setTheme(page, "dusk");
+    await dayNight(page, "night");
     await page.waitForTimeout(400);
     await page.click("#dictCard .chg");
     await page.waitForTimeout(150);

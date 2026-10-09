@@ -54,12 +54,14 @@
   /* a long press (about half a second on the spot) runs `fn` instead of the tap: the click the
      finger's lift would send is swallowed, and so is the context menu a long press brings up on
      some phones. Keys keep the tap (the same actions have their own keys and buttons) */
-  function longPress(el, fn, ms){
+  /* when: an optional test, asked as the finger goes down; false leaves the tap alone */
+  function longPress(el, fn, ms, when){
     if (!el) return;
     var timer = null, x = 0, y = 0, fired = 0;
     function clear(){ clearTimeout(timer); timer = null; }
     el.addEventListener("pointerdown", function(e){
       if (e.button !== undefined && e.button !== 0) return;
+      if (when && !when()) return;
       clear(); x = e.clientX; y = e.clientY;
       timer = setTimeout(function(){
         timer = null; fired = Date.now();
@@ -217,98 +219,120 @@
     }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
-  /* Built-in themes. Every pair the reader meets is at least 4.5:1 — tests/themes.js audits this
+  /* Built-in themes: twelve, which pair into the six looks (LOOKS below), each look's day theme before
+     its night theme. Every pair the reader meets is at least 4.5:1 — tests/themes.js audits this
      table: text, secondary text, the accent and the lamp on the page, the panel and the raised
-     surface; the panel colour on a lamp or accent fill; the text on the soft lamp and accent tints.
-     `panel` is the bars and sheets, `raise` the cards and sheets on top of them (a touch brighter on
-     a light page, a lift in the theme's own hue on a dark one). `line` is a decorative divider only:
-     a boundary that carries meaning is drawn in --edge (the secondary text colour) or the accent.
-     `lamp` is the "light, brand and now" colour (the progress line, the wordmark, the primary
-     buttons, the stars) and it belongs to the theme: brass or honey in the warm family, the theme's
-     own hue in the cool one (sky is blue, forest green, plum purple), the one signal colour of a
-     neutral one (paper's red ink, terminal's phosphor). `family` (warm, cool, neutral) records which;
-     a custom theme's lamp is its accent. */
+     surface; the panel colour on a lamp or accent fill, and the page colour on an accent fill; the
+     text on the soft lamp and accent tints, on a found word, on the sentence read aloud and on the
+     yellow highlight; the lamp on its own soft tint. It also checks that no two themes of one tone
+     are near-duplicates. `panel` is the bars and sheets, `raise` the cards and sheets on top of them
+     (a touch brighter on a light page, a lift in the theme's own hue on a dark one). `line` is a
+     decorative divider only: a boundary that carries meaning is drawn in --edge (the secondary text
+     colour) or the accent. `lamp` is the "light, brand and now" colour (the progress line, the
+     wordmark, the primary buttons, the stars) and it belongs to the theme: brass, amber or caramel
+     in the warm ones, green in Sage and Forest, a warm signal on the cool pages of Sea air and
+     Canals, the one signal colour of a neutral one (Paper's red ink, Ink's coral, the contrast
+     pair's blue and yellow). `family` (warm, cool, neutral) notes a theme's character; nothing
+     reads it. A custom theme's lamp is its accent. */
   var THEMES = {
-    /* light */
-    day:       {name:"Day",           family:"warm",    bg:"#EDEDE6", panel:"#F5F5EF", raise:"#FBFBF7", ink:"#1F2323", muted:"#5E6562", line:"#D8D9CF", accent:"#2F6D5B", lamp:"#955F0F"},
-    sepia:     {name:"Sepia",         family:"warm",    bg:"#E9DDC5", panel:"#F0E7D2", raise:"#F6EFDF", ink:"#40331F", muted:"#6A5B3F", line:"#D6C7A4", accent:"#86551A", lamp:"#86551A"},
-    parchment: {name:"Parchment",     family:"warm",    bg:"#F1E4C6", panel:"#F7ECD4", raise:"#FBF3E2", ink:"#2C2114", muted:"#67563A", line:"#DCCBA3", accent:"#8B2F2A", lamp:"#8B590E"},
-    linen:     {name:"Linen",         family:"warm",    bg:"#F3EFE6", panel:"#FAF8F1", raise:"#FDFCF8", ink:"#2B2A26", muted:"#625F57", line:"#DDD8CB", accent:"#5A6828", lamp:"#955F0F"},
-    peach:     {name:"Peach",         family:"warm",    bg:"#FBE7DA", panel:"#FDF1E8", raise:"#FFF8F3", ink:"#3B2A21", muted:"#72574A", line:"#EBD1C0", accent:"#146C72", lamp:"#A0461D"},
-    rose:      {name:"Rose",          family:"warm",    bg:"#F4E7E3", panel:"#F9EFEC", raise:"#FDF7F5", ink:"#44302D", muted:"#775D56", line:"#E3CFC9", accent:"#A8495A", lamp:"#A13F52"},
-    paper:     {name:"Paper",         family:"neutral", bg:"#FAFAF7", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#141414", muted:"#5C5C58", line:"#E1E1DA", accent:"#BE2A24", lamp:"#B3261E"},
-    newsprint: {name:"Newsprint",     family:"neutral", bg:"#E3E2DC", panel:"#EBEAE5", raise:"#F2F1ED", ink:"#2B2B2B", muted:"#5A5A57", line:"#CDCCC5", accent:"#A82424", lamp:"#9E2020"},
-    mist:      {name:"Mist",          family:"cool",    bg:"#E7EBEE", panel:"#F0F3F5", raise:"#F7F9FA", ink:"#25303A", muted:"#5A6773", line:"#D1D9DF", accent:"#3C6E93", lamp:"#2F6388"},
-    sky:       {name:"Sky",           family:"cool",    bg:"#E2EDF7", panel:"#EEF5FB", raise:"#F7FAFD", ink:"#17293A", muted:"#4C5F71", line:"#C7D8E7", accent:"#2068A8", lamp:"#1D5F9C"},
-    lavender:  {name:"Lavender",      family:"cool",    bg:"#ECE7F4", panel:"#F4F1FA", raise:"#FAF8FD", ink:"#29233A", muted:"#5D5573", line:"#D6CFE4", accent:"#6A4DB5", lamp:"#6446AE"},
-    mint:      {name:"Mint",          family:"cool",    bg:"#DEF2E8", panel:"#EAF7F0", raise:"#F5FBF8", ink:"#153128", muted:"#45655A", line:"#C1DFD1", accent:"#0D7566", lamp:"#0B6E60"},
-    sage:      {name:"Sage",          family:"cool",    bg:"#E3EADD", panel:"#EDF2E8", raise:"#F6F9F3", ink:"#1F2A22", muted:"#526055", line:"#CAD5C3", accent:"#A2502E", lamp:"#3E6A44"},
-    /* dark */
-    dusk:      {name:"Dusk",          family:"warm",    bg:"#14161B", panel:"#1B1E25", raise:"#25262B", ink:"#D6D3C8", muted:"#8E9088", line:"#33343A", accent:"#D8A24A", lamp:"#D8A24A"},
-    ink:       {name:"Ink",           family:"warm",    bg:"#050506", panel:"#0E0E11", raise:"#17171B", ink:"#C7C3B6", muted:"#86837A", line:"#24242A", accent:"#C08D3F", lamp:"#C08D3F"},
-    cocoa:     {name:"Cocoa",         family:"warm",    bg:"#1B1411", panel:"#241B17", raise:"#2D221D", ink:"#E9DBCF", muted:"#A6958A", line:"#3F312A", accent:"#D8A067", lamp:"#D8A067"},
-    ember:     {name:"Ember",         family:"warm",    bg:"#1A1210", panel:"#221815", raise:"#2B1F1B", ink:"#EBDACD", muted:"#A68F80", line:"#3F2D25", accent:"#F2812E", lamp:"#F2812E"},
-    candle:    {name:"Candle",        family:"warm",    bg:"#2A1D14", panel:"#33251A", raise:"#3B2B1F", ink:"#F0DDB4", muted:"#B8A485", line:"#4C3A2A", accent:"#E9C46A", lamp:"#E9C46A"},
-    amber:     {name:"Amber",         family:"warm",    bg:"#0F0A03", panel:"#17100A", raise:"#20170E", ink:"#FFB000", muted:"#B98319", line:"#302311", accent:"#FFDF70", lamp:"#FFDF70"},
-    forest:    {name:"Forest",        family:"cool",    bg:"#101711", panel:"#161F17", raise:"#1C271D", ink:"#CDD8C6", muted:"#86937F", line:"#2A3727", accent:"#7FB069", lamp:"#8FC274"},
-    moss:      {name:"Moss",          family:"cool",    bg:"#161A10", panel:"#1D2215", raise:"#242A1B", ink:"#D7DBC2", muted:"#959C80", line:"#343C29", accent:"#B7C86A", lamp:"#B7C86A"},
-    ocean:     {name:"Ocean",         family:"cool",    bg:"#0D141E", panel:"#131C29", raise:"#1A2533", ink:"#CBD5E1", muted:"#8190A4", line:"#26354A", accent:"#5C9CD6", lamp:"#6AAAE6"},
-    midnight:  {name:"Midnight",      family:"cool",    bg:"#0B1126", panel:"#111A36", raise:"#172142", ink:"#D8DDEE", muted:"#95A0BF", line:"#243056", accent:"#9DB4FF", lamp:"#9DB4FF"},
-    plum:      {name:"Plum",          family:"cool",    bg:"#17101F", panel:"#1E1628", raise:"#261D32", ink:"#D8CDE3", muted:"#958AA3", line:"#342846", accent:"#A97FD6", lamp:"#B78DE6"},
-    slate:     {name:"Slate",         family:"cool",    bg:"#1C2229", panel:"#242B33", raise:"#2B333C", ink:"#D5DBE1", muted:"#97A3AE", line:"#39434E", accent:"#EF8C76", lamp:"#EF8C76"},
-    graphite:  {name:"Graphite",      family:"neutral", bg:"#1E1F22", panel:"#26272B", raise:"#2D2E33", ink:"#D8D8D5", muted:"#A0A09C", line:"#3A3B41", accent:"#74D0B8", lamp:"#74D0B8"},
-    noir:      {name:"Noir",          family:"neutral", bg:"#000000", panel:"#0B0B0B", raise:"#141414", ink:"#C6C6C6", muted:"#8E8E8E", line:"#262626", accent:"#EDEDED", lamp:"#EDEDED"},
-    terminal:  {name:"Terminal",      family:"neutral", bg:"#050805", panel:"#0A110A", raise:"#0F190F", ink:"#3FE86F", muted:"#2FA354", line:"#183018", accent:"#D9FF6E", lamp:"#D9FF6E"},
-    /* Dutch: Delft blue, Vermeer, Rembrandt, the tulip fields, the polder and the canals at dusk */
-    delft:      {name:"Delft blue",  family:"cool",   bg:"#F2F4F3", panel:"#F8F9F8", raise:"#FFFFFF", ink:"#13285A", muted:"#4A5878", line:"#D2D9E6", accent:"#2350B0", lamp:"#1A3E8E"},
-    vermeer:    {name:"Vermeer",     family:"cool",   bg:"#11131B", panel:"#181B26", raise:"#202432", ink:"#ECE6D8", muted:"#A3A099", line:"#2D3243", accent:"#8EA6F0", lamp:"#F0D04C"},
-    rembrandt:  {name:"Rembrandt",   family:"warm",   bg:"#16140C", panel:"#1E1B11", raise:"#272317", ink:"#EBD9A8", muted:"#A99A76", line:"#383120", accent:"#DE8A55", lamp:"#F0B93A"},
-    tulips:     {name:"Tulip field", family:"warm",   bg:"#FBF2E4", panel:"#FDF7EE", raise:"#FFFCF7", ink:"#2E1E1A", muted:"#6E5650", line:"#ECDCC6", accent:"#2E6A3A", lamp:"#C0263A"},
-    polder:     {name:"Polder",      family:"cool",   bg:"#E2E5E4", panel:"#EBEDEC", raise:"#F3F4F4", ink:"#22282A", muted:"#565E61", line:"#CBD1D1", accent:"#2D5F7F", lamp:"#2E6B1F"},
-    canals:     {name:"Canals",      family:"cool",   bg:"#0E1F22", panel:"#13292D", raise:"#193337", ink:"#DCE6E2", muted:"#93A8A6", line:"#24403F", accent:"#E58E6C", lamp:"#F2C66B"},
-    /* nature and the seasons */
-    autumn:     {name:"Autumn wood", family:"warm",   bg:"#1E2316", panel:"#252B1C", raise:"#2D3422", ink:"#EDE3CC", muted:"#ABA58C", line:"#3A4229", accent:"#E8A04A", lamp:"#F08A4B"},
-    winter:     {name:"Winter morning", family:"cool",   bg:"#ECEFF4", panel:"#F4F6F9", raise:"#FAFBFD", ink:"#1B2733", muted:"#536070", line:"#D3D9E3", accent:"#2C5F8A", lamp:"#A93F55"},
-    aurora:     {name:"Northern lights", family:"cool",   bg:"#0A1218", panel:"#0F1A22", raise:"#15222C", ink:"#D5E4E6", muted:"#8CA3A8", line:"#1F3340", accent:"#5EE0A5", lamp:"#C49BFF"},
-    seaair:     {name:"Sea air",     family:"cool",   bg:"#E3EEF1", panel:"#EDF5F7", raise:"#F6FAFB", ink:"#12302F", muted:"#476663", line:"#C4DCE0", accent:"#0F5F7A", lamp:"#A6421B"},
-    blossom:    {name:"Cherry blossom", family:"warm",   bg:"#FBEDF1", panel:"#FDF5F7", raise:"#FFFAFB", ink:"#3A2229", muted:"#78545E", line:"#EFD5DC", accent:"#5A3A33", lamp:"#B3366A"},
-    /* cozy rooms */
-    coffee:     {name:"Coffee house", family:"warm",   bg:"#E6D5C3", panel:"#EEE2D5", raise:"#F6EFE7", ink:"#2E2018", muted:"#654F40", line:"#D5C0AA", accent:"#8A3B22", lamp:"#84490F"},
-    library:    {name:"Old library", family:"warm",   bg:"#0F231B", panel:"#152B22", raise:"#1B3429", ink:"#E8DFC6", muted:"#A7A38C", line:"#26402F", accent:"#E0947F", lamp:"#D6B05A"},
-    rain:       {name:"Rainy evening", family:"cool",   bg:"#151C26", panel:"#1B2430", raise:"#222C3A", ink:"#D3D9E0", muted:"#929BA6", line:"#323C4A", accent:"#9CC0E6", lamp:"#F3A04A"},
-    cabin:      {name:"Candle cabin", family:"warm",   bg:"#3A2516", panel:"#432C1C", raise:"#4C3322", ink:"#FBE9CC", muted:"#D0B698", line:"#5A4030", accent:"#F7A891", lamp:"#FFD27A"},
-    nighttrain: {name:"Night train", family:"warm",   bg:"#1A0F14", panel:"#22141B", raise:"#2B1A22", ink:"#EADBD8", muted:"#AE959B", line:"#3D2530", accent:"#9DBDF0", lamp:"#F2B45A"},
-    /* textured: a faint paper or cloth surface behind the text (app.css [data-texture]; off in e-ink, high contrast and with Plain background) */
-    handmade:   {name:"Handmade paper", family:"neutral",bg:"#F1EEE7", panel:"#F7F5F0", raise:"#FCFBF8", ink:"#222120", muted:"#5D5A55", line:"#DCD8CE", accent:"#24508F", lamp:"#8A5A14", texture:"grain"},
-    bookcloth:  {name:"Book cloth",  family:"cool",   bg:"#E4E6DE", panel:"#ECEEE7", raise:"#F4F5F1", ink:"#23261F", muted:"#565B51", line:"#CDD1C4", accent:"#3F5D7A", lamp:"#7A4E1C", texture:"linen"},
-    laid:       {name:"Laid paper",  family:"warm",   bg:"#EEEBDC", panel:"#F5F3E8", raise:"#FBFAF4", ink:"#26251C", muted:"#5E5B4A", line:"#D9D5C0", accent:"#6B3F86", lamp:"#8C5A12", texture:"laid"},
-    vellum:     {name:"Vellum",      family:"warm",   bg:"#F2E9DE", panel:"#F8F2EA", raise:"#FCF9F5", ink:"#2A2019", muted:"#66584C", line:"#E0D2C0", accent:"#2B4C9A", lamp:"#A3361C", texture:"vellum"},
-    /* high contrast: pure white / black with a strong accent, for low vision or bright sunlight */
+    day:       {name:"Day",           family:"warm",    bg:"#F5EFE3", panel:"#FBF8F0", raise:"#FEFCF8", ink:"#2D2924", muted:"#645F58", line:"#DED8CB", accent:"#2C5D45", lamp:"#875C0C"},
+    dusk:      {name:"Dusk",          family:"warm",    bg:"#0D121C", panel:"#141A26", raise:"#1C2330", ink:"#DAD7CF", muted:"#A6A39B", line:"#2A313E", accent:"#D8A24A", lamp:"#D8A24A"},
+    paper:     {name:"Paper",         family:"neutral", bg:"#FAFAF7", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#141414", muted:"#5C5C58", line:"#DCDCD5", accent:"#A8261F", lamp:"#A8261F"},
+    ink:       {name:"Ink",           family:"neutral", bg:"#000000", panel:"#151413", raise:"#1F1E1C", ink:"#D6D2C5", muted:"#A3A097", line:"#302F2C", accent:"#E87A69", lamp:"#E87A69"},
+    sepia:     {name:"Sepia",         family:"warm",    bg:"#F0E4CB", panel:"#F7EDD8", raise:"#FAF4E6", ink:"#2E1E11", muted:"#695544", line:"#DFCDAE", accent:"#7C2623", lamp:"#855510"},
+    cocoa:     {name:"Cocoa",         family:"warm",    bg:"#261914", panel:"#30201A", raise:"#3A2920", ink:"#EEDFCB", muted:"#AEA394", line:"#49372C", accent:"#D8A067", lamp:"#D8A067"},
+    sage:      {name:"Sage",          family:"cool",    bg:"#DFE7D8", panel:"#EAF0E5", raise:"#F4F7F0", ink:"#1A261F", muted:"#4E5C51", line:"#C7D2BE", accent:"#9C4925", lamp:"#124830"},
+    forest:    {name:"Forest",        family:"cool",    bg:"#0E1A13", panel:"#14221A", raise:"#1A2B21", ink:"#D4DACC", muted:"#9DA595", line:"#283B2E", accent:"#7AB785", lamp:"#7AB785"},
+    seaair:    {name:"Sea air",       family:"cool",    bg:"#DCEDF0", panel:"#E9F5F6", raise:"#F4FAFA", ink:"#112126", muted:"#41545A", line:"#C2DCE0", accent:"#0B5A74", lamp:"#984121"},
+    canals:    {name:"Canals",        family:"cool",    bg:"#0E1F22", panel:"#13292D", raise:"#193337", ink:"#D0DCD8", muted:"#9DB1B0", line:"#24403F", accent:"#E58E6C", lamp:"#F2C66B"},
+    /* the contrast pair, for low vision or bright sunlight: black on pure white and a softened white on
+       pure black, each with one strong accent */
     hicon:     {name:"Contrast",      family:"neutral", bg:"#FFFFFF", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
-    hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
+    hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#F2F2F2", muted:"#D0D0D0", line:"#F2F2F2", accent:"#FFC72C", lamp:"#FFC72C"}
   };
-  /* the picker shows the built-ins in four groups (display only: the tone still comes from the
-     page colour), and the lamp cycles them in the same order */
-  var HICON = ["hicon", "hidark"];
-  var THEME_GROUPS = {
-    light:  ["day", "paper", "sepia", "parchment", "linen", "newsprint", "mist"],
-    dark:   ["dusk", "ink", "graphite", "cocoa", "slate", "noir", "candle"],
-    colour: ["rose", "peach", "sage", "mint", "sky", "lavender", "forest", "moss", "ocean", "midnight", "plum", "ember", "terminal", "amber"],
-    /* the four collections: one Collections tab in the picker, a labelled section each */
-    dutch:   ["delft", "vermeer", "rembrandt", "tulips", "polder", "canals"],
-    nature:  ["autumn", "winter", "aurora", "seaair", "blossom"],
-    cozy:    ["coffee", "library", "rain", "cabin", "nighttrain"],
-    texture: ["handmade", "bookcloth", "laid", "vellum"]
+  /* the retired themes, by id. A reader of one moves on every load (Prefs.load, through movedTo) to `to`,
+     a kept theme of the same tone: the one its merges led to when fifty themes became twelve (Amber went
+     into Candle, and Candle into Cocoa), or the nearest where they led to none that stays, so `to` is not
+     always the nearest. Where `to` would make the day theme and the night theme one theme, the reader
+     moves to `alt` instead, the nearest kept theme of that tone besides `to`. `name` and the five colours
+     are the retired theme's own (its Dutch name stays in i18n.js), kept so that they can be offered back
+     as a theme of the reader's own. A literal of its own, since tests/themes.js reads THEMES as the set
+     of built-ins (and this table apart, to check each move); resolveTheme and the pickers never look here */
+  var RETIRED = {
+    parchment:  {to:"sepia",  alt:"sage",   name:"Parchment",       bg:"#F1E4C6", panel:"#F7ECD4", ink:"#2C2114", muted:"#67563A", accent:"#8B2F2A"},
+    linen:      {to:"day",    alt:"sepia",  name:"Linen",           bg:"#F3EFE6", panel:"#FAF8F1", ink:"#2B2A26", muted:"#625F57", accent:"#5A6828"},
+    peach:      {to:"day",    alt:"seaair", name:"Peach",           bg:"#FBE7DA", panel:"#FDF1E8", ink:"#3B2A21", muted:"#72574A", accent:"#146C72"},
+    rose:       {to:"day",    alt:"sepia",  name:"Rose",            bg:"#F4E7E3", panel:"#F9EFEC", ink:"#44302D", muted:"#775D56", accent:"#A8495A"},
+    newsprint:  {to:"day",    alt:"sage",   name:"Newsprint",       bg:"#E3E2DC", panel:"#EBEAE5", ink:"#2B2B2B", muted:"#5A5A57", accent:"#A82424"},
+    mist:       {to:"seaair", alt:"day",    name:"Mist",            bg:"#E7EBEE", panel:"#F0F3F5", ink:"#25303A", muted:"#5A6773", accent:"#3C6E93"},
+    sky:        {to:"seaair", alt:"day",    name:"Sky",             bg:"#E2EDF7", panel:"#EEF5FB", ink:"#17293A", muted:"#4C5F71", accent:"#2068A8"},
+    lavender:   {to:"seaair", alt:"day",    name:"Lavender",        bg:"#ECE7F4", panel:"#F4F1FA", ink:"#29233A", muted:"#5D5573", accent:"#6A4DB5"},
+    mint:       {to:"sage",   alt:"day",    name:"Mint",            bg:"#DEF2E8", panel:"#EAF7F0", ink:"#153128", muted:"#45655A", accent:"#0D7566"},
+    ember:      {to:"cocoa",  alt:"dusk",   name:"Ember",           bg:"#1A1210", panel:"#221815", ink:"#EBDACD", muted:"#A68F80", accent:"#F2812E"},
+    candle:     {to:"cocoa",  alt:"canals", name:"Candle",          bg:"#2A1D14", panel:"#33251A", ink:"#F0DDB4", muted:"#B8A485", accent:"#E9C46A"},
+    amber:      {to:"cocoa",  alt:"dusk",   name:"Amber",           bg:"#0F0A03", panel:"#17100A", ink:"#FFB000", muted:"#B98319", accent:"#FFDF70"},
+    moss:       {to:"forest", alt:"dusk",   name:"Moss",            bg:"#161A10", panel:"#1D2215", ink:"#D7DBC2", muted:"#959C80", accent:"#B7C86A"},
+    ocean:      {to:"dusk",   alt:"forest", name:"Ocean",           bg:"#0D141E", panel:"#131C29", ink:"#CBD5E1", muted:"#8190A4", accent:"#5C9CD6"},
+    midnight:   {to:"dusk",   alt:"forest", name:"Midnight",        bg:"#0B1126", panel:"#111A36", ink:"#D8DDEE", muted:"#95A0BF", accent:"#9DB4FF"},
+    plum:       {to:"dusk",   alt:"canals", name:"Plum",            bg:"#17101F", panel:"#1E1628", ink:"#D8CDE3", muted:"#958AA3", accent:"#A97FD6"},
+    slate:      {to:"canals", alt:"cocoa",  name:"Slate",           bg:"#1C2229", panel:"#242B33", ink:"#D5DBE1", muted:"#97A3AE", accent:"#EF8C76"},
+    graphite:   {to:"forest", alt:"canals", name:"Graphite",        bg:"#1E1F22", panel:"#26272B", ink:"#D8D8D5", muted:"#A0A09C", accent:"#74D0B8"},
+    noir:       {to:"ink",    alt:"dusk",   name:"Noir",            bg:"#000000", panel:"#0B0B0B", ink:"#C6C6C6", muted:"#8E8E8E", accent:"#EDEDED"},
+    terminal:   {to:"ink",    alt:"dusk",   name:"Terminal",        bg:"#050805", panel:"#0A110A", ink:"#3FE86F", muted:"#2FA354", accent:"#D9FF6E"},
+    delft:      {to:"seaair", alt:"day",    name:"Delft blue",      bg:"#F2F4F3", panel:"#F8F9F8", ink:"#13285A", muted:"#4A5878", accent:"#2350B0"},
+    vermeer:    {to:"dusk",   alt:"canals", name:"Vermeer",         bg:"#11131B", panel:"#181B26", ink:"#ECE6D8", muted:"#A3A099", accent:"#8EA6F0"},
+    rembrandt:  {to:"cocoa",  alt:"canals", name:"Rembrandt",       bg:"#16140C", panel:"#1E1B11", ink:"#EBD9A8", muted:"#A99A76", accent:"#DE8A55"},
+    tulips:     {to:"day",    alt:"seaair", name:"Tulip field",     bg:"#FBF2E4", panel:"#FDF7EE", ink:"#2E1E1A", muted:"#6E5650", accent:"#2E6A3A"},
+    polder:     {to:"day",    alt:"seaair", name:"Polder",          bg:"#E2E5E4", panel:"#EBEDEC", ink:"#22282A", muted:"#565E61", accent:"#2D5F7F"},
+    autumn:     {to:"cocoa",  alt:"canals", name:"Autumn wood",     bg:"#1E2316", panel:"#252B1C", ink:"#EDE3CC", muted:"#ABA58C", accent:"#E8A04A"},
+    winter:     {to:"seaair", alt:"day",    name:"Winter morning",  bg:"#ECEFF4", panel:"#F4F6F9", ink:"#1B2733", muted:"#536070", accent:"#2C5F8A"},
+    aurora:     {to:"dusk",   alt:"forest", name:"Northern lights", bg:"#0A1218", panel:"#0F1A22", ink:"#D5E4E6", muted:"#8CA3A8", accent:"#5EE0A5"},
+    blossom:    {to:"day",    alt:"sepia",  name:"Cherry blossom",  bg:"#FBEDF1", panel:"#FDF5F7", ink:"#3A2229", muted:"#78545E", accent:"#5A3A33"},
+    coffee:     {to:"sepia",  alt:"sage",   name:"Coffee house",    bg:"#E6D5C3", panel:"#EEE2D5", ink:"#2E2018", muted:"#654F40", accent:"#8A3B22"},
+    library:    {to:"canals", alt:"cocoa",  name:"Old library",     bg:"#0F231B", panel:"#152B22", ink:"#E8DFC6", muted:"#A7A38C", accent:"#E0947F"},
+    rain:       {to:"dusk",   alt:"canals", name:"Rainy evening",   bg:"#151C26", panel:"#1B2430", ink:"#D3D9E0", muted:"#929BA6", accent:"#9CC0E6"},
+    cabin:      {to:"cocoa",  alt:"canals", name:"Candle cabin",    bg:"#3A2516", panel:"#432C1C", ink:"#FBE9CC", muted:"#D0B698", accent:"#F7A891"},
+    nighttrain: {to:"cocoa",  alt:"dusk",   name:"Night train",     bg:"#1A0F14", panel:"#22141B", ink:"#EADBD8", muted:"#AE959B", accent:"#9DBDF0"},
+    handmade:   {to:"day",    alt:"seaair", name:"Handmade paper",  bg:"#F1EEE7", panel:"#F7F5F0", ink:"#222120", muted:"#5D5A55", accent:"#24508F"},
+    bookcloth:  {to:"day",    alt:"seaair", name:"Book cloth",      bg:"#E4E6DE", panel:"#ECEEE7", ink:"#23261F", muted:"#565B51", accent:"#3F5D7A"},
+    laid:       {to:"day",    alt:"sepia",  name:"Laid paper",      bg:"#EEEBDC", panel:"#F5F3E8", ink:"#26251C", muted:"#5E5B4A", accent:"#6B3F86"},
+    vellum:     {to:"day",    alt:"seaair", name:"Vellum",          bg:"#F2E9DE", panel:"#F8F2EA", ink:"#2A2019", muted:"#66584C", accent:"#2B4C9A"}
   };
-  var COLLECTIONS = ["dutch", "nature", "cozy", "texture"];
-  function themeGroups(){
-    return [{ id: "light", name: _t("Light"), ids: THEME_GROUPS.light.slice() }, { id: "dark", name: _t("Dark"), ids: THEME_GROUPS.dark.slice() },
-      { id: "colour", name: _t("Colour"), ids: THEME_GROUPS.colour.slice() },
-      { id: "dutch", name: _tc("theme group", "Dutch"), ids: THEME_GROUPS.dutch.slice() }, { id: "nature", name: _t("Nature and seasons"), ids: THEME_GROUPS.nature.slice() },
-      { id: "cozy", name: _t("Cozy"), ids: THEME_GROUPS.cozy.slice() }, { id: "texture", name: _t("Textured"), ids: THEME_GROUPS.texture.slice() },
-      { id: "hicon", name: _t("High contrast"), ids: HICON.slice() }];
+  /* a retired theme's entry, or null for any other id: a kept theme, one of the reader's own, or junk
+     read from storage (an own property only, so "constructor" is no retired theme) */
+  function retiredOf(id){ return typeof id === "string" && Object.prototype.hasOwnProperty.call(RETIRED, id) ? RETIRED[id] : null; }
+  /* what the move off the retired themes gives the theme on screen, the day theme and the night theme,
+     from their stored ids (`was`: { theme, autoDay, autoNight }). Each retired id becomes its `to`.
+     Where that would make the two halves one theme, and they were two, the half that was retired takes
+     its `alt` instead (the night half, when both were), so the pair stays two themes, each in its own
+     tone: Linen/Peach becomes Day/Sea air. The theme on screen follows its half, so the half on screen
+     stays the half on screen: Peach on screen over Linen/Peach becomes Sea air. Prefs.load moves the
+     stored ids with this, and ThemeNotice asks it which fields still hold what the move gave them; it
+     reads nothing but `was` and the table, so the same ids always give the same answer */
+  function movedTo(was){
+    function to(k){ var r = retiredOf(k); return r ? r.to : k; }
+    var m = { theme: to(was.theme), autoDay: to(was.autoDay), autoNight: to(was.autoNight) };
+    if (was.autoDay !== was.autoNight && m.autoDay === m.autoNight){
+      if (retiredOf(was.autoNight)) m.autoNight = retiredOf(was.autoNight).alt;
+      else m.autoDay = retiredOf(was.autoDay).alt;
+    }
+    if (was.theme === was.autoDay) m.theme = m.autoDay;
+    else if (was.theme === was.autoNight) m.theme = m.autoNight;
+    return m;
   }
-  var CYCLE = themeGroups().reduce(function(all, g){ return all.concat(g.ids); }, []);
+  /* the looks: a day theme and a night theme that belong together, in the picker's order. A tap on
+     one makes it the reader's pair (selectLook). Its id is its day half; its name is its two themes'
+     names joined, "Day & Dusk" (lookName), unless it has a name of its own */
+  var LOOKS = [
+    { id: "day", day: "day", night: "dusk" },
+    { id: "paper", day: "paper", night: "ink" },
+    { id: "sepia", day: "sepia", night: "cocoa" },
+    { id: "sage", day: "sage", night: "forest" },
+    { id: "seaair", day: "seaair", night: "canals" },
+    { id: "hicon", day: "hicon", night: "hidark", name: "Contrast" }
+  ];
+  /* the two high-contrast themes, which have a tone of their own (applyTheme) */
+  var HICON = ["hicon", "hidark"];
   /* a theme's name on screen: a built-in's in the interface's language (the table above keeps the
      English), a saved one's as the reader named it */
   function themeName(theme){
@@ -384,9 +408,12 @@
   function fontName(f){ return f === FONTS.sans || f === FONTS.mono ? _t(f.name) : f.name; }
   function fontNote(f){ return _t(f.note); }
   function fontGroupName(g){ return _t(g.name); }
-  var BG_SWATCHES = ["#F6F1E4","#EFEFE8","#EDE7F3","#E4EFE7","#FBEDE0","#E8EFF5",
-                     "#14161B","#101711","#171021","#1A1310","#0D1420","#050506"];
-  var ACC_SWATCHES = ["#D8A24A","#C96A4A","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7FB069","#C9A227"];
+  /* the quick colours of both theme editors (Settings' and the Maker): the day pages of every look but
+     Contrast (Day, Paper, Sepia, Sage, Sea air) and a lavender the set lacks, then the same looks' night
+     pages and a violet; and eight accents, Dusk's amber, Canals' coral and Forest's green among them */
+  var BG_SWATCHES = ["#F5EFE3","#FAFAF7","#F0E4CB","#DFE7D8","#DCEDF0","#EDE7F3",
+                     "#0D121C","#000000","#261914","#0E1A13","#0E1F22","#171021"];
+  var ACC_SWATCHES = ["#D8A24A","#E58E6C","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7AB785","#C9A227"];
   /* the single "Custom" theme of earlier versions; still read so a saved one carries over into `customs` */
   var CUSTOM_DEFAULT = {bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true};
 
@@ -406,7 +433,14 @@
        flow to go back to when it is turned off, einkAsked that a slow screen was offered it (see Eink) */
     dim:false, dimLevel:40, dimNight:false, eink:null, einkFlow:null, einkAsked:false,
     auto:"off", autoDay:"day", autoNight:"dusk", nightFrom:"21:00", nightTo:"07:00", spread:true, wake:true, perPage:1,
-    zoom:1, soften:true, plainBg:false,
+    /* a Day/Night switch made while switching is on: { theme, period: "day" | "night", until: ms },
+       kept until the next automatic change (see AutoTheme.hold) */
+    dnHold:null,
+    /* the theme on screen, the day theme and the night theme as they were stored before a load moved
+       the reader off a retired theme ({ theme, autoDay, autoNight }, see movedTo), kept until the reader
+       has been told (ThemeNotice); null when there is nothing to tell */
+    themeWas:null,
+    zoom:1, soften:true,
     flow:"scroll", page:0, totalPages:1, pdfPageNum:1,
     mode:"empty", pdfDoc:null, fitScale:1, colw:0, gap:48, toc:null
   };
@@ -414,7 +448,7 @@
 
   /* ---------- remembered reading settings ---------- */
   var Prefs = (function(){
-    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "plainBg", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked"];
+    var KEY = "ll_prefs", FIELDS = ["theme", "custom", "customs", "font", "size", "lh", "width", "margin", "justify", "hyphens", "weight", "ls", "ws", "pgap", "warmth", "warmAuto", "flow", "soften", "auto", "autoDay", "autoNight", "nightFrom", "nightTo", "spread", "wake", "focus", "focusLevel", "dim", "dimLevel", "dimNight", "eink", "einkFlow", "einkAsked", "dnHold", "themeWas"];
     var loading = false;
     /* a number inside its range, or the default when the stored value is nonsense */
     function num(v, lo, hi, dflt){
@@ -443,6 +477,11 @@
       });
       return out;
     }
+    /* the ids a move off a retired theme noted (retireMove) from storage: three strings, or null */
+    function validWas(w){
+      return w && typeof w === "object" && typeof w.theme === "string" && typeof w.autoDay === "string" && typeof w.autoNight === "string"
+        ? { theme: w.theme, autoDay: w.autoDay, autoNight: w.autoNight } : null;
+    }
     /* the single scratch "Custom" theme of earlier versions becomes a saved theme, once: afterwards
        the scratch colours are back at their defaults and nothing points at "custom" any more */
     function migrateCustom(){
@@ -455,6 +494,44 @@
       ["theme", "autoDay", "autoNight"].forEach(function(k){ if (state[k] === "custom") state[k] = theme || (k === "autoNight" ? "dusk" : "day"); });
       state.custom = Object.assign({}, d);
     }
+    /* a reader of a retired theme moves to a kept one of the same tone (movedTo): the theme on screen,
+       the day theme and the night theme, and a Day/Night hold with the half it holds (any other hold
+       through `to`). The ids as they were are noted in themeWas the first time this moves one, and a
+       note still waiting there is never written over. Once nothing stored is retired, it changes nothing */
+    function retireMove(){
+      var was = { theme: state.theme, autoDay: state.autoDay, autoNight: state.autoNight }, m = movedTo(was), h = state.dnHold, r;
+      state.theme = m.theme; state.autoDay = m.autoDay; state.autoNight = m.autoNight;
+      if (h && typeof h === "object" && typeof h.theme === "string"){
+        r = retiredOf(h.theme);
+        h.theme = h.theme === was.autoDay ? m.autoDay : h.theme === was.autoNight ? m.autoNight : r ? r.to : h.theme;
+      }
+      if (state.themeWas === null && (retiredOf(was.theme) || retiredOf(was.autoDay) || retiredOf(was.autoNight))) state.themeWas = was;
+    }
+    /* what earlier versions could leave, repaired once the checks in load have run: a pair that is one
+       theme twice, a theme on screen outside the pair, a hold on neither half. Nothing in the app makes
+       these now; only the raw llThemes.select (the tests) can still put a theme outside the pair. A
+       built-in twice becomes its look (Ember/Ember, moved to Cocoa/Cocoa, becomes Sepia & Cocoa); a theme
+       of the reader's own twice keeps the half its page colour says, and the other half goes back to Day
+       or Dusk. Contrast or Contrast dark outside the pair brings the contrast pair, so a reader of high
+       contrast stays in it; any other theme outside becomes the half its page colour says (Paper over
+       Day/Dusk gives Paper/Dusk), so the reader keeps what they see. A hold only ever holds a half.
+       Keep the old colours (ThemeNotice) runs this too, as a net under what it changes */
+    function foldPair(){
+      var k = state.autoDay, l, t;
+      if (k === state.autoNight){
+        l = lookOf(k); t = resolveTheme(k);
+        if (l){ state.autoDay = l.day; state.autoNight = l.night; }
+        else if (t && isDarkColor(t.bg)) state.autoDay = "day";
+        else state.autoNight = "dusk";
+      }
+      k = state.theme;
+      if (k !== state.autoDay && k !== state.autoNight){
+        if (HICON.indexOf(k) >= 0){ state.autoDay = "hicon"; state.autoNight = "hidark"; }
+        else if (isDarkColor(currentTheme().bg)) state.autoNight = k;
+        else state.autoDay = k;
+      }
+      if (state.dnHold && state.dnHold.theme !== state.autoDay && state.dnHold.theme !== state.autoNight) state.dnHold = null;
+    }
     function load(){
       var o = null;
       try { o = JSON.parse(Store.get(KEY) || "null"); } catch(_){}
@@ -464,16 +541,24 @@
         if (o[f] === undefined || o[f] === null) return;
         if (f === "custom"){ if (typeof o.custom === "object") state.custom = Object.assign({}, state.custom, o.custom); return; }
         if (f === "customs"){ state.customs = validCustoms(o.customs); return; }
+        if (f === "themeWas"){ state.themeWas = validWas(o.themeWas); return; }
         if (typeof state[f] === "number" && typeof o[f] !== "number") return;
+        /* a theme is an id: anything else keeps the default, so the move below only meets strings */
+        if ((f === "theme" || f === "autoDay" || f === "autoNight") && typeof o[f] !== "string") return;
         state[f] = o[f];
       });
       migrateCustom();
+      retireMove();
       if (!resolveTheme(state.theme)) state.theme = "day";
       if (!/^(off|system|time)$/.test(state.auto)) state.auto = "off";
       if (!resolveTheme(state.autoDay)) state.autoDay = "day";
       if (!resolveTheme(state.autoNight)) state.autoNight = "dusk";
       if (!/^\d\d:\d\d$/.test(state.nightFrom)) state.nightFrom = "21:00";
       if (!/^\d\d:\d\d$/.test(state.nightTo)) state.nightTo = "07:00";
+      var h = state.dnHold;
+      state.dnHold = h && typeof h === "object" && typeof h.theme === "string" && resolveTheme(h.theme) && (h.period === "day" || h.period === "night") && typeof h.until === "number" && isFinite(h.until)
+        ? { theme: h.theme, period: h.period, until: h.until } : null;
+      foldPair();
       if (!Object.prototype.hasOwnProperty.call(FONTS, state.font)) state.font = "serif";
       state.size = Math.max(14, Math.min(28, state.size)); state.lh = Math.max(1.3, Math.min(2.1, state.lh));
       state.width = Math.max(320, Math.min(960, state.width)); state.margin = Math.max(0, Math.min(64, state.margin || 0));
@@ -493,12 +578,11 @@
       state.eink = state.eink === true ? true : state.eink === false ? false : null;
       if (state.einkFlow !== "scroll" && state.einkFlow !== "pages") state.einkFlow = null;
       state.einkAsked = state.einkAsked === true;
-      state.plainBg = state.plainBg === true;
       /* e-ink mode keeps the Pages flow */
       if (state.eink) state.flow = "pages";
       loading = false;
     }
-    return { save: save, load: load };
+    return { save: save, load: load, foldPair: foldPair };
   })();
 
   /* ---------- color helpers ---------- */
@@ -622,54 +706,96 @@
   }
 
   /* ---------- theme + type ---------- */
-  /* a theme's preview tile, the one picker drawing (the lamp's popover, its Recent row and the
-     settings sheet): a small page in the theme's colours — "Aa" in its text colour, two lines of
-     secondary text, the panel as a strip along the bottom with the lamp as a button on it — and
-     the name under it. The one on screen is pressed: a ring and a check (tileMark). "Aa" is drawn
-     by the stylesheet, so the button's text is the name alone. */
+  /* the looks and the tiles that show them, the one picker drawing (the lamp's popover and the
+     settings sheet). A tile shows a theme as a small page in its colours (pageHtml): "Aa" in its
+     text colour, two lines of secondary text beside it and two under it, the panel as a strip along
+     the bottom with the lamp lit on it. A look's tile holds two such pages side by side, its day
+     theme on the left and its night theme on the right; a theme's own tile, one. The name sits under
+     the drawing ("Aa" is drawn by the stylesheet, so the button's text is the name alone), and the
+     pressed tile wears a ring and a check (tileMark). */
   function tileVars(t){
     return "--sw-bg:" + t.bg + ";--sw-ink:" + t.ink + ";--sw-mut:" + t.muted + ";--sw-pan:" + t.panel + ";--sw-acc:" + (t.lamp || t.accent);
   }
-  function tileSwatch(t, cls){ return '<i' + (cls ? ' class="' + cls + '"' : "") + ' style="' + tileVars(t) + '" aria-hidden="true"><b></b><s></s><s></s></i>'; }
+  /* one small page; data-t names the theme it shows, so tileMark can repaint one being edited */
+  function pageHtml(id, t){
+    return '<i class="pg" data-t="' + escapeHtml(id) + '" style="' + tileVars(t) + '"><b></b><s></s><s></s><q></q><q></q><u></u><em></em></i>';
+  }
+  /* a tile for one theme, one of the reader's own (Mine) */
   function tileHtml(id, t){
-    return '<button type="button" class="chip tile" data-theme="' + id + '" aria-pressed="false">' + tileSwatch(t) +
-      '<span class="tile-n">' + escapeHtml(themeName(id)) + '</span></button>';
+    return '<button type="button" class="chip tile" data-theme="' + escapeHtml(id) + '" aria-pressed="false"><i aria-hidden="true">' + pageHtml(id, t) +
+      '</i><span class="tile-n">' + escapeHtml(themeName(id)) + '</span></button>';
   }
-  /* marks the tiles under `root` for the theme on screen, and brings a custom tile's colours up
-     to date while it is being edited */
+  /* the look a built-in belongs to; a look by its id; the look a day theme and a night theme make, and
+     the one the reader's pair makes, or null when they make none (mixed in the lists, or holding a
+     theme of the reader's own) */
+  function lookOf(id){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].day === id || LOOKS[i].night === id) return LOOKS[i]; return null; }
+  function lookById(id){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].id === id) return LOOKS[i]; return null; }
+  function lookFor(day, night){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].day === day && LOOKS[i].night === night) return LOOKS[i]; return null; }
+  function pairLook(){ return lookFor(state.autoDay, state.autoNight); }
+  /* "Day & Dusk": the two themes' names joined, in the interface's language; Contrast has its own */
+  function lookName(l){
+    return l.name ? _tc("theme", l.name) : _t("{day} & {night}", { day: themeName(l.day), night: themeName(l.night) });
+  }
+  /* a look's tile, or with the id "pair" the tile of the reader's own pair */
+  function lookTileHtml(id, day, night){
+    var d = resolveTheme(day), n = resolveTheme(night);
+    if (!d || !n) return "";
+    return '<button type="button" class="chip tile look" data-look="' + id + '" aria-pressed="false"><i aria-hidden="true">' + pageHtml(day, d) + pageHtml(night, n) +
+      '</i><span class="tile-n">' + escapeHtml(lookName(lookById(id) || { day: day, night: night })) + '</span></button>';
+  }
+  /* the six looks, and first the pair's own tile when the pair is no look */
+  function looksHtml(){
+    return (pairLook() ? "" : lookTileHtml("pair", state.autoDay, state.autoNight)) + LOOKS.map(function(l){ return lookTileHtml(l.id, l.day, l.night); }).join("");
+  }
+  /* the reader's own themes, then New theme (the maker, starting from the theme on screen). In the
+     popover each own theme carries a ⋯ for its actions; a long press on the tile does the same */
+  function mineHtml(withActions){
+    return state.customs.map(function(c){
+      var k = "c:" + c.id, tile = tileHtml(k, customColors(c));
+      if (!withActions) return tile;
+      return '<div class="mine-t">' + tile + '<button type="button" class="mine-ed" data-acts="' + escapeHtml(k) + '" aria-label="' + escapeHtml(_t("Actions for {name}", { name: c.name })) +
+        '" title="' + escapeHtml(_t("Edit, rename, duplicate or delete")) + '">' + ICONS.more + '</button></div>';
+    }).join("") +
+      '<button type="button" class="chip tile chip-new" data-new="1" title="' + escapeHtml(_t("Make my own from this one")) + '"><i aria-hidden="true"></i><span class="tile-n">' + escapeHtml(_t("New theme")) + '</span></button>';
+  }
+  /* the half on screen: the half of the pair the theme on screen is; for a theme outside the pair
+     (only the raw llThemes.select leaves one), the half its page colour says */
+  function halfOnScreen(){ return dnOf(state.theme) || (isDarkColor(currentTheme().bg) ? "night" : "day"); }
+  /* marks the tiles under `root`: a look's or the pair's tile when its two themes are the reader's
+     pair and one of them is on screen, a theme's tile when it is on screen. The pressed one's name
+     says so. The own theme on screen is repainted in every tile that shows it, so one being edited
+     changes everywhere at once */
   function tileMark(root, t){
-    var custom = customById(state.theme);
-    Array.prototype.forEach.call(root.querySelectorAll(".chip[data-theme]"), function(ch){
-      var on = ch.dataset.theme === state.theme;
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll(".chip[data-look], .chip[data-theme]"), function(ch){
+      var on, pg = ch.querySelectorAll(".pg");
+      if (ch.dataset.look) on = pg.length === 2 && pg[0].dataset.t === state.autoDay && pg[1].dataset.t === state.autoNight && (state.theme === state.autoDay || state.theme === state.autoNight);
+      else on = ch.dataset.theme === state.theme;
       ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
-      if (on) ch.setAttribute("aria-label", _t("{name}, current theme", { name: themeName(state.theme) })); else ch.removeAttribute("aria-label");
-      if (on && custom && t){ var sw = ch.querySelector("i"); if (sw) sw.setAttribute("style", tileVars(t)); }
+      if (on) ch.setAttribute("aria-label", _t("{name}, current theme", { name: ch.dataset.look ? ch.querySelector(".tile-n").textContent : themeName(state.theme) }));
+      else ch.removeAttribute("aria-label");
     });
+    if (t && customById(state.theme)) Array.prototype.forEach.call(root.querySelectorAll(".pg"), function(p){ if (p.dataset.t === state.theme) p.setAttribute("style", tileVars(t)); });
   }
-  /* the picker's groups for display: the built-in groups (themeGroups), then the reader's own
-     saved themes in a group of their own (Mine) */
-  function pickerGroups(){
-    var g = themeGroups();
-    g.push({ id: "mine", name: _t("Mine"), ids: state.customs.map(function(c){ return "c:" + c.id; }) });
-    return g;
-  }
-  /* <option>s for a day / night theme list: every group, the reader's own last */
+  /* <option>s for the Day theme and Night theme lists (Settings › Theme): Light, the looks' day
+     themes, and Dark, their night themes, each in the looks' order; then the reader's own under Mine.
+     In each list AutoTheme.syncUI disables the other half's theme, so the pair stays two themes */
   function themeOptions(){
-    return pickerGroups().map(function(g){
-      if (!g.ids.length) return "";
-      return '<optgroup label="' + escapeHtml(g.name) + '">' + g.ids.map(function(k){ return '<option value="' + k + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
-    }).join("");
+    var light = LOOKS.map(function(l){ return l.day; }), dark = LOOKS.map(function(l){ return l.night; });
+    function group(name, ids){
+      if (!ids.length) return "";
+      return '<optgroup label="' + escapeHtml(name) + '">' + ids.map(function(k){ return '<option value="' + escapeHtml(k) + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
+    }
+    return group(_t("Light"), light) + group(_t("Dark"), dark) + group(_t("Mine"), state.customs.map(function(c){ return "c:" + c.id; }));
   }
+  /* Settings › Theme: the popover's tiles, drawn by the same functions. The looks come first (the
+     pair's own tile ahead of them when the pair is no look), then the reader's own themes and New
+     theme under Mine; there is no ⋯ on an own theme here, since the editor row (#customRow) edits the
+     one on screen */
   function buildThemeChips(){
-    var html = "";
-    themeGroups().forEach(function(g){
-      html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="tiles">' +
-        g.ids.map(function(k){ return tileHtml(k, THEMES[k]); }).join("") + '</div></div>';
-    });
-    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Mine") + '</div><div class="tiles">' +
-      state.customs.map(function(c){ return tileHtml("c:" + c.id, customColors(c)); }).join("") +
-      '<button type="button" class="chip tile chip-new" data-new="1" title="' + _t("Make my own from this one") + '"><i aria-hidden="true"></i><span class="tile-n">' + _t("New theme") + '</span></button></div></div>';
-    $("#themeChips").innerHTML = html;
+    $("#themeChips").innerHTML = '<div class="looks" role="group" aria-labelledby="themeL">' + looksHtml() + '</div><div class="sub-label" id="tg-custom">' + escapeHtml(_t("Mine")) +
+      '</div><div class="looks q-mine" role="group" aria-labelledby="tg-custom">' + mineHtml(false) + '</div>';
+    tileMark($("#themeChips"), currentTheme());
   }
   function buildCustomUI(){
     $("#bgSwatches").innerHTML = BG_SWATCHES.map(function(c){
@@ -800,15 +926,20 @@
     var tone = eink ? "light" : HICON.indexOf(state.theme) >= 0 && !themeDraft ? "contrast" : dark ? "dark" : "light";
     r.setProperty("--lamp", eink ? "#000000" : (t.lamp || t.accent));
     r.setProperty("--raise", eink ? c.panel : (t.raise || c.panel));
+    /* text on an accent fill (the phone dock's Read aloud): the panel colour, or the ink where a
+       light accent (a custom theme's) leaves the panel colour under 4.5:1 */
+    r.setProperty("--on-accent", contrast(c.panel, c.accent) >= 4.5 ? c.panel : c.ink);
+    /* the phone lamp's progress ring and the dock's position slider: the lamp colour, drawn toward
+       the ink in 5% steps until it shows at 3:1 on the panel (it only moves for a custom theme,
+       whose lamp is its accent) */
+    var lampC = eink ? "#000000" : (t.lamp || t.accent), mark = lampC;
+    for (var k = 1; k <= 20 && contrast(mark, c.panel) < 3; k++) mark = mix(lampC, c.ink, k * 0.05);
+    r.setProperty("--lamp-mark", mark);
     root.setAttribute("data-tone", tone);
-    /* a textured theme's faint paper or cloth behind the text (app.css); none in e-ink mode, in the
-       high-contrast themes or with Plain background */
-    if (t.texture && !eink && tone !== "contrast" && !state.plainBg) root.setAttribute("data-texture", t.texture); else root.removeAttribute("data-texture");
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
-    /* the installed app's title bar takes the panel colour */
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", c.panel);
+    themeColor();
+    markDayNight();
     tileMark($("#themeChips"), themeDraft ? null : t);
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
@@ -818,6 +949,25 @@
     if (Warmth) Warmth.apply();
     if (Pop) Pop.sync();
     Prefs.save();
+  }
+  /* every Day/Night switch (the picker's head, Settings › Theme, the phone dock): the half of the
+     theme on screen pressed, also while the maker's draft is shown (a preview, the half has not
+     changed); e-ink has no themes to switch, so none shows there. applyTheme marks them, and so does
+     pairChanged: a new pair alone can change the half of the theme on screen, when a list makes a
+     theme outside the pair one of its halves */
+  function markDayNight(){
+    var dnNow = dnOf(state.theme), eink = state.eink === true;
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg [data-dn]"), function(b){ b.setAttribute("aria-pressed", b.dataset.dn === dnNow ? "true" : "false"); });
+    $("#dockDay").setAttribute("aria-pressed", dnNow === "day" ? "true" : "false");
+    $("#dockNight").setAttribute("aria-pressed", dnNow === "night" ? "true" : "false");
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg"), function(s){ s.hidden = eink; });
+    $("#phoneDock .pd-dn").hidden = eink;
+  }
+  /* the installed app's title bar (the phone's status bar) takes the panel colour, or the page
+     colour while reading on a phone, where the text runs up to it */
+  function themeColor(){
+    var meta = document.querySelector('meta[name="theme-color"]'), r = document.documentElement.style;
+    if (meta) meta.setAttribute("content", r.getPropertyValue(document.body.classList.contains("phonebar") ? "--bg" : "--panel").trim());
   }
   /* the preview and the meter show every colour of the theme being edited */
   function previewCustom(t){
@@ -844,14 +994,43 @@
       if (state.auto === "time") return inWindow();
       return null;
     }
-    function wanted(){ var n = isNight(); return n === null ? null : (n ? state.autoNight : state.autoDay); }
+    /* the theme switching wants now: the pair's theme for this period, unless a Day/Night switch
+       made in this period still holds (until the next automatic change) */
+    function wanted(){
+      var n = isNight(), h = state.dnHold;
+      if (n === null) return null;
+      if (h){
+        if (Date.now() < h.until && h.period === (n ? "night" : "day") && resolveTheme(h.theme)) return h.theme;
+        clearHold();
+      }
+      return n ? state.autoNight : state.autoDay;
+    }
+    /* the next minute the schedule switches, as a time */
+    function nextBoundaryAt(){
+      var d = new Date(), now = d.getHours() * 60 + d.getMinutes(), best = 1440;
+      [minutes(state.nightFrom), minutes(state.nightTo)].forEach(function(m){ var w = (m - now + 1440) % 1440 || 1440; if (w < best) best = w; });
+      return d.getTime() + best * 60000 - d.getSeconds() * 1000 - d.getMilliseconds();
+    }
+    /* a Day/Night switch while switching is on: it holds until the next automatic change (the next
+       boundary on a schedule; with Follow phone the first change the app sees, or 12 hours, since
+       the phone may switch while the app is closed). Switching to the theme the period wants
+       simply ends any hold */
+    function hold(theme){
+      var n = isNight();
+      if (n === null || theme === (n ? state.autoNight : state.autoDay)){ clearHold(); return; }
+      state.dnHold = { theme: theme, period: n ? "night" : "day", until: state.auto === "time" ? nextBoundaryAt() : Date.now() + 12 * 3600000 };
+      Prefs.save();
+    }
+    function clearHold(){ if (state.dnHold){ state.dnHold = null; Prefs.save(); } }
     /* fade: a switch while the page is in view (the hour came round, the phone went dark)
        cross-fades; at start-up it is simply there */
     function apply(fade){
       var t = wanted();
+      /* through selectTheme, so a theme of the reader's own that switching brings on screen fills
+         Settings' editor row too (syncCustomUI) */
       if (t && t !== state.theme && resolveTheme(t)){
-        if (fade === true) crossFade(function(){ state.theme = t; applyTheme(); syncUI(); });
-        else { state.theme = t; applyTheme(); }
+        if (fade === true) crossFade(function(){ selectTheme(t); syncUI(); });
+        else selectTheme(t);
       }
       syncUI();
       arm();
@@ -878,38 +1057,52 @@
       document.querySelectorAll("#autoChips .chip").forEach(function(ch){
         var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
       });
-      $("#autoRow").style.display = state.auto === "off" ? "none" : "block";
+      $("#autoRow").style.display = "block";   /* the day and night themes: shown whether switching is on or off */
       $("#autoTimes").style.display = state.auto === "time" ? "flex" : "none";
       var opts = themeOptions();
-      ["#autoDay", "#autoNight", "#qDaySel", "#qNightSel"].forEach(function(sel){ var el = $(sel); if (el && el.getAttribute("data-opts") !== opts){ el.innerHTML = opts; el.setAttribute("data-opts", opts); } });
+      ["#autoDay", "#autoNight"].forEach(function(sel){ var el = $(sel); if (el && el.getAttribute("data-opts") !== opts){ el.innerHTML = opts; el.setAttribute("data-opts", opts); } });
       $("#autoDay").value = state.autoDay; $("#autoNight").value = state.autoNight;
-      $("#qDaySel").value = state.autoDay; $("#qNightSel").value = state.autoNight;
+      /* each list's option for the other half's theme is off, so the pair stays two themes */
+      Array.prototype.forEach.call($("#autoDay").options, function(o){ o.disabled = o.value === state.autoNight; });
+      Array.prototype.forEach.call($("#autoNight").options, function(o){ o.disabled = o.value === state.autoDay; });
       $("#nightFrom").value = state.nightFrom; $("#nightTo").value = state.nightTo;
       $("#autoHint").textContent = nowLine();
       $("#qNow").textContent = nowLine();
     }
-    /* the user picked a theme by hand: keep auto on, but remember it for the current period */
-    function userPicked(theme){
-      var n = isNight();
-      if (n === null) return;
-      if (n) state.autoNight = theme; else state.autoDay = theme;
-      syncUI(); Prefs.save();
-    }
     function fadeApply(){ apply(true); }
     if (mq){ (mq.addEventListener ? mq.addEventListener("change", fadeApply) : mq.addListener(fadeApply)); }
-    timer = setInterval(function(){ if (state.auto === "time") apply(true); }, 30000);
+    timer = setInterval(function(){ if (state.auto === "time" || state.dnHold) apply(true); }, 30000);
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") apply(); });
-    /* Off, Follow phone or On a schedule: turning it on asks again, once, when a theme is then picked by hand */
+    /* Off, Follow phone or On a schedule: turning it on asks again, once, when a theme of the reader's
+       own is then picked (pickOwn's toast) */
     function setMode(a){
       if (!/^(off|system|time)$/.test(a)) return;
       if (a !== "off" && a !== state.auto) Store.set("ll_auto_asked", "0");
+      clearHold();
       state.auto = a; Prefs.save(); apply(true);
       if (Pop) Pop.sync();
     }
+    /* the Day theme and Night theme lists: one half of the pair. The other half's theme is refused
+       (the lists disable it), so the pair stays two themes. A change to the half on screen shows the
+       new theme at once, and a Day/Night hold carries over to it with its period and end; a change to
+       the other half changes only the pair. Neither ends a hold */
     function setPair(which, k){
-      if (!resolveTheme(k)) return;
+      if ((which !== "day" && which !== "night") || !resolveTheme(k) || k === (which === "day" ? state.autoNight : state.autoDay)) return;
+      var onScreen = halfOnScreen() === which;
       if (which === "day") state.autoDay = k; else state.autoNight = k;
-      Prefs.save(); apply(true);
+      /* saved and drawn again once the new theme is on screen, inside its cross-fade: apply then finds
+         the theme switching wants already there, and starts no second fade over the first */
+      function done(){ Prefs.save(); pairChanged(); apply(true); }
+      if (!onScreen){ done(); return; }
+      if (state.dnHold) state.dnHold.theme = k;
+      crossFade(function(){ selectTheme(k); done(); });
+    }
+    /* the night hours (On a schedule), from Settings or the popover; an hour that is not one falls back
+       to 21:00 or 07:00. A change ends a Day/Night hold, as a change of mode does */
+    function setHours(from, to){
+      state.nightFrom = /^\d\d:\d\d$/.test(from) ? from : "21:00";
+      state.nightTo = /^\d\d:\d\d$/.test(to) ? to : "07:00";
+      clearHold(); Prefs.save(); apply(true);
       if (Pop) Pop.sync();
     }
     $("#autoChips").addEventListener("click", function(e){
@@ -918,9 +1111,9 @@
     });
     $("#autoDay").addEventListener("change", function(e){ setPair("day", e.target.value); });
     $("#autoNight").addEventListener("change", function(e){ setPair("night", e.target.value); });
-    $("#nightFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); apply(); });
-    $("#nightTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); apply(); });
-    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair };
+    $("#nightFrom").addEventListener("change", function(e){ setHours(e.target.value, state.nightTo); });
+    $("#nightTo").addEventListener("change", function(e){ setHours(state.nightFrom, e.target.value); });
+    return { apply: apply, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair, setHours: setHours, hold: hold, clearHold: clearHold };
   })();
 
   /* ---------- warmth: a warm film over the screen for the evening ----------
@@ -929,8 +1122,8 @@
      much lower strength (a dark page multiplied by amber only turns muddy). Warmth is a
      percentage of the theme's ceiling, and that ceiling is whatever the theme can give up
      without any of its text — ink and secondary text, on the page and on the panel — falling
-     under 4.5:1 once the film is over it. Roomy themes reach the full 35 % (12 % dark); tight
-     ones (Sepia, Rose, Ink) stop earlier. */
+     under 4.5:1 once the film is over it. Every built-in reaches the full 35 % (12 % on a dark
+     page); a custom theme with less contrast to spare stops earlier. */
   var Warmth = (function(){
     var el = $("#warmth"), MAX_LIGHT = 0.35, MAX_DARK = 0.12, WARM = [255, 150, 50];
     var PAIRS = [["ink", "bg"], ["ink", "panel"], ["muted", "bg"], ["muted", "panel"]];
@@ -961,10 +1154,12 @@
       caps[key] = a = Math.max(0, Math.round(a * 1000) / 1000);
       return a;
     }
-    /* the night window: the one Auto is using, or 21:00–07:00 when Auto is off */
+    /* the night window: Auto's hours when it is On a schedule; otherwise 21:00–07:00, and with Follow
+       phone also whenever the phone is set to dark. Follow phone keeps the hours because a first run
+       starts on it: on a phone that never turns dark the film would otherwise never come on */
     function isNight(){
       var n = AutoTheme.isNight();
-      if (n !== null) return n;
+      if (n === true || state.auto === "time") return n;
       var d = new Date(), now = d.getHours() * 60 + d.getMinutes();
       return now >= 21 * 60 || now < 7 * 60;
     }
@@ -1106,9 +1301,11 @@
       Prefs.save();
       dismiss();
     }
-    /* the one-time offer on a slow-refreshing screen: a toast with a button, until it is answered */
+    /* the one-time offer on a slow-refreshing screen: a toast with a button, until it is answered. It
+       never shows beside the notice about the retired themes (ThemeNotice): while that is up the offer
+       waits for the next boot, and is not marked as asked */
     function offer(){
-      if (offerEl || state.eink !== null || state.einkAsked) return;
+      if (offerEl || state.eink !== null || state.einkAsked || document.getElementById("themeToast")) return;
       state.einkAsked = true; Prefs.save();
       offerEl = document.createElement("div");
       offerEl.id = "einkToast"; offerEl.setAttribute("role", "status");
@@ -1126,6 +1323,112 @@
     $("#cEink").addEventListener("change", function(e){ set(e.target.checked); });
     $("#qEink").addEventListener("change", function(e){ set(e.target.checked); });
     return { on: on, set: set, apply: apply, boot: boot, offer: offer, dismiss: dismiss };
+  })();
+  /* ---------- the notice after a move off a retired theme: "Keep the old colours" ----------
+     A load that moved the reader off a retired theme noted the ids as they were (state.themeWas, see
+     retireMove in Prefs). The same boot then says what became of them, once, about 800 ms after the
+     first screen (or the next boot, when the e-ink offer came first): "Themes have changed: Candle is
+     now Cocoa." Keep the old colours makes each of those retired themes again as a theme of the
+     reader's own, from the colours RETIRED keeps, and puts it back where it was; the close button
+     keeps the new themes. The note is cleared the moment the notice shows, so it never shows twice.
+     It never shows beside the e-ink offer either: whichever comes first shows, and the other waits
+     for the next boot. It has the e-ink offer's look and the update offer's place: it keeps the
+     bottom row and reports its height (--noticeH), and the toast and the translation pill step up
+     over it (app.css) */
+  var ThemeNotice = (function(){
+    var el = null, ro = null;
+    /* what the notice tells of: each retired id among the noted ones, once (the day theme's, then the
+       night theme's, then the one on screen), where its field still holds what the move gave it
+       (movedTo). A field the load's fold replaced, or one the reader has changed since, is left out:
+       Contrast on screen over Linen/Plum brought the contrast pair, and Linen and Plum are no longer
+       part of what the reader uses */
+    function listed(was){
+      var out = [], seen = {}, m, outside;
+      if (!was) return out;
+      m = movedTo(was);
+      /* the one on screen was outside its pair (an earlier version's pick with Day and night off): the
+         load's fold put what it became into a half, and it stays listed while it is on screen or still
+         in that half, even after Day, Night or t; `half` says which half holds it when it is not on screen */
+      outside = was.theme !== was.autoDay && was.theme !== was.autoNight;
+      ["autoDay", "autoNight", "theme"].forEach(function(f){
+        var old = was[f], half = null;
+        if (!retiredOf(old) || seen[old]) return;
+        if (f === "theme" && outside){
+          if (state.theme !== m.theme){
+            if (state.autoDay === m.theme) half = "day";
+            else if (state.autoNight === m.theme) half = "night";
+            else return;
+          }
+        } else if (state[f] !== m[f]) return;
+        seen[old] = true; out.push({ field: f, old: old, half: half });
+      });
+      return out;
+    }
+    function close(){
+      if (ro){ ro.disconnect(); ro = null; }
+      document.body.style.removeProperty("--noticeH");
+      if (el){ el.remove(); el = null; }
+    }
+    /* Keep the old colours. The notice may have been up a while, so what it tells of is checked again,
+       and a field the reader has changed since is left alone (when that leaves nothing, nothing comes
+       back). Each retired theme still listed comes back as a theme of the reader's own, named as it was
+       in the interface's language ("Candle 2" when that name is taken), and takes its half; the one that
+       was on screen takes the half on screen, ahead of that half's own, so the reader keeps seeing what
+       they saw (Peach on screen over Linen/Dusk gives Peach/Dusk, and Linen waits under Mine). The half
+       on screen stays the half on screen, and a Day/Night hold carries over to the theme that now stands
+       in it. The notice goes first, so the toast that says so lands in the bottom row */
+    function keep(was){
+      var l = listed(was), h = halfOnScreen(), made = {}, to;
+      close();
+      if (!l.length) return;
+      l.forEach(function(x){
+        var r = retiredOf(x.old);
+        made[x.old] = "c:" + addCustom({ name: customName(_tc("theme", r.name)), bg: normHex(r.bg), ink: normHex(r.ink), autoInk: false, accent: normHex(r.accent),
+          panel: normHex(r.panel), muted: normHex(r.muted) }).id;
+      });
+      l.forEach(function(x){ if (x.field !== "theme") state[x.field] = made[x.old]; });
+      l.forEach(function(x){ if (x.field === "theme") state[(x.half || h) === "day" ? "autoDay" : "autoNight"] = made[x.old]; });
+      to = h === "day" ? state.autoDay : state.autoNight;
+      if (state.dnHold) state.dnHold.theme = to;
+      selectTheme(to);
+      /* nothing above leaves a theme outside the pair or a hold on neither half; the fold is the net under that */
+      Prefs.foldPair();
+      applyTheme(); Prefs.save(); pairChanged();
+      Marks.toast(_t("Your old colours are back, under Mine."));
+    }
+    /* the notice, worded from the pair as it is now: "Linen is now Day and Peach is now Sea air" */
+    function show(){
+      var was = state.themeWas, l = listed(was), parts, setH;
+      state.themeWas = null; Prefs.save();
+      if (!l.length) return;
+      parts = l.map(function(x){ return _t("{old} is now {new}", { old: _tc("theme", retiredOf(x.old).name), "new": themeName(state[x.field]) }); });
+      el = document.createElement("div");
+      el.id = "themeToast"; el.setAttribute("role", "status");
+      document.body.appendChild(el);
+      /* the two buttons are one box (.tn-acts), so they wrap under the words together (app.css) */
+      el.innerHTML = '<span class="tn-msg">' + escapeHtml(_t("Themes have changed: {changes}.", { changes: I18N.list(parts) })) + '</span><span class="tn-acts"><button type="button" id="themeKeep">' + escapeHtml(_t("Keep the old colours")) + '</button>' +
+        '<button type="button" id="themeNo" aria-label="' + escapeHtml(_t("No thanks")) + '" title="' + escapeHtml(_t("No thanks")) + '">' + ICONS.close + '</button></span>';
+      /* the room it takes, its height and 8px; none while speed reading hides it (app.css) */
+      setH = function(){
+        if (!el || !el.isConnected) return;
+        if (el.offsetHeight) document.body.style.setProperty("--noticeH", (el.offsetHeight + 8) + "px");
+        else document.body.style.removeProperty("--noticeH");
+      };
+      setH();
+      if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(el); }
+      el.querySelector("#themeKeep").addEventListener("click", function(){ keep(was); });
+      el.querySelector("#themeNo").addEventListener("click", close);
+    }
+    /* at boot: a note that tells of nothing is cleared now; otherwise the notice comes once the first
+       screen is up, unless the e-ink offer (at 600 ms) came first, and then the note waits for the next boot */
+    function boot(){
+      if (!listed(state.themeWas).length){
+        if (state.themeWas !== null){ state.themeWas = null; Prefs.save(); }
+        return;
+      }
+      setTimeout(function(){ if (!el && !document.getElementById("einkToast")) show(); }, 800);
+    }
+    return { boot: boot };
   })();
   /* ---------- keep the screen on while a document is open ---------- */
   var Wake = (function(){
@@ -1365,7 +1668,12 @@
       }
     }
     function closed(){ if (watcher) watcher.disconnect(); watcher = null; listEl = null; }
-    function openPanel(){ Side.open("fonts", _t("Fonts"), render, closed); }
+    /* opts.back runs once the panel has closed (All fonts in the phone's Text sheet goes back
+       there); not when another panel takes its place, while the drawer is still open */
+    function openPanel(opts){
+      var back = opts && opts.back;
+      Side.open("fonts", _t("Fonts"), render, back ? function(){ closed(); if (!$("#side").classList.contains("open")) back(); } : closed);
+    }
 
     /* for tests and other modules */
     window.llFonts = { load: load, loaded: loaded, use: use, openPanel: openPanel, catalogue: FONTS, groups: FONT_GROUPS };
@@ -1376,7 +1684,21 @@
   var ICONS = (function(){
     var open = 'stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
     function svg(paths, extra){ return '<svg viewBox="0 0 24 24" ' + open + (extra || '') + '>' + paths + '</svg>'; }
+    /* the Text sheet's pictograms are wider than tall: three lines of text, or a page with its text */
+    function wide(paths){ return '<svg viewBox="0 0 32 24" ' + open + '>' + paths + '</svg>'; }
+    var page = '<rect x="5" y="2.5" width="22" height="19" rx="3"/>';
     return {
+      /* the phone dock's Text and Theme tools and the lamp button: "Aa" in strokes, a bulb and a
+         hanging lamp, their glass in the lamp colour (.glass in app.css) */
+      type:      svg('<path d="M2.5 19L8 5l5.5 14M4.5 14h7"/><circle cx="18.25" cy="15.5" r="3.25"/><path d="M21.5 12v7"/>'),
+      bulb:      svg('<path class="glass" d="M9.5 17.5v-1.3c0-.9-.4-1.6-1-2.2A5.5 5.5 0 1 1 15.5 14c-.6.6-1 1.3-1 2.2v1.3z"/><path d="M10 20.5h4"/>'),
+      lamp:      svg('<path class="glass" d="M9 16a3 3 0 0 0 6 0z"/><path d="M12 5v5"/><path d="M9 10h6l4 6H5z"/>'),
+      lhTight:   wide('<path d="M4 8h24M4 12h24M4 16h16"/>'),
+      lhNormal:  wide('<path d="M4 6h24M4 12h24M4 18h16"/>'),
+      lhAiry:    wide('<path d="M4 3h24M4 12h24M4 21h16"/>'),
+      mgNarrow:  wide(page + '<path d="M8.5 8h15M8.5 12h15M8.5 16h10"/>'),
+      mgMedium:  wide(page + '<path d="M11 8h10M11 12h10M11 16h6.5"/>'),
+      mgWide:    wide(page + '<path d="M13.5 8h5M13.5 12h5M13.5 16h3"/>'),
       close:     svg('<path d="M6 6l12 12M18 6L6 18"/>'),
       open:      svg('<path d="M3 7V5h6l2 2h10v12H3z"/><path d="M3 11h18"/>'),
       chevronR:  svg('<path d="M9 6l6 6-6 6"/>'),
@@ -1429,6 +1751,7 @@
       if (current === id){ close(); return; }
       if (current) close(true);
       Menu.close(); Side.close();
+      if (PhoneBar) PhoneBar.closeDock({ focus: false });
       document.body.classList.remove("hidebar");
       current = id; anchor = btn;
       Object.keys(panes).forEach(function(k){ panes[k].hidden = k !== id; });
@@ -1442,10 +1765,10 @@
       btn.setAttribute("aria-expanded", "true");
       place();
       rebase();
-      /* focus lands on the first control: the size (zoom) slider, or the chosen theme's tile (its
-         group is the one showing) */
-      var first = id === "type" ? (panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
-                                : (panes.theme.querySelector(".tiles:not([hidden]) .chip.on") || panes.theme.querySelector(".tiles:not([hidden]) .chip"));
+      /* focus lands on the first control: the size (zoom) slider, A− on a phone (the slider is not
+         shown there), or the pressed look (the first look when none is) */
+      var first = id === "type" ? (phone() ? $("#smaller") : panes.type.classList.contains("pdf") ? $("#qZoom") : $("#qSize"))
+                                : ($('#qLooks .chip[aria-pressed="true"]') || $("#qLooks .chip"));
       (first || el).focus({ preventScroll: true });
     }
     function close(quiet){
@@ -1456,7 +1779,7 @@
       scrim.classList.remove("on");
       document.documentElement.classList.remove("lock-pop");
       btn.setAttribute("aria-expanded", "false");
-      if (!quiet && btn.focus) btn.focus({ preventScroll: true });
+      if (!quiet && btn.focus) (PhoneBar ? PhoneBar.returnTarget(btn) : btn).focus({ preventScroll: true });
     }
     function is(id){ return current === id; }
 
@@ -1467,20 +1790,75 @@
       Object.keys(FONTS).forEach(function(id){ if (FONTS[id].group !== g.id) return; var o = document.createElement("option"); o.value = id; o.textContent = fontName(FONTS[id]); og.appendChild(o); });
       fontQuick.appendChild(og);
     });
+    /* the phone's line spacing and margin choices wear their pictograms */
+    Array.prototype.forEach.call(panes.type.querySelectorAll("[data-icon]"), function(b){ b.insertAdjacentHTML("afterbegin", ICONS[b.dataset.icon]); });
+    /* the stepper's ends: the button stays focusable, a press does nothing, and it says so */
+    function setEnd(b, on){ if (on) b.setAttribute("aria-disabled", "true"); else b.removeAttribute("aria-disabled"); }
+    /* one choice pressed in a group of three, the one whose value matches; none, and the note
+       under the group says "Custom" (with the value, for line spacing) */
+    function choose(group, attr, match){
+      var hit = false;
+      Array.prototype.forEach.call(panes.type.querySelectorAll(group + " [data-" + attr + "]"), function(b){
+        var on = match(+b.getAttribute("data-" + attr)); if (on) hit = true;
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      return hit;
+    }
+    function note(el, s){ el.hidden = !s; if (el.textContent !== s) el.textContent = s; }
+    /* the phone's font row: Georgia, Literata, Atkinson Hyperlegible and System sans, each "Aa" in
+       its own face over its name. A font in use that is none of them takes the fourth place, so
+       the one on screen is always there and pressed; the four buttons stay the same elements (the
+       fourth changes in place), so a tap never loses focus */
+    var ROW_FONTS = ["serif", "literata", "hyper", "sans"], fontRow = $("#fontRow");
+    fontRow.innerHTML = ROW_FONTS.map(function(){ return '<button type="button" class="chip" aria-pressed="false"><span class="aa" aria-hidden="true">Aa</span><span class="fn"></span></button>'; }).join("");
+    /* words wrap; a word wider than its tile ends in an ellipsis; a one-word name may break where
+       a capital starts its second part (Open / Dyslexic) */
+    function tileName(name){
+      var words = name.split(" ");
+      if (words.length === 1) words = [name.replace(/([a-z])([A-Z])/g, "$1\u0001$2")];
+      return words.map(function(w){ return w.split("\u0001").map(function(p){ return '<span class="w">' + escapeHtml(p) + '</span>'; }).join("<wbr>"); }).join(" ");
+    }
+    function syncFontRow(){
+      var ids = ROW_FONTS.slice();
+      if (ids.indexOf(state.font) < 0 && FONTS[state.font]) ids[3] = state.font;
+      Array.prototype.forEach.call(fontRow.children, function(b, i){
+        var id = ids[i], f = FONTS[id];
+        if (b.dataset.font !== id){
+          b.dataset.font = id;
+          b.querySelector(".aa").style.fontFamily = f.stack;
+          b.querySelector(".fn").innerHTML = tileName(fontName(f));
+        }
+        b.setAttribute("aria-pressed", id === state.font ? "true" : "false");
+      });
+      /* the previews: a bundled family's regular face, asked for now that the row is on screen */
+      ids.forEach(function(id){ if (FONTS[id].files) Fonts.load(id, true).catch(function(){}); });
+    }
     function syncType(){
-      var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100);
+      var pdf = state.mode === "pdf", z = Math.round(state.zoom * 100), ph = phone(), v = $("#qSizeV");
       panes.type.classList.toggle("pdf", pdf);
       $("#qSizeL").textContent = pdf ? _t("Zoom") : _t("Size");
       $("#qZoom").value = z; $("#qSize").value = state.size;
-      $("#qSizeV").textContent = pdf ? z + " %" : state.size + " px";
+      /* a phone has no slider: the value between A− and A+ is the one thing that says the size, read
+         out as it changes (rewritten only when it does, so a screen reader hears each step once) */
+      var sv = pdf ? z + " %" : ph ? String(state.size) : state.size + " px";
+      if (v.textContent !== sv) v.textContent = sv;
+      if (v.getAttribute("aria-live") !== (ph ? "polite" : "off")) v.setAttribute("aria-live", ph ? "polite" : "off");
+      /* zoom moves in steps of 0.1 that drift in floating point: the ends are read off the rounded percent */
+      setEnd($("#smaller"), pdf ? z <= 60 : state.size <= 14);
+      setEnd($("#bigger"), pdf ? z >= 250 : state.size >= 28);
       $("#qLh").value = state.lh; $("#qLhV").textContent = dec(state.lh, 2);
       $("#qW").value = state.width; $("#qWV").textContent = state.width + " px";
+      /* line spacing matches within a hair (the slider's steps of 0.05 drift); "Custom 1.6" drops
+         the second decimal's zero, and dec gives the Dutch comma */
+      note($("#qLhCustom"), choose("#qLhChoices", "lh", function(v){ return Math.abs(state.lh - v) < 0.001; }) ? "" : _t("Custom {v}", { v: dec(state.lh, 2).replace(/0$/, "") }));
+      note($("#qMgCustom"), choose("#qMgChoices", "mg", function(v){ return (state.margin || 0) === v; }) ? "" : _tc("type", "Custom"));
       var rg = weightRange(FONTS[state.font] || FONTS.serif);
       setWeightRow($("#qWeightRow"), $("#qWeight"), $("#qWeightV"), rg);
       $("#qWeightNote").hidden = !rg.two;
       $("#qLs").value = state.ls || 0; $("#qLsV").textContent = emVal(state.ls || 0);
       $("#qWs").value = state.ws || 0; $("#qWsV").textContent = emVal(state.ws || 0);
       fontQuick.value = state.font;
+      if (ph) syncFontRow();
       $("#qSoften").checked = !!state.soften;
       Array.prototype.forEach.call(panes.type.querySelectorAll("#qFlow .chip"), function(ch){
         var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
@@ -1494,66 +1872,55 @@
     });
     $("#qLh").addEventListener("input", function(e){ state.lh = +e.target.value; applyType(); });
     $("#qW").addEventListener("input", function(e){ state.width = +e.target.value; applyType(); });
+    $("#qLhChoices").addEventListener("click", function(e){ var b = e.target.closest("[data-lh]"); if (b){ state.lh = +b.dataset.lh; applyType(); } });
+    /* a saved width narrower than this screen's column would hold the text whatever the margin:
+       a margin picked here brings the width back to its default, so the choice is what you see */
+    function columnRoom(){ var m = $("#main"), cs = getComputedStyle(m); return m.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); }
+    $("#qMgChoices").addEventListener("click", function(e){
+      var b = e.target.closest("[data-mg]"); if (!b) return;
+      state.margin = +b.dataset.mg;
+      if (state.width < columnRoom()) state.width = 720;
+      applyType();
+    });
     $("#qWeight").addEventListener("input", function(e){ state.weight = +e.target.value; applyType(); });
     $("#qLs").addEventListener("input", function(e){ state.ls = +e.target.value; applyType(); });
     $("#qWs").addEventListener("input", function(e){ state.ws = +e.target.value; applyType(); });
     fontQuick.addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
+    fontRow.addEventListener("click", function(e){ var b = e.target.closest("[data-font]"); if (b && b.dataset.font !== state.font){ state.font = b.dataset.font; applyType(); } });
+    /* All fonts: the browse panel in place of the sheet, and back to the sheet (focus on All fonts)
+       once the panel closes */
+    $("#allFonts").addEventListener("click", function(){
+      var from = anchor;
+      Fonts.openPanel({ back: function(){ if (!from) return; open("type", from, syncType); $("#allFonts").focus({ preventScroll: true }); } });
+    });
     $("#qFocus").addEventListener("change", function(e){ state.focus = e.target.checked; applyType(); });
     $("#qSoften").addEventListener("change", function(e){ state.soften = e.target.checked; $("#softenPdf").checked = e.target.checked; applyTheme(); });
     $("#qFlow").addEventListener("click", function(e){ var ch = e.target.closest(".chip"); if (ch){ setFlow(ch.dataset.flow); syncType(); } });
-    /* the footer link: the sheet opens at the group, and Escape there hands focus back to the bar button */
-    $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#textGroup", a); });
+    /* the footer link: the sheet opens at the group (a PDF's own, not the dimmed Text group), and
+       Escape there hands focus back to the bar button */
+    $("#typeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt(state.mode === "pdf" ? "#pdfGroup" : "#textGroup", a); });
+    /* Fine-tune is the last thing in the phone's sheet, just above All text settings; a desktop
+       keeps More where it was, above Font. The element moves (its listeners with it), so the order
+       you tab through is the order you see */
+    function placeMore(){
+      var m = $("#qMore"), at = phone() ? $("#typeMore") : fontQuick.closest(".prow"), had = m.contains(document.activeElement) ? document.activeElement : null;
+      if (m.nextElementSibling === at) return;
+      panes.type.insertBefore(m, at);
+      if (had) had.focus({ preventScroll: true });
+    }
+    placeMore();
 
-    /* ---- the theme pane: Previous, the last four used, then one group of tiles at a time behind
-       a Light | Dark | Colour | Collections | High contrast | Mine switch (Collections holds the four
-       collections, Dutch, Nature and seasons, Cozy and Textured, as labelled sections), "Make my own from this one", and Day
-       and night (Off, Follow phone, On a schedule; the two themes; what it does now). It opens on
-       the group of the theme on screen, and a tile applies its theme and leaves the popover open ---- */
-    var qGroup = "light", actsFor = null;
-    var GROUP_PANES = { light: "#qLight", dark: "#qDark", colour: "#qColour", coll: "#qColl", hicon: "#qHi", mine: "#qMine" };
-    function paneOf(id){ return COLLECTIONS.indexOf(id) >= 0 ? "coll" : id; }
-    function tile(k){ var t = resolveTheme(k); return t ? tileHtml(k, t) : ""; }
-    /* an own theme's tile carries a ⋯ for its actions (a long press on the tile does the same) */
-    function mineTile(k){
-      var t = resolveTheme(k); if (!t) return "";
-      return '<div class="mine-t">' + tileHtml(k, t) + '<button type="button" class="mine-ed" data-acts="' + k + '" aria-label="' + escapeHtml(_t("Actions for {name}", { name: themeName(k) })) + '" title="' + escapeHtml(_t("Edit, rename, duplicate or delete")) + '">' + ICONS.more + '</button></div>';
-    }
-    function groupOf(k){
-      var g = pickerGroups();
-      for (var i = 0; i < g.length; i++) if (g[i].ids.indexOf(k) >= 0) return paneOf(g[i].id);
-      return "light";
-    }
-    function showGroup(id){
-      qGroup = GROUP_PANES[id] ? id : "light";
-      Array.prototype.forEach.call(panes.theme.querySelectorAll("#qGroups [role=tab]"), function(b){
-        var on = b.dataset.g === qGroup;
-        b.setAttribute("aria-selected", on ? "true" : "false"); b.classList.toggle("on", on); b.tabIndex = on ? 0 : -1;
-        /* six tabs scroll sideways on a phone: the chosen one is brought into view */
-        if (on){ var bar = b.parentNode, br = bar.getBoundingClientRect(), tr = b.getBoundingClientRect();
-          if (tr.left < br.left || tr.right > br.right) bar.scrollLeft += (tr.left + tr.right) / 2 - (br.left + br.right) / 2; }
-      });
-      Object.keys(GROUP_PANES).forEach(function(k){ $(GROUP_PANES[k]).hidden = k !== qGroup; });
-      if (qGroup !== "mine") showActs(null);
-    }
+    /* ---- the theme pane: "Theme" with the Day/Night switch in its head, the six looks (with the
+       pair's own tile first when the pair is no look), the reader's own themes under Mine with New
+       theme, and Day and night (Off, Follow phone, On a schedule; what it does now). A tile applies
+       at once and leaves the popover open ---- */
+    var actsFor = null;
+    /* the looks and Mine, drawn again whenever the pair or the reader's own themes change
+       (pairChanged); `keep` keeps an own theme's actions open */
     function renderTheme(keep){
-      var groups = pickerGroups(), coll = "";
-      groups.forEach(function(g){
-        if (paneOf(g.id) === "coll"){
-          coll += '<div class="q-coll" role="group" aria-labelledby="qc-' + g.id + '"><div class="plabel" id="qc-' + g.id + '">' + escapeHtml(g.name) + '</div><div class="tiles">' + g.ids.map(tile).join("") + '</div></div>';
-          return;
-        }
-        $(GROUP_PANES[g.id]).innerHTML = g.id === "mine"
-          ? g.ids.map(mineTile).join("") + '<button type="button" class="chip tile chip-new" data-new="1"><i aria-hidden="true"></i><span class="tile-n">' + escapeHtml(_t("New theme")) + '</span></button>'
-          : g.ids.map(tile).join("");
-      });
-      $("#qColl").innerHTML = coll;
-      /* the last four used, the one on screen first (and marked); only when it offers a choice */
-      var recent = [state.theme].concat(recentThemes()).filter(function(k, i, a){ return resolveTheme(k) && a.indexOf(k) === i; }).slice(0, 4);
-      if (recent.length < 2) recent = [];
-      $("#qRecent").innerHTML = recent.map(tile).join("");
-      $("#qRecentSec").hidden = !recent.length;
-      showGroup(keep ? qGroup : groupOf(state.theme));
-      if (actsFor) showActs(customById(actsFor) ? actsFor : null);
+      $("#qLooks").innerHTML = looksHtml();
+      $("#qMine").innerHTML = mineHtml(true);
+      showActs(keep ? actsFor : null);
     }
     /* the actions for one of the reader's own themes, in a row under the grid */
     function showActs(k){
@@ -1568,44 +1935,28 @@
         }).join("");
       box.hidden = false;
     }
-    /* a Day / Night picker's small page, in the colours of the theme it stands for */
-    function dnSwatch(b, k){ var t = resolveTheme(k), i = b.querySelector(".dn-sw"); if (t && i) i.setAttribute("style", tileVars(t)); }
     function syncTheme(){
-      var t = currentTheme();
-      var day = resolveTheme(state.autoDay) ? state.autoDay : "day", night = resolveTheme(state.autoNight) ? state.autoNight : "dusk";
-      $("#qDayName").textContent = themeName(day);
-      $("#qNightName").textContent = themeName(night);
-      Array.prototype.forEach.call(panes.theme.querySelectorAll(".dn"), function(b){
-        var k = b.dataset.dn === "day" ? day : night;
-        b.classList.toggle("on", state.auto !== "off" && state.theme === k);
-        dnSwatch(b, k);
-      });
-      tileMark(panes.theme, t);
+      tileMark(panes.theme, currentTheme());
       Array.prototype.forEach.call(panes.theme.querySelectorAll("#qAuto .chip"), function(ch){
         var on = ch.dataset.auto === state.auto; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
       });
       $("#qTimes").hidden = state.auto !== "time";
-      $("#qDayNight").hidden = state.auto === "off";
       if (document.activeElement !== $("#qFrom")) $("#qFrom").value = state.nightFrom;
       if (document.activeElement !== $("#qTo")) $("#qTo").value = state.nightTo;
-      /* Previous: one step back to the theme before this one */
-      var prev = prevTheme();
-      $("#qPrev").hidden = !prev;
-      if (prev){ $("#qPrevN").textContent = _t("Back to {name}", { name: themeName(prev) }); $("#qPrev").title = _t("Previous theme"); }
       $("#qNow").textContent = AutoTheme.nowLine();
     }
     panes.theme.addEventListener("click", function(e){
-      var tab = e.target.closest("#qGroups [role=tab]");
-      if (tab){ showGroup(tab.dataset.g); return; }
+      var dn = e.target.closest("#qDN [data-dn]");
+      if (dn){ setDayNight(dn.dataset.dn); return; }
       var ed = e.target.closest(".mine-ed");
       if (ed){ showActs(actsFor === ed.dataset.acts ? null : ed.dataset.acts); return; }
       var act = e.target.closest("#qActs [data-act]");
       if (act){ var k = actsFor; if (k) themeAction(act.dataset.act, k); return; }
-      if (e.target.closest(".tiles .chip-new")){ Maker.open({ from: state.theme }); return; }
-      var ch = e.target.closest(".tiles .chip[data-theme]");
+      var look = e.target.closest(".chip[data-look]");
+      if (look){ chooseLook(look.dataset.look); return; }
+      if (e.target.closest(".chip-new")){ Maker.open({ from: state.theme }); return; }
+      var ch = e.target.closest(".chip[data-theme]");
       if (ch){ pickTheme(ch.dataset.theme); return; }
-      if (e.target.closest("#qPrev")){ var p = prevTheme(); if (p) pickTheme(p); return; }
-      if (e.target.closest("#qMake")){ Maker.open({ from: state.theme }); return; }
       var a = e.target.closest("#qAuto .chip");
       if (a){ AutoTheme.setMode(a.dataset.auto); syncTheme(); }
     });
@@ -1613,20 +1964,10 @@
     var pressed = null;
     $("#qMine").addEventListener("pointerdown", function(e){ var ch = e.target.closest(".chip[data-theme]"); pressed = ch ? ch.dataset.theme : null; }, true);
     longPress($("#qMine"), function(){ if (pressed && customById(pressed)) showActs(pressed); });
-    $("#qDaySel").addEventListener("change", function(e){ AutoTheme.setPair("day", e.target.value); });
-    $("#qNightSel").addEventListener("change", function(e){ AutoTheme.setPair("night", e.target.value); });
-    /* the group switch is a tab list: the arrow keys, Home and End move along it */
-    $("#qGroups").addEventListener("keydown", function(e){
-      var tabs = Array.prototype.slice.call(this.querySelectorAll("[role=tab]")), i = tabs.indexOf(document.activeElement), n = tabs.length, j = -1;
-      if (i < 0) return;
-      if (e.key === "ArrowRight") j = (i + 1) % n; else if (e.key === "ArrowLeft") j = (i + n - 1) % n;
-      else if (e.key === "Home") j = 0; else if (e.key === "End") j = n - 1;
-      if (j < 0) return;
-      e.preventDefault(); showGroup(tabs[j].dataset.g); tabs[j].focus();
-    });
-    /* the night hours, the same as the sheet's (On a schedule) */
-    $("#qFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
-    $("#qTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
+    /* the night hours (On a schedule), through the sheet's own setter: a change ends a Day/Night
+       hold here too */
+    $("#qFrom").addEventListener("change", function(e){ AutoTheme.setHours(e.target.value, state.nightTo); });
+    $("#qTo").addEventListener("change", function(e){ AutoTheme.setHours(state.nightFrom, e.target.value); });
     $("#themeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#themeGroup", a); });
 
     /* the open pane follows the state (applyType / applyTheme call this), and the page's height
@@ -1645,8 +1986,9 @@
       var top = g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop - (strip ? strip.offsetHeight : 0) - 2;
       if (SheetTabs) SheetTabs.mark(g.id, 700);
       sheet.scrollTo({ top: Math.max(0, top), behavior: noMotion() ? "auto" : "smooth" });
-      /* the theme group: the pressed tile, where a keyboard picks up from */
-      var first = (sel === "#themeGroup" && g.querySelector('#themeChips .chip[aria-pressed="true"]')) || g.querySelector("input, select, button");
+      /* the theme group: the pressed tile, where a keyboard picks up from, or the first tile when none
+         is (a theme outside the pair), rather than the Day/Night switch ahead of the tiles */
+      var first = (sel === "#themeGroup" && (g.querySelector('#themeChips .chip[aria-pressed="true"]') || g.querySelector("#themeChips .chip"))) || g.querySelector("input, select, button");
       if (first) first.focus({ preventScroll: true });
     }
 
@@ -1662,6 +2004,7 @@
     }, true);
     scrim.addEventListener("click", function(){ close(); });
     el.querySelector(".pop-handle").addEventListener("click", function(){ close(); });
+    $("#typeClose").addEventListener("click", function(){ close(); });
     dragToClose(el, [el.querySelector(".pop-handle")].concat(Array.prototype.slice.call(el.querySelectorAll(".pop-head"))), function(){ close(); }, function(){ return !!current; });
     /* scrolling away from the popover closes it — on a desktop, where it hangs from the bar. A
        phone's sheet stays: Escape, the scrim or the handle close it, and the page is held still
@@ -1674,11 +2017,16 @@
       if (!phone() && Math.abs(window.scrollY - scrollY0) > 80) close(true);
     }, { passive: true });
     window.addEventListener("resize", place);
+    /* across the phone width with the Text pane open (a turn of the phone, a window dragged
+       narrower): the value gains or drops its "px" and its live reading */
+    var phoneMq = window.matchMedia && window.matchMedia("(max-width:560px)");
+    function relayout(){ placeMore(); if (current === "type") syncType(); }
+    if (phoneMq){ if (phoneMq.addEventListener) phoneMq.addEventListener("change", relayout); else if (phoneMq.addListener) phoneMq.addListener(relayout); }
 
     /* the bar buttons */
     $("#gear").addEventListener("click", function(e){ e.stopPropagation(); open("type", this, syncType); });
     $("#lamp").addEventListener("click", function(e){ e.stopPropagation(); open("theme", this, function(){ renderTheme(); syncTheme(); }); });
-    /* the reader's own themes changed (saved, renamed, copied, deleted): the open pane is redrawn in place */
+    /* the pair or the reader's own themes changed (pairChanged): the open pane is drawn again in place */
     function refreshThemes(){ if (current === "theme"){ renderTheme(true); syncTheme(); } }
 
     window.llPop = { open: open, close: close, is: is, sync: sync, sheet: setSheet, sheetAt: openSheetAt };
@@ -1741,6 +2089,14 @@
   else window.addEventListener("resize", dockVar);
   function availHeight(){
     headVar();
+    /* a phone while reading: no header, the text starts at main's top padding and stops 14px
+       above the strip at the foot (the strip sits on the read-aloud player while it plays, which
+       --dockH counts); the dock is an overlay and takes nothing */
+    if (document.body.classList.contains("phonebar")){
+      var pdock = dockVar(), padTop = parseFloat(getComputedStyle($("#main")).paddingTop) || 0;
+      dockLaidOut = pdock;
+      return Math.max(160, window.innerHeight - padTop - pdock - $("#readFoot").offsetHeight - 14);
+    }
     var head = document.querySelector("header"), zen = document.body.classList.contains("zen");
     var headH = document.body.classList.contains("immersive") || zen ? 0 : head.offsetHeight;
     var dockH = dockVar();
@@ -1936,19 +2292,24 @@
      rule as the title readout (Section), so the two never name different sections for one page
      (a PDF's outline arrives later; the readout is drawn again when it does) */
   var pdfSections = { doc: null, list: null };
+  /* the open PDF's outline: null while it is being read (the readouts are drawn again when it lands) */
+  function pdfOutline(){
+    var doc = state.pdfDoc;
+    if (!doc) return null;
+    if (pdfSections.doc !== doc){
+      pdfSections.doc = doc; pdfSections.list = null;
+      Toc.pdfEntries().then(function(list){ if (state.pdfDoc === doc){ pdfSections.list = list; updatePager(); Progress.tick(); } });
+    }
+    return pdfSections.list;
+  }
   function currentSection(){
     if (state.mode === "doc"){
       var e = Section ? Section.at(pageTopOffset()) : null;
       return e ? e.title : "";
     }
     if (state.mode === "pdf" && state.pdfDoc){
-      var doc = state.pdfDoc;
-      if (pdfSections.doc !== doc){
-        pdfSections.doc = doc; pdfSections.list = null;
-        Toc.pdfEntries().then(function(list){ if (state.pdfDoc === doc){ pdfSections.list = list; updatePager(); } });
-      }
       var hit = null, pg = state.pdfPageNum;
-      (pdfSections.list || []).forEach(function(e){ if (e.page && e.page <= pg) hit = e; });
+      (pdfOutline() || []).forEach(function(e){ if (e.page && e.page <= pg) hit = e; });
       return hit ? hit.title : "";
     }
     return "";
@@ -1976,18 +2337,28 @@
     if (left) part("pg-left", left, true);
   }
   function updateProgress(){
-    if (!pagedActive()) return;
+    /* Scroll flow: the scroll listener keeps the line and a phone's strip up to date; a book just
+       laid out, with no scroll yet, gets them here */
+    if (!pagedActive()){
+      if (state.mode === "doc" || state.mode === "pdf"){ var h = document.documentElement, max = h.scrollHeight - h.clientHeight; setProgressBar(max > 0 ? (h.scrollTop / max) * 100 : 0); Progress.strip(); }
+      return;
+    }
     Progress.tick();
     var cur, total;
     if (state.mode === "doc"){ cur = state.page + 1; total = state.totalPages; }
     else { cur = state.pdfPageNum; total = state.pdfDoc ? state.pdfDoc.numPages : 1; }
     setProgressBar(total > 0 ? (cur / total) * 100 : 0);
   }
-  /* the 3px line at the top, and its value for assistive technology */
+  /* the 3px line at the top, and its value for assistive technology; on a phone, the lamp's ring
+     and the words a screen reader hears with it ("47% through the book") */
+  var RING = 2 * Math.PI * 27;
   function setProgressBar(pct){
-    var bar = $("#progress");
+    var bar = $("#progress"), p = Math.max(0, Math.min(100, pct || 0));
     bar.style.width = pct + "%";
     bar.setAttribute("aria-valuenow", String(Math.round(pct)));
+    var arc = $("#dockBtn .ring circle"), said = _t("{p}% through the book", { p: Math.round(p) }), d = $("#dockPct");
+    if (arc) arc.style.strokeDasharray = (RING * p / 100).toFixed(2) + " " + RING.toFixed(2);
+    if (d && d.textContent !== said) d.textContent = said;
   }
 
   /* ---------- file opening ---------- */
@@ -2069,6 +2440,7 @@
         }).catch(fail);
 
       } else if (ext === "doc" || ext === "rtf" || ext === "odt" || ext === "pages"){
+        state.opening = false;
         status(_t(".{ext} isn't supported yet — export it as PDF, EPUB or DOCX and open that instead.", { ext: ext }));
 
       } else if (ext === "md" || ext === "markdown"){
@@ -2759,7 +3131,7 @@
     /* the drawer is modal: while it is open the rest of the page is inert, so Tab cannot reach the
        bar under the scrim and open a menu or a popover behind it. The card, the toasts and the
        highlight popover sit over the drawer and stay live. */
-    var BEHIND = "header, #sheet, #main, #dock, #pop, .skip";
+    var BEHIND = "header, #sheet, #main, #dock, #pop, .skip, #readFoot, #phoneDockScrim, #phoneDock";
     function holdRest(on){
       Array.prototype.forEach.call(document.querySelectorAll(BEHIND), function(n){ n.inert = on; });
     }
@@ -2772,6 +3144,8 @@
       if (wasOpen && current !== name && onClose) onClose();
       current = name; onClose = closeFn || null; family = (opts && opts.family) || null;
       if (!wasOpen) opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#main");
+      /* a panel opened from the phone dock (a hold, a key) takes its place */
+      if (PhoneBar) PhoneBar.closeDock({ focus: false });
       title.textContent = ttl;
       drawSwitch();
       body.innerHTML = ""; foot.innerHTML = ""; foot.style.display = "none";
@@ -2799,7 +3173,7 @@
       /* the page comes back to life before focus returns to it: focus() on an inert element is a no-op */
       holdRest(false);
       if (fn) fn();
-      if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+      if (opener && opener.focus && document.contains(opener)) (PhoneBar ? PhoneBar.returnTarget(opener) : opener).focus({ preventScroll: true });
       opener = null;
     }
     scrim.addEventListener("click", close);
@@ -2861,7 +3235,11 @@
     }
     function render(){
       menu.innerHTML = "";
-      var phone = isPhone(), shown = function(it){ return !it.sep && !(it.show && !it.show()); };
+      /* a phone while reading: the dock already has Contents, Search, Read aloud and the way back to
+         the library (`dock`), so the sheet leaves them out — Read aloud stays where the dock has no
+         speaker for it (no speech synthesis: the natural voices still read) */
+      var docked = document.body.classList.contains("phonebar");
+      var phone = isPhone(), shown = function(it){ return !it.sep && !(it.show && !it.show()) && !(docked && it.dock && !(it.dock === "speak" && $("#speakBtn").hidden)); };
       var grab = document.createElement("div");
       grab.className = "menu-grab"; grab.setAttribute("aria-hidden", "true");
       grab.addEventListener("click", function(){ close(true); });
@@ -2884,6 +3262,8 @@
         sec.className = "menu-group" + (g[0] === "quick" ? " menu-quick" : ""); sec.setAttribute("role", "group"); sec.setAttribute("aria-labelledby", "menuG-" + g[0]);
         head.className = "label"; head.id = "menuG-" + g[0]; head.textContent = _tc("menu", g[1]);
         grid.className = "menu-items";
+        /* the quick row shares its width among however many tiles it has */
+        if (g[0] === "quick") grid.style.gridTemplateColumns = "repeat(" + list.length + ", minmax(0, 1fr))";
         list.forEach(function(it){ grid.appendChild(entry(it)); });
         sec.appendChild(head); sec.appendChild(grid);
         groups.push({ el: sec, rows: list.length }); rows += list.length;
@@ -2909,10 +3289,12 @@
     function isOpen(){ return menu.classList.contains("open"); }
     function open(){
       render();
+      if (PhoneBar) PhoneBar.closeDock({ focus: false });
       if (!scrim){
         scrim = document.createElement("div"); scrim.id = "moreScrim"; scrim.setAttribute("aria-hidden", "true");
         scrim.addEventListener("click", function(){ close(true); });
-        wrap.appendChild(scrim);
+        /* next to the menu, wherever it is (PhoneBar moves both to body level on a phone) */
+        menu.parentNode.insertBefore(scrim, menu);
       }
       menu.classList.add("open"); scrim.classList.add("on"); menu.scrollTop = 0;
       btn.setAttribute("aria-expanded", "true");
@@ -2925,10 +3307,10 @@
       if (!isOpen()) return;
       menu.classList.remove("open"); if (scrim) scrim.classList.remove("on");
       btn.setAttribute("aria-expanded", "false");
-      if (back) btn.focus({ preventScroll: true });
+      if (back) (PhoneBar ? PhoneBar.returnTarget(btn) : btn).focus({ preventScroll: true });
     }
     btn.addEventListener("click", function(e){ e.stopPropagation(); if (isOpen()) close(); else open(); });
-    document.addEventListener("click", function(e){ if (isOpen() && !e.target.closest("#moreWrap")) close(); });
+    document.addEventListener("click", function(e){ if (isOpen() && !e.target.closest("#moreWrap, #moreMenu")) close(); });
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !isOpen()) return;
       e.preventDefault(); e.stopImmediatePropagation(); close(true);
@@ -3087,7 +3469,9 @@
       if (state.mode !== "doc") return null;
       if (state.flow === "pages") return pageEndOffset();
       if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
-      var view = $("#doc").getBoundingClientRect(), y0 = Math.min(window.innerHeight, view.bottom) - 6;
+      /* on a phone the strip at the foot (and the player under it) covers the last lines */
+      var foot = document.body.classList.contains("phonebar") ? $("#readFoot").offsetHeight + (parseFloat(document.documentElement.style.getPropertyValue("--dockH")) || 0) : 0;
+      var view = $("#doc").getBoundingClientRect(), y0 = Math.min(window.innerHeight - foot, view.bottom) - 6;
       var xs = [view.left + view.width - 10, view.left + view.width / 2, view.left + 10];
       for (var dy = 0; dy < 240 && y0 - dy > headerHeight(); dy += 16){
         for (var k = 0; k < xs.length; k++){
@@ -4221,7 +4605,7 @@
       }
     }
     function openPanel(){ Side.open("toc", _t("Contents"), render, function(){ shown = null; }, { family: "doc" }); }
-    Menu.add({ order: 10, quick: 3, group: "navigate", icon: ICONS.contents, label: function(){ return _t("Contents"); }, key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 10, quick: 3, dock: true, group: "navigate", icon: ICONS.contents, label: function(){ return _t("Contents"); }, key: "C", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, entries: docEntries, pdfEntries: pdfEntries, goPdfPage: goPdfPage };
   })();
 
@@ -4825,7 +5209,7 @@
         e.preventDefault(); openPanel();
       }
     });
-    Menu.add({ order: 20, pgroup: "reading", porder: 40.2, group: "navigate", icon: ICONS.search, label: function(){ return _t("Search"); }, key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+    Menu.add({ order: 20, pgroup: "reading", porder: 40.2, dock: true, group: "navigate", icon: ICONS.search, label: function(){ return _t("Search"); }, key: "/", run: openPanel, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
     return { openPanel: openPanel, reset: reset, refresh: refresh, repair: repair, clearPaint: clearPaint, go: go, results: function(){ return results; } };
   })();
 
@@ -5968,7 +6352,7 @@
         var v = $("#docView").getBoundingClientRect();
         if (rect.left < v.left - 2 || rect.left > v.right) revealOffset(u.start);
       } else {
-        var head = Library.headerHeight(), bottom = window.innerHeight - $("#dock").offsetHeight;
+        var head = Library.headerHeight(), bottom = window.innerHeight - $("#dock").offsetHeight - (document.body.classList.contains("phonebar") ? $("#readFoot").offsetHeight : 0);
         if (rect.top < head + 4 || rect.bottom > bottom - 10) revealOffset(u.start, { center: true });
       }
     }
@@ -6803,7 +7187,7 @@
       if (silence) try { silence.pause(); } catch(_){}
     });
 
-    Menu.add({ order: 40, quick: 1, group: "reading", icon: ICONS.speaker, label: function(){ return active ? _t("Stop reading aloud") : _t("Read aloud"); }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
+    Menu.add({ order: 40, quick: 1, dock: "speak", group: "reading", icon: ICONS.speaker, label: function(){ return active ? _t("Stop reading aloud") : _t("Read aloud"); }, key: "R", run: function(){ if (active) stop(); else startFrom(); },
                show: function(){ return state.mode === "doc" || state.mode === "pdf"; }, enabled: function(){ return supported || engineName !== "device"; } });
     /* the characters of the open document (audiobook.js works them out, on this device) */
     Menu.add({ order: 41, group: "reading", icon: ICONS.people, label: function(){ return _t("Who’s who"); }, run: function(){ withAudiobook(function(a){ a.openWho(); }); },
@@ -6915,6 +7299,8 @@
       return lo;
     }
     function docWords(){ return indexReady() ? index.words : 0; }
+    /* the words between two character offsets of the text: the index once it is built, null until then */
+    function wordsBetween(a, b){ return ensureIndex() ? Math.max(0, idx(b) - idx(a)) : null; }
 
     /* ---- PDF words per page, asked for once a page has been in the rested window ---- */
     var pageWords = {}, pageAsked = {}, pdfWordsDoc = null;
@@ -6953,7 +7339,11 @@
       if (n.nodeType !== 3 || !n.parentNode || !n.parentNode.closest || !n.parentNode.closest("#doc")) return null;
       return Anchor.offsetOf(n, r.startOffset);
     }
-    function dockHeight(){ return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dockH")) || 0; }
+    /* what covers the foot of the text: the dock, and on a phone the strip with the lamp */
+    function dockHeight(){
+      var h = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dockH")) || 0;
+      return document.body.classList.contains("phonebar") ? h + $("#readFoot").offsetHeight : h;
+    }
     /* the last character on screen: topCharOffset's probing, upward from the foot of the view */
     function bottomCharOffset(){
       if (!document.caretRangeFromPoint && !document.caretPositionFromPoint) return null;
@@ -7074,7 +7464,7 @@
         (b.contains("zen") ? 1 : 0) + (b.contains("immersive") ? 1 : 0) + (has("#tts", "on") ? 1 : 0) + (has("#autoBar", "on") ? 1 : 0) + (has("#sheet", "open") ? 1 : 0);
     }
     function layoutKeyNow(){ return window.innerHeight + "|" + flowKeyNow(); }
-    function overlayOpen(){ return has("#side", "open") || has("#dictCard", "open") || has("#moreMenu", "open"); }
+    function overlayOpen(){ return has("#side", "open") || has("#dictCard", "open") || has("#moreMenu", "open") || document.body.classList.contains("dock-open"); }
     function armSettle(){ clearTimeout(settleTimer); settleTimer = setTimeout(settle, Params.SETTLE_MS); }
     function poke(){
       if (!docOpen()) return;
@@ -7124,6 +7514,7 @@
       if (sheet && sheet.classList.contains("open") && sheet.offsetHeight > 0) list.push("sheet");
       if (has("#moreMenu", "open")) list.push("menu");
       if (has("#pop", "open")) list.push("pop");
+      if (document.body.classList.contains("dock-open")) list.push("dock");
       if (document.visibilityState !== "visible") list.push("hidden");
       if (window.llTranslate && window.llTranslate.isOn && window.llTranslate.isOn()) list.push("translated");
       return list;
@@ -7976,7 +8367,7 @@
     window.llPace = { state: stateOut, runs: runsOut, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence,
                       summary: summary, reset: reset, _debug: debug };
     return { poke: poke, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence, summary: summary,
-             state: stateOut, runs: runsOut, docWords: docWords, reset: reset, flush: save, noteBlock: noteBlock };
+             state: stateOut, runs: runsOut, docWords: docWords, wordsBetween: wordsBetween, reset: reset, flush: save, noteBlock: noteBlock };
   })();
 
   /* ============================================================
@@ -8008,6 +8399,43 @@
       var h = Math.floor(min / 60), m = Math.round(min % 60);
       return m ? _t("{h} h {m} min left", { h: h, m: m }) : _t("{h} h left", { h: h });
     }
+    /* the phone's note and the dock: the time left in the chapter (to the next top-level contents
+       entry, at the measured speed), or the whole book's for one without chapters; "" while there is
+       nothing to say, and the first letter upper-cased ("Under a minute left", "Nog 4 min") */
+    function fmtCh(min){
+      if (!isFinite(min) || min < 0) return "";
+      if (min < 1) return _t("Under a minute left in chapter");
+      var t = Math.round(min), h = Math.floor(t / 60), m = t % 60;
+      if (!h) return _t("{n} min left in chapter", { n: t });
+      return m ? _t("{h} h {m} min left in chapter", { h: h, m: m }) : _t("{h} h left in chapter", { h: h });
+    }
+    function cap(s){ return s ? s.charAt(0).toLocaleUpperCase(I18N.locale()) + s.slice(1) : ""; }
+    function chapterLeft(){
+      if (state.mode === "doc"){
+        var n = words();
+        if (n <= 80) return "";
+        var top = state.flow === "pages" ? pageTopOffset() : Library.topCharOffset(), end = Section.chapterEnd(top);
+        if (end === null) return cap(fmt((1 - Math.max(0, Math.min(1, readFrac()))) * n / currentWpm()));
+        var w = Pace.wordsBetween(top, end);
+        if (w === null) w = (end - top) / Math.max(1, Anchor.textLength()) * n;      /* the index is still being built */
+        return fmtCh(w / currentWpm());
+      }
+      if (state.mode === "pdf" && state.pdfDoc){
+        var pages = state.pdfDoc.numPages, page = Library.currentPdfPage(), list = pdfOutline(), next = null;
+        if (pages <= 3) return "";
+        if (list && list.length){
+          var lvl = Math.min.apply(null, list.map(function(e){ return e.level || 1; })), inOne = false;
+          list.forEach(function(e){
+            if ((e.level || 1) !== lvl || !e.page) return;
+            if (e.page <= page) inOne = true; else if (next === null) next = e.page;
+          });
+          if (next === null && inOne) next = pages + 1;     /* the last chapter runs to the end */
+        }
+        return next === null ? cap(fmt((pages - page) / currentPpm())) : fmtCh((next - page) / currentPpm());
+      }
+      return "";
+    }
+    function put(el, s){ if (el && el.textContent !== s) el.textContent = s; }
     function show(text){
       /* in Pages flow the page-turn bar carries the readout; the pill is for Scroll flow, and
          for a document (the start screen's scroll has nothing to report) */
@@ -8048,6 +8476,14 @@
         text = pages > 3 ? _t("p. {page} / {pages} \u00B7 {left}", { page: page, pages: pages, left: fmt(leftP) }) : _t("p. {page} / {pages}", { page: page, pages: pages });
       }
       show(text);
+      strip();
+    }
+    /* a phone: the note at the foot, and the dock's position and caption */
+    function strip(){
+      if (!document.body.classList.contains("phonebar")) return;
+      var ch = chapterLeft();
+      put($("#leftNote"), ch); put($("#dockLeft"), ch);
+      PhoneBar.syncPos();
     }
     /* the time left from here, worded for the page-turn bar ("18 min left"), or "" when the
        document is too short to say */
@@ -8062,7 +8498,7 @@
       }
       return "";
     }
-    return { tick: tick, wpm: currentWpm, ppm: currentPpm, left: left, sample: function(){ return Pace.summary(); }, docWords: words };
+    return { tick: tick, strip: strip, wpm: currentWpm, ppm: currentPpm, left: left, chapterLeft: chapterLeft, sample: function(){ return Pace.summary(); }, docWords: words };
   })();
 
   /* ============================================================
@@ -9132,7 +9568,7 @@
       if (!quiet && inside){ var to = opener && document.contains(opener) && opener.getClientRects().length ? opener : $("#main"); if (to) to.focus({ preventScroll: true }); }
       opener = null;
       /* Not now (or ✕, Escape) on the card that came up by itself: not again this reading, and where to find it */
-      if (!quiet && was && was.auto && !was.saved){ markSeen(was.book, null); Marks.toast(_t("You can add it later: ⋯ › Mark as finished")); }
+      if (!quiet && was && was.auto && !was.saved){ markSeen(was.book, null); Marks.toast(_t("You can add it later: More › Mark as finished")); }
     }
     function save(){
       if (!cur) return;
@@ -9163,7 +9599,7 @@
     /* Escape closes the card when nothing else is open over the page */
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !isOpen() || Side.current() || Menu.isOpen() || $("#pop").classList.contains("open") ||
-          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on")) return;
+          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on") || document.body.classList.contains("dock-open")) return;
       close();
     });
 
@@ -9373,6 +9809,8 @@
       if (!on) return;
       var h = bandHeight();
       if (y === null) y = Math.round(Library.headerHeight() + (window.innerHeight - Library.headerHeight()) * 0.38);
+      /* on a phone the band and its grip stay above the strip (and the player under it) */
+      if (document.body.classList.contains("phonebar")) y = Math.min(y, window.innerHeight - $("#readFoot").offsetHeight - $("#dock").offsetHeight - 24);
       var y0 = Math.max(0, y - h / 2), y1 = Math.min(window.innerHeight, y0 + h);
       top.style.height = y0 + "px"; bottom.style.height = (window.innerHeight - y1) + "px";
       line.style.top = y0 + "px"; line.style.height = (y1 - y0) + "px";
@@ -9426,10 +9864,13 @@
       on = true;
       setSheet(false); Side.close(); Menu.close();
       document.body.classList.remove("immersive");
+      /* on a phone the dock gives way (a key pressed in it leaves the focus on the page) */
+      if (PhoneBar && PhoneBar.isDockOpen()){ PhoneBar.closeDock({ focus: false }); $("#main").focus({ preventScroll: true }); }
       document.body.classList.add("zen");
       goFull();
       relayout(off);
-      if (!toasted){ toasted = true; Marks.toast(_t("Zen mode — press z or Esc to leave")); }
+      /* a phone has no keys to press: the faint lamp is the way out */
+      if (!toasted){ toasted = true; Marks.toast(document.body.classList.contains("phonebar") ? _t("Zen mode — tap the lamp to leave") : _t("Zen mode — press z or Esc to leave")); }
     }
     function exit(){
       if (!on) return;
@@ -9448,14 +9889,14 @@
     function somethingOpen(){
       var sheet = $("#sheet");
       return (sheet.classList.contains("open") && sheet.offsetHeight > 0) || $("#side").classList.contains("open") ||
-        $("#moreMenu").classList.contains("open") || !!document.querySelector("#dictCard.open, #markPop.on");
+        $("#moreMenu").classList.contains("open") || !!document.querySelector("#dictCard.open, #markPop.on") || document.body.classList.contains("dock-open");
     }
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !on || somethingOpen()) return;
       exit();
     }, true);
-    /* in Pages flow the middle tap toggles the bars (tapNav, registered later on the same
-       elements, so this runs first): in zen it only reminds how to leave, once */
+    /* in Pages flow the middle tap toggles the bars, or opens the dock on a phone (tapNav, registered
+       later on the same elements, so this runs first): in zen it only reminds how to leave, once */
     function middleTap(e){
       /* e-ink mode's middle turns the page like the rest of the right two-thirds */
       if (!on || !pagedActive() || state.eink === true || e.target.closest("a")) return;
@@ -9464,7 +9905,7 @@
       var r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
       if (x < 0.35 || x > 0.65) return;
       e.stopImmediatePropagation();
-      if (!hinted){ hinted = true; Marks.toast(_t("Press z or Esc to leave zen mode")); }
+      if (!hinted){ hinted = true; Marks.toast(document.body.classList.contains("phonebar") ? _t("Tap the lamp to leave zen mode") : _t("Press z or Esc to leave zen mode")); }
     }
     $("#docView").addEventListener("click", middleTap);
     $("#pdf").addEventListener("click", middleTap);
@@ -10288,7 +10729,7 @@
     /* Escape closes the card when nothing else is open over the page */
     document.addEventListener("keydown", function(e){
       if (e.key !== "Escape" || !card || !card.classList.contains("on") || Side.current() || Menu.isOpen() || $("#pop").classList.contains("open") ||
-          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on")) return;
+          $("#sheet").classList.contains("open") || document.querySelector("#dictCard.open, #rsvp.on") || document.body.classList.contains("dock-open")) return;
       close();
     });
     /* the library, or a PDF turned into a page of status: the card belongs to the book */
@@ -10583,7 +11024,8 @@
       if (Auto.isOn()) Auto.stop();
       Side.close(); Pop.close(true); Menu.close(); setSheet(false);
       opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
-      /* modal: the rest of the page is inert while the overlay is up */
+      /* modal: the rest of the page is inert while the overlay is up, the small toast aside; the offers
+         and the notice, which would sit over its controls, are hidden meanwhile (app.css) */
       held = [];
       Array.prototype.forEach.call(document.body.children, function(n){ if (n !== el && n.id !== "toast" && !n.inert){ n.inert = true; held.push(n); } });
       open = true; playing = false;
@@ -10671,7 +11113,7 @@
   /* the app's own entries: opening a file (the bar's Open button goes away while reading), the
      library, and the settings sheet (the ⋯ menu and the s key open it) */
   Menu.add({ order: 1, group: "app", icon: ICONS.open, label: _t("Open a file\u2026"), key: "O", run: function(){ $("#fileInput").click(); } });
-  Menu.add({ order: 2, group: "app", icon: ICONS.books, label: _t("Library"), run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
+  Menu.add({ order: 2, dock: true, group: "app", icon: ICONS.books, label: _t("Library"), run: function(){ Library.home(); }, show: function(){ return state.mode === "doc" || state.mode === "pdf"; } });
   Menu.add({ order: 85, head: true, group: "app", icon: ICONS.gear, label: _t("Settings"), key: "S", run: function(){ setSheet(true); } });
 
   /* ============================================================
@@ -10889,50 +11331,217 @@
     var lab = on ? _t("Stop reading aloud") : _t("Read aloud");
     b.setAttribute("aria-label", lab);
     b.title = lab;
+    /* the phone dock's name under the icon (PhoneBar adds it) */
+    var tl = b.querySelector(".tool-l");
+    if (tl) tl.textContent = on ? _t("Stop") : _t("Read aloud");
   }
   if (window.MutationObserver) new MutationObserver(function(){
     syncSpeakBtn();
     /* zen hides the bar: a popover left under it would float on its own */
     if (document.body.classList.contains("zen")) Pop.close(true);
   }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
-  /* t: between the day and the night theme (the auto pair; day / dusk unless changed). From a
-     theme that is neither, a light one goes to the night theme and a dark one to the day theme */
-  function toggleDayNight(){
-    var day = state.autoDay, night = state.autoNight, cur = state.theme, dark = isDarkColor(currentTheme().bg), to;
-    if (cur === day && day !== night) to = night;
-    else if (cur === night && day !== night) to = day;
-    else to = dark ? day : night;
-    if (to === cur) to = dark ? "day" : "dusk";
-    selectTheme(to);
+  /* Day and night: the reader's day theme and night theme (the auto pair; day / dusk unless
+     changed), whether switching is on or off. Which half a theme is: the pair first, then the two
+     high-contrast themes (Contrast for day, Contrast dark for night), else neither */
+  function dnOf(k){
+    /* a pair left collapsed (the same theme twice) is the half its colours say, so Day and t
+       still leave a dark one */
+    if (state.autoDay === state.autoNight && k === state.autoDay){ var t = resolveTheme(k); return t && isDarkColor(t.bg) ? "night" : "day"; }
+    if (k === state.autoDay) return "day";
+    if (k === state.autoNight) return "night";
+    if (k === "hicon") return "day";
+    if (k === "hidark") return "night";
+    return null;
+  }
+  /* one setter for the switch, t and the hold: the pair's theme for that half. A high-contrast
+     reader whose pair has no contrast theme stays in high contrast, and a pair left collapsed
+     (the same theme twice) still reaches Dusk or Day. It never rewrites the pair; t and the hold
+     say where they went (opts.toast), and a theme of the reader's own just saved shows without the
+     cross-fade (opts.noFade, from pickOwn). Settings' "Now: …" line, which names the theme on
+     screen, is drawn again once the theme shows (the popover's own line follows applyTheme) */
+  function setDayNight(which, opts){
+    var cur = state.theme, day = state.autoDay, night = state.autoNight, to;
+    if (which !== "day" && which !== "night") return;
+    if (dnOf(cur) === which) to = cur;
+    else if (cur !== day && cur !== night && (cur === "hicon" || cur === "hidark")) to = which === "day" ? "hicon" : "hidark";
+    else to = which === "day" ? day : night;
+    if (to === cur && dnOf(cur) !== which) to = which === "day" ? "day" : "dusk";
+    if (!resolveTheme(to)) to = which === "day" ? "day" : "dusk";
+    function show(){ selectTheme(to); AutoTheme.syncUI(); }
+    if (to !== cur){ if (opts && opts.noFade) show(); else crossFade(show); }
+    AutoTheme.hold(to);
+    if (opts && opts.toast) Marks.toast(_t("{name} theme", { name: themeName(to) || resolveTheme(to).name }));
+  }
+  /* t and the hold: to the other half. From a theme that is neither, a light one goes to the
+     night theme and a dark one to the day theme */
+  function toggleDayNight(opts){
+    var h = dnOf(state.theme);
+    setDayNight(h ? (h === "day" ? "night" : "day") : (isDarkColor(currentTheme().bg) ? "day" : "night"), opts);
   }
 
-  /* ---------- phones held in one hand: the reading actions at the foot of the screen ----------
-     With a finger for a pointer on a phone (560px and under) and a document open, the reading
-     buttons (Contents, Aa, Read aloud, the lamp and ⋯) move from the top bar into a slim row at the
-     foot of the dock (#actRow), where the thumb is. The bar keeps the library mark, the book's
-     title with its section, and Search. The buttons themselves move, their ids and listeners with
-     them; the row goes and comes back with the bar (hidebar in Scroll flow, immersive in Pages,
-     app.css). The tabs strip folds into the title: a tap on it opens a switcher of the open books. */
+  /* ---------- phones while reading: the strip, the lamp and the dock ----------
+     With a finger for a pointer on a phone (560px and under) and a document open, the header goes
+     and the screen is the text, with a strip at the foot: the time left in the chapter, and the lamp
+     button, its ring showing how far through the book you are. A tap on the lamp opens the dock, a
+     sheet with every reading tool. The header's own buttons move into it, their ids and listeners
+     with them: Back, the title (a tap opens the open books) and Search in its head; Contents, Text,
+     Read aloud, Theme and More in its tool row, each with its name. The More sheet moves to body
+     level too, since a hidden header would hide it. Everything goes back when phone reading ends (a
+     turn past 560px, a mouse, the library). While the dock is open the page holds still: a tap
+     outside it, Escape or any of its controls closes it, and a control that opens a sheet or a panel
+     hands focus back to the lamp when that closes (returnTarget). */
   var PhoneBar = (function(){
     var mq = window.matchMedia ? window.matchMedia("(pointer: coarse) and (max-width: 560px)") : null;
-    var row = $("#actRow"), fname = $("#fname"), IDS = ["tocBtn", "gear", "speakBtn", "lamp", "more"], homes = {};
-    IDS.forEach(function(id){ var el = document.getElementById(id), ph = document.createComment(" " + id + " "); el.parentNode.insertBefore(ph, el); homes[id] = ph; });
-    function on(){ return !!(mq && mq.matches) && (state.mode === "doc" || state.mode === "pdf"); }
+    var dock = $("#phoneDock"), scrim = $("#phoneDockScrim"), btn = $("#dockBtn"), row = $("#actRow"), head = dock.querySelector(".pd-head"), fname = $("#fname");
+    var TOOLS = ["tocBtn", "gear", "speakBtn", "lamp", "more"], HEAD = ["fname", "searchBtn"], homes = {};
+    var NAMES = { tocBtn: "Contents", gear: "Text", speakBtn: "Read aloud", lamp: "Theme", more: "More" };
+    TOOLS.concat(HEAD, ["moreMenu"]).forEach(function(id){ var el = document.getElementById(id), ph = document.createComment(" " + id + " "); el.parentNode.insertBefore(ph, el); homes[id] = ph; });
+    /* the dock's own icons; each tool's name under its icon, and Text and Theme get their dock
+       icons in place of the bar's "Aa" and CSS bulb (app.css shows one or the other) */
+    $("#dockHome").innerHTML = ICONS.chevronL;
+    btn.insertAdjacentHTML("beforeend", ICONS.lamp);
+    $("#dockDay").insertAdjacentHTML("afterbegin", ICONS.sun);
+    $("#dockNight").insertAdjacentHTML("afterbegin", ICONS.moon);
+    /* the theme picker's Day/Night switches (its head, and Settings › Theme) wear the same two */
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg [data-dn]"), function(b){ b.insertAdjacentHTML("afterbegin", b.dataset.dn === "day" ? ICONS.sun : ICONS.moon); });
+    var gear = $("#gear"); gear.innerHTML = '<span class="g-aa">' + gear.innerHTML + '</span><span class="tool-i" aria-hidden="true">' + ICONS.type + '</span>';
+    $("#lamp").insertAdjacentHTML("beforeend", '<span class="tool-i" aria-hidden="true">' + ICONS.bulb + '</span>');
+    TOOLS.forEach(function(id){ document.getElementById(id).insertAdjacentHTML("beforeend", '<span class="tool-l" aria-hidden="true">' + escapeHtml(_t(NAMES[id])) + '</span>'); });
+    /* reading on a phone; and the "Opening …" screen while one book gives way to another, so the
+       header does not flash up between them (a failed open, state.opening false, brings it back) */
+    function on(){
+      if (!(mq && mq.matches)) return false;
+      return state.mode === "doc" || state.mode === "pdf" || (state.mode === "status" && !!state.opening && document.body.classList.contains("phonebar"));
+    }
+    /* an element back where it came from, or into `to` */
+    function move(id, to){
+      var el = document.getElementById(id), ph = homes[id];
+      if (to){ if (el.parentNode !== to) to.appendChild(el); }
+      else if (el.previousSibling !== ph) ph.parentNode.insertBefore(el, ph.nextSibling);
+    }
+    /* a turn of the phone (the book stays open) reflows the text and the header comes or goes over
+       it: in Scroll flow it lands back on the place noted a moment after the last scroll (by the
+       time the turn is reported the text has already moved). Opening a book places itself */
+    var placedMode = null, seenOff = null, seenT = null;
+    window.addEventListener("scroll", function(){
+      clearTimeout(seenT);
+      seenT = setTimeout(function(){ seenOff = state.mode === "doc" && state.flow !== "pages" ? Library.topCharOffset() : null; }, 150);
+    }, { passive: true });
     function place(){
       var want = on(), was = document.body.classList.contains("phonebar");
-      if (want !== was) Pop.close(true);
+      if (state.mode !== placedMode) seenOff = null;
+      var off = want !== was && state.mode === placedMode && state.mode === "doc" && state.flow !== "pages" ? (seenOff !== null ? seenOff : Library.topCharOffset()) : null;
+      placedMode = state.mode;
+      /* nothing moves unless phone reading starts or ends (a move on every view change re-inserted
+         the More menu and dropped the focus inside it) */
+      if (want === was){
+        if (want && state.mode === "status") closeDock({ focus: false });     /* "Opening …": no dock over it */
+        return;
+      }
+      Pop.close(true); Menu.close(); closeDock({ focus: false });
       document.body.classList.toggle("phonebar", want);
-      IDS.forEach(function(id){
-        var el = document.getElementById(id), ph = homes[id];
-        if (want){ if (el.parentNode !== row) row.appendChild(el); }
-        else if (el.parentNode === row) ph.parentNode.insertBefore(el, ph.nextSibling);
-      });
+      TOOLS.forEach(function(id){ move(id, want ? row : null); });
+      HEAD.forEach(function(id){ move(id, want ? head : null); });
+      /* the More sheet, and its scrim once Menu has made one, at body level */
+      move("moreMenu", want ? document.body : null);
+      var ms = $("#moreScrim"), menu = $("#moreMenu");
+      if (ms && ms.nextSibling !== menu) menu.parentNode.insertBefore(ms, menu);
       /* the title is the way to the other open books */
       if (want){ fname.setAttribute("role", "button"); fname.tabIndex = 0; fname.setAttribute("aria-haspopup", "dialog"); }
       else { fname.removeAttribute("role"); fname.removeAttribute("tabindex"); fname.removeAttribute("aria-haspopup"); }
-      if (want !== was){ headVar(); dockVar(); if (pagedActive()) relayoutPaged(); }
+      headVar(); dockVar(); themeColor();
+      if (pagedActive()) relayoutPaged();
+      else if (off !== null && off !== undefined) revealOffset(off);
     }
     if (mq){ if (mq.addEventListener) mq.addEventListener("change", place); else if (mq.addListener) mq.addListener(place); }
+
+    /* ---- the dock ---- */
+    /* while it is open everything else is out of reach (as Side does with its BEHIND list) */
+    var REST = "header, #sheet, #main, #dock, #pop, .skip, #readFoot, #finish, #recap, #autoBar, #progressInfo";
+    function hold(on){ Array.prototype.forEach.call(document.querySelectorAll(REST), function(n){ n.inert = on; }); }
+    function isDockOpen(){ return document.body.classList.contains("dock-open"); }
+    function openDock(){
+      if (!document.body.classList.contains("phonebar") || isDockOpen() || document.body.classList.contains("zen")) return;
+      Pop.close(true); Menu.close(); setSheet(false);
+      document.body.classList.add("dock-open");
+      document.documentElement.classList.add("lock-dock");
+      btn.setAttribute("aria-expanded", "true");
+      hold(true);
+      syncPos();
+      document.documentElement.style.setProperty("--pdH", dock.offsetHeight + "px");     /* the toasts float above it */
+      dock.scrollTop = 0;
+      dock.focus({ preventScroll: true });
+      Pace.noteBlock("dock");          /* time with the dock open is not reading time */
+    }
+    /* opts.focus false: a control in the dock is about to take focus somewhere else */
+    function closeDock(opts){
+      if (!isDockOpen()) return;
+      document.body.classList.remove("dock-open");
+      document.documentElement.classList.remove("lock-dock");
+      btn.setAttribute("aria-expanded", "false");
+      hold(false);
+      Pace.noteBlock("dock");
+      if (!opts || opts.focus !== false) btn.focus({ preventScroll: true });
+    }
+    function toggleDock(){ if (isDockOpen()) closeDock(); else openDock(); }
+    /* focus that would go back to a control in the closed dock goes to the lamp instead */
+    function returnTarget(el){ return el && dock.contains(el) && !isDockOpen() && document.body.classList.contains("phonebar") ? btn : el; }
+    /* in zen the faint lamp is the way out, and nothing opens the dock */
+    btn.addEventListener("click", function(){ if (document.body.classList.contains("zen")) Zen.exit(); else toggleDock(); });
+    /* a tap outside closes it and does nothing else */
+    scrim.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); closeDock(); });
+    /* Back, the title, Search and the tools close it before they act (capture: ahead of their own
+       listeners). One that opens nothing to take focus (Read aloud) leaves it on the lamp */
+    dock.addEventListener("click", function(e){
+      var c = e.target.closest(".pd-head > *, #actRow > *");
+      if (!c || !isDockOpen()) return;
+      closeDock({ focus: false });
+      /* with no slide (reduced motion, e-ink) the dock is hidden at once and the focus falls to the page */
+      setTimeout(function(){ var a = document.activeElement; if ((!a || a === document.body || dock.contains(a)) && document.body.classList.contains("phonebar")) btn.focus({ preventScroll: true }); }, 0);
+    }, true);
+    /* Escape closes it, unless something above it is open: that one takes the key */
+    document.addEventListener("keydown", function(e){
+      if (e.key !== "Escape" || !isDockOpen()) return;
+      var card = $("#dictCard");
+      if ($("#sheet").classList.contains("open") || Pop.is("type") || Pop.is("theme") || Menu.isOpen() || $("#side").classList.contains("open") || (card && card.classList.contains("open"))) return;
+      e.preventDefault(); e.stopImmediatePropagation(); closeDock();
+    }, true);
+    $("#dockHome").addEventListener("click", function(){ Library.home(); });
+
+    /* ---- the position slider: the pages in Pages flow and for a PDF, a percentage of the text in
+       Scroll flow. The caption follows the thumb, the jump happens on release (or an arrow key,
+       a page or 1% a step), and the dock stays open ---- */
+    var pos = $("#dockPos"), posCap = $("#dockPage"), sliding = false;
+    function posModel(){
+      if (state.mode === "pdf" && state.pdfDoc) return { min: 1, max: state.pdfDoc.numPages, v: Library.currentPdfPage(), pages: true };
+      if (state.mode === "doc" && state.flow === "pages") return { min: 1, max: Math.max(1, state.totalPages), v: state.page + 1, pages: true };
+      return { min: 0, max: 100, v: Math.round(Math.max(0, Math.min(1, readFrac())) * 100), pages: false };
+    }
+    function posSay(m, v){
+      var c = m.pages ? _t("Page {n} of {m}", { n: v, m: m.max }) : v + "%";
+      if (posCap.textContent !== c) posCap.textContent = c;
+      pos.setAttribute("aria-valuetext", c);
+    }
+    function syncPos(){
+      if (sliding || !document.body.classList.contains("phonebar")) return;
+      var m = posModel();
+      if (pos.min !== String(m.min)) pos.min = m.min;
+      if (pos.max !== String(m.max)) pos.max = m.max;
+      if (pos.value !== String(m.v)) pos.value = m.v;
+      posSay(m, m.v);
+    }
+    pos.addEventListener("input", function(){ sliding = true; posSay(posModel(), +pos.value); });
+    pos.addEventListener("change", function(){
+      sliding = false;
+      var v = +pos.value;
+      if (state.mode === "pdf" && state.pdfDoc){
+        if (state.flow === "pages"){ state.pdfPageNum = v; renderPdfSingle(); Progress.tick(); }
+        else Toc.goPdfPage(v);
+      } else if (state.mode === "doc" && state.flow === "pages") gotoPage(v - 1);
+      else { var h = document.documentElement; window.scrollTo(0, v / 100 * (h.scrollHeight - h.clientHeight)); }
+      if (Journal) Journal.jumped();
+      syncPos();
+    });
 
     /* the switcher: the open books (the tabs), each with its close; the library and a new file below */
     function esc(x){ return escapeHtml(String(x)); }
@@ -10972,10 +11581,36 @@
     fname.addEventListener("keydown", function(e){
       if ((e.key === "Enter" || e.key === " ") && document.body.classList.contains("phonebar")){ e.preventDefault(); openSwitcher(); }
     });
-    /* a long press on the lamp switches between the day and the night theme without the popover */
-    longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight(); Marks.toast(_t("{name} theme", { name: themeName(state.theme) || currentTheme().name })); });
+    /* a long press on the Theme button switches between the day and the night theme without the
+       popover; on a phone the lamp at the foot holds that (the Theme tool sits right under the
+       dock's own Day and Night, and has no hold) */
+    longPress($("#lamp"), function(){ Pop.close(true); toggleDayNight({ toast: true }); }, 0, function(){ return !document.body.classList.contains("phonebar"); });
+    longPress(btn, function(){ toggleDayNight({ toast: true }); });
+    /* Day and Night act in place: the dock stays open, and the pressed half is the answer (no toast) */
+    $("#dockDay").addEventListener("click", function(){ setDayNight("day"); });
+    $("#dockNight").addEventListener("click", function(){ setDayNight("night"); });
+    /* Pages flow: a tap on the strip's blank part opens the dock too (not in zen or e-ink) */
+    $("#readFoot").addEventListener("click", function(e){
+      if (e.target.closest("#dockBtn") || !pagedActive() || state.eink === true || document.body.classList.contains("zen")) return;
+      openDock();
+    });
+    /* a swipe down that starts on the dock (scrolled to its top) or on the page around it closes it, in every flow */
+    function swipeDownCloses(el){
+      var y0 = null, x0 = 0;
+      el.addEventListener("touchstart", function(e){
+        y0 = (el === dock && dock.scrollTop > 0) || (e.target.closest && e.target.closest("input[type=range]")) ? null : e.touches[0].clientY;
+        x0 = e.touches[0].clientX;
+      }, { passive: true });
+      el.addEventListener("touchend", function(e){
+        if (y0 === null || !isDockOpen()) return;
+        var dy = e.changedTouches[0].clientY - y0, dx = e.changedTouches[0].clientX - x0;
+        y0 = null;
+        if (dy > 55 && dy > Math.abs(dx) * 1.4) closeDock();
+      }, { passive: true });
+    }
+    swipeDownCloses(dock); swipeDownCloses(scrim);
     place();
-    return { place: place, on: on, openSwitcher: openSwitcher };
+    return { place: place, on: on, openSwitcher: openSwitcher, openDock: openDock, closeDock: closeDock, toggleDock: toggleDock, isDockOpen: isDockOpen, returnTarget: returnTarget, syncPos: syncPos };
   })();
   /* The settings sheet sits in the flow under the bar and sticks there while scrolling. In
      Scroll flow, opening it should push the text down so what was at the top reappears just
@@ -11002,7 +11637,7 @@
     var before = ref.getBoundingClientRect().top, h = was ? sheet.offsetHeight : 0;
     /* read before the class flips: the browser only drops focus from a hidden element lazily */
     var active = document.activeElement, inside = sheet.contains(active);
-    if (open){ Pop.close(true); Side.close(); }
+    if (open){ Pop.close(true); Side.close(); if (PhoneBar) PhoneBar.closeDock({ focus: false }); }
     sheet.classList.toggle("open", open);
     sheet.setAttribute("aria-hidden", open ? "false" : "true");
     if (!paged){
@@ -11020,7 +11655,7 @@
     } else {
       if (inside){
         var to = sheetOpener && document.contains(sheetOpener) && sheetOpener.getClientRects().length ? sheetOpener : $("#more");
-        if (to) to.focus({ preventScroll: true });
+        if (to) (PhoneBar ? PhoneBar.returnTarget(to) : to).focus({ preventScroll: true });
       }
       sheetOpener = null;
     }
@@ -11216,7 +11851,7 @@
       if (offs && offsLen === len) return offs;
       offs = Toc.entries().map(function(e, i){
         var w = document.createTreeWalker(e.el, NodeFilter.SHOW_TEXT), n = w.nextNode();
-        return { title: e.title, i: i, off: n ? Anchor.offsetOf(n, 0) : null };
+        return { title: e.title, i: i, off: n ? Anchor.offsetOf(n, 0) : null, level: e.level || 1 };
       }).filter(function(e){ return e.off !== null; });
       offsLen = len;
       return offs;
@@ -11250,21 +11885,34 @@
       clearTimeout(timer);
       timer = setTimeout(function(){ last = Date.now(); pick(); }, Math.max(60, 500 - (Date.now() - last)));
     }
+    /* where the chapter around character `top` ends (the phone's "min left in chapter"): at the
+       next top-level contents entry, or the end of the text. A first entry named like the book (its
+       title heading) is no chapter; with no chapters left, null: the whole book is the span */
+    function chapterEnd(top){
+      if (top === null || top === undefined) return null;
+      var book = fname.textContent.trim();
+      var es = entries().filter(function(e){ return !(e.i === 0 && e.title && (e.title === book || book.indexOf(e.title + " ") === 0)); });
+      if (!es.length) return null;
+      var lvl = Math.min.apply(null, es.map(function(e){ return e.level; }));
+      for (var i = 0; i < es.length; i++) if (es[i].level === lvl && es[i].off > top + 1) return es[i].off;
+      return Anchor.textLength();
+    }
     function reset(){ offs = null; set(""); }
     window.addEventListener("scroll", update, { passive: true });
     if (window.MutationObserver) new MutationObserver(update).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
     document.addEventListener("ll:fileopened", function(){ reset(); Pop.close(true); });
-    return { update: update, reset: reset, at: at };
+    return { update: update, reset: reset, at: at, chapterEnd: chapterEnd };
   })();
 
   /* ---- first-run tips on the start screen, and one toast on the first document ever opened ---- */
   $("#tips").hidden = Store.get("ll_tips") === "seen";
   $("#tipsOk").addEventListener("click", function(){ Store.set("ll_tips", "seen"); $("#tips").hidden = true; });
-  /* the tip waits its turn: it never covers a message that is showing (a font that failed, say) */
+  /* the first document's tip (on a phone it also points to the lamp) waits its turn: it never covers
+     a message that is showing (a font that failed, say) */
   function tipDoc(){
     var t = $("#toast");
     if (t && t.classList.contains("on")){ setTimeout(tipDoc, 600); return; }
-    Marks.toast(_t("Tip: tap any word for its meaning"));
+    Marks.toast(document.body.classList.contains("phonebar") ? _t("Tap a word for its meaning. Tap the lamp for your reading controls.") : _t("Tip: tap any word for its meaning"));
   }
   document.addEventListener("ll:fileopened", function(){
     if (Store.get("ll_tip_doc")) return;
@@ -11276,30 +11924,24 @@
     }, 300);
   });
 
+  /* Settings › Theme: a look, New theme (the maker) or a theme's tile, and the Day/Night switch on
+     the heading's row */
   $("#themeChips").addEventListener("click", function(e){
-    var ch = e.target.closest(".chip");
-    if (!ch) return;
-    if (ch.dataset.new) Maker.open({ from: state.theme }); else pickTheme(ch.dataset.theme);
+    var look = e.target.closest(".chip[data-look]");
+    if (look){ chooseLook(look.dataset.look); return; }
+    if (e.target.closest(".chip-new")){ Maker.open({ from: state.theme }); return; }
+    var ch = e.target.closest(".chip[data-theme]");
+    if (ch) pickTheme(ch.dataset.theme);
   });
-  /* the themes picked by hand, the latest first: the theme popover shows the last few */
-  function recentThemes(){ try { var a = JSON.parse(Store.get("ll_theme_recent") || "[]"); return Array.isArray(a) ? a : []; } catch(_){ return []; } }
-  function noteTheme(prev){
-    if (!prev) return;
-    var a = recentThemes().filter(function(k){ return k !== prev; });
-    a.unshift(prev);
-    Store.set("ll_theme_recent", JSON.stringify(a.slice(0, 6)));
-  }
+  $("#sDN").addEventListener("click", function(e){ var b = e.target.closest("[data-dn]"); if (b) setDayNight(b.dataset.dn); });
+  /* shows a theme and nothing more: the pair and a Day/Night hold are left alone. Every choice (a look,
+     an own theme, a list, a Day/Night switch) settles those first and then shows its theme through
+     this; llThemes.select is this too, for the tests. An id it does not know is ignored */
   function selectTheme(theme){
-    if (theme !== state.theme) noteTheme(state.theme);
+    if (!resolveTheme(theme)) return;
     state.theme = theme;
     if (customById(theme)) syncCustomUI();
-    applyTheme(); AutoTheme.userPicked(theme);
-  }
-  /* the theme before this one (Previous): the latest used that still exists */
-  function prevTheme(){
-    var a = recentThemes();
-    for (var i = 0; i < a.length; i++) if (a[i] !== state.theme && resolveTheme(a[i])) return a[i];
-    return null;
+    applyTheme();
   }
   /* a short cross-fade from one theme to the next (the browser's view transition); none with
      reduced motion, in e-ink mode, or where the browser has none */
@@ -11309,21 +11951,112 @@
     }
     fn();
   }
-  /* a theme picked by hand in a picker: applied at once, with the fade. While day and night
-     switching is on it lasts until the next switch, and the first time that happens the toast
-     offers to turn switching off */
+  /* a theme picked by its id (the tests, and own themes' tiles): a built-in brings its look and shows
+     its own half, held with switching on as a Day/Night switch would hold it (selectLook with the
+     half); any other theme takes the half on screen (pickOwn). Nothing is skipped when the theme is
+     on screen already: pick("day") over Day/Cocoa gives Day & Dusk */
   function pickTheme(theme, noFade){
-    if (!resolveTheme(theme) || theme === state.theme) return;
-    if (noFade) selectTheme(theme); else crossFade(function(){ selectTheme(theme); });
+    var l = lookOf(theme);
+    if (l) selectLook(l.day, l.night, theme === l.day ? "day" : "night");
+    else if (resolveTheme(theme)) pickOwn(theme, noFade);
+  }
+  /* a theme of the reader's own, picked, made or copied: it takes the place of the theme on screen, in
+     its half (the pair's other half stays), and a Day/Night hold carries over to it, its period and end
+     unchanged. One that is already a half shows as that half's Day/Night switch would show it, so the
+     pair stays two themes. noFade: at once, without the cross-fade (a theme just made or copied). With
+     switching on, the first time this happens the toast says which half it went into and offers to
+     turn switching off */
+  function pickOwn(k, noFade){
+    if (!resolveTheme(k)) return;
+    if (k === state.autoDay || k === state.autoNight){ setDayNight(k === state.autoDay ? "day" : "night", { noFade: noFade }); return; }
+    var h = halfOnScreen();
+    if (h === "day") state.autoDay = k; else state.autoNight = k;
+    if (state.dnHold) state.dnHold.theme = k;
+    var go = function(){ selectTheme(k); pairChanged(); };
+    if (noFade) go(); else crossFade(go);
     if (state.auto !== "off" && Store.get("ll_auto_asked") !== "1"){
       Store.set("ll_auto_asked", "1");
-      Marks.toast(_t("Day and night is on: this theme lasts until the next switch."), { action: _t("Turn off"), ms: 7000, run: function(){
+      var nm = themeName(k);
+      Marks.toast(h === "night" ? _t("Day and night is on: {name} is now your night theme.", { name: nm }) : _t("Day and night is on: {name} is now your day theme.", { name: nm }), { action: _t("Turn off"), ms: 7000, run: function(){
         AutoTheme.setMode("off"); Marks.toast(_t("Day and night switching is off"));
       } });
     }
   }
-  /* the saved themes changed (new, renamed, copied or deleted): redraw the chips, the day / night lists and the open popover */
-  function customsChanged(){ buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes(); }
+  /* the Undo a look's toast offers (selectLook): what it puts back, and the toast's button. It counts
+     only while that toast is up with that button: not once the toast has timed out, been used, or
+     given way to another toast */
+  var lookUndo = null;
+  /* a look: it becomes the reader's pair, and its theme for the half on screen shows; a Day/Night
+     hold carries over to that theme, its period and end unchanged. With `half` ("day" or "night")
+     that half shows instead, and with switching on it holds as a Day/Night switch would. The pair,
+     the hold and the theme change together, inside the cross-fade. A look that replaces a pair that
+     was no look (the pair's own tile was showing) says so in a toast, whose Undo puts that pair, the
+     theme on screen and the hold back as they were. Another look tapped while that toast is up
+     replaces the same pair: the toast then names the new look, and its Undo still goes back to that
+     pair */
+  function selectLook(day, night, half){
+    if (!resolveTheme(day) || !resolveTheme(night) || day === night) return;
+    var shown = (half || halfOnScreen()) === "night" ? night : day;
+    if (!half && day === state.autoDay && night === state.autoNight && shown === state.theme) return;
+    /* a pair that was no look, replaced: what Undo puts back, taken before the change (the hold a
+       copy, since carrying it over changes it); or, over a look, the Undo of the toast still up */
+    var was = null, t = $("#toast");
+    if (day !== state.autoDay || night !== state.autoNight){
+      if (!pairLook()) was = { day: state.autoDay, night: state.autoNight, theme: state.theme, hold: state.dnHold ? Object.assign({}, state.dnHold) : null };
+      else if (lookUndo && document.contains(lookUndo.btn) && t && t.classList.contains("on")) was = lookUndo.was;
+    }
+    crossFade(function(){
+      state.autoDay = day; state.autoNight = night;
+      if (!half && state.dnHold) state.dnHold.theme = shown;
+      selectTheme(shown);
+      if (half && state.auto !== "off") AutoTheme.hold(shown);
+      Prefs.save();
+      pairChanged();
+    });
+    if (!was) return;
+    Marks.toast(_t("{name} for day and night", { name: lookName(lookFor(day, night) || { day: day, night: night }) }), { undo: function(){
+      lookUndo = null;
+      crossFade(function(){
+        state.autoDay = was.day; state.autoNight = was.night;
+        state.dnHold = was.hold ? Object.assign({}, was.hold) : null;
+        selectTheme(was.theme);
+        Prefs.save();
+        pairChanged();
+      });
+    } });
+    lookUndo = { was: was, btn: $("#toast .toast-act") };
+  }
+  /* a tap on a look's tile; the pair's own tile is the pair already, so a tap on it does nothing */
+  function chooseLook(id){
+    var l = id === "pair" ? null : lookById(id);
+    if (l) selectLook(l.day, l.night);
+  }
+  /* the pair or the reader's own themes changed (a look, a list, an own theme picked, saved, renamed,
+     copied or deleted, an Undo): Settings' tiles, the day and night lists and the open popover are
+     drawn again, and the Day/Night switches marked again. A tile that had the focus goes with its
+     grid, so the focus moves to the same tile drawn anew, where a keyboard left off. It looks for that
+     tile, not the pressed one: Settings' looks and Mine share one grid (#themeChips), and its first
+     pressed tile, a look's, would pull the focus up from an own theme in Mine. When the tile has gone
+     (the pair's own, once the pair is a look), the focus moves to the grid's pressed tile, or its first.
+     The popover's row of actions under Mine (#qActs) is drawn again with the tiles: the focus stays on
+     the action pressed (Rename, Duplicate), or, when the row has gone with its theme (Delete), moves to
+     the pressed look, as after Delete in Settings' editor (focusChip) */
+  function pairChanged(){
+    /* which tile a tile is: its look (or the pair's), its own theme, or New theme */
+    function key(ch){ return ch.dataset.look ? "look:" + ch.dataset.look : ch.dataset.theme ? "theme:" + ch.dataset.theme : ch.dataset.new ? "new" : ""; }
+    var a = document.activeElement, grid = a && a.closest ? a.closest("#qLooks, #qMine, #themeChips") : null, was = grid ? key(a) : "",
+      act = a && a.closest && a.closest("#qActs") ? a.dataset.act || "" : "", to;
+    buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes(); markDayNight();
+    if ((!grid && !act) || document.contains(a)) return;
+    if (act) to = $('#qActs:not([hidden]) [data-act="' + act + '"]') || $('#qLooks .chip[aria-pressed="true"]') || $("#qMine .chip");
+    else {
+      grid = document.getElementById(grid.id);
+      if (!grid) return;
+      var tiles = Array.prototype.slice.call(grid.querySelectorAll(".chip"));
+      to = tiles.filter(function(ch){ return was && key(ch) === was; })[0] || grid.querySelector('.chip[aria-pressed="true"]') || tiles[0];
+    }
+    if (to) to.focus({ preventScroll: true });
+  }
   /* Edit, Rename, Duplicate and Delete for one of the reader's own themes */
   function themeAction(act, k){
     var c = customById(k); if (!c) return;
@@ -11337,37 +12070,45 @@
     if (name === null) return;
     name = name.trim().slice(0, 60);
     if (!name || name === c.name) return;
-    c.name = name; customsChanged(); syncCustomUI(); Prefs.save(); Pop.sync();
+    c.name = name; pairChanged(); syncCustomUI(); Prefs.save(); Pop.sync();
   }
   function dupCustom(c){
     var d = copyCustom(c, customName(_t("{name} copy", { name: c.name })));
-    customsChanged(); Prefs.save();
+    pairChanged(); Prefs.save();
     Marks.toast(_t("Copied as \u201C{name}\u201D", { name: d.name }));
     return d;
   }
-  /* Delete asks first, then offers Undo; the theme in use gives way to the one before it */
+  /* Delete asks first, then offers Undo. A half that was the deleted theme falls back, the day half to
+     Day and the night half to Dusk (both, when that would make the pair one theme twice). The half on
+     screen stays on screen: when its theme in the new pair is not the one showing, that theme shows,
+     and a Day/Night hold carries over to it. Undo puts back the theme in its place, the pair, the theme
+     on screen and the hold, as they were */
   function deleteCustom(c){
     if (!c || !confirm(_t("Delete the theme \u201C{name}\u201D?", { name: c.name }))) return false;
-    var at = state.customs.indexOf(c), gone = "c:" + c.id, was = { theme: state.theme, day: state.autoDay, night: state.autoNight };
+    var at = state.customs.indexOf(c), gone = "c:" + c.id;
     if (at < 0) return false;
+    /* taken before the change: the half on screen, and what Undo puts back (the hold a copy) */
+    var h = halfOnScreen(), was = { theme: state.theme, day: state.autoDay, night: state.autoNight, hold: state.dnHold ? Object.assign({}, state.dnHold) : null };
     state.customs.splice(at, 1);
     if (state.autoDay === gone) state.autoDay = "day";
     if (state.autoNight === gone) state.autoNight = "dusk";
-    customsChanged();
-    if (state.theme === gone) selectTheme(prevTheme() || (isDarkColor(c.bg) ? "dusk" : "day")); else Prefs.save();
+    if (state.autoDay === state.autoNight){ state.autoDay = "day"; state.autoNight = "dusk"; }
+    var to = h === "day" ? state.autoDay : state.autoNight;
+    if (state.theme !== to){ if (state.dnHold) state.dnHold.theme = to; selectTheme(to); }
+    Prefs.save(); pairChanged();
     Marks.toast(_t("Deleted \u201C{name}\u201D", { name: c.name }), { undo: function(){
       if (customById(gone)) return;
       state.customs.splice(Math.min(at, state.customs.length), 0, c);
       state.autoDay = was.day; state.autoNight = was.night;
-      customsChanged();
-      if (was.theme === gone) selectTheme(gone); else Prefs.save();
-      AutoTheme.syncUI(); Pop.sync();
+      state.dnHold = was.hold ? Object.assign({}, was.hold) : null;
+      selectTheme(was.theme);
+      Prefs.save(); pairChanged();
     } });
     return true;
   }
 
   /* ---- the maker: your own theme from three colours ----
-     Starts from any theme (Make my own from this one) or edits one of the reader's own. Background,
+     Starts from the theme on screen (New theme) or edits one of the reader's own. Background,
      text and accent are picked; the panel, the raised surface, the secondary text, the hairline and
      the lamp are derived from them (customColors), so a saved theme wears the same tokens as a
      built-in on every screen. Text and accent are moved in lightness until they read at 4.5:1, and
@@ -11375,7 +12116,8 @@
      the theme back. */
   var Maker = (function(){
     var d = null;
-    var INK = ["#141414", "#2B2A26", "#40331F", "#25303A", "#C7C3B6", "#E9DBCF", "#CBD5E1", "#FFFFFF"];
+    /* the text row: the text of Paper, Day, Sepia and Sea air, then of Ink, Cocoa and Canals, and white */
+    var INK = ["#141414", "#2D2924", "#2E1E11", "#112126", "#D6D2C5", "#EEDFCB", "#D0DCD8", "#FFFFFF"];
     function esc(x){ return escapeHtml(String(x)); }
     function derive(){
       var bg = d.bg, ink = d.autoInk ? deriveInk(bg) : d.ink, fixed = false;
@@ -11456,10 +12198,14 @@
       } else { r.c.name = name; c = addCustom(r.c); }
       d = null; themeDraft = null;
       Side.close();
-      customsChanged();
+      pairChanged();
       var id = "c:" + c.id;
-      if (state.theme === id){ syncCustomUI(); applyTheme(); } else pickTheme(id, true);
+      /* the toast first: the first time an own theme is picked with switching on, pickOwn's toast (which
+         half it went into, and Turn off) takes its place */
       Marks.toast(_t("Saved \u201C{name}\u201D", { name: name }));
+      /* the theme on screen, edited, is simply drawn again; any other (a new one, or one edited from its
+         ⋯ in Mine) shows at once, as a picked own theme does (pickOwn) */
+      if (state.theme === id){ syncCustomUI(); applyTheme(); } else pickOwn(id, true);
     }
     Side.body.addEventListener("click", function(e){
       if (!Side.is("maker") || !d) return;
@@ -11479,12 +12225,15 @@
     });
     return { open: open, save: save, draft: function(){ return d; } };
   })();
-  function focusChip(theme){ var ch = $('#themeChips .chip[data-theme="' + theme + '"]'); if (ch) ch.focus(); }
-  /* New…: a saved theme that starts from the colours on screen */
+  /* the focus on a theme's tile in Settings, or on the pressed tile there when the theme has none of
+     its own (a built-in shows in its look; a deleted theme has gone) */
+  function focusChip(theme){ var ch = $('#themeChips .chip[data-theme="' + theme + '"]') || $('#themeChips .chip[aria-pressed="true"]'); if (ch) ch.focus(); }
+  /* a saved theme that starts from the colours on screen (llThemes.create): it shows at once in the
+     half on screen, as a picked own theme does, with the focus on its tile */
   function createCustom(){
     var t = currentTheme();
     var c = addCustom({ name: customName(), bg: normHex(t.bg), ink: normHex(t.ink), autoInk: true, accent: normHex(t.accent) });
-    customsChanged(); selectTheme("c:" + c.id); focusChip("c:" + c.id);
+    pickOwn("c:" + c.id, true); focusChip("c:" + c.id);
     return c;
   }
 
@@ -11492,19 +12241,22 @@
   function editing(){ return customById(state.theme); }
   function edited(){ syncCustomUI(); applyTheme(); }
   $("#cRename").addEventListener("click", function(){ var c = editing(); if (c) renameCustom(c); });
+  /* Duplicate and Save as new: the copy takes the place of the theme on screen, in its half, at once
+     (pickOwn). Their toast comes first, so the first own theme picked with switching on keeps
+     pickOwn's toast instead */
   $("#cDup").addEventListener("click", function(){
     var c = editing(); if (!c) return;
     var d = copyCustom(c, customName(_t("{name} copy", { name: c.name })));
-    customsChanged(); selectTheme("c:" + d.id);
     Marks.toast(_t("Copied as “{name}”", { name: d.name }));
+    pickOwn("c:" + d.id, true);
   });
   $("#cSaveAs").addEventListener("click", function(){
     var c = editing(); if (!c) return;
     var name = prompt(_t("Name for the new theme"), customName());
     if (name === null) return;
     var d = copyCustom(c, name.trim().slice(0, 60) || customName());
-    customsChanged(); selectTheme("c:" + d.id);
     Marks.toast(_t("Saved as “{name}”", { name: d.name }));
+    pickOwn("c:" + d.id, true);
   });
   $("#cDel").addEventListener("click", function(){ var c = editing(); if (c && deleteCustom(c)) focusChip(state.theme); });
   /* background: quick swatches, the tint / brightness sliders, or any colour */
@@ -11564,16 +12316,16 @@
   });
   $("#cFix").addEventListener("click", fixContrast);
   /* exposed for tests (not a public API) */
-  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, pickerGroups: pickerGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
-    customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast,
-    pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker };
+  window.llThemes = { THEMES: THEMES, LOOKS: LOOKS, RETIRED: RETIRED, contrast: contrast, resolve: resolveTheme, current: currentTheme,
+    customs: function(){ return state.customs; }, select: selectTheme, pick: pickTheme, look: selectLook, create: createCustom, fix: fixContrast,
+    remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight, hold: function(){ return state.dnHold; } };
 
   $("#flowChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
     if (ch) setFlow(ch.dataset.flow);
   });
   $("#fontSel").addEventListener("change", function(e){ state.font = e.target.value; applyType(); });
-  $("#fontBrowse").addEventListener("click", Fonts.openPanel);
+  $("#fontBrowse").addEventListener("click", function(){ Fonts.openPanel(); });
   $("#rSize").addEventListener("input", function(e){ state.size = +e.target.value; applyType(); });
   $("#rLh").addEventListener("input",  function(e){ state.lh   = +e.target.value; applyType(); });
   $("#rW").addEventListener("input",   function(e){ state.width= +e.target.value; applyType(); });
@@ -11607,8 +12359,6 @@
     $("#vZoom").textContent = e.target.value + " %";
     queueRerender();
   });
-  /* Plain background: the textured themes without their paper or cloth */
-  $("#plainBg").addEventListener("change", function(e){ state.plainBg = e.target.checked; applyTheme(); });
   $("#softenPdf").addEventListener("change", function(e){
     state.soften = e.target.checked;
     applyTheme();
@@ -11628,10 +12378,11 @@
       applyType();
     }
   }
-  $("#smaller").addEventListener("click", function(){ bump(-1); });
-  $("#bigger").addEventListener("click",  function(){ bump(1); });
+  /* at an end the button is aria-disabled: still focusable, and a press does nothing */
+  $("#smaller").addEventListener("click", function(){ if (this.getAttribute("aria-disabled") !== "true") bump(-1); });
+  $("#bigger").addEventListener("click",  function(){ if (this.getAttribute("aria-disabled") !== "true") bump(1); });
 
-  /* page turning: buttons, edge taps, swipes, keys — middle tap toggles the bars */
+  /* page turning: buttons, edge taps, swipes, keys — a middle tap toggles the bars (on a phone it opens the dock) */
   $("#prevPg").addEventListener("click", function(){ turn(-1); });
   $("#nextPg").addEventListener("click", function(){ turn(1); });
 
@@ -11643,11 +12394,14 @@
     setSheet(false);
     relayoutPaged();
   }
-  /* the top and bottom 56px of the page, where the bars live: a tap there shows or hides them, and
-     never looks a word up (in the middle of a phone's page almost every point is a word) */
+  /* the top and bottom 56px of the page, where the bars live: a tap there shows or hides them (on a
+     phone the bottom one opens the dock), and never looks a word up (in the middle of a phone's page
+     almost every point is a word) */
   var BAR_STRIP = 56;
   function inBarStrip(y, el){
     var r = (el || (state.mode === "pdf" ? $("#pdf") : $("#docView"))).getBoundingClientRect();
+    /* a phone while reading has no bar at the top: only the bottom strip, which opens the dock */
+    if (document.body.classList.contains("phonebar")) return r.bottom - y < BAR_STRIP;
     return y - r.top < BAR_STRIP || r.bottom - y < BAR_STRIP;
   }
   function tapNav(e){
@@ -11659,6 +12413,15 @@
     var x = (e.clientX - r.left) / r.width;
     /* e-ink mode: the left third goes back, the rest forward, a whole page at a time */
     if (state.eink === true){ turn(x < 1 / 3 ? -1 : 1); return; }
+    /* a phone: the edges turn, the bottom strip and a blank middle open the dock (zen: neither) */
+    if (document.body.classList.contains("phonebar")){
+      var zen = document.body.classList.contains("zen");
+      if (inBarStrip(e.clientY, e.currentTarget)){ if (!zen) PhoneBar.openDock(); }
+      else if (x < 0.35) turn(-1);
+      else if (x > 0.65) turn(1);
+      else if (!zen) PhoneBar.openDock();
+      return;
+    }
     if (inBarStrip(e.clientY, e.currentTarget)) toggleBars();
     else if (x < 0.35) turn(-1);
     else if (x > 0.65) turn(1);
@@ -11670,20 +12433,25 @@
   /* swipes in Pages flow: sideways turns the page; down on the page shows the bars, up hides them
      (the page itself never scrolls vertically in Pages flow — a zoomed PDF page that does keeps its
      vertical swipes, and e-ink mode keeps its bars) */
-  var touchX = null, touchY = null, touchPage = false;
+  var touchX = null, touchY = null, touchPage = false, touchAside = false;
+  var NO_SWIPE = "#phoneDock, #phoneDockScrim, #readFoot, #sheet, #sheetScrim, #pop, #popScrim, #side, #sideScrim, #moreMenu, #moreScrim, #dictCard, #dictScrim, input[type=range]";
   document.addEventListener("touchstart", function(e){
     touchX = e.touches[0].clientX; touchY = e.touches[0].clientY;
     touchPage = !!(e.target && e.target.closest && e.target.closest("#docView, #pdf"));
+    /* a drag on a slider, a sheet, a scrim or the phone's dock and strip is theirs, never a page turn */
+    touchAside = !!(e.target && e.target.closest && e.target.closest(NO_SWIPE));
   }, {passive:true});
   document.addEventListener("touchend", function(e){
     if (touchX === null || !pagedActive()) { touchX = null; return; }
     var dx = e.changedTouches[0].clientX - touchX;
     var dy = e.changedTouches[0].clientY - touchY;
     touchX = null;
-    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) turn(dx < 0 ? 1 : -1);
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4){ if (!touchAside) turn(dx < 0 ? 1 : -1); }
     else if (touchPage && Math.abs(dy) > 55 && Math.abs(dy) > Math.abs(dx) * 1.4 && state.eink !== true){
       var pdf = $("#pdf");
       if (state.mode === "pdf" && pdf.scrollHeight > pdf.clientHeight + 2) return;
+      /* a phone: up opens the dock (not in zen); there are no bars to bring down */
+      if (document.body.classList.contains("phonebar")){ if (dy < 0 && !document.body.classList.contains("zen")) PhoneBar.openDock(); return; }
       toggleBars(dy > 0);
     }
   }, {passive:true});
@@ -11692,6 +12460,8 @@
     if (e.key === "Escape"){ setSheet(false); return; }
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
     if (Side.current()) return;   /* the keys scroll the open drawer, not the pages behind it */
+    /* a phone: the open dock holds the page still, and Space on the lamp presses the lamp */
+    if (document.body.classList.contains("dock-open") || (e.key === " " && e.target.closest && e.target.closest("#readFoot"))) return;
     if (!pagedActive()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " "){ e.preventDefault(); turn(1); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp"){ e.preventDefault(); turn(-1); }
@@ -11707,7 +12477,7 @@
     function docOpen(){ return state.mode === "doc" || state.mode === "pdf"; }
     add("o", _t("Open a file"), function(){ $("#fileInput").click(); });
     add("s", _t("Settings"), function(){ document.body.classList.remove("hidebar"); setSheet(); });
-    add("t", _t("Switch day / night theme"), toggleDayNight);
+    add("t", _t("Switch day / night theme"), function(){ toggleDayNight({ toast: true }); });
     add("+", _t("Larger text / zoom in"), function(){ bump(1); }, docOpen);
     add("-", _t("Smaller text / zoom out"), function(){ bump(-1); }, docOpen);
     add("p", _t("Switch scroll / pages"), function(){ setFlow(state.flow === "pages" ? "scroll" : "pages"); }, docOpen);
@@ -11760,11 +12530,27 @@
       else if (state.mode === "pdf" && state.pdfDoc){ renderPdf(); }
     }, 350);
   });
-  /* a web font or an image arriving after the first layout changes where the pages break */
-  var lateLayout = null;
+  /* a web font or an image arriving after the first layout changes where the pages break. One
+     that lands while printing (the print layout asks for faces the screen has not used yet) waits
+     for the screen layout: under print media there are no pages to measure */
+  var lateLayout = null, printMq = window.matchMedia ? window.matchMedia("print") : null, afterPrint = null;
   function relayoutLater(){
     clearTimeout(lateLayout);
-    lateLayout = setTimeout(function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); }, 80);
+    lateLayout = setTimeout(function(){
+      if (state.mode !== "doc" || state.flow !== "pages") return;
+      if (printMq && printMq.matches){
+        if (!afterPrint){
+          afterPrint = function(){
+            if (printMq.matches) return;
+            if (printMq.removeEventListener) printMq.removeEventListener("change", afterPrint); else printMq.removeListener(afterPrint);
+            afterPrint = null; relayoutLater();
+          };
+          if (printMq.addEventListener) printMq.addEventListener("change", afterPrint); else printMq.addListener(afterPrint);
+        }
+        return;
+      }
+      relayoutDocPages();
+    }, 80);
   }
   if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", relayoutLater);
   $("#doc").addEventListener("load", function(e){ if (e.target && e.target.tagName === "IMG") relayoutLater(); }, true);
@@ -11781,6 +12567,8 @@
 
     if (state.mode !== "doc" && state.mode !== "pdf") return;
     Library.notePosition();
+    /* a phone while reading has no bar to hide */
+    if (document.body.classList.contains("phonebar")) return;
     var y = h.scrollTop;
     var dy = y - lastY;
     lastY = y;
@@ -11935,7 +12723,7 @@
       "#dictCard .syn{display:block; margin-top:4px; font-size:var(--fs-small); color:var(--muted);}",
       "#dictCard .note{color:var(--muted); font-size:var(--fs-small); line-height:1.45; padding:2px 0 6px;}",
       "#dictCard .sec{",
-      "  font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase;",
+      "  font-size:var(--fs-small); font-weight:700;",
       "  color:var(--muted); margin:16px 0 8px;",
       "}",
       "#dictCard .panel > .sec:first-child{margin-top:0;}",
@@ -12010,7 +12798,8 @@
       "  text-decoration-thickness:2px; text-underline-offset:3px;",
       "}",
       "#dictCard .chg[aria-expanded=true]{background:var(--accent-soft);}",
-      /* text on the ink tint is ink: muted slips under 4.5:1 on the tint on eight themes */
+      /* text on the ink tint is ink, as on every tint: a custom theme's secondary text is made to read
+         on its page and its panel, not on this tint */
       "#dictCard .chgnote{",
       "  display:inline-block; margin:0 3px; padding:1px 7px; border-radius:6px; vertical-align:baseline;",
       "  font-family:var(--ui-font); font-size:var(--fs-small); line-height:1.5; color:var(--ink);",
@@ -12029,8 +12818,8 @@
       "  background:color-mix(in srgb, var(--ink) 6%, transparent);",
       "}",
       "#dictCard .role b{",
-      "  display:block; font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em;",
-      "  text-transform:uppercase; color:var(--ink); margin-bottom:1px;",
+      "  display:block; font-size:var(--fs-small); font-weight:700;",
+      "  color:var(--ink); margin-bottom:1px;",
       "}",
       "#dictCard .tense{font-size:var(--fs-small); color:var(--muted); margin-top:8px; line-height:1.4;}",
       "#dictCard .tense b{color:var(--ink); font-weight:600;}",
@@ -13281,7 +14070,7 @@
       if (!document.body.classList.contains("paged")) return true;
       var r = $("#docView").getBoundingClientRect();      /* the strip itself is scrolled sideways */
       var f = (x - r.left) / r.width;
-      /* the top and bottom strips of the page show and hide the bars instead (tapNav) */
+      /* the top and bottom strips of the page show and hide the bars instead, or on a phone the bottom one opens the dock (tapNav) */
       if (typeof y === "number" && state.eink !== true && inBarStrip(y, $("#docView"))) return false;
       return f >= 0.35 && f <= 0.65;
     }
@@ -13608,22 +14397,29 @@
   /* ---------- boot ---------- */
   Prefs.load();
   Store.remove("ll_apikey");   /* the key of the old online explainer: wiped from devices */
-  /* first run on a device that asks for more contrast: start with the high-contrast theme */
-  if (!Store.get("ll_prefs") && window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){
-    state.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "hidark" : "hicon";
+  Store.remove("ll_theme_recent");   /* the themes the picker's Recent row listed, which has gone */
+  /* a first run (nothing stored, as after Clear everything): Day and night follows the phone, and the
+     theme on screen is the half the phone asks for, set before applyTheme first runs, so the app never
+     applies Day and then Dusk (until this script runs, the page has app.css's Day). A device that asks
+     for more contrast gets the contrast pair. A stored profile keeps its own setting, even one with no
+     auto field, since `state` starts Off */
+  if (!Store.get("ll_prefs")){
+    state.auto = "system";
+    if (window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){ state.autoDay = "hicon"; state.autoNight = "hidark"; }
+    state.theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? state.autoNight : state.autoDay;
   }
   headVar();
   buildThemeChips();
   buildCustomUI();
   syncCustomUI();
   $("#softenPdf").checked = !!state.soften;
-  $("#plainBg").checked = !!state.plainBg;
   document.querySelectorAll("#flowChips .chip").forEach(function(ch){
     var on = ch.dataset.flow === state.flow; ch.classList.toggle("on", on); ch.setAttribute("aria-pressed", on ? "true" : "false");
   });
   applyTheme();
   applyType();
   Eink.boot();
+  ThemeNotice.boot();
   Dim.apply();
   $("#cSpread").checked = state.spread !== false;
   $("#cWake").checked = state.wake !== false;
@@ -13657,8 +14453,13 @@
         '<button type="button" id="updateLater" aria-label="' + escapeHtml(_t("Later")) + '" title="' + escapeHtml(_t("Later")) + '">' + ICONS.close + '</button>';
       document.body.appendChild(toastEl);
       /* the offer keeps the bottom row and reports its height (--updateH, like the dock's --dockH):
-         the small toast and the translation pill step up over it instead of hiding behind it */
-      var ro = null, setH = function(){ if (toastEl && toastEl.isConnected) document.body.style.setProperty("--updateH", (toastEl.offsetHeight + 8) + "px"); };
+         the small toast and the translation pill step up over it instead of hiding behind it. It
+         reports none while speed reading hides it (app.css) */
+      var ro = null, setH = function(){
+        if (!toastEl || !toastEl.isConnected) return;
+        if (toastEl.offsetHeight) document.body.style.setProperty("--updateH", (toastEl.offsetHeight + 8) + "px");
+        else document.body.style.removeProperty("--updateH");
+      };
       setH();
       if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(toastEl); }
       toastEl.querySelector("#updateReload").addEventListener("click", function(){

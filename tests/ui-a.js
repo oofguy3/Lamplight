@@ -4,7 +4,7 @@
    card, tips). Screenshots go to $LL_SHOTS (default: the OS temp dir).
    NODE_PATH=$(npm root -g) node tests/ui-a.js */
 const path = require("path"), os = require("os");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || os.tmpdir();
 
 /* a fake speech engine so read-aloud can be exercised headlessly */
@@ -27,13 +27,15 @@ const SPEECH_STUB = `(() => {
   const rect = (page, sel) => page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; });
   const visible = (page, sel) => page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== "none" && r.width > 0 && r.height > 0; });
   const popOpen = (page) => page.$eval("#pop", (p) => p.classList.contains("open"));
+  /* on a phone the reading tools live in the dock the lamp opens (a no-op anywhere else) */
+  const dock = async (page) => { await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250); };
   const sheetOpen = (page) => page.$eval("#sheet", (s) => s.classList.contains("open"));
   const unnamed = (page) => page.evaluate(() => Array.from(document.querySelectorAll("button")).filter((b) => b.offsetParent !== null && !(b.textContent.trim() || b.getAttribute("aria-label") || b.getAttribute("title"))).map((b) => b.id || b.className));
   /* the popover's rows against its padding box: nothing pokes past the edge, nothing scrolls sideways */
   const popFits = (page) => page.evaluate(() => {
     const p = document.getElementById("pop"), r = p.getBoundingClientRect(), cs = getComputedStyle(p);
     const padR = r.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth) + 0.5;
-    const rows = Array.from(p.querySelectorAll(".prow, .pop-link")).filter((x) => x.offsetParent !== null);   /* a strip scrolls its chips by design (its own 2px bleed sits under the mask) */
+    const rows = Array.from(p.querySelectorAll(".prow, .pop-link")).filter((x) => x.offsetParent !== null);   /* rows, not every control: a segment's chips scroll sideways inside it, and on phones the type popover's close button and All fonts reach into the padding with their 48px targets, by design */
     return { fits: p.scrollWidth <= p.clientWidth && rows.every((x) => x.getBoundingClientRect().right <= padR), sw: p.scrollWidth, cw: p.clientWidth, over: rows.filter((x) => x.getBoundingClientRect().right > padR).map((x) => x.id || x.className) };
   });
   /* a finger drag through the debugger (Playwright's touchscreen only taps) */
@@ -171,55 +173,67 @@ const SPEECH_STUB = `(() => {
   section("Theme popover");
   await guard("theme", async () => {
     const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
+    /* a profile with Day and night off, the setting these checks start from: a first run follows the
+       phone now. Stored only while nothing is, so a reload keeps what the page saved */
+    await ctx.addInitScript(() => { try { if (!localStorage.getItem("ll_prefs")) localStorage.setItem("ll_prefs", JSON.stringify({ auto: "off" })); } catch(_){} });
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await page.click("#lamp"); await page.waitForTimeout(250);
-    const rows = await page.evaluate(() => { const g = window.llThemes.pickerGroups(); return { light: document.querySelectorAll("#qLight .chip").length, dark: document.querySelectorAll("#qDark .chip").length, gl: g[0].ids.length, gd: g[1].ids.length,
-      on: Array.from(document.querySelectorAll("#pop .strip .chip[aria-pressed=true]")).map((c) => c.dataset.theme).join(","), auto: document.querySelector('#qAuto .chip[aria-pressed="true"]').dataset.auto }; });
-    R.check("the lamp opens the theme popover with light and dark groups, the current theme and auto choice marked", (await page.evaluate(() => window.llPop.is("theme"))) && rows.light === rows.gl && rows.dark === rows.gd && rows.light >= 7 && rows.on === "day" && rows.auto === "off", JSON.stringify(rows));
+    const rows = await page.evaluate(() => ({ looks: Array.from(document.querySelectorAll("#qLooks .tile.look")).map((c) => c.dataset.look).join(","),
+      on: Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')).map((c) => c.dataset.look).join(","), auto: document.querySelector('#qAuto .chip[aria-pressed="true"]').dataset.auto }));
+    R.check("the lamp opens the theme popover with the six looks, the current look and auto choice marked", (await page.evaluate(() => window.llPop.is("theme"))) && rows.looks === "day,paper,sepia,sage,seaair,hicon" && rows.on === "day" && rows.auto === "off", JSON.stringify(rows));
     const bg0 = await page.evaluate(() => document.documentElement.style.getPropertyValue("--bg"));
-    /* another family is one more tap: its tab, then the tile */
-    await page.click("#qTabColour"); await page.waitForTimeout(100);
-    await page.click('#qColour .chip[data-theme="ocean"]'); await page.waitForTimeout(100);
+    /* a choice cross-fades (the theme lands a frame or two later), so wait for it rather than a fixed pause */
+    const settle = (k) => page.waitForFunction((x) => window.__ll.state.theme === x, k, { timeout: 1500 }).catch(() => {});
+    /* another look is one tap: with Day on screen it shows its day theme */
+    await page.click('#qLooks [data-look="seaair"]'); await settle("seaair");
     const bg1 = await page.evaluate(() => document.documentElement.style.getPropertyValue("--bg"));
-    R.check("picking a tile applies the theme at once and the popover stays open", bg1 !== bg0 && (await page.evaluate(() => window.__ll.state.theme)) === "ocean" && (await page.$eval('#qColour .chip[data-theme="ocean"]', (c) => c.getAttribute("aria-pressed") === "true")) && (await page.evaluate(() => window.llPop.is("theme"))), bg0 + " -> " + bg1);
-    R.check("the sheet's chips follow", await page.$eval('#themeChips .chip[data-theme="ocean"]', (c) => c.classList.contains("on")));
+    R.check("picking a look applies its theme at once and the popover stays open", bg1 !== bg0 && (await page.evaluate(() => window.__ll.state.theme)) === "seaair" && (await page.$eval('#qLooks [data-look="seaair"]', (c) => c.getAttribute("aria-pressed") === "true")) && (await page.evaluate(() => window.llPop.is("theme"))), bg0 + " -> " + bg1);
+    R.check("the sheet's tiles follow", await page.$eval('#themeChips [data-look="seaair"]', (c) => c.classList.contains("on")));
     await page.click('#qAuto [data-auto="system"]'); await page.waitForTimeout(100);
     R.check("the Auto segment calls the same handler as the sheet", (await page.evaluate(() => window.__ll.state.auto)) === "system" && (await page.$eval('#autoChips .chip[data-auto="system"]', (c) => c.classList.contains("on"))));
     await page.click('#qAuto [data-auto="off"]'); await page.waitForTimeout(100);
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
-    await page.evaluate(() => window.llThemes.select("day"));
-    await page.keyboard.press("t"); await page.waitForTimeout(100);
+    /* back to Day & Dusk, with Day on screen */
+    await page.evaluate(() => window.llThemes.pick("day")); await settle("day");
+    await page.keyboard.press("t"); await settle("dusk");
     const tn = await page.evaluate(() => window.__ll.state.theme);
-    await page.keyboard.press("t"); await page.waitForTimeout(100);
+    await page.keyboard.press("t"); await settle("day");
     R.check("t toggles day / night", tn === "dusk" && (await page.evaluate(() => window.__ll.state.theme)) === "day", tn);
-    /* a saved custom theme joins the row of its lightness */
-    await page.evaluate(() => { window.llThemes.select("midnight"); window.llThemes.create(); });
+    /* a saved custom theme joins Mine, ahead of New theme */
+    await page.evaluate(() => window.llThemes.create());
     await page.click("#lamp"); await page.waitForTimeout(250);
-    const custom = await page.evaluate(() => { const last = document.querySelector("#qDark .chip:last-child"); return { theme: last.dataset.theme, on: last.getAttribute("aria-pressed"), name: last.textContent.trim() }; });
-    R.check("a saved custom theme appears at the end of the dark row, selected", /^c:/.test(custom.theme) && custom.on === "true" && custom.name === "Custom 1", JSON.stringify(custom));
+    const custom = await page.evaluate(() => { const own = Array.from(document.querySelectorAll("#qMine .chip[data-theme]")), last = own[own.length - 1], next = last && last.closest("#qMine > *").nextElementSibling;
+      return last ? { theme: last.dataset.theme, on: last.getAttribute("aria-pressed"), name: last.textContent.trim(), n: own.length, beforeNew: !!(next && next.classList.contains("chip-new")) } : null; });
+    R.check("a saved custom theme appears in Mine before New theme, selected", !!custom && /^c:/.test(custom.theme) && custom.on === "true" && custom.name === "Custom 1" && custom.n === 1 && custom.beforeNew, JSON.stringify(custom));
     await page.click("#themeMore"); await page.waitForTimeout(700);
-    R.check("All themes and the editor… opens the sheet at the Theme group", (await sheetOpen(page)) && (await page.$eval('#sheetTabs [data-group="themeGroup"]', (b) => b.classList.contains("on"))) && (await page.$eval("#customRow", (r) => r.classList.contains("show"))));
+    R.check("More theme settings… opens the sheet at the Theme group", (await sheetOpen(page)) && (await page.$eval('#sheetTabs [data-group="themeGroup"]', (b) => b.classList.contains("on"))) && (await page.$eval("#customRow", (r) => r.classList.contains("show"))));
     await page.keyboard.press("Escape");
     R.check("Escape on the sheet opened from the popover's footer hands focus back to the lamp", await page.evaluate(() => document.activeElement && document.activeElement.id === "lamp"), await page.evaluate(() => document.activeElement && document.activeElement.id));
     R.check("no page errors (theme)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
-    /* a theme far down the list: the popover opens on its group, so its tile is in view */
+    /* a built-in picked by id brings its look, marked: the popover opens with the focus on that tile,
+       in view, and the window does not move */
     const ctx2 = await b.newContext({ viewport: { width: 1200, height: 800 } });
-    await ctx2.addInitScript(() => { try { localStorage.setItem("ll_prefs", JSON.stringify({ theme: "terminal" })); } catch(_){} });
     const p2 = await newPage(ctx2, url);
     await openFixture(p2, "sample.md");
+    await p2.evaluate(() => window.llThemes.pick("canals"));
+    await p2.waitForFunction(() => window.__ll.state.theme === "canals", null, { timeout: 1500 }).catch(() => {});
+    /* the window's own position before the popover opens: opening the book may leave it a few pixels
+       down on a busy machine, and what this checks is that opening the popover does not move it */
+    const y0 = await p2.evaluate(() => window.scrollY);
     await p2.click("#lamp"); await p2.waitForTimeout(250);
-    const cur = await p2.evaluate(() => { const on = document.querySelector("#pop .strip .chip.on"), r = on.getBoundingClientRect(), s = on.closest(".strip").getBoundingClientRect(); return { theme: on.dataset.theme, inside: r.left >= s.left - 1 && r.right <= s.right + 1, y: window.scrollY }; });
-    R.check("with Terminal on, its tile is in view when the popover opens and the window did not move", cur.theme === "terminal" && cur.inside && cur.y === 0, JSON.stringify(cur));
+    const cur = await p2.evaluate(() => { const on = Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')), t = on[0], s = window.__ll.state, p = document.getElementById("pop").getBoundingClientRect(), r = t ? t.getBoundingClientRect() : null;
+      return { on: on.map((c) => c.dataset.look).join(","), pair: s.autoDay + "/" + s.autoNight, theme: s.theme, label: t ? t.getAttribute("aria-label") : null, focus: !!t && document.activeElement === t, inside: !!r && r.top >= p.top && r.bottom <= p.bottom, y: window.scrollY }; });
+    R.check("a built-in picked by id marks its look: Canals gives Sea air & Canals, pressed, with the focus and in view when the popover opens, and the window did not move",
+      cur.on === "seaair" && cur.pair === "seaair/canals" && cur.theme === "canals" && cur.label === "Sea air & Canals, current theme" && cur.focus && cur.inside && cur.y === y0, JSON.stringify(Object.assign({ y0: y0 }, cur)));
     R.check("the theme popover fits too", (await popFits(p2)).fits, JSON.stringify(await popFits(p2)));
-    /* the tiles are a grid now (no sideways strip): the popover opens on Terminal's group, and a
-       wheel over it scrolls the popover, never the page (which would close it) */
-    const grp = await p2.evaluate(() => document.querySelector("#qGroups [aria-selected=true]").id + (document.getElementById("qColour").hidden ? "" : "+qColour"));
-    const st = await rect(p2, "#qColour");
+    /* the tiles are a grid (no sideways strip): a wheel over them scrolls the popover, never the page
+       (which would close it) */
+    const st = await rect(p2, "#qLooks");
     await p2.mouse.move(st.left + st.width / 2, st.top + st.height / 2); await p2.mouse.wheel(0, 120); await p2.waitForTimeout(300);
     const wh = await p2.evaluate(() => ({ open: document.getElementById("pop").classList.contains("open"), y: window.scrollY }));
-    R.check("with Terminal on, the popover opens on the Colour group, and a wheel over its tiles keeps the popover open and the page still", grp === "qTabColour+qColour" && wh.open && wh.y === 0, grp + " " + JSON.stringify(wh));
+    R.check("a wheel over the looks keeps the popover open and the page still", wh.open && wh.y === cur.y, JSON.stringify(Object.assign({ before: cur.y }, wh)));
     await ctx2.close();
   });
 
@@ -266,7 +280,7 @@ const SPEECH_STUB = `(() => {
     R.check("Escape from a control in the sheet returns focus to the document", !(await sheetOpen(page)) && (await page.evaluate(() => document.activeElement.id === "main")), await page.evaluate(() => document.activeElement.id));
     await page.click("#more");
     await page.waitForSelector("#moreMenu button:has-text('Settings')", { state: "visible", timeout: 20000 });
-    await page.click("#moreMenu button:has-text('Settings')"); await page.waitForTimeout(300);
+    await menuItem(page, "Settings"); await page.waitForTimeout(300);
     await page.evaluate(() => document.getElementById("sheetClose").focus());
     await page.keyboard.press("Enter"); await page.waitForTimeout(200);
     R.check("closing with the sheet's own button returns focus to the ⋯ button it came from", !(await sheetOpen(page)) && (await page.evaluate(() => document.activeElement.id === "more")), await page.evaluate(() => document.activeElement.id));
@@ -348,9 +362,10 @@ const SPEECH_STUB = `(() => {
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     R.check("no horizontal overflow with a document", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-    await page.tap("#gear"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#gear"); await page.waitForTimeout(400);
     const p = await rect(page, "#pop");
-    R.check("the type popover is a bottom sheet: full width, on the bottom edge, with a handle and scrim", (await popOpen(page)) && Math.abs(p.bottom - 844) <= 1 && Math.abs(p.width - 390) <= 1 && p.top > 200 && (await visible(page, ".pop-handle")) && (await page.$eval("#popScrim", (s) => s.classList.contains("on"))), JSON.stringify(p));
+    /* the phone Text sheet stands at most 85% of the screen tall (its choices make it taller than the old rows) */
+    R.check("the type popover is a bottom sheet: full width, on the bottom edge, with a handle and scrim", (await popOpen(page)) && Math.abs(p.bottom - 844) <= 1 && Math.abs(p.width - 390) <= 1 && p.top >= 844 * 0.15 - 1 && (await visible(page, ".pop-handle")) && (await page.$eval("#popScrim", (s) => s.classList.contains("on"))), JSON.stringify(p));
     const rowH = await page.$$eval("#typePop .prow", (rs) => rs.filter((r) => r.offsetParent !== null).map((r) => Math.round(r.getBoundingClientRect().height)));
     R.check("rows are at least 44px tall on touch", rowH.length >= 5 && rowH.every((h) => h >= 44), rowH.join(","));
     /* a finger holds the page still under the sheet: a drag on the scrim or inside the sheet
@@ -359,23 +374,28 @@ const SPEECH_STUB = `(() => {
     await touchDrag(page, 195, 120, 195, 20);
     const l1 = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("pop").classList.contains("open"), scrim: document.getElementById("popScrim").classList.contains("on") }));
     R.check("a drag on the scrim leaves the page and the sheet where they are", l1.y === 100 && l1.open && l1.scrim, JSON.stringify(l1));
-    const wr = await rect(page, "#qW");
-    await touchDrag(page, wr.left - 30, wr.top + wr.height / 2, wr.left - 30, wr.top - 120);
+    /* the phone sheet puts each label above its control and has no Size slider (A− / A+ instead):
+       the drag starts on the Size label, and the slider is Letters, a step in under More */
+    const lr = await rect(page, "#qSizeL");
+    await touchDrag(page, lr.left + 10, lr.top + lr.height / 2, lr.left + 10, lr.top - 120);
     const l2 = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("pop").classList.contains("open") }));
     R.check("a drag inside the sheet (beside a slider) does not scroll the page or close the sheet", l2.y === 100 && l2.open, JSON.stringify(l2));
-    const s0 = await page.evaluate(() => window.__ll.state.size), sr = await rect(page, "#qSize");
-    await touchDrag(page, sr.left + 8 + (sr.width - 16) * ((s0 - 14) / 14), sr.top + sr.height / 2, sr.right - 4, sr.top + sr.height / 2 + 10);
-    R.check("a sideways drag on the Size slider still changes the size", (await page.evaluate(() => window.__ll.state.size)) > s0 && (await popOpen(page)), String(await page.evaluate(() => window.__ll.state.size)));
+    await page.tap("#qMore summary"); await page.waitForTimeout(250);
+    await page.$eval("#qLs", (el) => el.scrollIntoView({ block: "center" })); await page.waitForTimeout(150);
+    const ls0 = await page.evaluate(() => window.__ll.state.ls || 0), sr = await rect(page, "#qLs");
+    await touchDrag(page, sr.left + 8, sr.top + sr.height / 2, sr.right - 4, sr.top + sr.height / 2 + 10);
+    R.check("a sideways drag on a slider in the sheet still changes its value", (await page.evaluate(() => window.__ll.state.ls || 0)) > ls0 && (await popOpen(page)), String(await page.evaluate(() => window.__ll.state.ls)));
+    await page.tap("#qMore summary"); await page.waitForTimeout(150);
     /* near the top: the popover is a bottom sheet and may stand up to 85vh tall, so the middle
        of the scrim is behind it */
     await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(400);
     R.check("the scrim closes it", !(await popOpen(page)) && !(await page.$eval("#popScrim", (s) => s.classList.contains("on"))));
-    await page.tap("#lamp"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#lamp"); await page.waitForTimeout(400);
     const t = await rect(page, "#pop");
     R.check("the theme popover is a bottom sheet too", (await page.evaluate(() => window.llPop.is("theme"))) && Math.abs(t.bottom - 844) <= 1 && t.height <= 844 * 0.85 + 1, JSON.stringify(t));
     await page.tap("#popScrim", { position: { x: 195, y: 40 } }); await page.waitForTimeout(300);
     /* the side panel's scrim holds the page too */
-    await page.tap("#tocBtn"); await page.waitForTimeout(400);
+    await dock(page); await page.tap("#tocBtn"); await page.waitForTimeout(400);
     await touchDrag(page, 195, 60, 195, 300);
     const l3 = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("side").classList.contains("open") }));
     R.check("a drag on the side panel's scrim leaves the page still and the panel open", l3.y === 100 && l3.open, JSON.stringify(l3));
@@ -402,7 +422,7 @@ const SPEECH_STUB = `(() => {
       for (const f of ["sample.md", "sample.pdf"]){
         await openFixture(p, f);
         for (const btn of ["#gear", "#lamp"]){
-          await p.tap(btn); await p.waitForTimeout(350);
+          await dock(p); await p.tap(btn); await p.waitForTimeout(350);
           const fit = await popFits(p);
           R.check(w + "px, " + f + ": " + btn + " fits its sheet", fit.fits && (await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), JSON.stringify(fit));
           await p.keyboard.press("Escape"); await p.waitForTimeout(250);
@@ -416,16 +436,16 @@ const SPEECH_STUB = `(() => {
   section("Screenshots");
   await guard("shots", async () => {
     for (const [w, h, tag] of [[1200, 800, "desktop"], [390, 844, "phone"]]){
-      for (const theme of ["day", "dusk", "newsprint", "terminal"]){
+      for (const theme of ["day", "dusk", "paper", "forest"]){
         const ctx = await b.newContext({ viewport: { width: w, height: h }, hasTouch: w < 600, isMobile: w < 600 });
         await ctx.addInitScript((t) => { try { localStorage.setItem("ll_prefs", JSON.stringify({ theme: t })); } catch(_){} }, theme);
         const page = await newPage(ctx, url);
         const shot = async (name) => { await page.waitForTimeout(300); await page.screenshot({ path: path.join(SHOTS, "ui-a-" + name + "-" + tag + "-" + theme + ".png") }); };
         await shot("start-empty");
         await openFixture(page, "sample.md");
-        await page.click("#gear"); await shot("pop-type");
+        await dock(page); await page.click("#gear"); await shot("pop-type");
         await page.keyboard.press("Escape"); await page.waitForTimeout(150);
-        await page.click("#lamp"); await shot("pop-theme");
+        await dock(page); await page.click("#lamp"); await shot("pop-theme");
         await page.keyboard.press("Escape"); await page.waitForTimeout(150);
         await page.keyboard.press("s"); await shot("sheet");
         await page.keyboard.press("Escape"); await page.waitForTimeout(150);

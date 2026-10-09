@@ -1,15 +1,15 @@
   :root{
-    --bg:#EDEDE6; --ink:#1F2323; --muted:#5E6562; --panel:#F5F5EF;
-    --line:#D8D9CF; --accent:#2F6D5B;
-    /* the theme's lamp and raised surface (applyTheme sets both, with data-tone on this element;
-       these are Day's until it runs) */
-    --lamp:#955F0F; --raise:#FBFBF7;
+    /* the theme's colours, its lamp and raised surface among them (applyTheme sets all eight, with
+       data-tone on this element); until it runs they are Day's, for the first paint and a Lighthouse run */
+    --bg:#F5EFE3; --ink:#2D2924; --muted:#645F58; --panel:#FBF8F0;
+    --line:#DED8CB; --accent:#2C5D45; --lamp:#875C0C; --raise:#FEFCF8;
     --fsN:19; --fs:calc(var(--fsN) * 1rem / 16); --lh:1.75; --w:720px; --margin:0px;
     /* typography set in applyType: text weight, the heading and bold weights derived from it,
        letter and word spacing in em, and the gap under a paragraph */
     --fw:400; --fwh:700; --fwb:700; --ls:0em; --ws:0em; --pgap:0.95em;
     --reader-font: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
-    --ui-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* the interface: Atkinson Hyperlegible, bundled as 'LL UI' (see the @font-face rules below) */
+    --ui-font: 'LL UI', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     /* the interface's titles: one bundled face whatever the reader picks for the text */
     --title-font: 'LL Title', Georgia, 'Iowan Old Style', serif;
 
@@ -18,11 +18,12 @@
        every built-in theme, every custom one and e-ink mode (body.eink below) get their own.
        --accent is "chosen / interactive" (a selected chip, a switch that is on, a slider's fill,
        links, the focus ring); --lamp is "light, brand and now" (the progress line, the wordmark,
-       primary actions, the stars, the progress rings) and is the theme's own: brass in the warm
-       themes, blue in Sky, green in Forest. Text on an accent or lamp fill is --on-fill (the panel
-       colour); text on a --lamp-soft or --accent-soft tint is --ink, never the lamp or --muted
-       (lamp on lamp-soft is only about 4.2:1 on a light page). --line is a decorative divider only;
-       a boundary that carries meaning is --edge or the accent. tests/themes.js audits every pair. */
+       primary actions, the stars, the progress rings) and is the theme's own: brass, amber or
+       caramel in the warm themes, green in Sage and Forest, red in Paper. Text on an accent or lamp
+       fill is --on-fill (the panel colour); text on a --lamp-soft or --accent-soft tint is --ink,
+       never the lamp or --muted (the lamp on its own tint is for icons: an empty state's round, the
+       word card's mark). --line is a decorative divider only; a boundary that carries meaning is
+       --edge or the accent. tests/themes.js audits every pair. */
     --lamp-soft: color-mix(in srgb, var(--lamp) 14%, var(--panel));
     --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
     --glow: color-mix(in srgb, var(--lamp) 30%, transparent);           /* halos only; never carries meaning */
@@ -87,15 +88,23 @@
   @font-face{font-family:'Atkinson Hyperlegible'; font-style:normal; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Bold.woff2') format('woff2');}
   @font-face{font-family:'Atkinson Hyperlegible'; font-style:italic; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Italic.woff2') format('woff2');}
   @font-face{font-family:'Atkinson Hyperlegible'; font-style:italic; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-BoldItalic.woff2') format('woff2');}
+  /* the same four files as the interface's own face, under a name of its own so the chrome never
+     depends on the reading font the reader picks (only 400 and 700 exist: 500 renders as 400, 600 as 700) */
+  @font-face{font-family:'LL UI'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Regular.woff2') format('woff2');}
+  @font-face{font-family:'LL UI'; font-style:normal; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Bold.woff2') format('woff2');}
+  @font-face{font-family:'LL UI'; font-style:italic; font-weight:400; font-display:swap; src:url('fonts/AtkinsonHyperlegible-Italic.woff2') format('woff2');}
+  @font-face{font-family:'LL UI'; font-style:italic; font-weight:700; font-display:swap; src:url('fonts/AtkinsonHyperlegible-BoldItalic.woff2') format('woff2');}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   /* skip link for keyboard and screen-reader users */
   .skip{position:absolute; left:8px; top:-60px; z-index:100; padding:12px 16px; border-radius:var(--r-md); background:var(--accent); color:var(--on-fill); font-family:var(--ui-font); font-size:var(--fs-body); font-weight:600;}
   .skip:focus{top:8px; outline:2px solid var(--ink);}
+  /* there for a screen reader, not on screen */
+  .vh{position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap;}
   /* keyboard shortcuts panel */
   .keys{display:grid; gap:6px;}
   .key-row{display:grid; grid-template-columns:minmax(72px, auto) 1fr; gap:12px; align-items:center; font-size:var(--fs-body); padding:8px 4px; border-bottom:1px solid var(--line);}
-  /* one key pill for the shortcuts panel and the menu's hints; its text is ink (muted on the ink
-     tint misses 4.5:1 on Day and seven other themes) */
+  /* one key pill for the shortcuts panel and the menu's hints; its text is ink, as on every tint (a
+     custom theme's secondary text is made to read on its page and its panel, not on this tint) */
   .key-row kbd, #moreMenu kbd{
     flex:none; min-width:24px; padding:2px 7px; border:1px solid var(--line); border-radius:var(--r-xs); text-align:center; white-space:nowrap;
     font-family:var(--ui-font); font-size:var(--fs-eyebrow); font-variant-numeric:tabular-nums; color:var(--ink); background:color-mix(in srgb, var(--ink) 6%, transparent);
@@ -144,6 +153,7 @@
   .bar{
     display:flex; align-items:center; gap:var(--sp-2);
     padding:4px 18px; max-width:1100px; margin:0 auto; min-height:56px;
+    padding-left:max(18px, env(safe-area-inset-left)); padding-right:max(18px, env(safe-area-inset-right));
   }
   /* the wordmark: the title face in italic, "light" in the lamp's colour */
   .wordmark{
@@ -330,9 +340,9 @@
   .group{display:grid; gap:var(--sp-2);}
   .group + .group{border-top:1px solid var(--line); padding-top:var(--sp-6);}
   .group.dim{opacity:.45; pointer-events:none;}
-  /* the eyebrow: a sub-section label (LIGHT, DARK, PINNED, RECENT, CHARACTERS) */
+  /* the eyebrow: a sub-section label (Light, Dark, Pinned, Recent, Characters), in sentence case */
   .label{
-    font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    font-size:var(--fs-small); font-weight:700;
     color:var(--muted);
   }
   /* a group's heading: the title face, sentence case, the text colour, its icon in the lamp's */
@@ -380,16 +390,17 @@
   @media (hover:hover){ .seg .chip:hover{border-color:transparent; background:color-mix(in srgb, var(--ink) 6%, transparent);} }
   .seg .chip.on, .seg .chip[aria-pressed="true"]{background:var(--raise); border-color:var(--accent); font-weight:600; box-shadow:var(--shadow-1);}
   .seg .chip.on::before, .seg .chip[aria-pressed="true"]::before{display:none;}
-  /* theme swatch: the theme's page colour with its accent as the lamp in the middle; the colours
-     are kept under forced colours (they are the information), with a system-colour rim */
-  .chip i{
+  /* a chip's round swatch: its colour with a dot of the accent in the middle (a highlight colour's
+     chip). A theme tile draws small pages instead (.chip.tile below), so this leaves it alone. The
+     colours are kept under forced colours (they are the information), with a system-colour rim */
+  .chip:where(:not(.tile)) i{
     display:inline-block; flex:none; width:20px; height:20px; border-radius:50%; margin:0 2px 0 -6px;
     position:relative; background:var(--sw-bg, var(--accent)); forced-color-adjust:none;
     box-shadow:inset 0 0 0 1px color-mix(in srgb, currentColor 32%, transparent);
   }
-  .chip i::after{content:""; position:absolute; inset:5px; border-radius:50%; background:var(--sw-acc, var(--accent));}
+  .chip:where(:not(.tile)) i::after{content:""; position:absolute; inset:5px; border-radius:50%; background:var(--sw-acc, var(--accent));}
   @media (forced-colors: active){
-    .chip i{outline:1px solid ButtonText; outline-offset:1px;}
+    .chip:where(:not(.tile)) i{outline:1px solid ButtonText; outline-offset:1px;}
     .seg{border-color:ButtonText;}
     .seg .chip.on, .seg .chip[aria-pressed="true"]{border-color:Highlight; border-width:2px;}
     .sheet-tabs button.on{border-color:Highlight; border-width:2px;}
@@ -401,11 +412,6 @@
   /* custom theme builder */
   #customRow{display:none; --warn:#c8372d;}
   #customRow.show{display:grid; gap:var(--sp-3);}
-  /* theme chips in groups: light, dark, high contrast, custom */
-  #themeChips{display:grid; gap:var(--sp-4);}
-  .chip-group{display:grid; gap:var(--sp-2);}
-  .chip-group-label{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
-  .chip-new{border-style:dashed;}
   .cst-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-bottom:var(--sp-3); border-bottom:1px solid var(--line);}
   .cst-name{
     flex:1; min-width:120px; font-family:var(--title-font); font-weight:600; font-size:var(--fs-title); line-height:1.3;
@@ -414,7 +420,7 @@
   .cst-acts{display:flex; gap:var(--sp-2); flex-wrap:wrap;}
   .cst-acts .chip{padding:4px 14px;}
   .cst-label{
-    font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    font-size:var(--fs-small); font-weight:700;
     color:var(--muted); margin-top:var(--sp-2);
   }
   .sw-grid{display:flex; flex-wrap:wrap; gap:var(--sp-2);}
@@ -500,7 +506,8 @@
   input.sel{padding-right:12px;}
   .sel:hover{border-color:var(--edge);}
   /* sliders: a 6px track, the part up to the thumb filled in the accent (--v, kept by app.js),
-     a 24px thumb on the surface ringed in the accent */
+     a 24px thumb on the surface ringed in the accent (the contrast tone's track is a hollow capsule,
+     at the end of this file) */
   input[type=range]{
     flex:1; min-width:140px; height:32px; margin:0; background:transparent; accent-color:var(--accent);
     -webkit-appearance:none; appearance:none; cursor:pointer; --track:color-mix(in srgb, var(--edge) 35%, var(--line));
@@ -619,11 +626,14 @@
     .sw{position:relative;}
     .sw::after{content:""; position:absolute; inset:-2px;}
   }
-  /* forced colours: the native controls, which the system palette draws properly */
+  /* forced colours: the native controls, which the system palette draws properly. A slider's focus
+     ring is a box-shadow round its thumb, which forced colours does not draw, so a slider the
+     keyboard focuses is outlined in the system's highlight instead */
   @media (forced-colors: active){
     input[type=range], input[type=checkbox], input[type=checkbox][role=switch], select.sel{-webkit-appearance:auto; appearance:auto; background-image:none;}
     input[type=checkbox]::before{display:none;}
     .chip.on::before, .chip[aria-pressed="true"]::before{background:Highlight;}
+    input[type=range]:focus-visible{outline:2px solid Highlight; outline-offset:2px;}
   }
 
   /* ---------- popovers ---------- */
@@ -672,34 +682,58 @@
   #typePop.pdf #qSize, #typePop.pdf .doc-row{display:none;}
   #typePop.pdf #qZoom{display:block;}
   #typePop.pdf .pdf-row{display:flex;}
-  /* Day ⇄ Night: two large buttons for the Auto pair, each with a small page of the theme it goes
-     to, its word, and the theme's name under it; the one on screen is pressed. Where the name is
-     the word itself (the Day theme on the Day button) the name steps back, and the pressed one
-     says "Current" instead */
-  .dn-pair{display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:var(--sp-2); margin-bottom:var(--sp-1);}
-  .dn{
-    position:relative; display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto; align-content:center; align-items:center; column-gap:12px; row-gap:1px;
-    min-height:56px; padding:6px 12px 6px 8px; text-align:left; border:1.5px solid var(--ctl-line); border-radius:var(--r-lg); background:transparent; color:var(--ink);
-    font-family:var(--ui-font); cursor:pointer; transition:background-color var(--t-fade), border-color var(--t-fade), transform var(--t-press) var(--ease-out);
+  /* an end of the range (A− at the smallest size or zoom, A+ at the largest): still focusable, a
+     press does nothing, and the button steps back */
+  .ctl.mini[aria-disabled="true"]{color:var(--muted); border-color:var(--line); cursor:default;}
+  .ctl.mini[aria-disabled="true"]:active{transform:none;}
+  @media (hover:hover){ .ctl.mini[aria-disabled="true"]:hover{background:transparent;} }
+  #typeClose, #typePop .phone-row{display:none;}
+  /* hints with a phone wording: a finger on a phone reads with the lamp */
+  .phone-hint{display:none;}
+  @media (pointer: coarse) and (max-width: 560px){ .desk-hint{display:none;} .phone-hint{display:inline;} }
+  /* the Text sheet on a phone (and in any window 560px or narrower): a close button in the head,
+     each label above its control, the size as a big A− / value / A+ stepper in place of the
+     slider (the value in the reading font, without "px"), and line spacing and margins as three
+     choices each in place of the Spacing and Width sliders */
+  @media (max-width:560px){
+    #typePop .desk-row{display:none;}
+    #typePop .phone-row{display:flex;}
+    #typePop .seg.choices{display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px; flex:1 1 100%; width:auto; max-width:none; border-radius:var(--r-md); overflow:visible;}
+    #typePop .seg.choices .chip{flex-direction:column; gap:2px; min-height:48px; padding:3px 2px; border-radius:var(--r-sm); line-height:1.2;}
+    #typePop .seg.choices .chip svg{width:32px; height:24px; stroke-width:1.75;}
+    #typePop .choice-note{flex:1 1 100%; margin:0;}
+    /* the font row: four tiles, "Aa" in the face over its name (13px, two lines at most, a word
+       too wide for its tile ending in an ellipsis); All fonts at the end of the label's line */
+    #typePop .prow.font-row > .plabel{flex:1 1 auto;}
+    /* its 48px reach overhangs the label's line rather than making it taller */
+    #allFonts{flex:none; margin:-14px -10px -14px 0;}
+    #typePop .seg.choices.fonts{grid-template-columns:repeat(4, minmax(0, 1fr));}
+    #fontRow .chip{justify-content:flex-start; min-height:68px; padding:5px 2px 4px; gap:1px;}
+    #fontRow .aa{font-size:1.375rem; line-height:1.75rem; font-weight:400;}
+    #fontRow .fn{max-width:100%; max-height:2.5em; overflow:hidden; font-size:var(--fs-small); line-height:1.25; text-align:center;}
+    #fontRow .w{display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:top;}
+    #typePop .pop-head{min-height:48px; padding-bottom:0;}
+    #typeClose{display:inline-flex; width:48px; min-width:48px; height:48px; padding:0; margin-right:-12px; border-color:transparent;}
+    #typeClose svg{width:var(--icon-md); height:var(--icon-md);}
+    #typePop .prow{flex-wrap:wrap; row-gap:var(--sp-2);}
+    #typePop .prow > label:not(.check), #typePop .prow > .plabel{flex:1 1 100%; width:auto; font-weight:700; line-height:1.2;}
+    #typePop .prow-size{display:grid; grid-template-columns:minmax(0, 1fr); align-items:center;}
+    #typePop .prow-size .prow-in{grid-area:2 / 1; justify-content:space-between; padding:4px; border:1px solid var(--line); border-radius:var(--r-md); background:var(--well);}
+    #typePop #qSize, #typePop #qZoom, #typePop.pdf #qZoom{display:none;}
+    #typePop .prow-size .val{grid-area:2 / 1; justify-self:center; min-width:0; text-align:center; font-family:var(--reader-font); font-size:1.5rem; line-height:2rem; color:var(--ink);}
+    #typePop .ctl.mini{width:56px; min-width:56px; height:56px; border-radius:var(--r-sm); font-size:1.125rem;}
   }
-  .dn .dn-sw{grid-row:1 / span 2;}
-  .dn-t{font-size:var(--fs-body); font-weight:700; line-height:1.2;}
-  .dn-n, .dn-cur{font-size:var(--fs-small); color:var(--muted); line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .dn-cur, .dn.same .dn-n{display:none;}
-  .dn.same[aria-pressed="true"] .dn-cur{display:block;}
-  .dn.same:not([aria-pressed="true"]) .dn-t{grid-row:1 / span 2;}
-  @media (hover:hover){ .dn:hover{background:var(--accent-soft);} .dn:hover .dn-n{color:var(--ink);} }
-  .dn:active{transform:scale(.98);}
-  .dn[aria-pressed="true"]{background:var(--accent-soft); border:var(--bw-sel) solid var(--accent);}
-  .dn[aria-pressed="true"] :is(.dn-n, .dn-cur){color:var(--ink);}      /* the secondary colour on the tint can slip under 4.5:1 */
-  :root[data-tone="contrast"] .dn{border-width:2px;}
-  #qRecentSec[hidden]{display:none;}
   .pop-sec{display:grid; gap:var(--sp-2);}
   .plabel{font-size:var(--fs-body); color:var(--ink);}
-  .pop-sec .plabel, .sub-label{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+  .pop-sec .plabel, .sub-label{font-size:var(--fs-small); font-weight:700; color:var(--muted);}
   .sub-label{margin:var(--sp-1) 0 calc(-1 * var(--sp-1));}
-  /* the theme group's column never grows past the sheet (a segment's max-content would widen it, and the tiles with it) */
-  #themeGroup{grid-template-columns:minmax(0, 1fr);}
+  /* Settings › Theme: the heading and the Day/Night switch share the first row, and everything else
+     spans the group. The first column never grows past the sheet (a segment's max-content would
+     widen it, and the tiles with it) */
+  #themeGroup{grid-template-columns:minmax(0, 1fr) auto;}
+  #themeGroup > *{grid-column:1 / -1;}
+  #themeGroup > .label{grid-column:1; grid-row:1; margin-bottom:0;}
+  #themeGroup > #sDN{grid-column:2; grid-row:1; align-self:center;}
   /* switching by itself: the label over its three choices, the hours under them while By time is on */
   #themePop .q-auto{display:grid; grid-template-columns:minmax(0, 1fr); gap:2px; min-height:0;}
   #themePop .q-auto > .plabel{width:auto; font-size:var(--fs-small); color:var(--muted);}
@@ -708,46 +742,54 @@
   #themePop .q-times[hidden]{display:none;}
   #themePop .q-times > label{width:auto; flex:none; font-size:var(--fs-small);}
   #themePop .q-times .sel{flex:1 1 0; min-width:0; min-height:40px; padding:0 10px; background-image:none;}
-  /* the group switch: one segmented row across the popover, its four options sharing the width */
-  .q-groups{display:grid; grid-template-columns:repeat(4, auto); width:100%; margin-top:var(--sp-1);}
   #themePop .pop-head{min-height:32px; padding-bottom:0;}
   #themePop{row-gap:6px;}
-  .q-groups .chip, .q-groups .chip.chip{min-height:36px;}
-  .q-groups .chip{padding:4px 8px; min-width:0; font-size:var(--fs-small); white-space:nowrap;}
-  /* ---- theme tiles: a small page of each theme — its page colour, "Aa" in its text colour, two
-     lines of secondary text, the panel as a strip along the bottom with the lamp as a button on
-     it — and the name under it. Four to a row in the popover, three in the sheet on a phone. The
-     edge is the theme's own text colour faded into its page, so a dark page on a dark sheet (or a
-     light one on a light sheet) always has one. The one on screen: an accent ring set off by a gap,
-     and a check in the corner, so it is marked by more than colour ---- */
-  .tiles{display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px 8px; padding:6px 2px 2px;}
-  .tiles[hidden]{display:none;}
+  /* Day and Night in the theme picker's head and in Settings › Theme: a segmented control whose
+     pressed half is the half on screen, a sun and a moon by the words; 40px buttons, 48px on a
+     phone. E-ink hides it (applyTheme) */
+  .dn-seg{flex:none;}
+  .dn-seg[hidden]{display:none;}
+  .dn-seg .chip{gap:6px; min-height:40px; padding:4px 14px 4px 11px;}
+  .dn-seg .chip svg{width:18px; height:18px; flex:none;}
+  @media (max-width:560px){ .dn-seg .chip{min-height:48px;} }
+  /* ---- theme tiles: a theme as a small page in its colours — "Aa" in its text colour and the title
+     face, two lines of secondary text beside it and two under it, the panel as a strip along the
+     bottom with the lamp lit on it — and the name under it. A look's tile is two such pages as one
+     drawing, its day theme on the left and its night theme on the right; a theme's own tile is one
+     page, the same size. Two to a row, wherever the picker is. Each page's edge is its own text
+     colour faded into it, so a light page on a light sheet (or a dark one on a dark sheet) always
+     has one. The pressed one: an accent ring set off by a gap of the sheet colour, a check in the
+     corner and its name in bold, so it is marked by more than colour ---- */
+  .looks{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px 12px; padding:6px 2px 2px;}
+  /* each tile is its own stacking context (z-index 0), so the chosen tile's check disc stays inside
+     it and never lands on Settings' sticky section strip when the sheet scrolls */
   .chip.tile{
+    position:relative; z-index:0;
     display:grid; grid-template-columns:minmax(0, 1fr); align-content:start; gap:6px; min-width:0; min-height:0; padding:0;
-    border:0; border-radius:var(--r-md); background:transparent; text-align:center; font-weight:500;
+    border:0; border-radius:var(--r-md); background:transparent; text-align:center; font-weight:400;
   }
-  :is(.chip.tile > i, .dn-sw){
-    position:relative; display:block; margin:0; overflow:hidden; forced-color-adjust:none;
-    background:var(--sw-bg, var(--bg)); border:1px solid color-mix(in oklab, var(--sw-ink, var(--ink)) 22%, var(--sw-bg, var(--bg)));
-    box-shadow:none; transition:box-shadow var(--t-fade);
+  /* the drawing: one page, or a look's two side by side with no edge where they meet */
+  .chip.tile > i{
+    position:relative; display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0, 1fr); width:100%; height:68px; margin:0; border-radius:12px;
+    forced-color-adjust:none; box-shadow:none; transition:box-shadow var(--t-fade);
   }
-  .chip.tile > i{width:100%; height:52px; border-radius:12px;}
-  .dn-sw{width:44px; height:40px; border-radius:9px;}
-  /* "Aa" in the theme's text colour and title face */
-  :is(.chip.tile > i, .dn-sw) > b::before{content:"Aa";}
-  :is(.chip.tile > i, .dn-sw) > b{position:absolute; left:7px; top:4px; font-family:var(--title-font); font-weight:600; font-size:20px; line-height:1; color:var(--sw-ink, var(--ink));}
-  .dn-sw > b{left:5px; top:3px; font-size:14px;}
-  /* two lines of secondary text */
-  :is(.chip.tile > i, .dn-sw) > s{position:absolute; height:3px; border-radius:2px; background:var(--sw-mut, var(--muted)); left:36px; right:8px; top:9px;}
-  :is(.chip.tile > i, .dn-sw) > s + s{top:17px; right:16px;}
-  .dn-sw > s{left:24px; right:5px; top:6px; height:2px;}
-  .dn-sw > s + s{top:11px; right:9px;}
-  /* the panel strip, and the lamp as a button on it */
-  :is(.chip.tile > i, .dn-sw)::before{content:""; position:absolute; left:0; right:0; bottom:0; height:16px; background:var(--sw-pan, var(--panel));}
-  .chip.tile > i::after, .dn-sw::after{content:""; position:absolute; inset:auto 7px 3px auto; width:26px; height:10px; border-radius:var(--r-pill); background:var(--sw-acc, var(--accent));}
-  .dn-sw::before{height:13px;}
-  .dn-sw::after{inset:auto 5px 3px auto; width:16px; height:7px;}
-  .tile-n{display:block; min-width:0; font-size:13px; line-height:1.25; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .tile .pg{position:relative; display:block; overflow:hidden; background:var(--sw-bg); border:1px solid color-mix(in oklab, var(--sw-ink) 22%, var(--sw-bg)); border-radius:12px;}
+  .tile .pg + .pg{border-left:0; border-radius:0 12px 12px 0;}
+  .tile .pg:has(+ .pg){border-right:0; border-radius:12px 0 0 12px;}
+  /* "Aa" in the theme's text colour and title face, and its secondary text as lines. These rules,
+     and the phone's below, start from .tile: a book keeps its own class names, so a paragraph of
+     class "pg" in a book keeps its bold, quotes and emphasis as text */
+  .tile .pg > b{position:absolute; left:7px; top:4px; font-family:var(--title-font); font-weight:600; font-size:20px; line-height:1; color:var(--sw-ink);}
+  .tile .pg > b::before{content:"Aa";}
+  .tile .pg > s{position:absolute; left:36px; right:8px; top:9px; height:3px; border-radius:2px; background:var(--sw-mut);}
+  .tile .pg > s + s{top:17px; right:16px;}
+  .tile .pg > q{position:absolute; left:7px; right:8px; top:33px; height:3px; border-radius:2px; background:var(--sw-mut); opacity:.75;}
+  .tile .pg > q + q{top:41px; right:22px;}
+  .tile .pg > q::before, .tile .pg > q::after{content:none;}
+  /* the panel strip, and the lamp lit on it: a dot with a soft glow in its own colour */
+  .tile .pg > u{position:absolute; left:0; right:0; bottom:0; height:16px; background:var(--sw-pan);}
+  .tile .pg > em{position:absolute; right:8px; bottom:3px; width:10px; height:10px; border-radius:50%; background:var(--sw-acc); box-shadow:0 0 5px 1px color-mix(in srgb, var(--sw-acc) 45%, transparent);}
+  .tile-n{display:block; min-width:0; font-size:var(--fs-body); line-height:1.25; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   @media (hover:hover){
     .chip.tile:hover{background:transparent;}
     .chip.tile:hover > i{box-shadow:0 0 0 2px var(--raise), 0 0 0 4px var(--ctl-line);}
@@ -762,18 +804,42 @@
   }
   .chip.tile:focus-visible{outline:none;}
   .chip.tile:focus-visible > i{outline:var(--ring) solid var(--accent); outline-offset:4px;}
+  /* the chosen tile's ring reaches 5px out, so its focus ring stands 2px clear of it */
+  .chip.tile:is(.on, [aria-pressed="true"]):focus-visible > i{outline-offset:7px;}
   /* New theme: a dashed empty page with a plus */
-  .chip-new.tile > i{background:transparent; border:1.5px dashed var(--ctl-line);}
-  .chip-new.tile > i::before{display:none;}
-  .chip-new.tile > i::after{content:"+"; inset:0; width:auto; height:auto; border-radius:0; background:none; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:300; line-height:1; color:var(--muted);}
-  /* the sheet: three to a row on a phone, as many as fit on a wider screen */
-  #themeChips .tiles{grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:14px 10px;}
-  @media (max-width:560px){ #themeChips .tiles{grid-template-columns:repeat(3, minmax(0, 1fr));} }
-  :root[data-tone="contrast"] :is(.chip.tile > i, .dn-sw){border-width:2px; border-color:var(--ink);}
+  .chip-new.tile > i{display:flex; align-items:center; justify-content:center; background:transparent; border:1.5px dashed var(--ctl-line);}
+  .chip-new.tile > i::after{content:"+"; font-size:28px; font-weight:300; line-height:1; color:var(--muted);}
+  /* a phone: the pages 76px tall, and what is drawn on them a little larger */
+  @media (max-width:560px){
+    .looks{gap:16px 12px;}
+    .chip.tile > i{height:76px;}
+    .tile .pg > b{left:8px; top:6px; font-size:21px;}
+    .tile .pg > s{left:38px; top:11px;}
+    .tile .pg > s + s{top:19px;}
+    .tile .pg > q{left:8px; top:35px;}
+    .tile .pg > q + q{top:43px;}
+    .tile .pg > u{height:17px;}
+    .tile .pg > em{bottom:3.5px;}
+  }
+  /* Settings › Theme: the looks, then Mine under its label, spaced as the group's rows are. On a wide
+     screen the sheet is far wider than the popover, so the two columns stop at 432px in all and a
+     tile keeps its shape (a phone is narrower than that anyway) */
+  #themeChips{display:grid; grid-template-columns:minmax(0, 432px); gap:var(--sp-2);}
+  /* the contrast tone: each page's edge 2px in the text colour */
+  :root[data-tone="contrast"] .tile .pg{border-width:2px; border-color:var(--ink);}
+  :root[data-tone="contrast"] .tile .pg + .pg{border-left-width:0;}
+  :root[data-tone="contrast"] .tile .pg:has(+ .pg){border-right-width:0;}
+  /* e-ink: the pressed tile stays on the white of the sheet, its name, ring and check black; the
+     ring is an outline, as e-ink draws no shadows */
   body.eink .chip.tile:is(.on, [aria-pressed="true"]){background:transparent !important; color:#000 !important; --ink:#000; --accent:#000; --on-fill:#fff; --raise:#fff;}
+  body.eink .chip.tile:is(.on, [aria-pressed="true"]) > i{outline:3px solid #000; outline-offset:2px;}
+  /* in e-ink and under forced colours the drawing's outline marks the chosen tile, so focus rings the
+     whole tile, drawing and name, instead */
+  body.eink .chip.tile:focus-visible{outline:2px dashed #000; outline-offset:3px;}
   @media (forced-colors: active){
-    :is(.chip.tile > i, .dn-sw){outline:1px solid ButtonText; outline-offset:1px;}
+    .chip.tile > i{outline:1px solid ButtonText; outline-offset:1px;}
     .chip.tile:is(.on, [aria-pressed="true"]) > i{outline:3px solid Highlight; outline-offset:2px;}
+    .chip.tile:focus-visible{outline:2px solid CanvasText; outline-offset:3px;}
   }
   /* a step in from the popover: the rows most readers set once (weight, letter and word spacing) */
   .pop-more{border:1px solid var(--line); border-radius:var(--r-md); padding:0 var(--sp-3);}
@@ -787,6 +853,13 @@
   .pop-more[open] summary::after, .cst-adv[open] summary::after{transform:translateY(2px) rotate(-135deg);}
   .pop-more[open] summary{border-bottom:1px solid var(--line); border-radius:0; margin-bottom:4px;}
   .pop-more[open] > :last-child{margin-bottom:8px;}
+  /* a phone calls it Fine-tune, with what it holds on a second line; a desktop says More */
+  .pop-more .ft{display:none;}
+  @media (max-width:560px){
+    .pop-more .ft-more{display:none;}
+    .pop-more .ft{display:flex; flex-direction:column; gap:1px; padding:8px 0;}
+    .pop-more .ft-n{font-size:var(--fs-small); font-weight:400; line-height:1.3; color:var(--muted);}
+  }
   /* the footer link to the full settings */
   .pop-link{
     position:relative; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; margin:var(--sp-2) 0 calc(-1 * var(--sp-4));
@@ -820,6 +893,7 @@
   @media (forced-colors: active){
     #pop{border-color:ButtonText;}
     .pop-link::before{border-top-color:ButtonText;}
+    .ctl.mini[aria-disabled="true"]{color:GrayText; border-color:GrayText;}
   }
 
   /* ---------- fonts ---------- */
@@ -827,7 +901,7 @@
   /* the browse panel: one button per family, its name set in the face itself */
   .font-set{display:grid; gap:2px;}
   .font-group{
-    font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    font-size:var(--fs-small); font-weight:700;
     color:var(--muted); padding:16px 6px 8px;
   }
   .font-set:first-child .font-group{padding-top:4px;}
@@ -840,7 +914,8 @@
   .font-item .font-name{display:block; font-size:1.1875rem; line-height:1.3;}
   .font-item[aria-pressed="true"] .font-name::after{content:"\2713"; font-family:var(--ui-font); font-size:.8em; color:var(--ink); margin-left:8px;}
   .font-item .font-note{display:block; font-size:var(--fs-small); line-height:1.4; color:var(--muted); margin-top:2px;}
-  /* on the tinted rows the muted note slips under 4.5:1 on most themes; ink keeps it readable */
+  /* on the tinted rows the muted note slips under 4.5:1 on most dark themes (Dusk, Cocoa, Forest,
+     Canals) and can on a theme of the reader's own; ink keeps it readable */
   .font-item:hover .font-note, .font-item[aria-pressed="true"] .font-note{color:var(--ink);}
   @media (forced-colors: active){
     .font-item{border-color:ButtonText;}
@@ -848,8 +923,8 @@
   }
 
   /* ---------- content ---------- */
-  body > main{padding:26px 18px 90px;}
-  body.paged main{padding:14px 14px 0;}
+  body > main{padding:26px 18px 90px; padding-left:max(18px, env(safe-area-inset-left)); padding-right:max(18px, env(safe-area-inset-right));}
+  body.paged main{padding:14px 14px 0; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right));}
   /* the start screen. The hero shows until the library has a book; then the Continue card, the
      streak, the first-run tips and the recent files take the same 560px column */
   #empty{max-width:560px; margin:5vh auto 0; position:relative;}
@@ -990,7 +1065,7 @@
   .lib-bar{flex:1; max-width:120px; height:4px; border-radius:2px; background:color-mix(in srgb, var(--edge) 25%, var(--line)); overflow:hidden;}
   .lib-bar i{display:block; height:100%; border-radius:2px; background:var(--lamp);}
   .lib-done{
-    font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink);
+    font-size:var(--fs-small); font-weight:700; color:var(--ink);
     background:var(--lamp-soft); border-radius:var(--r-pill); padding:1px 8px;
   }
   /* the finish forecast, under the progress line */
@@ -1314,6 +1389,7 @@
     display:none; align-items:center; justify-content:space-between; gap:var(--sp-3);
     background:var(--panel); border-top:1px solid var(--line);
     padding:8px 16px calc(8px + env(safe-area-inset-bottom));
+    padding-left:max(16px, env(safe-area-inset-left)); padding-right:max(16px, env(safe-area-inset-right));
     transition:background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
   #pager .ctl{width:48px; height:48px; min-width:48px; padding:0; border-radius:50%; border-color:transparent; background:var(--accent-soft);}
@@ -1347,48 +1423,169 @@
   /* read aloud's speaker: a long press opens the voices, so the phone's own long-press menus stay away */
   #speakBtn, #lamp{-webkit-touch-callout:none; -webkit-user-select:none; user-select:none;}
 
-  /* ---------- a phone in one hand (PhoneBar in app.js: pointer coarse, 560px and under, a document open) ----------
-     The top bar holds the library mark, the book's title with its section under it (a tap opens the
-     open books), and Search; Contents, Aa, Read aloud, the lamp and ⋯ sit in a slim row at the foot
-     of the dock, in the thumb's reach, and go and come back with the bar */
-  #actRow{display:none;}
-  body.phonebar .bar{gap:var(--sp-1); padding-right:8px;}
-  body.phonebar .wordmark{margin-right:2px;}
-  body.phonebar .bar > .grp:not(.grp-doc), body.phonebar .bar .sep{display:none;}
+  /* ---------- a phone while reading (PhoneBar in app.js: a finger for a pointer, 560px and narrower, a book open) ----------
+     No header: the text, and a strip at the foot with the time left in the chapter on the left and
+     the lamp on the right, its ring showing how far through the book you are. The lamp opens the
+     dock: Back, the title (a tap opens the open books) and Search, the position, Day and Night, and
+     the five reading tools with their names. They are the header's own buttons, moved (ids and
+     listeners with them); the header steps out of the way once they have left */
+  body.phonebar > header{display:none;}
+  /* the text gets the screen: it starts under the status bar, and nothing else sits at the foot
+     but the strip (the page-turn bar, the 3px progress line and the pill give way to the lamp's ring
+     and the note, zen included) */
+  body.phonebar #pager, body.phonebar #progress, body.phonebar #progressInfo{display:none !important;}
+  body.phonebar:not(.zen) > main, body.phonebar.paged:not(.zen) > main{padding-top:max(20px, env(safe-area-inset-top));}
+  /* Scroll flow: the last line clears the strip (and the read-aloud player under it) */
+  body.phonebar:not(.paged) > main{padding-bottom:calc(92px + env(safe-area-inset-bottom) + 24px);}
+  body.phonebar.tts-on:not(.paged) > main{padding-bottom:calc(var(--dockH, 0px) + 116px);}
+  /* the open books fold into the title: a tap on it lists them */
   body.phonebar #tabs, body.phonebar #tabs.on{display:none;}
-  body.phonebar #fname{
-    display:block; flex:1 1 auto; min-width:0; text-align:left; padding:6px 8px; margin:0; border-radius:var(--r-sm);
-    cursor:pointer; line-height:1.25; color:var(--ink);
+  #readFoot, #phoneDockScrim, #phoneDock, .tool-l, .tool-i{display:none;}
+  .glass{fill:var(--lamp);}
+  body.phonebar #readFoot{
+    display:block; position:fixed; left:0; right:0; bottom:0; z-index:15; height:calc(92px + env(safe-area-inset-bottom));
+    background:var(--bg); transition:background var(--t-theme) ease;
   }
-  body.phonebar #fname .fn-t{display:block; overflow:hidden; text-overflow:ellipsis; font-family:var(--title-font); font-size:0.9375rem; font-weight:600;}
+  #leftNote{
+    position:absolute; left:24px; right:96px; bottom:calc(28px + env(safe-area-inset-bottom)); height:56px; margin:0;
+    display:flex; align-items:center; font-family:var(--ui-font); font-size:var(--fs-small); line-height:1.35; color:var(--muted);
+  }
+  #dockBtn{
+    position:absolute; right:20px; bottom:calc(28px + env(safe-area-inset-bottom)); width:56px; height:56px; min-width:56px; padding:0;
+    border:var(--bw) solid var(--line); border-radius:50%; background:var(--panel); color:var(--ink);
+    transition:opacity var(--t-fade) var(--ease-out), background var(--t-theme) ease, border-color var(--t-theme) ease;
+  }
+  #dockBtn > svg{width:24px; height:24px;}
+  /* the ring sits on the button's edge and starts at 12 o'clock (the contrast tone moves it out
+     past the edge, and the focus ring out past it, at the end of this file) */
+  #dockBtn > .ring{
+    position:absolute; left:calc(-1 * var(--bw)); top:calc(-1 * var(--bw)); width:56px; height:56px; transform:rotate(-90deg); pointer-events:none;
+    fill:none; stroke:var(--lamp-mark, var(--lamp)); stroke-width:2; stroke-linecap:round; stroke-dasharray:0 170;
+  }
+  @media (hover:hover){ #dockBtn:hover{background:var(--accent-soft);} }
+  /* read aloud: the player at the foot, the strip sitting on it (92px: the player keeps the safe
+     area), the note giving way to it */
+  body.phonebar.tts-on #readFoot{bottom:var(--ttsH, 0px); height:92px;}
+  body.phonebar.tts-on #dockBtn{bottom:28px;}
+  body.phonebar.tts-on #leftNote{display:none;}
+  /* what floats at the foot (the toasts, the auto-scroll pill at the right, the Finished card) sits
+     above the strip, and above the player under it; while the dock is open the toasts sit above the
+     dock (--pdH, set as it opens), and the card stays put under it */
+  body.phonebar{--aboveDock:calc(92px + env(safe-area-inset-bottom, 0px) + 12px);}
+  body.phonebar.tts-on{--aboveDock:calc(var(--dockH, 0px) + 92px + 12px);}
+  body.phonebar.dock-open{--toastRow:calc(var(--pdH, 0px) + 12px);}
+  body.phonebar.dock-open #finish{bottom:calc(var(--aboveDock) + var(--updateH, 0px));}
+  body.phonebar.dock-open.fin-on #toast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px));}
+  body.phonebar.dock-open.fin-on #einkToast, body.phonebar.dock-open.fin-on #themeToast{bottom:calc(var(--toastRow) + var(--updateH, 0px));}
+  body.phonebar.dock-open.fin-on #trStatus{bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px) + var(--noticeH, 0px));}
+  /* Previously… hangs from the top of the screen, under the status bar, and stops above the strip */
+  body.phonebar #recap{
+    top:max(10px, env(safe-area-inset-top));
+    max-height:calc(100vh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
+    max-height:calc(100dvh - max(10px, env(safe-area-inset-top)) - 92px - env(safe-area-inset-bottom) - var(--dockH, 0px) - 12px);
+  }
+  /* zen: only the text, and a faint lamp to leave by (clear while a key has brought the focus to it:
+     after a tap in the More sheet the focus comes back to it, and it stays faint); no note, no ring */
+  body.phonebar.zen #dockBtn{opacity:.4;}
+  body.phonebar.zen #dockBtn:focus-visible{opacity:1;}
+  body.phonebar.zen #leftNote, body.phonebar.zen #dockBtn > .ring{display:none;}
+  /* the "Opening …" screen between two books keeps the phone's chrome, without the strip */
+  body.phonebar[data-mode="status"] #readFoot{display:none;}
+  /* forced colours: the ring in Highlight, the edges in ButtonText, and Read aloud (its fill is
+     gone) ringed in Highlight */
+  @media (forced-colors: active){
+    #dockBtn > .ring{stroke:Highlight;}
+    #dockBtn, body.phonebar #phoneDock, .pd-dn{border-color:ButtonText;}
+    body.phonebar #actRow #speakBtn{border:2px solid Highlight;}
+  }
+  /* e-ink: the title's chevron is a mask, which e-ink leaves out; the handle is black; the place
+     slider is a white track with a black rule, filled in black */
+  body.eink.phonebar #fname .fn-t::after{display:none;}
+  body.eink .pd-grab{background:#000;}
+  body.eink #dockPos{--track:#fff;}
+  body.eink #dockPos::-webkit-slider-runnable-track{border:1px solid #000;}
+  body.eink #dockPos::-moz-range-track{background:#fff; border:1px solid #000;}
+  /* the dock rises over the strip; the lamp fades under it */
+  body.dock-open #dockBtn{opacity:0;}
+  body.phonebar.dock-open #phoneDockScrim{display:block; position:fixed; inset:0; z-index:28; touch-action:none;}
+  html.lock-dock{overflow:hidden;}
+  body.phonebar #phoneDock{
+    display:flex; flex-direction:column; position:fixed; left:0; right:0; bottom:0; z-index:28; max-height:85dvh; overflow-y:auto; overscroll-behavior:contain;
+    padding:8px 12px calc(24px + env(safe-area-inset-bottom)); background:var(--panel); color:var(--ink);
+    border-top:var(--bw) solid var(--line); border-radius:var(--r-xl) var(--r-xl) 0 0; font-family:var(--ui-font);
+    transform:translateY(105%); visibility:hidden;
+    transition:transform var(--t-fade) var(--ease-in), visibility 0s linear var(--t-fade), background var(--t-theme) ease;
+  }
+  body.phonebar.dock-open #phoneDock{transform:none; visibility:visible; transition:transform var(--t-fade) var(--ease-out), visibility 0s, background var(--t-theme) ease;}
+  #phoneDock:focus{outline:none;}
+  .pd-grab{flex:none; width:36px; height:4px; margin:0 auto 8px; border-radius:var(--r-pill); background:color-mix(in oklab, var(--hair), var(--ink) 40%);}
+  /* the place in the book: a slider with a 4px track, its filled part in the lamp's mark, and a
+     caption under it (the page or the percentage, and the time left in the chapter). The contrast
+     tone and a night page draw the track their own way, at the end of this file */
+  .pd-pos{flex:none; margin-top:var(--sp-2); padding:0 12px;}
+  .pd-pos[hidden]{display:none;}
+  #dockPos{display:block; width:100%; min-width:0; height:44px; --track:var(--line);}
+  #dockPos::-webkit-slider-runnable-track{height:4px; border-radius:2px; background:linear-gradient(90deg, var(--lamp-mark, var(--lamp)) var(--v, 0%), var(--track) var(--v, 0%));}
+  #dockPos::-moz-range-track{height:4px; border-radius:2px;}
+  #dockPos::-moz-range-progress{height:4px; border-radius:2px; background:var(--lamp-mark, var(--lamp));}
+  #dockPos::-webkit-slider-thumb{width:20px; height:20px; margin-top:-8px; border:0; background:var(--ink); box-shadow:none;}
+  #dockPos::-moz-range-thumb{width:20px; height:20px; border:0; background:var(--ink); box-shadow:none;}
+  /* keyboard focus on the handle: a ring in the accent, 2px clear of it and 2px wide (3px on a dark
+     page), as the focus ring is everywhere; the box-shadow:none above would otherwise hide it */
+  #dockPos:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 calc(2px + var(--ring)) var(--accent);}
+  #dockPos:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 calc(2px + var(--ring)) var(--accent);}
+  .pd-cap{display:flex; justify-content:space-between; gap:var(--sp-3); margin:0; font-size:var(--fs-small); line-height:1.35; color:var(--muted); font-variant-numeric:tabular-nums;}
+  #dockLeft{text-align:right;}
+  /* Day and Night: two buttons in a well, the half on screen lifted with the accent's edge (in the
+     contrast tone two outlined buttons, at the end of this file) */
+  .pd-dn{flex:none; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; margin-top:var(--sp-3); padding:4px; border:var(--bw) solid var(--line); border-radius:var(--r-md); background:var(--well);}
+  .pd-dn[hidden]{display:none;}
+  .dn-b{
+    display:flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 12px;
+    border:var(--bw-sel) solid transparent; border-radius:var(--r-sm); background:transparent; color:var(--ink);
+    font-family:var(--ui-font); font-size:var(--fs-body); cursor:pointer;
+  }
+  .dn-b svg{width:24px; height:24px; flex:none;}
+  @media (hover:hover){ .dn-b:hover{background:color-mix(in srgb, var(--ink) 6%, transparent);} }
+  .dn-b[aria-pressed="true"]{background:var(--raise); border-color:var(--accent); font-weight:600; box-shadow:var(--shadow-1);}
+  :root[data-tone="dark"] .dn-b[aria-pressed="true"]{background:color-mix(in oklab, var(--ink) 10%, var(--raise)); box-shadow:none;}
+  /* Back, the title with its section under it, Search */
+  .pd-head{flex:none; display:flex; align-items:center; gap:var(--sp-1); min-height:48px;}
+  .pd-head > .ctl{width:48px; height:48px; min-width:48px; padding:0; border:0; border-radius:var(--r-md); background:transparent; color:var(--ink); flex:none;}
+  .pd-head > .ctl svg{width:24px; height:24px;}
+  body.phonebar #fname{
+    display:block; flex:1 1 auto; min-width:0; text-align:left; padding:4px 8px; margin:0; border-radius:var(--r-md);
+    cursor:pointer; line-height:1.3; color:var(--ink);
+  }
+  body.phonebar #fname .fn-t{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--title-font); font-size:1.0625rem; font-weight:600; line-height:1.4;}
+  /* the chevron after the title says it opens something (a mask, so the title's text stays the title) */
+  body.phonebar #fname .fn-t::after{
+    content:""; display:inline-block; width:16px; height:16px; margin-left:4px; vertical-align:-2px; background:var(--muted);
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
   body.phonebar #fname[data-sec]::after{
     content:attr(data-sec); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     font-family:var(--ui-font); font-size:var(--fs-small); color:var(--muted); margin-top:1px;
   }
-  body.phonebar #fname:hover{background:color-mix(in srgb, var(--ink) 6%, transparent);}
+  @media (hover:hover){ body.phonebar #fname:hover, .pd-head > .ctl:hover{background:color-mix(in srgb, var(--ink) 6%, transparent);} }
   body.phonebar #fname:focus-visible{outline:var(--ring) solid var(--accent); outline-offset:-2px;}
-  body.phonebar #actRow{
-    display:flex; align-items:center; justify-content:space-around; gap:var(--sp-1);
-    min-height:60px; padding:6px 8px calc(6px + env(safe-area-inset-bottom));
-    background:var(--panel); border-top:1px solid var(--line);
-    transition:background var(--t-theme) ease, border-color var(--t-theme) ease;
-  }
-  body.phonebar #tts.on ~ #actRow, body.phonebar.paged #pager ~ #actRow{border-top-color:color-mix(in srgb, var(--line) 60%, transparent);}
-  /* it follows the top bar: gone while the bar is (scrolled down, or hidden in Pages flow, or zen) */
-  body.phonebar.hidebar:not(.paged) #actRow, body.phonebar.paged.immersive #actRow, body.zen #actRow{display:none;}
+  /* the five tools: an icon over its name (two lines at most), Read aloud filled */
+  body.phonebar #actRow{flex:none; display:grid; grid-template-columns:repeat(auto-fit, minmax(0, 1fr)); gap:var(--sp-1); margin-top:var(--sp-3);}
   body.phonebar #actRow .ctl{
-    width:48px; height:48px; min-width:48px; padding:0; border:0; border-radius:var(--r-md); background:transparent; color:var(--ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:auto; min-width:0; height:auto; min-height:60px;
+    padding:6px 2px; border:0; border-radius:var(--r-lg); background:transparent; color:var(--ink); font-family:var(--ui-font); font-weight:400; letter-spacing:normal; white-space:normal;
   }
-  body.phonebar #actRow .ctl svg{width:var(--icon-md); height:var(--icon-md);}
-  /* a finger leaves :hover on the last button tapped (⋯ would keep a grey tile after its menu closes) */
+  body.phonebar #actRow .ctl[hidden]{display:none;}
+  body.phonebar #actRow .ctl svg{width:24px; height:24px; flex:none;}
+  body.phonebar #actRow .tool-l{display:block; max-width:100%; font-size:var(--fs-small); line-height:1.25; text-align:center; overflow-wrap:break-word;}
+  body.phonebar #actRow .tool-i{display:block;}
+  /* the bar's own glyphs for Text and Theme ("Aa", the CSS bulb) give way to their dock icons */
+  body.phonebar #gear .g-aa, body.phonebar #lamp .bulb{display:none;}
   @media (hover:hover){ body.phonebar #actRow .ctl:hover{background:color-mix(in srgb, var(--ink) 7%, transparent);} }
-  body.phonebar #actRow .ctl[aria-expanded="true"]{background:var(--accent-soft);}
-  :root[data-tone="contrast"] body.phonebar #actRow .ctl[aria-expanded="true"]{box-shadow:inset 0 0 0 2px var(--accent);}
-  body.phonebar #actRow #gear{font-size:1.3125rem;}
-  /* the row's first appearance slides up with the bar's own easing (nothing moves with reduced motion or in e-ink) */
-  body.phonebar #actRow{animation:rise var(--t-sheet) var(--ease-out);}
-  /* in Scroll flow the last lines clear the row */
-  body.phonebar:not(.paged) > main{padding-bottom:calc(var(--dockH, 60px) + 40px);}
+  body.phonebar #actRow #speakBtn{background:var(--accent); color:var(--on-accent, var(--on-fill));}
+  @media (hover:hover){ body.phonebar #actRow #speakBtn:hover{background:var(--accent);} }
+  body.phonebar #speakBtn .dot{display:none;}
 
   /* ---------- zen mode ---------- */
   /* only the text and the 3px progress line; the read-aloud bar stays because the reader chose it */
@@ -1488,7 +1685,7 @@
     #moreMenu .menu-quick{padding-top:0;}
     #moreMenu .menu-quick .label{position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;}
     #moreMenu .menu-quick .menu-items{grid-template-columns:repeat(4, minmax(0, 1fr));}
-    #moreMenu .menu-quick button{min-height:96px; padding:12px 2px; background:var(--accent-soft); border-color:transparent; box-shadow:none; font-size:var(--fs-eyebrow); font-weight:600; -webkit-hyphens:auto; hyphens:auto;}
+    #moreMenu .menu-quick button{min-height:96px; padding:12px 2px; background:var(--accent-soft); border-color:transparent; box-shadow:none; font-size:var(--fs-small); font-weight:600; -webkit-hyphens:auto; hyphens:auto;}
     #moreMenu .menu-quick button:hover{background:color-mix(in srgb, var(--accent) 24%, transparent);}
     #moreMenu .menu-quick .mi, #moreMenu .menu-quick .mi svg{width:28px; height:28px;}
     :root[data-tone="contrast"] #moreMenu .menu-quick button{border-color:var(--line);}
@@ -1502,7 +1699,7 @@
      phones (24px top corners, a handle); a 56px head with the title in the title face and a round
      48px close, a scrolling body, a sticky foot of actions */
   #side{
-    position:fixed; top:0; right:0; bottom:0; z-index:45; width:min(400px, 100%);
+    position:fixed; top:0; right:0; bottom:0; z-index:45; width:min(400px, 100%); padding-right:env(safe-area-inset-right, 0px);
     background:var(--raise); color:var(--ink); border-left:1px solid var(--line); border-radius:var(--r-lg) 0 0 var(--r-lg);
     box-shadow:var(--shadow-side); display:flex; flex-direction:column;
     transform:translateX(105%); visibility:hidden;
@@ -1536,7 +1733,7 @@
   #side .side-switch button[aria-pressed="true"]{background:var(--raise); border-color:var(--accent); color:var(--ink); box-shadow:var(--shadow-1);}
   #side .side-grab{display:none;}
   /* the shared section label inside panels (About, Stats and Fonts carry it beside their own) */
-  .sec, #side .sec{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+  .sec, #side .sec{font-size:var(--fs-small); font-weight:700; color:var(--muted);}
   #side .side-body{flex:1; overflow-y:auto; overscroll-behavior:contain; padding:var(--sp-3) var(--sp-4) max(20px, env(safe-area-inset-bottom));}
   /* a body with no controls (Keyboard shortcuts) is the focusable scroll region itself */
   #side .side-body:focus-visible{outline:var(--ring) solid var(--accent); outline-offset:-2px;}
@@ -1636,7 +1833,7 @@
 
   /* auto-scroll control: a pill floating above the dock */
   #autoBar{
-    position:fixed; right:12px; bottom:var(--aboveDock); z-index:17; display:none; align-items:center; gap:2px;
+    position:fixed; right:max(12px, env(safe-area-inset-right)); bottom:var(--aboveDock); z-index:17; display:none; align-items:center; gap:2px;
     background:var(--raise); border:var(--bw) solid var(--line); border-radius:var(--r-pill); padding:4px; box-shadow:var(--shadow-2);
     font-family:var(--ui-font); transition:background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
@@ -1657,6 +1854,7 @@
   #tts{
     display:none; position:relative; grid-template-columns:minmax(0, 1fr) auto auto auto minmax(0, 1fr); align-items:center; gap:var(--sp-1);
     background:var(--panel); border-top:1px solid var(--line); padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    padding-left:max(12px, env(safe-area-inset-left)); padding-right:max(12px, env(safe-area-inset-right));
     transition:background var(--t-theme) ease, border-color var(--t-theme) ease; font-family:var(--ui-font);
   }
   #tts.on{display:grid;}
@@ -1744,7 +1942,6 @@
     body.paged.tts-on #pgInfo .pg-n{flex:none; font-family:var(--ui-font); font-size:var(--fs-small); font-weight:700; line-height:1.35;}
     body.paged.tts-on #pgInfo .pg-sec ~ .pg-left .pg-dot, body.paged.tts-on #pgInfo .pg-dot{display:inline;}
     body.paged.tts-on #tts{border-top:0; padding-bottom:calc(8px + env(safe-area-inset-bottom));}
-    body.paged.tts-on.phonebar:not(.immersive) #tts{padding-bottom:8px;}
   }
   /* ---------- the voices panel ----------
      A handful of good choices first — the pair that is reading, then up to six cards for this
@@ -1809,7 +2006,7 @@
   .v-name{font-size:var(--fs-body); font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; max-width:100%;}
   .v-tags{display:flex; flex-wrap:wrap; gap:4px;}
   .v-tag{
-    font-size:var(--fs-eyebrow); font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);
+    font-size:var(--fs-small); font-weight:600; color:var(--muted);
     border:1px solid var(--line); border-radius:var(--r-pill); padding:0 7px; white-space:nowrap;
   }
   .v-who{flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 9px;}
@@ -1828,7 +2025,7 @@
   .v-row{display:flex; align-items:center; gap:var(--sp-3); min-height:48px;}
   .v-row + .v-row{border-top:1px solid var(--line); padding-top:var(--sp-2);}
   .v-role{
-    flex:none; width:84px; font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+    flex:none; width:84px; font-size:var(--fs-small); font-weight:700; color:var(--muted);
   }
   :root[data-tone="contrast"] .v-role{width:100px;}
   .v-pair-acts{display:flex; flex-wrap:wrap; gap:var(--sp-2); padding-top:4px;}
@@ -1855,7 +2052,7 @@
   /* all of them, one tap away */
   .v-all > summary{
     list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; min-height:48px;
-    font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+    font-size:var(--fs-small); font-weight:700; color:var(--muted);
   }
   .v-all > summary::-webkit-details-marker{display:none;}
   .v-all > summary::after{
@@ -1963,10 +2160,10 @@
   /* ---------- about this text ---------- */
   .about-doc{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:4px 2px 8px; font-size:var(--fs-small); color:var(--muted);}
   .about-doc .about-name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); font-family:var(--title-font); font-weight:600; font-size:var(--fs-subtitle);}
-  .about-doc .about-fmt, .about-doc .about-part{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink); white-space:nowrap;}
+  .about-doc .about-fmt, .about-doc .about-part{font-size:var(--fs-small); font-weight:700; color:var(--ink); white-space:nowrap;}
   .about-doc .about-fmt{background:var(--lamp-soft); border-radius:var(--r-pill); padding:1px 8px;}
   .about-doc .about-part{color:var(--muted);}
-  .about-h{margin:var(--sp-5) 0 var(--sp-2); font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+  .about-h{margin:var(--sp-5) 0 var(--sp-2); font-size:var(--fs-small); font-weight:700; color:var(--muted);}
   .about-grid{display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:var(--sp-2);}
   .about-tile{padding:var(--sp-3); border:var(--bw) solid var(--line); border-radius:var(--r-md); background:var(--raise); min-width:0;}
   .about-tile b{display:block; font-family:var(--title-font); font-size:1.375rem; font-weight:600; line-height:1.15; color:var(--ink); font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
@@ -1995,7 +2192,7 @@
   .about-word:hover{background:var(--accent-soft);}
   .about-word .w{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--title-font); font-size:var(--fs-body);}
   .about-word .n{font-size:var(--fs-small); color:var(--muted); font-variant-numeric:tabular-nums;}
-  .about-word .r{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); white-space:nowrap;}
+  .about-word .r{font-size:var(--fs-small); font-weight:700; color:var(--accent); white-space:nowrap;}
   .about-find{
     width:44px; flex:none; display:flex; align-items:center; justify-content:center; padding:0;
     border:0; border-radius:var(--r-sm); background:var(--accent-soft); color:var(--ink); cursor:pointer; transition:background-color var(--t-fade);
@@ -2035,14 +2232,16 @@
   /* ---------- toasts and status pills ---------- */
   /* one shape — an inverse pill (the page colour on the text colour, a pair every theme audits at
      4.5:1), a 44px row, a 12px step above the dock or the home bar: the small toast (#toast), the
-     update offer (#updateToast), the e-ink offer (#einkToast) and the translation progress pill
-     (#trStatus, made by translate.js), which sits one step higher so the two can coexist */
+     update offer (#updateToast), the e-ink offer (#einkToast), the notice after a retired theme
+     (#themeToast) and the translation progress pill (#trStatus, made by translate.js), which sits one
+     step higher so the two can coexist */
   /* the bottom row: above the dock, and above the auto-scroll pill while it runs. The update offer
-     keeps that row and reports its height (--updateH, set by app.js); the toast and the
-     translation pill step up over it, so it never hides them */
+     keeps that row and reports its height (--updateH, set by app.js); the e-ink offer and the notice
+     sit just above it, and the notice reports its own height (--noticeH). The toast and the
+     translation pill step up over both, so neither hides them */
   body{--toastRow:var(--aboveDock);}
   body.auto-on{--toastRow:calc(var(--aboveDock) + 60px);}
-  #toast, #updateToast, #trStatus, #einkToast{
+  #toast, #updateToast, #trStatus, #einkToast, #themeToast{
     position:fixed; left:50%; bottom:var(--toastRow); z-index:70; transform:translateX(-50%);
     display:flex; align-items:center; justify-content:center; gap:10px; width:max-content; max-width:calc(100% - 32px); min-height:44px;
     background:var(--ink); color:var(--bg); border:0; border-radius:var(--r-pill);
@@ -2050,8 +2249,8 @@
     font-family:var(--ui-font); font-size:var(--fs-body); line-height:1.35;
     transition:opacity var(--t-fade), transform var(--t-fade) var(--ease-out), background var(--t-theme) ease;
   }
-  :root[data-tone="contrast"] :is(#toast, #updateToast, #trStatus, #einkToast){border:2px solid var(--line);}
-  #toast{opacity:0; pointer-events:none; transform:translateX(-50%) translateY(12px); text-align:center; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
+  :root[data-tone="contrast"] :is(#toast, #updateToast, #trStatus, #einkToast, #themeToast){border:2px solid var(--line);}
+  #toast{opacity:0; pointer-events:none; transform:translateX(-50%) translateY(12px); text-align:center; bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px));}
   #toast.on{opacity:1; transform:translateX(-50%);}
   /* its leading icon: 18px, the toast's own colour, the heavier stroke of the small size */
   #toast .toast-ic{display:inline-flex; flex:none; margin-left:-4px;}
@@ -2068,13 +2267,30 @@
   #toast .toast-act:focus-visible{outline-color:var(--bg);}
   @media (pointer: coarse){ #toast .toast-act{min-height:40px;} #toast .toast-act::after{content:""; position:absolute; inset:-4px;} }
   #updateToast{z-index:71; padding:6px 6px 6px 20px;}
-  /* the one-time offer of e-ink mode (Eink in app.js): the update offer's shape, over it if both show */
-  #einkToast{z-index:72; padding:6px 6px 6px 20px; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
-  #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px)); padding:6px 6px 6px 20px; font-variant-numeric:tabular-nums;}
+  /* the one-time offer of e-ink mode (Eink in app.js), and the one-time notice after a retired theme
+     (ThemeNotice), which never shows beside it: the update offer's shape, over it if both show. Their
+     own place leaves --noticeH out, so the notice never lifts itself */
+  #einkToast, #themeToast{z-index:72; padding:6px 6px 6px 20px; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
+  /* the notice's words are longer than the offer's, and so is its Keep the old colours: where they do not
+     fit on one row beside the buttons (a phone, or a narrow window), the words take a row of their own and
+     the buttons go under them at the right. The two buttons are one box (.tn-acts), so they wrap together;
+     apart, the close button would drop to a row of its own wherever the words and Keep still fit. Its
+     corners stop at 28px, half its height on one row at the most (the contrast tone's 2px border with a
+     coarse pointer's 40px buttons), and the browser scales them down to half a lower row's height: one
+     row is always the offer's pill. A taller notice keeps 28px, as a pill's round ends would cut into its
+     lines of words. On their own row the words stop 20px from the right edge, as they start 20px from the
+     left (the pill's 6px on the right is for the round close button); the auto margin keeps them at the
+     left. The 6px above and below the words sit inside the buttons' height on one row, and keep them
+     clear of the edge on two */
+  #themeToast{flex-wrap:wrap; justify-content:flex-end; border-radius:28px;}
+  #themeToast > .tn-msg{max-width:calc(100% - 14px); margin-right:auto; padding:6px 0;}
+  #themeToast > .tn-acts{display:flex; flex:none; align-items:center; gap:10px;}
+  #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px) + var(--noticeH, 0px)); padding:6px 6px 6px 20px; font-variant-numeric:tabular-nums;}
   /* the "Finished" card (Journal in app.js) takes the foot of the page: the pill and the toasts sit above it meanwhile,
      so its date, Not now and Save stay in reach (--finishH: the card's height, set while it is up) */
-  body.fin-on #trStatus{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
-  body.fin-on #toast, body.fin-on #einkToast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
+  body.fin-on #trStatus{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px) + var(--finishH, 0px) + 8px);}
+  body.fin-on #toast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--noticeH, 0px) + var(--finishH, 0px) + 8px);}
+  body.fin-on #einkToast, body.fin-on #themeToast{bottom:calc(var(--toastRow) + var(--updateH, 0px) + var(--finishH, 0px) + 8px);}
   #trStatus.on{display:flex;}
   #trStatus .tr-msg{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   #trStatus .tr-hide{flex:none; width:36px; height:36px; margin-left:2px; border:0; border-radius:50%; background:transparent; color:var(--bg);
@@ -2082,31 +2298,32 @@
   #trStatus .tr-hide:hover{background:color-mix(in srgb, var(--bg) 14%, transparent);}
   #trStatus .tr-hide:focus-visible{outline-color:var(--bg);}
   body.eink #trStatus .tr-hide{color:#fff;}
-  /* their buttons are chips in the pill's own colours: an outlined one, the offer's yes filled with
-     the page colour, the close a quiet round */
-  #updateToast button, #trStatus .tr-x, #einkToast button{
+  /* their buttons are chips in the pill's own colours: an outlined one, the offer's yes (and the
+     notice's Keep the old colours) filled with the page colour, the close a quiet round */
+  #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button{
     flex:none; min-height:36px; border:1.5px solid color-mix(in srgb, var(--bg) 45%, transparent); border-radius:var(--r-pill); padding:0 14px; background:transparent; color:var(--bg);
     font-family:var(--ui-font); font-size:var(--fs-small); font-weight:600; cursor:pointer; transition:background-color var(--t-fade);
   }
-  #updateToast button:hover, #trStatus .tr-x:hover, #einkToast button:hover{background:color-mix(in srgb, var(--bg) 14%, transparent);}
-  #updateToast button:focus-visible, #trStatus .tr-x:focus-visible, #einkToast button:focus-visible{outline-color:var(--bg);}
-  #updateToast #updateReload, #einkToast #einkYes{background:var(--bg); border-color:var(--bg); color:var(--ink);}
-  #updateToast #updateReload:hover, #einkToast #einkYes:hover{background:var(--bg); box-shadow:0 0 0 3px color-mix(in srgb, var(--bg) 30%, transparent);}
-  #updateToast #updateLater, #einkToast #einkNo{width:36px; height:36px; padding:0; border-color:transparent; display:inline-flex; align-items:center; justify-content:center; font-size:1.125rem; font-weight:400; line-height:1; color:var(--bg);}
-  #updateToast #updateLater svg, #einkToast #einkNo svg{width:var(--icon-sm); height:var(--icon-sm); stroke-width:2;}
+  #updateToast button:hover, #trStatus .tr-x:hover, #einkToast button:hover, #themeToast button:hover{background:color-mix(in srgb, var(--bg) 14%, transparent);}
+  #updateToast button:focus-visible, #trStatus .tr-x:focus-visible, #einkToast button:focus-visible, #themeToast button:focus-visible{outline-color:var(--bg);}
+  #updateToast #updateReload, #einkToast #einkYes, #themeToast #themeKeep{background:var(--bg); border-color:var(--bg); color:var(--ink);}
+  #updateToast #updateReload:hover, #einkToast #einkYes:hover, #themeToast #themeKeep:hover{background:var(--bg); box-shadow:0 0 0 3px color-mix(in srgb, var(--bg) 30%, transparent);}
+  #updateToast #updateLater, #einkToast #einkNo, #themeToast #themeNo{width:36px; height:36px; padding:0; border-color:transparent; display:inline-flex; align-items:center; justify-content:center; font-size:1.125rem; font-weight:400; line-height:1; color:var(--bg);}
+  #updateToast #updateLater svg, #einkToast #einkNo svg, #themeToast #themeNo svg{width:var(--icon-sm); height:var(--icon-sm); stroke-width:2;}
   @media (pointer: coarse){
-    #updateToast button, #trStatus .tr-x, #einkToast button{min-height:40px;}
-    #updateToast #updateLater, #einkToast #einkNo{width:40px; height:40px;}
-    #updateToast button::after, #trStatus .tr-x::after, #einkToast button::after{content:""; position:absolute; inset:-4px;}
-    #updateToast button, #trStatus .tr-x, #einkToast button{position:relative;}
+    #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button{min-height:40px;}
+    #updateToast #updateLater, #einkToast #einkNo, #themeToast #themeNo{width:40px; height:40px;}
+    #updateToast button::after, #trStatus .tr-x::after, #einkToast button::after, #themeToast button::after{content:""; position:absolute; inset:-4px;}
+    #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button{position:relative;}
   }
   @media (forced-colors: active){
-    #toast, #updateToast, #trStatus, #einkToast, #progressInfo, #autoBar, #moreMenu, #moreMenu button, #side .side-switch button, #side .side-x{border:1px solid ButtonText;}
-    #updateToast button, #trStatus .tr-x, #einkToast button, #autoBar button{border:1px solid ButtonText;}
+    #toast, #updateToast, #trStatus, #einkToast, #themeToast, #progressInfo, #autoBar, #moreMenu, #moreMenu button, #side .side-switch button, #side .side-x{border:1px solid ButtonText;}
+    #updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button, #autoBar button{border:1px solid ButtonText;}
     #moreMenu button.on::before{background:Highlight;}
     #side .side-switch button[aria-pressed="true"]{border-width:2px; border-color:Highlight;}
   }
-  /* marks: highlights in the text, and the list in the panel */
+  /* marks: highlights in the text, and the list in the panel (a night page has the yellow at 38%,
+     at the end of this file) */
   #doc mark.ll-mark{
     background:color-mix(in srgb, var(--accent) 32%, transparent); color:inherit; border-radius:2px;
     padding:.05em 0; box-decoration-break:clone; -webkit-box-decoration-break:clone; cursor:pointer;
@@ -2120,7 +2337,7 @@
     background:var(--raise); box-shadow:var(--shadow-1); transition:border-color var(--t-fade);
   }
   .mark-item:hover{border-color:var(--ctl-line);}
-  .mark-item .mark-kind{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:8px;}
+  .mark-item .mark-kind{font-size:var(--fs-small); font-weight:700; color:var(--muted); display:flex; align-items:center; gap:8px;}
   .mark-item .mark-kind span{margin-left:auto; color:var(--muted); font-weight:400; letter-spacing:0; text-transform:none; font-size:var(--fs-small);}
   .mark-item .mark-text{font-family:var(--reader-font); font-size:var(--fs-body); line-height:1.5; margin:6px 0 0;}
   .mark-item .mark-text.q{border-left:3px solid color-mix(in srgb, var(--accent) 50%, transparent); padding-left:9px;}
@@ -2197,7 +2414,7 @@
   .mk-dot{width:.6875rem; height:.6875rem; border-radius:50%; flex:none; border:1px solid var(--line);}
   .mk-dot.accent{background:var(--accent);} .mk-dot.sun{background:#E8C547;} .mk-dot.leaf{background:#7FB069;} .mk-dot.rose{background:#E07A9A;}
   .mk-legend{display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; margin-bottom:var(--sp-2); font-size:var(--fs-small);}
-  .mk-leg-l{font-size:var(--fs-eyebrow); font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+  .mk-leg-l{font-size:var(--fs-small); font-weight:700; color:var(--muted);}
   .mk-leg{
     display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid transparent; border-radius:var(--r-pill);
     background:transparent; color:var(--ink); font-family:var(--ui-font); font-size:var(--fs-small); cursor:pointer;
@@ -2284,10 +2501,10 @@
   body.eink #popScrim, body.eink #moreScrim, body.eink #sideScrim, body.eink #dictScrim, body.eink #ruler .rt, body.eink #ruler .rb,
   body.eink.dragging::after{background:transparent !important;}
   /* a hover adds nothing (a chosen or filled control keeps its fill) */
-  body.eink :is(button, a, summary, [role="button"], [role="tab"], .tab-x, .toc-item, .find-item, .figrow):hover:not(.primary):not(.on):not(.cur):not(.go):not(.dot):not(.sw):not(#updateReload):not(#einkYes):not([aria-pressed="true"]):not([aria-selected="true"]):not([aria-expanded="true"]){background-color:transparent !important;}
-  /* a chosen control: white on black */
-  body.eink :is(.chip.on, .chip[aria-pressed="true"], .tab.on, .sheet-tabs button.on, .font-item[aria-pressed="true"], #side .side-switch button[aria-pressed="true"],
-    .dn[aria-pressed="true"], #tts .tts-speed[aria-expanded="true"], #actRow .ctl[aria-expanded="true"],
+  body.eink :is(button, a, summary, [role="button"], [role="tab"], .tab-x, .toc-item, .find-item, .figrow):hover:not(.primary):not(.on):not(.cur):not(.go):not(.dot):not(.sw):not(#updateReload):not(#einkYes):not(#themeKeep):not([aria-pressed="true"]):not([aria-selected="true"]):not([aria-expanded="true"]){background-color:transparent !important;}
+  /* a chosen control: white on black (a theme tile has its own black ring instead, with the tiles) */
+  body.eink :is(.chip.on:not(.tile), .chip[aria-pressed="true"]:not(.tile), .tab.on, .sheet-tabs button.on, .font-item[aria-pressed="true"], #side .side-switch button[aria-pressed="true"],
+    #tts .tts-speed[aria-expanded="true"], #actRow .ctl[aria-expanded="true"],
     .bar .ctl[aria-expanded="true"], .find-item.cur, #dictCard [role=tab][aria-selected=true], #dictCard .pill.acc, #dictCard .chg[aria-expanded=true],
     #dictCard .figrow[aria-pressed=true], #dictCard .act[aria-pressed=true]){
     --ink:#fff; --muted:#fff; --accent:#fff; --line:#fff; --lamp:#fff; background:#000 !important; color:#fff !important; border-color:#000 !important;
@@ -2321,25 +2538,26 @@
   /* switches: a 1px black track; a black knob while off, a white knob on a black track while on */
   body.eink input[type=checkbox][role=switch]{background-image:radial-gradient(circle closest-side, #000 8.5px, transparent 9.5px) !important;}
   body.eink input[type=checkbox][role=switch]:checked{background-color:#000 !important; background-image:radial-gradient(circle closest-side, #fff 9px, transparent 10px) !important;}
-  /* sliders: a white track in a black rule, black up to the thumb */
+  /* sliders: a white track in a black rule, black up to the thumb. The thumb is a pseudo-element,
+     which the rule above that stops every transition does not reach, so it is stopped here and its
+     focus ring shows at once */
   body.eink input[type=range]{--track:#fff;}
   body.eink input[type=range]::-webkit-slider-runnable-track{border:1px solid #000;}
   body.eink input[type=range]::-moz-range-track{border:1px solid #000;}
-  body.eink input[type=range]::-webkit-slider-thumb{border-width:2px;}
+  body.eink input[type=range]::-webkit-slider-thumb{border-width:2px; transition:none !important;}
   body.eink .dim-row input[type=range]::-webkit-slider-runnable-track{border-style:dashed;}
   body.eink .dim-row input[type=range]{opacity:1;}
   /* a select keeps its chevron */
   body.eink select.sel{background-image:linear-gradient(45deg, transparent 50%, #000 50%), linear-gradient(135deg, #000 50%, transparent 50%) !important;}
-  /* the toasts: white, held by a black rule, black words; the offer's yes filled black */
-  body.eink :is(#toast, #updateToast, #trStatus, #einkToast){background:#fff; color:#000; border:1px solid #000;}
-  body.eink :is(#updateToast button, #trStatus .tr-x, #einkToast button){color:#000; border-color:#000;}
-  body.eink :is(#updateToast #updateReload, #einkToast #einkYes){background:#000 !important; color:#fff;}
-  body.eink :is(#updateToast #updateLater, #einkToast #einkNo){border-color:transparent;}
+  /* the toasts: white, held by a black rule, black words; the offer's yes (and Keep the old colours) filled
+     black, and the close a black cross (its own rule above, two ids strong, would leave it white on white) */
+  body.eink :is(#toast, #updateToast, #trStatus, #einkToast, #themeToast){background:#fff; color:#000; border:1px solid #000;}
+  body.eink :is(#updateToast button, #trStatus .tr-x, #einkToast button, #themeToast button){color:#000; border-color:#000;}
+  body.eink :is(#updateToast #updateReload, #einkToast #einkYes, #themeToast #themeKeep){background:#000 !important; color:#fff;}
+  body.eink :is(#updateToast #updateLater, #einkToast #einkNo, #themeToast #themeNo){border-color:transparent; color:#000;}
   body.eink #toast .toast-act{color:#000; border-color:#000;}
-  /* a playing sound's tile is white on black already: its icon keeps a plain line, no grey fill;
-     the rule over the reading row is solid black */
+  /* a playing sound's tile is white on black already: its icon keeps a plain line, no grey fill */
   body.eink .snd-tiles .chip[aria-pressed="true"] svg{fill:none;}
-  body.eink #actRow{border-top-color:#000 !important;}
   /* the sleep timer's badge stays a black pill with white words */
   body.eink #tts .tts-sleep{background:#000 !important; color:#fff; border:0 !important;}
   /* greyed-out controls are whole again; a disabled one is dashed (a hidden one stays hidden) */
@@ -2367,6 +2585,8 @@
 
   @media (prefers-reduced-motion: reduce){
     *{transition:none !important; animation:none !important;}
+    /* a slider's thumb is a pseudo-element, which * does not reach: its focus ring shows at once too */
+    input[type=range]::-webkit-slider-thumb{transition:none !important;}
   }
 
   /* ---------- print ---------- */
@@ -2379,7 +2599,8 @@
     html, body{background:#fff !important; color:#000 !important; height:auto !important; min-height:0 !important; overflow:visible !important;}
     *{transition:none !important; animation:none !important;}
     header, #sheet, #sheetScrim, #pager, #tts, #actRow, #autoBar, #side, #sideScrim, #dictCard, #dictScrim, #dictPill, #markPop, #progress, #progressInfo,
-    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #einkToast, #pdf, .skip{display:none !important;}
+    #ruler, #streak, #library, #empty, #status, #toast, #updateToast, #einkToast, #themeToast, #pdf, .skip,
+    #readFoot, #phoneDockScrim, #phoneDock, #moreMenu, #moreScrim{display:none !important;}
     body > main{padding:0 !important;}
     #docView{display:block !important; position:static !important; width:auto !important; max-width:none !important; height:auto !important; overflow:visible !important; padding:0 !important; margin:0 !important;}
     /* Pages flow sets the columns and the height inline, so these need !important: one long column again */
@@ -2457,6 +2678,11 @@
   }
   #rsvp[hidden]{display:none;}
   body.rsvp-on{overflow:hidden;}
+  /* the rest of the page is inert while it is up, the small toast aside (Rsvp in app.js). The update offer, the
+     e-ink offer and the notice after a retired theme sit above it, on a phone over its progress bar and Play
+     button, where they could not be used and a tap on them would reach the control under them: they wait out of
+     sight until it closes, unanswered, and the two that report their height report none meanwhile (app.js) */
+  body.rsvp-on :is(#updateToast, #einkToast, #themeToast){display:none;}
   .rsvp-top{width:100%; max-width:920px; display:flex; align-items:center; gap:12px; min-height:48px;}
   .rsvp-title{font-family:var(--title-font); font-weight:600; font-size:var(--fs-subtitle);}
   .rsvp-where{flex:1; min-width:0; text-align:right; font-size:var(--fs-small); color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
@@ -2513,57 +2739,13 @@
 
   @media print{ #recap, #rsvp{display:none !important;} }
   @media (forced-colors: active){
-    .dn, .bk-row, .snd-tiles .chip, body.phonebar #actRow .ctl, #tts .tts-speed, #toast .toast-act{border:1px solid ButtonText;}
-    .dn[aria-pressed="true"], .bk-row.on, .snd-tiles .chip[aria-pressed="true"], #themePop .strip .chip[aria-pressed="true"]{border:2px solid Highlight;}
+    .bk-row, .snd-tiles .chip, body.phonebar #actRow .ctl, #tts .tts-speed, #toast .toast-act{border:1px solid ButtonText;}
+    .bk-row.on, .snd-tiles .chip[aria-pressed="true"]{border:2px solid Highlight;}
     #tts .tts-sleep{forced-color-adjust:none; background:CanvasText; color:Canvas;}
   }
 
-  /* ---- themes: Previous, the five groups, Mine with its actions, Make my own, Day and night ---- */
+  /* ---- themes: the picker's head, Mine with its actions, Day and night ---- */
   #themePop .pop-head{gap:var(--sp-2);}
-  .q-prev{min-height:32px; padding:2px 12px 2px 8px; gap:6px; font-size:var(--fs-small); max-width:65%; overflow:hidden;}
-  .q-prev[hidden]{display:none;}
-  .q-prev svg{width:16px; height:16px; flex:none;}
-  .q-prev span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  /* six tabs: each keeps its whole label; they share the width when there is room and scroll
-     sideways when there is not (showGroup brings the chosen one into view) */
-  .q-groups{grid-template-columns:repeat(6, minmax(max-content, 1fr)); overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none;}
-  /* Collections: Dutch, Nature and seasons, Cozy and Textured, each under its own small label */
-  .q-colls{display:grid; gap:var(--sp-2);}
-  .q-colls[hidden]{display:none;}
-  .q-coll .plabel{font-size:var(--fs-small); color:var(--muted); padding:0 2px;}
-  .q-coll .tiles{padding-top:4px;}
-  /* ---- the Textured themes: a faint paper or cloth behind the text, on a fixed layer under the
-     page (bars, sheets and cards keep their own plain colours). Small inline SVG noise and CSS
-     lines, nothing that moves; applyTheme sets data-texture only outside e-ink mode, the
-     high-contrast themes and Plain background ---- */
-  :root[data-texture] body::before{content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;}
-  /* paper grain: fine speckled fibres */
-  :root[data-texture="grain"] body::before{
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32 0 0 0 0 .28 0 0 0 0 .22 0 0 0 .16 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  /* book cloth: a linen weave of fine threads both ways, a little uneven */
-  :root[data-texture="linen"] body::before{
-    background-image:
-      repeating-linear-gradient(0deg, rgba(50,60,40,.045) 0 1px, transparent 1px 3px),
-      repeating-linear-gradient(90deg, rgba(50,60,40,.04) 0 1px, transparent 1px 4px),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.04 .5' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .2 0 0 0 0 .24 0 0 0 0 .16 0 0 0 .1 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  /* laid paper: the close laid lines across, the chain lines down every few centimetres */
-  :root[data-texture="laid"] body::before{
-    background-image:
-      repeating-linear-gradient(0deg, rgba(90,80,40,.05) 0 1px, transparent 1px 4px),
-      repeating-linear-gradient(90deg, transparent 0 94px, rgba(90,80,40,.07) 94px 96px, transparent 96px 120px);
-  }
-  /* vellum: soft cloudy mottling and a darker, deckled edge round the page */
-  :root[data-texture="vellum"] body::before{
-    background-image:
-      radial-gradient(ellipse at center, transparent 62%, rgba(120,84,40,.10) 100%),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .36 0 0 0 0 .2 0 0 0 .13 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size:100% 100%, 240px 240px;
-  }
-  @media print{ :root[data-texture] body::before{display:none;} }
-  .q-groups::-webkit-scrollbar{display:none;}
-  .q-groups .chip{padding:4px 6px;}
   /* an own theme's tile with its ⋯ in the corner of the small page */
   .mine-t{position:relative; min-width:0;}
   .mine-t > .chip.tile{width:100%;}
@@ -2580,17 +2762,8 @@
   .q-acts-n{flex:1 0 100%; font-size:var(--fs-small); font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .q-acts .chip{min-height:40px; padding:4px 12px; background:var(--raise);}
   .q-acts .chip.danger{color:var(--ink); border-color:var(--ink); font-weight:600;}
-  .q-make{justify-self:start; gap:8px; min-height:40px; padding:4px 14px 4px 10px;}
-  .q-make svg{width:18px; height:18px; flex:none;}
-  /* day and night: the two themes as pickers, each a small page with a native list over it */
+  /* day and night: its rows a little apart, and a step down from Mine */
   #themePop .q-auto{gap:var(--sp-2); margin-top:var(--sp-1);}
-  .dn-pair[hidden]{display:none;}
-  label.dn{cursor:pointer;}
-  .dn-sel{position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; margin:0; font-size:16px;}
-  .dn .dn-t{font-size:var(--fs-small); font-weight:600; color:var(--muted);}
-  .dn .dn-n{font-size:var(--fs-body); color:var(--ink); font-weight:700; display:block !important;}
-  .dn.on{border:var(--bw-sel, 2px) solid var(--accent);}
-  .dn:focus-within{outline:var(--ring) solid var(--accent); outline-offset:2px;}
   .q-now{margin:0; color:var(--ink);}
   .q-now:empty{display:none;}
 
@@ -2629,3 +2802,34 @@
   /* switching themes: a short cross-fade (app.js crossFade; none with reduced motion) */
   ::view-transition-old(root), ::view-transition-new(root){animation-duration:200ms;}
   @media (prefers-reduced-motion: reduce){ ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*){animation:none !important;} }
+
+  /* ---------- the contrast and dark tones: the lamp's ring and its focus ring, the sliders, the dock's
+     Day and Night and the yellow highlight, each made to read in that tone (after the phone dock's and
+     the marks' own rules, which they adjust) ---------- */
+  /* the Contrast pair: the lamp's progress ring 4px, about 3px clear of the button's 2px edge; the SVG
+     grows from 56px to 68px about the same centre, so the arc app.js measures still holds */
+  :root[data-tone="contrast"] #dockBtn > .ring{left:calc(-6px - var(--bw)); top:calc(-6px - var(--bw)); width:68px; height:68px; stroke-width:3.3; overflow:visible;}
+  /* the lamp's keyboard focus ring, 9px off the button: the ring, in the same colour, now covers the
+     place 2px off it where the focus ring is drawn, so it goes outside, 2px clear of the ring */
+  :root[data-tone="contrast"] #dockBtn:focus-visible{outline-offset:9px;}
+  /* every slider: a hollow capsule (a 2px rule in the edge colour round a 2px gap of the panel, a 6px fill) */
+  :root[data-tone="contrast"] input[type=range], :root[data-tone="contrast"] #dockPos{--track:transparent;}
+  :root[data-tone="contrast"] input[type=range]::-webkit-slider-runnable-track,
+  :root[data-tone="contrast"] #dockPos::-webkit-slider-runnable-track{height:14px; padding:2px; border:2px solid var(--edge); border-radius:999px; background-clip:content-box;}
+  :root[data-tone="contrast"] input[type=range]::-moz-range-track,
+  :root[data-tone="contrast"] #dockPos::-moz-range-track{box-sizing:border-box; height:14px; border:2px solid var(--edge); border-radius:999px; background:var(--panel);}
+  :root[data-tone="contrast"] input[type=range]::-moz-range-progress,
+  :root[data-tone="contrast"] #dockPos::-moz-range-progress{height:6px; border-radius:999px;}
+  /* the dock's handle: 24px with a 2px ring of the panel, and the accent's focus ring outside that */
+  :root[data-tone="contrast"] #dockPos::-webkit-slider-thumb{width:24px; height:24px; margin-top:-9px; box-shadow:0 0 0 2px var(--panel);}
+  :root[data-tone="contrast"] #dockPos:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 4px var(--accent);}
+  :root[data-tone="contrast"] #dockPos::-moz-range-thumb{width:24px; height:24px; box-shadow:0 0 0 2px var(--panel);}
+  :root[data-tone="contrast"] #dockPos:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 4px var(--accent);}
+  /* Day and Night in the dock: two outlined buttons, the half on screen in the accent's edge */
+  :root[data-tone="contrast"] .pd-dn{padding:0; gap:var(--sp-2); border:0;}
+  :root[data-tone="contrast"] .dn-b{border-color:var(--line); border-radius:var(--r-md);}
+  :root[data-tone="contrast"] .dn-b[aria-pressed="true"]{border-color:var(--accent);}
+  /* night pages: the yellow highlight at 38% (text on it 4.73:1 or more on every night theme) */
+  :root[data-tone="dark"] #doc mark.ll-mark[data-color="sun"]{background:color-mix(in srgb, #E8C547 38%, transparent);}
+  /* night pages: the dock's unfilled track, 35% of the edge into the line, like every other slider */
+  :root[data-tone="dark"] #dockPos{--track:color-mix(in srgb, var(--edge) 35%, var(--line));}

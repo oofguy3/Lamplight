@@ -282,11 +282,46 @@ function fakeClock(iso){
       W.set(0); window.llThemes.select(keep);
       return out;
     });
-    const low = audit.filter((t) => t.lo < 4.5);
-    R.check("all 30 themes keep their text at 4.5:1 through a full-strength film", audit.length === 30 && low.length === 0,
-      low.map((t) => t.id + " " + t.lo).join(", "));
-    R.check("a roomy theme wears the full film, a tight one less", audit.some((t) => t.a >= 0.34) && audit.some((t) => !t.screen && t.a < 0.2),
+    const low = audit.filter((t) => t.lo < 4.5), builtIns = await page.evaluate(() => Object.keys(window.llThemes.THEMES).length);
+    R.check("every built-in theme keeps its text at 4.5:1 through a full-strength film", audit.length === builtIns && low.length === 0,
+      audit.length + " of " + builtIns + " audited; under 4.5: " + low.map((t) => t.id + " " + t.lo).join(", "));
+    /* every built-in has the contrast to spare for the whole film: 35 % on a light page, 12 % on a dark one */
+    R.check("every built-in wears the full film (0.35 light, 0.12 dark)", audit.every((t) => t.a === (t.screen ? 0.12 : 0.35)),
       audit.map((t) => t.id + ":" + t.a).join(" "));
+    /* a theme of the reader's own with no contrast to spare: grey text at 4.54:1 on white (llThemes.create
+       makes it; it is recoloured here). Its panel and secondary text are derived as for any own theme, and
+       the panel, a shade darker (#f8f8f8), already holds the text at 4.28:1 with no film at all, so the
+       ceiling steps down to nothing whatever the film does. This check pins that the ceiling counts the
+       panel: worked out on the page alone it would be 0.06 here. The next one, where nothing but the film
+       can bring the text under 4.5:1, covers the film */
+    const tight = await page.evaluate(() => {
+      const T = window.llThemes, W = window.llType.warmth, keep = window.__ll.state.theme;
+      const c = T.create();
+      Object.assign(c, { bg: "#ffffff", ink: "#767676", autoInk: false, accent: "#0033cc" });
+      T.select("c:" + c.id); W.set(100);
+      const out = { text: Math.round(T.contrast(c.ink, c.bg) * 100) / 100, a: W.opacity() };
+      W.set(0); T.select(keep);
+      return out;
+    });
+    R.check("a custom theme with text at 4.54:1 wears almost none", tight.text === 4.54 && tight.a < 0.05, JSON.stringify(tight));
+    /* the same grey text with its panel set to the page and its secondary text to the text, so all four
+       pairs read 4.54:1 with no film and only the film can bring one under 4.5:1. The ceiling is the
+       strongest film, in 0.5 % steps, that keeps all four at 4.5:1: 0.06 here, well short of the full
+       0.35 and more than nothing; one step more and a pair falls under */
+    const film = await page.evaluate(() => {
+      const T = window.llThemes, W = window.llType.warmth, keep = window.__ll.state.theme;
+      const pairs = [["ink", "bg"], ["ink", "panel"], ["muted", "bg"], ["muted", "panel"]];
+      const c = T.create();
+      Object.assign(c, { bg: "#ffffff", ink: "#767676", panel: "#ffffff", muted: "#767676", autoInk: false, accent: "#0033cc" });
+      T.select("c:" + c.id); W.set(100);
+      const t = T.current(), a = W.opacity(), screen = document.body.classList.contains("warm-dark");
+      const lowest = (f) => Math.round(Math.min(...pairs.map((p) => T.contrast(W.through(t[p[0]], screen, f), W.through(t[p[1]], screen, f)))) * 1000) / 1000;
+      const out = { plain: lowest(0), a: a, at: lowest(a), next: lowest(a + 0.005) };
+      W.set(0); T.select(keep);
+      return out;
+    });
+    R.check("a custom theme at 4.54:1 on its page and on its panel stops the film early",
+      film.plain >= 4.5 && film.a > 0 && film.a < 0.1 && film.at >= 4.5 && film.next < 4.5, JSON.stringify(film));
 
     /* paper and forced colours have no evening */
     await page.evaluate(() => window.llType.warmth.set(100)); await page.waitForTimeout(400);
@@ -306,6 +341,9 @@ function fakeClock(iso){
   await guard("night", async () => {
     const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, timezoneId: "UTC" });
     await ctx.addInitScript(fakeClock(), "2024-01-15T22:00:00Z");
+    /* a profile with Day and night off, so the night window is 21:00–07:00 and nothing else. A first run
+       follows the phone now: that case is the next section's */
+    await ctx.addInitScript(() => { try { if (!localStorage.getItem("ll_prefs")) localStorage.setItem("ll_prefs", JSON.stringify({ auto: "off" })); } catch(_){} });
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
     await setTheme(page, "day");
@@ -324,7 +362,7 @@ function fakeClock(iso){
     R.check("the slider still remembers the chosen level", (await state(page, "warmth")) === 80 && (await page.$eval("#rWarm", (i) => i.value)) === "80");
     R.check("the hint says it is waiting for the night", /night window/.test(await page.$eval("#warmHint", (h) => h.textContent)));
 
-    /* with Auto on, the window is Auto's own */
+    /* On a schedule, the window is Auto's own hours and nothing else (Follow phone: the next section) */
     await page.evaluate(() => {
       const s = window.__ll.state;
       s.auto = "time"; s.nightFrom = "09:00"; s.nightTo = "18:00";
@@ -335,6 +373,54 @@ function fakeClock(iso){
       (await warmOpacity(page)) > 0);
 
     await page.evaluate(() => { const s = window.__ll.state; s.auto = "off"; window.llType.warmth.setAuto(false); window.llType.warmth.set(0); });
+    R.check("no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
+  /* ---------------- warm at night with Follow phone ---------------- */
+  /* nothing stored, so a first run, on Follow phone. The film's night is then the phone's dark mode and
+     also 21:00–07:00: on a phone that stays light it still comes on at night, as with Day and night off,
+     and a phone set to dark still brings it on by day */
+  section("Warm at night with Follow phone");
+  await guard("night, Follow phone", async () => {
+    const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, timezoneId: "UTC" });
+    await ctx.addInitScript(fakeClock(), "2024-01-15T22:00:00Z");
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    await page.evaluate(() => { window.llType.warmth.set(80); window.llType.warmth.setAuto(true); });
+    await page.waitForTimeout(500);
+    const film = () => page.evaluate(() => { const s = window.__ll.state, W = window.llType.warmth;
+      return { auto: s.auto, theme: s.theme, night: W.isNight(), level: W.level(), a: parseFloat(document.getElementById("warmth").style.opacity || "0"), hint: document.getElementById("warmHint").textContent }; });
+    const late = await film();
+    R.check("a first run on a light phone (Follow phone), at 22:00 with Warm at night on: the film is on, and the hint says so",
+      late.auto === "system" && late.theme === "day" && late.night === true && late.level === 80 && late.a > 0 && /night now/.test(late.hint), JSON.stringify(late));
+
+    await page.evaluate((fn) => { new Function("when", "(" + fn + ")(when)")("2024-01-15T10:00:00Z"); window.llType.warmth.apply(); },
+      String(fakeClock()));
+    await page.waitForTimeout(500);
+    const day = await film();
+    R.check("at 10:00 on the light phone the film is off, and the hint waits for the night window",
+      day.auto === "system" && day.night === false && day.level === 0 && day.a === 0 && /night window/.test(day.hint), JSON.stringify(day));
+
+    /* the phone turns dark: Follow phone shows Dusk, and the film comes on with it */
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForFunction(() => window.__ll.state.theme === "dusk", null, { timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const dark = await film();
+    R.check("at 10:00 a phone set to dark brings Dusk, and the film on with it",
+      dark.theme === "dusk" && dark.night === true && dark.level === 80 && dark.a > 0 && /night now/.test(dark.hint), JSON.stringify(dark));
+
+    /* On a schedule keeps to its own hours and nothing else: neither 21:00–07:00 nor the phone counts */
+    await page.evaluate((fn) => {
+      new Function("when", "(" + fn + ")(when)")("2024-01-15T22:00:00Z");
+      const s = window.__ll.state; s.auto = "time"; s.nightFrom = "09:00"; s.nightTo = "18:00";
+      window.__ll.AutoTheme.apply(); window.llType.warmth.apply();
+    }, String(fakeClock()));
+    await page.waitForTimeout(500);
+    const sched = await film();
+    R.check("On a schedule keeps its own hours: at 22:00, outside 09:00–18:00, the film is off, on a dark phone too",
+      sched.auto === "time" && sched.night === false && sched.level === 0 && sched.a === 0, JSON.stringify(sched));
+    await page.emulateMedia({ colorScheme: "light" });
     R.check("no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
   });
@@ -385,11 +471,13 @@ function fakeClock(iso){
         await page.evaluate(() => window.llPop.sheetAt("#themeGroup")); await page.waitForTimeout(700);
         await shot("theme-group");
         await page.evaluate(() => window.llPop.sheet(false)); await page.waitForTimeout(400);
-        await page.click("#gear"); await page.waitForTimeout(350);
+        /* a phone's reading tools live in the dock the lamp opens (a no-op on a desktop) */
+        const dock = async () => { await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250); };
+        await dock(); await page.click("#gear"); await page.waitForTimeout(350);
         await page.evaluate(() => { document.getElementById("qMore").open = true; }); await page.waitForTimeout(250);
         await shot("type-popover");
         await page.keyboard.press("Escape"); await page.waitForTimeout(300);
-        await page.click("#lamp"); await page.waitForTimeout(350);
+        await dock(); await page.click("#lamp"); await page.waitForTimeout(350);
         await shot("theme-popover");
         await page.keyboard.press("Escape"); await page.waitForTimeout(300);
         await shot("warm-0");

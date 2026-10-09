@@ -4,7 +4,7 @@
    Playwright's clock drives the app's timers, so minutes of reading take a second.
      NODE_PATH=$(npm root -g) node tests/journal.js      (LL_SHOTS=<dir> to choose where screenshots go) */
 const path = require("path"), fs = require("fs"), os = require("os");
-const { serve, browser, openFixture, makeReport } = require("./lib");
+const { serve, browser, openFixture, menuItem, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-journal");
 fs.mkdirSync(SHOTS, { recursive: true });
 const T0 = new Date("2026-09-16T10:00:00");
@@ -17,16 +17,29 @@ async function openPage(ctx, url, time){
   await page.goto(url, { waitUntil: "load" });
   return page;
 }
+/* the page moves ({ by } or { to }) and the app hears of it at once (the dispatched event); the
+   browser's own scroll event, which comes with the next frame, is let in before the clock runs on.
+   Arriving part-way through runFor it restarted the app's settle timers later in the clock's time,
+   and a slow frame was enough to push the end-of-book check past the window a check allows */
+function move(page, how){
+  return page.evaluate((h) => new Promise((res) => {
+    const y0 = window.scrollY;
+    if ("to" in h) window.scrollTo(0, h.to); else window.scrollBy(0, h.by);
+    window.dispatchEvent(new Event("scroll"));
+    if (window.scrollY === y0) return res();
+    window.addEventListener("scroll", function f(e){ if (e.isTrusted){ window.removeEventListener("scroll", f, true); res(); } }, true);
+  }), how);
+}
 /* what a reader does: a small scroll, then fifteen seconds */
 async function read(page, steps){
   for (let i = 0; i < steps; i++){
-    await page.evaluate(() => { window.scrollBy(0, 30); window.dispatchEvent(new Event("scroll")); });
+    await move(page, { by: 30 });
     await page.clock.runFor(15000);
   }
   await page.waitForTimeout(120);
 }
 async function scrollTo(page, y, ms){
-  await page.evaluate((y) => { window.scrollTo(0, y); window.dispatchEvent(new Event("scroll")); }, y);
+  await move(page, { to: y });
   await page.clock.runFor(ms || 1500);
   await page.waitForTimeout(100);
 }
@@ -93,7 +106,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
     es.length === 1 && es[0].stars === 4 && es[0].note === "Loved the ending" && es[0].finished === "2026-09-15" && es[0].started === "2026-09-16" &&
     es[0].book && es[0].title === "The Lamp" && es[0].created > 0 && !(await cardOn(page)), JSON.stringify(es));
   /* once per reading */
-  await page.evaluate(() => { window.scrollBy(0, -300); window.dispatchEvent(new Event("scroll")); });   /* a look back, not a new start */
+  await move(page, { by: -300 });   /* a look back, not a new start */
   await page.clock.runFor(1000);
   await read(page, 14);
   await scrollTo(page, 1e6);
@@ -102,7 +115,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await page.click("#more");
   text = await page.$eval("#moreMenu", (m) => m.innerText);
   R.check("the menu has Mark as finished and Reading journal", /Mark as finished/.test(text) && /Reading journal\s*J/.test(text), text.replace(/\n/g, " "));
-  await page.click("#moreMenu button:has-text('Mark as finished')");
+  await menuItem(page, "Mark as finished");
   st = await page.evaluate(() => ({ on: !!document.querySelector("#finish.on"), focus: document.activeElement.dataset.star, note: document.getElementById("finNote").value, later: document.getElementById("finLater").textContent }));
   R.check("Mark as finished opens the card with the focus on the chosen star, editing this reading's entry",
     st.on && st.focus === "4" && st.note === "Loved the ending" && st.later === "Cancel", JSON.stringify(st));
@@ -170,7 +183,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await openFixture(page, "sample.epub");
   await page.clock.pauseAt(new Date(T0.getTime() + 60000));
   await read(page, 14);
-  await page.evaluate(() => { window.scrollTo(0, 1e6); window.dispatchEvent(new Event("scroll")); });
+  await move(page, { to: 1e6 });
   await page.clock.runFor(650);                    /* the position is saved; the check has not run yet */
   await page.evaluate(() => window.__ll.Library.flush());
   await page.reload({ waitUntil: "load" });
@@ -180,7 +193,7 @@ const title = (page) => page.$eval("#sideTitle", (e) => e.textContent);
   await page.waitForTimeout(400);
   await page.clock.runFor(20000); await page.waitForTimeout(100);
   R.check("a book opened at its end shows no card", !(await cardOn(page)));
-  await page.evaluate(() => { window.scrollBy(0, -400); window.dispatchEvent(new Event("scroll")); });
+  await move(page, { by: -400 });
   await page.clock.runFor(1000);
   await scrollTo(page, 1e6, 2500);
   R.check("coming back to the end: no card at once", !(await cardOn(page)));

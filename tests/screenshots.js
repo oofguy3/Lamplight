@@ -6,8 +6,9 @@ const { serve, browser, newPage, openFixture } = require("./lib");
 const OUT = process.env.LL_SHOT_DIR || path.join(__dirname, "..", "docs", "screenshots");
 fs.mkdirSync(OUT, { recursive: true });
 const only = process.argv.slice(2);
-/* the first-run tips and their toast belong in a first run, not in a picture of the app */
-const QUIET = `(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch (e){} })();`;
+/* the first-run tips and their toast belong in a first run, not in a picture of the app, and so does the
+   one-time toast a first theme of one's own brings while Day and night is on, as it is on a first run */
+const QUIET = `(() => { try { localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); localStorage.setItem("ll_auto_asked", "1"); } catch (e){} })();`;
 const want = (n) => !only.length || only.indexOf(n) >= 0;
 
 /* a believable set of voices: two women, two men, one of each "natural", one compact */
@@ -87,6 +88,9 @@ const STATS = (() => {
     /* pin the first book so the Pinned and Recent groups both show */
     await page.evaluate(() => { const p = document.querySelector('#libList [data-pin]'); if (p) p.click(); });
     await page.waitForTimeout(700);
+    /* the list, drawn again after the pin, puts the focus on the pin, for a keyboard; the picture shows
+       the library at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "library");
     await ctx.close();
   }
@@ -94,7 +98,7 @@ const STATS = (() => {
   if (want("notes")){
     const ctx = await desktop(1100, 760), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "linen");
+    await theme(page, "day");
     await page.evaluate(() => {
       const M = window.__ll.Marks;
       M.addHighlight(40, 190); M.addHighlight(420, 560); M.addHighlight(900, 1010);
@@ -102,23 +106,45 @@ const STATS = (() => {
     await page.waitForTimeout(900);
     await page.evaluate(() => window.__ll.Marks.openPanel());
     await page.waitForTimeout(900);
+    /* the panel gives its search field the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "notes");
     await ctx.close();
   }
-  /* ---- themes: the sheet's Theme group with the editor open ---- */
+  /* ---- themes: Settings › Theme, from its head row (the title and the Day/Night switch) through the
+         six looks, Mine and Day and night, down to where Warmth starts. The device is set to dark, so
+         Follow phone (where a first run starts) wants the night half, and Sea air & Canals is picked:
+         Canals on screen, Night pressed. A theme of one's own waits under Mine: made from Canals, given
+         the editor's lavender page and violet accent, and then replaced on screen by Canals again from
+         the Night theme list. A 640px window still has the sheet's desktop form, and its tiles stay large
+         enough to read at the README's width of 410px ---- */
   if (want("themes")){
-    const ctx = await quiet(await b.newContext({ viewport: { width: 1000, height: 2200 } })), page = await newPage(ctx, url);
+    const ctx = await quiet(await b.newContext({ viewport: { width: 640, height: 2000 }, colorScheme: "dark" })), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "midnight");
-    await page.evaluate(() => window.llThemes.create());
-    await page.waitForTimeout(400);
-    /* the whole editor in one picture: the sheet's own cap (78vh, 900px) lifted, as themes-browser.js does */
+    await page.evaluate(() => window.llThemes.pick("canals"));
+    await page.waitForTimeout(600);
+    /* clicked inside the page: the swatches recolour the theme on screen, and a change of the list is
+       what choosing Canals there does */
+    await page.evaluate(() => {
+      window.llThemes.create();
+      document.querySelector('#bgSwatches .sw[data-c="#EDE7F3"]').click();
+      document.querySelector('#accSwatches .sw[data-c="#A97FD6"]').click();
+      const night = document.getElementById("autoNight");
+      night.value = "canals"; night.dispatchEvent(new Event("change"));
+    });
+    await page.waitForTimeout(900);
+    /* the sheet's own cap (78vh, 900px) lifted, as themes-browser.js does, so the group lies in the
+       window rather than in the sheet's scroll */
     await page.addStyleTag({ content: "#sheet{max-height:none !important;}" });
     await page.evaluate(() => window.llPop.sheetAt("#themeGroup"));
     await page.waitForTimeout(900);
-    const box = await page.evaluate(() => { const a = document.getElementById("themeChips").getBoundingClientRect(), m = document.getElementById("cPrev").getBoundingClientRect();
-      return { x: 0, y: Math.max(0, a.top - 40), w: window.innerWidth, h: Math.min(1750, m.bottom - a.top + 60) }; });
-    await shot(page, "themes", { x: box.x, y: box.y, width: box.w, height: box.h });
+    /* the sheet gives the pressed look the focus, for a keyboard; the picture shows the picker at rest */
+    await page.evaluate(() => document.activeElement.blur());
+    const box = await page.evaluate(() => { const a = document.getElementById("themeL").getBoundingClientRect(), z = document.getElementById("warmRow").getBoundingClientRect();
+      return { y: Math.max(0, a.top - 16), h: z.top - Math.max(0, a.top - 16), vh: window.innerHeight }; });
+    /* a clip past the window's foot comes out cut short, so a picker grown that tall stops the run */
+    if (box.y + box.h > box.vh) throw new Error("themes: the picker ends below the window (" + Math.round(box.y + box.h) + " > " + box.vh + ")");
+    await shot(page, "themes", { x: 0, y: box.y, width: 640, height: box.h });
     await ctx.close();
   }
   /* ---- the type popover: size, spacing, width, weight, letters, words ---- */
@@ -142,6 +168,9 @@ const STATS = (() => {
     await page.evaluate(() => window.llFonts.openPanel());
     await page.waitForTimeout(2200);
     await page.evaluate(() => { document.getElementById("sideBody").scrollTop = 0; });
+    /* the panel gives its first font the focus as it opens, for a keyboard, and the ring would read as a
+       second chosen font; the picture shows the panel at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "fonts");
     await ctx.close();
   }
@@ -175,6 +204,8 @@ const STATS = (() => {
       window.llDict.explainSentence(t.slice(i, j), { start: i, end: j });
     });
     await page.waitForTimeout(2500);
+    /* the card takes the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "explain-phone");
     await ctx.close();
   }
@@ -182,7 +213,7 @@ const STATS = (() => {
   if (want("simplify")){
     const ctx = await desktop(1000, 760), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "parchment");
+    await theme(page, "sepia");
     /* a sentence with something to simplify, shown at the plainest strength */
     await page.evaluate(() => {
       const t = document.getElementById("doc").textContent;
@@ -194,6 +225,8 @@ const STATS = (() => {
     await page.waitForTimeout(1200);
     await page.evaluate(() => { const b = document.querySelector('#simpLevels [data-l="kid"]'); if (b) b.click(); });
     await page.waitForTimeout(1600);
+    /* the card took the focus as it opened, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "simplify");
     await ctx.close();
   }
@@ -215,6 +248,11 @@ const STATS = (() => {
     await theme(page, "sage");
     await page.keyboard.press("i");
     await page.waitForFunction(() => /Flesch/.test(document.getElementById("sideBody").textContent), null, { timeout: 40000 });
+    /* a moment after it opens, the panel gives the focus, for a keyboard, to its first control, its body
+       or its close button, by how far the analysis of the text has got; the picture shows the panel at
+       rest, so the focus is let land and then taken away */
+    await page.waitForFunction(() => document.getElementById("side").contains(document.activeElement));
+    await page.evaluate(() => document.activeElement.blur());
     await shot(page, "about");
     await ctx.close();
   }
@@ -224,8 +262,10 @@ const STATS = (() => {
     await ctx.addInitScript((s) => { localStorage.setItem("ll_stats", JSON.stringify(s)); }, STATS);
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "ocean");
+    await theme(page, "canals");
     await page.keyboard.press("g"); await page.waitForTimeout(1100);
+    /* the panel gives its first control the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "stats");
     await ctx.close();
   }
@@ -237,9 +277,11 @@ const STATS = (() => {
     await page.setInputFiles("#fileInput", ["sample.md", "sample.epub", "sample.txt"].map((f) => path.join(__dirname, "fixtures", f)));
     await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length === 3, null, { timeout: 30000 });
     await page.waitForTimeout(900);
-    await theme(page, "graphite");
+    await theme(page, "forest");
     await page.evaluate(() => window.llStorage.openPanel());
     await page.waitForTimeout(2500);
+    /* the panel gives its first control the focus as it opens, for a keyboard; the picture shows it at rest */
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await shot(page, "storage");
     await ctx.close();
   }
@@ -258,7 +300,7 @@ const STATS = (() => {
     }, ES);
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "parchment");
+    await theme(page, "sepia");
     await page.evaluate(() => window.__ll.need(["translate"]).then(() => window.llTranslate.togglePage()));
     await page.waitForFunction(() => document.querySelectorAll("#doc .ll-tr").length >= 4, null, { timeout: 40000 });
     await page.waitForTimeout(2500);

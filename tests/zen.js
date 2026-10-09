@@ -4,7 +4,7 @@
    own fullscreen exit leave too. Screenshots at desktop and phone width, light and dark, go to
    $LL_SHOTS (default: the OS temp dir).   NODE_PATH=$(npm root -g) node tests/zen.js */
 const path = require("path"), fs = require("fs"), os = require("os");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-zen");
 
 /* headless Chromium never really goes fullscreen; the desktop context has no Fullscreen API at all
@@ -108,10 +108,10 @@ async function clickView(page, sel, fx){
   R.check("second middle tap: no second hint", (await toasts(page, /^Press z or Esc to leave zen mode$/)).length === 1);
   await clickView(page, "#docView", 0.85);
   R.check("edge tap still turns the page", /^3 \//.test(await pgInfo(page)), await pgInfo(page));
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(SHOTS, "zen-desktop-dusk-pages.png") });
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="day"]').click());
+  await dayNight(page, "day");
 
   /* 4. Escape: the card, the panel and the (hidden) sheet first, zen second */
   await page.evaluate(() => window.llDict.defineWord("quietly"));
@@ -171,9 +171,11 @@ async function clickView(page, sel, fx){
   R.check("phone: the text keeps a top inset", (await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById("main")).paddingTop))) === 14);
   await page.waitForTimeout(1900);
   await page.screenshot({ path: path.join(SHOTS, "zen-phone-day.png") });
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await setFlow(page, "pages"); await page.waitForTimeout(500);
-  R.check("phone: pages fill the screen", Math.abs((await viewH(page, "#docView")) - (844 - 26)) <= 2, String(await viewH(page, "#docView")));
+  /* the strip at the foot (the lamp, faint in zen) stays reserved: the pages fill the screen above it */
+  const zp = await page.evaluate(() => { const v = document.getElementById("docView").getBoundingClientRect(), s = document.getElementById("readFoot").getBoundingClientRect(); return { h: Math.round(v.height), bottom: v.bottom, stripTop: s.top }; });
+  R.check("phone: pages fill the screen above the strip", Math.abs(zp.h - (844 - 14 - 92 - 14)) <= 2 && zp.bottom <= zp.stripTop + 1, JSON.stringify(zp));
   await page.screenshot({ path: path.join(SHOTS, "zen-phone-dusk-pages.png") });
   await page.keyboard.press("z"); await page.waitForTimeout(400);
   R.check("phone: z leaves, no fullscreen left behind", !(await zenOn(page)) && (await page.evaluate(() => !document.fullscreenElement)));

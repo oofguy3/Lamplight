@@ -5,7 +5,7 @@
    (default: the OS temp dir).
      NODE_PATH=$(npm root -g) node tests/explain2.js */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-explain2");
 
 const SENTENCE = "Outside, the unexpected rain had started again, and the street lights made the puddles glitter like spilled coins.";
@@ -73,7 +73,6 @@ async function openOn(page, text, tab){
   const b = await browser();
   const R = makeReport();
   const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, name + ".png") });
-  const setTheme = (page, key) => page.evaluate((k) => document.querySelector('#themeChips [data-theme="' + k + '"]').click(), key);
 
   /* ---- desktop ---- */
   const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
@@ -170,7 +169,7 @@ async function openOn(page, text, tab){
     R.check("…and with no level it uses the one the reader chose", api2.level === "light" && api2.text === "She smiled, although she was tired.", JSON.stringify(api2));
 
     /* dusk */
-    await setTheme(page, "dusk");
+    await dayNight(page, "night");
     await page.click('#simpLevels [data-l="kid"]');
     await page.waitForFunction(() => { const c = document.querySelector('#simpLevels [data-l="kid"]'); return c && c.getAttribute("aria-pressed") === "true"; }, null, { timeout: 20000 });
     await page.waitForTimeout(600);
@@ -230,7 +229,7 @@ async function openOn(page, text, tab){
     const marked = await page.evaluate(() => (document.querySelector("#dictQuote mark.fig") || {}).textContent || null);
     R.check("phone: tapping a device row marks the quote", /spilled coins/.test(marked || ""), String(marked));
     await shot(page, "explain2-phone-day-style");
-    await setTheme(page, "dusk");
+    await dayNight(page, "night");
     await page.waitForTimeout(500);
     await shot(page, "explain2-phone-dusk-style");
     await page.click('#dictCard [role=tab][data-m="simplify"]');

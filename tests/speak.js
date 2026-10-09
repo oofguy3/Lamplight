@@ -10,7 +10,7 @@
    and every utterance is logged; the Media Session and <audio> are stubbed the same way.
    Screenshots go to $LL_SHOTS (default: the OS temp dir). */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-speak");
 
 const STUB = `(function(){
@@ -89,11 +89,6 @@ const V = {
     await page.evaluate((o) => { window.__speakLog.length = 0; window.__ll.Speak.start(o + 1); }, off);
     await page.waitForFunction((n) => window.__speakLog.length >= n, count, { timeout: 20000 }).catch(() => null);
     return page.evaluate(() => window.__speakLog.slice());
-  }
-  async function setTheme(page, key){
-    await page.keyboard.press("s"); await page.waitForTimeout(150);
-    await page.click('#themeChips .chip[data-theme="' + key + '"]'); await page.waitForTimeout(150);
-    await page.keyboard.press("Escape"); await page.waitForTimeout(250);
   }
   async function openVoices(page){
     await page.click("#ttsVoiceBtn");
@@ -591,7 +586,7 @@ const V = {
 
     /* ---- 6. dark theme screenshots ---- */
     await openFixture(page, "sample.md");
-    await setTheme(page, "dusk");
+    await dayNight(page, "night"); await page.waitForTimeout(400);
     await startBar(page);
     await readFrom(page, "He asked, “Are you coming?”", 2);
     await page.evaluate(() => window.__ll.Speak.pause());
@@ -599,7 +594,7 @@ const V = {
     await openVoices(page);
     await shot(page, "panel-1200-dusk");
     await page.keyboard.press("Escape");
-    await setTheme(page, "day");
+    await dayNight(page, "day"); await page.waitForTimeout(400);
     await page.close();
   } catch (err){ R.check("desktop (exception)", false, String(err).split("\n")[0]); }
   await ctx.close();
@@ -649,7 +644,7 @@ const V = {
     const chap = await page.evaluate(() => ({ log: window.__speakLog.map((e) => e.text), active: window.__ll.Speak.isActive(), chip: document.getElementById("ttsSleep").hidden }));
     R.check("End of chapter stops right before the next heading", cch.text === "Stops at end of chapter" && JSON.stringify(chap.log) === JSON.stringify(["The Lamp", "A short sample book for Lamplight."]) && !chap.active && chap.chip, JSON.stringify([cch.text, chap]));
     /* dark theme shots with a timer set */
-    await setTheme(page, "dusk");
+    await dayNight(page, "night"); await page.waitForTimeout(400);
     await startBar(page);
     await openVoices(page);
     await page.click('#ttsSleepChips .chip[data-sleep="30"]'); await page.waitForTimeout(50);
@@ -697,7 +692,7 @@ const V = {
     R.check("phone: the timer is a badge on the voice reading “15 min”, the full sentence its name; still one row",
       !pc.hidden && !pc.prefixShown && pc.text === "15 min" && pc.label === "Stops in 15 min — sleep timer" && badge.on && badge.inside && prow.rows.length === 1 && JSON.stringify(prow.dom) === JSON.stringify(prow.visual) && !prow.overflow, JSON.stringify([pc, badge, prow.rows]));
     await shot(page, "sleep-bar-390-day");
-    await setTheme(page, "dusk");
+    await dayNight(page, "night"); await page.waitForTimeout(400);
     await shot(page, "sleep-bar-390-dusk");
     await openVoices(page);
     await shot(page, "sleep-panel-390-dusk");

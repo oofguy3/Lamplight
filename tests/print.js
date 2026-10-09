@@ -4,7 +4,7 @@
    window.print(), a PDF opens in a new tab; the entry only shows with a document open.
    Screenshots go to $LL_SHOTS (default: the OS temp dir).   NODE_PATH=$(npm root -g) node tests/print.js */
 const path = require("path"), fs = require("fs"), os = require("os");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, dayNight, makeReport } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-print");
 
 const menuLabels = (page) => page.evaluate(() => { document.getElementById("more").click(); const items = Array.from(document.querySelectorAll("#moreMenu button")).map((b) => b.textContent); document.getElementById("more").click(); return items; });
@@ -55,7 +55,7 @@ const layout = (page) => page.evaluate(() => {
   await page.waitForTimeout(200);
   const p = await layout(page);
   R.check("print: header, sheet and pager not displayed", (await display(page, "header")) === "none" && (await display(page, "#sheet")) === "none" && (await display(page, "#pager")) === "none");
-  R.check("print: the bars, panels and readouts not displayed", await page.evaluate(() => ["#tts", "#autoBar", "#side", "#progress", "#progressInfo", "#ruler", "#dictCard", "#dictPill", "#markPop", "#pdf", ".skip", "#empty", "#library"].every((s) => getComputedStyle(document.querySelector(s)).display === "none")));
+  R.check("print: the bars, panels and readouts not displayed", await page.evaluate(() => ["#tts", "#autoBar", "#side", "#progress", "#progressInfo", "#ruler", "#dictCard", "#dictPill", "#markPop", "#pdf", ".skip", "#empty", "#library", "#readFoot", "#phoneDockScrim", "#phoneDock"].every((s) => getComputedStyle(document.querySelector(s)).display === "none")));
   R.check("print: #doc has column-count auto", p.columns === "auto", p.columns);
   R.check("print: the view's height is auto (the inline height is overridden, the text runs down the page)", p.viewInline !== "" && Math.abs(p.viewH - p.docH) < 2 && p.docH > p.inner && !p.wide, JSON.stringify({ inline: p.viewInline, viewH: p.viewH, docH: p.docH, wide: p.wide }));
   R.check("print: black on white", p.bodyBg === "rgb(255, 255, 255)" && p.bodyColor === "rgb(0, 0, 0)" && p.docColor === "rgb(0, 0, 0)", p.bodyBg + " / " + p.bodyColor + " / " + p.docColor);
@@ -70,7 +70,7 @@ const layout = (page) => page.evaluate(() => {
   R.check("beforeprint: body.printing in Pages flow", bp.printing);
   await page.screenshot({ path: path.join(SHOTS, "print-desktop-day.png") });
   /* a dark theme prints the same */
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await page.waitForTimeout(450);
   const dark = await layout(page);
   R.check("print: still black on white in a dark theme", dark.bodyBg === "rgb(255, 255, 255)" && dark.bodyColor === "rgb(0, 0, 0)", dark.bodyBg + " / " + dark.bodyColor);
@@ -93,7 +93,7 @@ const layout = (page) => page.evaluate(() => {
   /* 3. the entry on a text document calls window.print() */
   await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
   await page.click("#more");
-  await page.click("#moreMenu button:has-text('Print')");
+  await menuItem(page, "Print");
   await page.waitForTimeout(150);
   R.check("Print… on a text document calls window.print()", (await page.evaluate(() => window.__printed)) === 1 && !(await page.evaluate(() => document.getElementById("moreMenu").classList.contains("open"))));
   R.check("no page errors (text)", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -114,7 +114,7 @@ const layout = (page) => page.evaluate(() => {
     if (tab) await tab.close().catch(() => null);
     return { tab: !!tab, urls };
   };
-  const viaMenu = await opened(async () => { await page.click("#more"); await page.click("#moreMenu button:has-text('Print')"); });
+  const viaMenu = await opened(async () => { await page.click("#more"); await menuItem(page, "Print"); });
   R.check("pdf: the entry opens a new tab on a blob: URL", viaMenu.tab && viaMenu.urls.some((u) => /^blob:http/.test(u)), JSON.stringify(viaMenu));
   R.check("pdf: the toast mentions the new tab", /new tab/.test(await toast(page)), await toast(page));
   const viaKey = await opened(async () => { await page.keyboard.press("Control+p"); });
@@ -134,7 +134,7 @@ const layout = (page) => page.evaluate(() => {
   const ph = await layout(page);
   R.check("phone print: one column, black on white, title line", ph.columns === "auto" && ph.bodyBg === "rgb(255, 255, 255)" && ph.head.text === "The Lamp" && !ph.wide, JSON.stringify({ columns: ph.columns, bg: ph.bodyBg, head: ph.head, wide: ph.wide }));
   await page.screenshot({ path: path.join(SHOTS, "print-phone-day.png") });
-  await page.evaluate(() => document.querySelector('#themeChips [data-theme="dusk"]').click());
+  await dayNight(page, "night");
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(SHOTS, "print-phone-dusk.png") });
   R.check("no page errors (phone)", !(page._errors || []).length, (page._errors || []).join(" | "));

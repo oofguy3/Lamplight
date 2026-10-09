@@ -3,7 +3,7 @@
    the toasts. Headless Chromium has no voices, so speech is stubbed. Screenshots go to $LL_SHOTS
    (default: the OS temp dir). */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, makeReport, PARSE_COLOR } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-ui-b");
 
 const STUB = `(function(){
@@ -92,7 +92,7 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.keyboard.press("Escape");
     await page.evaluate(() => window.__ll.Speak.stop());
     /* Settings from the menu opens the sheet */
-    await page.click("#more"); await page.click("#moreMenu button:has-text('Settings')"); await page.waitForTimeout(200);
+    await page.click("#more"); await menuItem(page, "Settings"); await page.waitForTimeout(200);
     R.check("Settings opens the sheet", await isOpen(page, "#sheet"));
     await page.keyboard.press("Escape");
     R.check("desktop menu: no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -105,7 +105,9 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
   try {
     const page = await newPage(phone, url);
     await openFixture(page, "sample.md");
-    await page.click("#more"); await page.waitForTimeout(350);
+    /* on a phone ⋯ (More) is a tool in the dock the lamp opens */
+    const dock = async () => { await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250); };
+    await dock(); await page.click("#more"); await page.waitForTimeout(350);
     const m = await page.evaluate(() => {
       const r = document.getElementById("moreMenu").getBoundingClientRect(), sc = document.getElementById("moreScrim");
       const tiles = Array.from(document.querySelectorAll("#moreMenu .menu-group:not(.menu-quick) button[role=menuitem]")).map((b) => b.getBoundingClientRect());
@@ -121,15 +123,17 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     });
     R.check("phone: a bottom sheet — at the viewport's foot, full width, at most 85vh, scrollable", Math.abs(m.bottom - m.inner) < 1 && m.left === 0 && m.width === m.iw && m.height <= m.inner * 0.85 + 1 && m.scrollable, JSON.stringify(m));
     R.check("phone: tiles ≥ 44 px in three columns, key hints hidden, a handle and a scrim", m.minH >= 44 && m.cols === 3 && m.kbd === "none" && m.grab && m.scrim, JSON.stringify(m));
-    R.check("phone: four large quick tiles first — Read aloud, Bookmark here, Contents, Previously… — in one row",
-      m.quick.join(" / ") === "Read aloud / Bookmark here / Contents / Previously…" && m.quickCols === 4 && m.quickH >= 84, JSON.stringify([m.quick, m.quickCols, m.quickH]));
+    /* while reading, the dock has Read aloud and Contents: the sheet's quick row keeps the other two */
+    R.check("phone: two large quick tiles first — Bookmark here, Previously… — in one row",
+      m.quick.join(" / ") === "Bookmark here / Previously…" && m.quickCols === 2 && m.quickH >= 84, JSON.stringify([m.quick, m.quickCols, m.quickH]));
     R.check("phone: then Reading, Tools and Lamplight, with Print, Storage and Close document last and Settings as the gear in the head",
       m.groups.join(" | ") === "Reading | Tools | Lamplight" && m.last.join(" / ") === "Print… / Storage / Close document" && m.gear && m.gear.label === "Settings" && m.gear.w === 48 && m.gear.icon, JSON.stringify([m.groups, m.last, m.gear]));
-    R.check("phone: focus on the first tile, arrows move through them", (await active(page)) === "Read aloud" && (await (async () => { await page.keyboard.press("ArrowRight"); return (await active(page)) === "Bookmark here"; })()));
+    R.check("phone: focus on the first tile, arrows move through them", (await active(page)) === "Bookmark here" && (await (async () => { await page.keyboard.press("ArrowRight"); return (await active(page)) === "Previously…"; })()));
     await shot(page, "menu-390-dusk");
     await page.mouse.click(195, 100); await page.waitForTimeout(200);
-    R.check("phone: a tap on the scrim closes it and focus returns to ⋯", !(await isOpen(page, "#moreMenu")) && (await active(page)) === "more", await active(page));
-    await page.click("#more"); await page.waitForTimeout(200);
+    /* ⋯ is in the closed dock by then: focus goes back to the lamp that opened it */
+    R.check("phone: a tap on the scrim closes it and focus returns to the lamp", !(await isOpen(page, "#moreMenu")) && (await active(page)) === "dockBtn", await active(page));
+    await dock(); await page.click("#more"); await page.waitForTimeout(200);
     await page.click("#moreMenu .menu-grab"); await page.waitForTimeout(200);
     R.check("phone: the handle closes it", !(await isOpen(page, "#moreMenu")));
     /* a toast is as wide as its words (up to the margins), not the half of the screen right of the middle */
@@ -318,15 +322,17 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length === 2 && document.getElementById("docView").style.display === "block", null, { timeout: 20000 });
     await page.waitForTimeout(400);
     await page.mouse.move(200, 500); await page.mouse.wheel(0, 60); await page.waitForTimeout(400);
-    const h = await page.evaluate(() => ({ headH: getComputedStyle(document.documentElement).getPropertyValue("--headH").trim(), header: document.querySelector("header").offsetHeight + "px",
-      pillTop: document.getElementById("progressInfo").getBoundingClientRect().top, tabsBottom: document.getElementById("tabs").getBoundingClientRect().bottom, on: document.getElementById("progressInfo").classList.contains("on") }));
-    R.check("phone, two tabs: --headH is the taller header and the progress pill sits under the tabs strip", h.headH === h.header && h.on && h.pillTop >= h.tabsBottom, JSON.stringify(h));
+    /* a phone while reading has no header: --headH is 0, the tabs fold into the dock's title, and the
+       lamp's ring and note stand in for the progress pill */
+    const h = await page.evaluate(() => ({ phone: document.body.classList.contains("phonebar"), headH: getComputedStyle(document.documentElement).getPropertyValue("--headH").trim(), header: document.querySelector("header").offsetHeight,
+      tabs: getComputedStyle(document.getElementById("tabs")).display, pill: getComputedStyle(document.getElementById("progressInfo")).display }));
+    R.check("phone, two tabs: no header (--headH 0px), the tabs fold away, no progress pill", h.phone && h.headH === "0px" && h.header === 0 && h.tabs === "none" && h.pill === "none", JSON.stringify(h));
     await page.close();
   } catch (err){ R.check("tabs strip height (exception)", false, String(err).split("\n")[0]); }
   await tabsCtx.close();
 
   /* ---------------- 5. toasts: one style, readable on the hard themes ---------------- */
-  for (const theme of ["candle", "terminal", "newsprint", "hidark"]){
+  for (const theme of ["cocoa", "forest", "sepia", "hidark"]){
     const ctx = await context(1200, 800, theme);
     try {
       const page = await newPage(ctx, url);
@@ -369,16 +375,18 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
   }
 
   /* ---------------- 5b. the menu's key hints and the search list's current row read on the hard themes ---------------- */
-  /* text on a translucent tint: the tint over what is behind it, then the text over that */
+  /* text on a translucent tint: the tint over what is behind it, then the text over that (null when a
+     colour can't be read) */
   const TINTED = `(el, tint, behind) => {
-    const parse = (s) => { if (/^color\\(srgb/.test(s)){ const m = s.match(/[\\d.]+/g).map(Number); return { rgb: m.slice(0, 3).map((c) => c * 255), a: m.length > 3 ? m[3] : 1 }; }
-      const m = (s.match(/[\\d.]+/g) || [0, 0, 0]).map(Number); return { rgb: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; };
+    const parseColor = ${PARSE_COLOR};
     const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
     const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-    const base = parse(getComputedStyle(behind).backgroundColor).rgb, bg = over(parse(getComputedStyle(tint).backgroundColor), base), fg = over(parse(getComputedStyle(el).color), bg);
+    const base = parseColor(getComputedStyle(behind).backgroundColor), wash = parseColor(getComputedStyle(tint).backgroundColor), ink = parseColor(getComputedStyle(el).color);
+    if (!base || !wash || !ink) return null;
+    const bg = over(wash, base.rgb), fg = over(ink, bg);
     const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
   }`;
-  for (const theme of ["day", "dusk", "newsprint", "terminal", "ink", "slate"]){
+  for (const theme of ["day", "dusk", "sepia", "forest", "ink", "canals"]){
     const ctx = await context(1200, 800, theme);
     try {
       const page = await newPage(ctx, url);
@@ -401,11 +409,12 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
 
   /* ---------------- 6. pictures: the four themes, desktop and phone ---------------- */
   for (const [w, h, tag] of [[1200, 800, "1200"], [390, 844, "390"]]){
-    for (const theme of ["day", "dusk", "newsprint", "terminal"]){
+    for (const theme of ["day", "dusk", "paper", "forest"]){
       const ctx = await context(w, h, theme);
       try {
         const page = await newPage(ctx, url);
         await openFixture(page, "sample.md");
+        await page.evaluate(() => window.__ll.PhoneBar.openDock()); await page.waitForTimeout(250);   /* a phone: ⋯ is in the dock (a no-op on a desktop) */
         await page.click("#more"); await shot(page, "menu-" + tag + "-" + theme);
         await page.keyboard.press("Escape"); await page.waitForTimeout(100);
         await page.keyboard.press("c"); await shot(page, "panel-" + tag + "-" + theme);
