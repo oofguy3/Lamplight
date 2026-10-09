@@ -73,3 +73,20 @@ with a ceiling under 0.2; fonts' colour parser cannot read oklab(); ui-a's custo
 smooth-scroll timing; i18n's audiobook.js keys; translate's pack download and ui-c's three timeouts and the
 dictionary card height depend on the machine and the network; pace's K6 counts animation frames. A check listed
 here may pass later; a check not listed must keep passing unless a task rewrites it.
+
+After Task 1 (tests/lib.js's parseColor reads oklab(); fonts.js, ui-b.js and ui-c.js use it). These results
+replace the three suites' lines above:
+  fonts.js: 89/89 (one check added, "parseColor reads oklab"; its two oklab checks now pass, min 5.96 on both)
+  ui-b.js: 117/117
+  ui-c.js: 46/50, the same four failures as above
+
+The fixed parser reveals no failing dark-theme check on today's colours. The ratios the old parser overstated
+come down but stay above 4.5:1. In ui-b, the current search result reads 7.18 on dusk (the old parser said
+10.95), 6.65 on terminal (11.54), 7.73 on ink (10.52) and 6.78 on slate (10.4).
+ui-c's two tint loops still stop at their timeouts before any dark theme, so the suite doesn't reach those
+checks here. A scratch copy that waits 900 ms after each theme click instead of 150 ms runs them all. They
+pass with the fixed parser: candle's quote 7.27 (was 15.7), its chip and badge 6.64 (11.33); terminal's quote
+7.75 (12.98), its chip and badge 6.65 (11.54); the lowest is terminal's idle tab at 5.56, which the old parser
+read the same. In that copy the three timeouts are gone. They come from the 150 ms wait ending inside the theme
+chip's 200 ms cross-fade, not from the machine or the network: with reduced motion (no fade) and the 150 ms
+wait kept, the desktop and keys sections also run through.

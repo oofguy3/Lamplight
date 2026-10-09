@@ -3,7 +3,7 @@
    the toasts. Headless Chromium has no voices, so speech is stubbed. Screenshots go to $LL_SHOTS
    (default: the OS temp dir). */
 const fs = require("fs"), os = require("os"), path = require("path");
-const { serve, browser, newPage, openFixture, menuItem, makeReport } = require("./lib");
+const { serve, browser, newPage, openFixture, menuItem, makeReport, PARSE_COLOR } = require("./lib");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-ui-b");
 
 const STUB = `(function(){
@@ -375,13 +375,15 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
   }
 
   /* ---------------- 5b. the menu's key hints and the search list's current row read on the hard themes ---------------- */
-  /* text on a translucent tint: the tint over what is behind it, then the text over that */
+  /* text on a translucent tint: the tint over what is behind it, then the text over that (null when a
+     colour can't be read) */
   const TINTED = `(el, tint, behind) => {
-    const parse = (s) => { if (/^color\\(srgb/.test(s)){ const m = s.match(/[\\d.]+/g).map(Number); return { rgb: m.slice(0, 3).map((c) => c * 255), a: m.length > 3 ? m[3] : 1 }; }
-      const m = (s.match(/[\\d.]+/g) || [0, 0, 0]).map(Number); return { rgb: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; };
+    const parseColor = ${PARSE_COLOR};
     const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
     const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-    const base = parse(getComputedStyle(behind).backgroundColor).rgb, bg = over(parse(getComputedStyle(tint).backgroundColor), base), fg = over(parse(getComputedStyle(el).color), bg);
+    const base = parseColor(getComputedStyle(behind).backgroundColor), wash = parseColor(getComputedStyle(tint).backgroundColor), ink = parseColor(getComputedStyle(el).color);
+    if (!base || !wash || !ink) return null;
+    const bg = over(wash, base.rgb), fg = over(ink, bg);
     const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
   }`;
   for (const theme of ["day", "dusk", "newsprint", "terminal", "ink", "slate"]){

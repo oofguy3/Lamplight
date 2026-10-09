@@ -6,7 +6,7 @@
    text or in Pages flow go in as one batch.
    Service workers are blocked in the test contexts so the requests seen are the page's own
    (the worker precaches every font by design). Screenshots go to $LL_SHOTS or the temp dir. */
-const { serve, browser, openFixture, makeReport, ROOT } = require("./lib");
+const { serve, browser, openFixture, makeReport, parseColor, PARSE_COLOR, ROOT } = require("./lib");
 const fs = require("fs"), path = require("path"), os = require("os");
 const SHOTS = process.env.LL_SHOTS || path.join(os.tmpdir(), "lamplight-shots");
 const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
@@ -123,25 +123,27 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     R.check("the panel choice is remembered", (await page.evaluate(() => JSON.parse(localStorage.getItem("ll_prefs")).font)) === "lora");
     R.check("a chosen font gets its italic face too", woff(page).indexOf("lora-latin-wght-italic.woff2") >= 0, woff(page).join(", "));
     R.check("a merely previewed font did not", woff(page).indexOf("source-serif-4-latin-wght-italic.woff2") < 0, woff(page).join(", "));
+    /* the shared colour parser reads what Chromium reports for a colour mixed in oklab (an oklab()
+       value, here Dusk's accent #D8A24A at 18%) and in srgb (a color(srgb …) value) */
+    const p = parseColor("oklab(0.7466 0.0274 0.1192 / 0.18)");
+    R.check("parseColor reads oklab", p && p.rgb.map(Math.round).join() === "216,162,74" && p.a === 0.18 &&
+      parseColor("oklab(0 0 0)").rgb.map(Math.round).join() === "0,0,0" && parseColor("oklab(1 0 0)").rgb.map(Math.round).join() === "255,255,255" &&
+      parseColor("color(srgb 1 0.5 0 / 0.5)").rgb.join() === "255,127.5,0", JSON.stringify(p));
     /* the note on the current (tinted) row and on a hovered row must read at 4.5:1 on every theme:
-       the row's translucent background is composited over the panel, then WCAG contrast */
+       the row's translucent background is composited over the panel, then WCAG contrast. This runs
+       in the page, so it rebuilds the shared parser from its source */
     const noteContrast = async (sel, hover) => {
       if (hover) await page.hover(sel);
-      return page.$eval(sel, (row) => {
-        const parse = (c) => {
-          const m = /^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/.exec(c) || /^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)$/.exec(c);
-          if (!m) return null;
-          const k = /^color/.test(c) ? 255 : 1;
-          return { r: m[1] * k, g: m[2] * k, b: m[3] * k, a: m[4] === undefined ? 1 : +m[4] };
-        };
-        const over = (fg, bg) => ({ r: fg.r * fg.a + bg.r * (1 - fg.a), g: fg.g * fg.a + bg.g * (1 - fg.a), b: fg.b * fg.a + bg.b * (1 - fg.a) });
-        const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
-        const panel = parse(getComputedStyle(document.getElementById("side")).backgroundColor);
-        const rowBg = parse(getComputedStyle(row).backgroundColor), note = parse(getComputedStyle(row.querySelector(".font-note")).color);
+      return page.$eval(sel, (row, src) => {
+        const parseColor = eval("(" + src + ")");
+        const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
+        const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+        const panel = parseColor(getComputedStyle(document.getElementById("side")).backgroundColor);
+        const rowBg = parseColor(getComputedStyle(row).backgroundColor), note = parseColor(getComputedStyle(row.querySelector(".font-note")).color);
         if (!panel || !rowBg || !note) return null;
-        const l1 = lum(note), l2 = lum(over(rowBg, panel));
+        const l1 = lum(note.rgb), l2 = lum(over(rowBg, panel.rgb));
         return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-      });
+      }, PARSE_COLOR);
     };
     const themeBefore = await page.evaluate(() => window.__ll.state.theme);
     const themes = await page.evaluate(() => Object.keys(window.llThemes.THEMES));
