@@ -287,6 +287,23 @@ async function textPoint(page, word){
     await page.goto(url + "?action=continue", { waitUntil: "load" });
     await page.waitForFunction(() => document.getElementById("docView").style.display === "block", null, { timeout: 15000 }).catch(() => null);
     R.check("?action=continue reopens the last file", /sample\.txt/.test(await page.title()), await page.title());
+    /* the Storage panel names the version in use */
+    await page.evaluate(() => window.__ll.Menu.open ? window.__ll.Menu.open() : document.getElementById("more").click()); await page.waitForTimeout(300);
+    await page.evaluate(() => { const b = Array.from(document.querySelectorAll("#moreMenu button")).filter((x) => /^Storage$/.test((x.querySelector("span") || {}).textContent || ""))[0]; if (b) b.click(); });
+    await page.waitForFunction(() => { const el = document.getElementById("soVersion"); return el && !el.hidden; }, null, { timeout: 10000 }).catch(() => null);
+    const shownV = await page.evaluate(() => (document.getElementById("soVersion") || {}).textContent || "");
+    R.check("the Storage panel shows the version in use", shownV === "Lamplight version 9999.test-1", shownV);
+    await page.keyboard.press("Escape");
+    /* a further release found on the library screen takes over by itself: the page reloads on to it, no toast to tap */
+    await page.goto(url, { waitUntil: "load" });
+    await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 30000 }).catch(() => null);
+    swVersion = "9999.test-2";
+    const nav2 = page.waitForNavigation({ waitUntil: "load", timeout: 30000 }).catch(() => null);
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
+    const reloaded = await nav2;
+    await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 30000 }).catch(() => null);
+    const v3 = await page.evaluate(() => new Promise((res) => { navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.type === "VERSION") res(e.data.version); }); navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }); setTimeout(() => res(null), 3000); }));
+    R.check("a new version found on the library screen takes over by itself (the page reloads on to it)", !!reloaded && v3 === "9999.test-2", String(v3));
     R.check("no page errors (offline/updates)", !(page._errors || []).length, (page._errors || []).join(" | "));
     swVersion = null;
     await ctx.close();

@@ -974,6 +974,7 @@
     "{n} theme": "{n} thema",
     "{n} themes": "{n} thema’s",
     "Keeping it": "Bewaren",
+    "Lamplight version {v}": "Lamplight-versie {v}",
     "This browser doesn’t say whether it keeps storage.": "Deze browser zegt niet of hij de opslag bewaart.",
     "Storage is persistent — the browser won’t clear it on its own.": "De opslag is blijvend — de browser wist hem niet uit zichzelf.",
     "Storage may be cleared by the browser when space is low.": "De browser kan de opslag wissen als de ruimte opraakt.",

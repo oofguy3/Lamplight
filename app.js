@@ -9142,8 +9142,10 @@
          : o.persisted ? _t("Storage is persistent — the browser won’t clear it on its own.")
          : _t("Storage may be cleared by the browser when space is low.")) + '</div>' +
         (o.persisted === false ? '<div class="so-acts"><button type="button" class="chip" data-so="persist">' + _t("Request persistent storage") + '</button></div>' : '') +
-        '</section>';
+        '<div class="so-line" id="soVersion" hidden></div></section>';
       body.innerHTML = h;
+      /* the version in use, from the worker that serves the app (so a reader can see an update has landed) */
+      if (Updates) Updates.version().then(function(v){ var el = $("#soVersion"); if (el && v){ el.textContent = _t("Lamplight version {v}", { v: v }); el.hidden = false; } });
       foot.innerHTML = '<button type="button" class="chip so-danger" data-so="wipe">' + _t("Clear everything…") + '</button>';
     }
     /* redraw in place: the scroll position and the focused button survive */
@@ -14480,8 +14482,9 @@
 
   /* ---------- offline install + updates ----------
      Only active when hosted (https), harmless as a local file. A new service worker
-     installs in the background; when it is ready we offer a reload rather than
-     switching under the reader's feet. */
+     installs in the background. On the library screen it takes over at once (nothing is open
+     that a reload could lose); while a book is open we offer a reload rather than switching
+     under the reader's feet. */
   var Updates = (function(){
     var reg = null, toastEl = null, reloading = false, wantReload = false;
     /* a first install claims the page too (clients.claim) — that must not reload it */
@@ -14503,28 +14506,45 @@
       };
       setH();
       if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(toastEl); }
-      toastEl.querySelector("#updateReload").addEventListener("click", function(){
-        wantReload = true;
-        if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-        else location.reload();
-      });
+      toastEl.querySelector("#updateReload").addEventListener("click", applyNow);
       toastEl.querySelector("#updateLater").addEventListener("click", function(){
         if (ro) ro.disconnect();
         document.body.style.removeProperty("--updateH");
         toastEl.remove(); toastEl = null;
       });
     }
+    /* the waiting worker takes over, and the page reloads on to it (controllerchange below) */
+    function applyNow(){
+      wantReload = true;
+      if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+      else location.reload();
+    }
+    /* a new version is ready: at once on the library screen, offered while a book is open or opening */
+    function ready(){
+      if (state.mode === "empty" && !state.opening) applyNow(); else toast();
+    }
     function watch(worker){
       if (!worker) return;
       worker.addEventListener("statechange", function(){
-        if (worker.state === "installed" && navigator.serviceWorker.controller) toast();
+        if (worker.state === "installed" && navigator.serviceWorker.controller) ready();
+      });
+    }
+    /* the version the page runs on, asked of the worker that serves it (null without one) */
+    function version(){
+      return new Promise(function(res){
+        var sw = navigator.serviceWorker, c = sw && sw.controller, done = false;
+        if (!c) return res(null);
+        var onMsg = function(e){ if (e.data && e.data.type === "VERSION" && !done){ done = true; sw.removeEventListener("message", onMsg); res(e.data.version); } };
+        sw.addEventListener("message", onMsg);
+        try { c.postMessage({ type: "GET_VERSION" }); } catch(_){ done = true; sw.removeEventListener("message", onMsg); return res(null); }
+        setTimeout(function(){ if (!done){ done = true; sw.removeEventListener("message", onMsg); res(null); } }, 2000);
       });
     }
     function register(){
       if (!("serviceWorker" in navigator) || !window.isSecureContext) return;   /* https, or localhost while developing */
       navigator.serviceWorker.register("./sw.js").then(function(r){
         reg = r;
-        if (r.waiting && navigator.serviceWorker.controller) toast();
+        if (r.waiting && navigator.serviceWorker.controller) ready();
         watch(r.installing);
         r.addEventListener("updatefound", function(){ watch(r.installing); });
         /* look for updates now and then, and whenever the reader comes back */
@@ -14538,7 +14558,7 @@
         location.reload();
       });
     }
-    return { register: register, hasToast: function(){ return !!toastEl; }, offer: toast };
+    return { register: register, hasToast: function(){ return !!toastEl; }, offer: toast, version: version };
   })();
   Updates.register();
   if (window.__ll) window.__ll.Updates = Updates;
