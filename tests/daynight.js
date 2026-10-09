@@ -70,8 +70,8 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   /* 4. from a theme that is neither: a light one goes to night, a dark one to day */
   await select(page, "paper"); await press(page, "t");
   R.check("light theme that is neither (paper): t goes to the night theme", (await theme(page)) === "dusk", await theme(page));
-  await select(page, "ember"); await press(page, "t");
-  R.check("dark theme that is neither (ember): t goes to the day theme", (await theme(page)) === "day", await theme(page));
+  await select(page, "forest"); const f0 = await theme(page); await press(page, "t");
+  R.check("dark theme that is neither (forest): t goes to the day theme", f0 === "forest" && (await theme(page)) === "day", f0 + " → " + await theme(page));
 
   /* 5. high contrast stays high contrast, unless the pair itself holds a contrast theme */
   await select(page, "hicon"); await press(page, "t"); const x = await theme(page); await press(page, "t"); const y = await theme(page);

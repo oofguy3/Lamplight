@@ -332,7 +332,7 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
   await tabsCtx.close();
 
   /* ---------------- 5. toasts: one style, readable on the hard themes ---------------- */
-  for (const theme of ["candle", "terminal", "newsprint", "hidark"]){
+  for (const theme of ["cocoa", "forest", "sepia", "hidark"]){
     const ctx = await context(1200, 800, theme);
     try {
       const page = await newPage(ctx, url);
@@ -386,7 +386,7 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
     const bg = over(wash, base.rgb), fg = over(ink, bg);
     const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
   }`;
-  for (const theme of ["day", "dusk", "newsprint", "terminal", "ink", "slate"]){
+  for (const theme of ["day", "dusk", "sepia", "forest", "ink", "canals"]){
     const ctx = await context(1200, 800, theme);
     try {
       const page = await newPage(ctx, url);
@@ -409,7 +409,7 @@ function contrast(a, b){ const la = lum(a), lb = lum(b); if (la === null || lb =
 
   /* ---------------- 6. pictures: the four themes, desktop and phone ---------------- */
   for (const [w, h, tag] of [[1200, 800, "1200"], [390, 844, "390"]]){
-    for (const theme of ["day", "dusk", "newsprint", "terminal"]){
+    for (const theme of ["day", "dusk", "paper", "forest"]){
       const ctx = await context(w, h, theme);
       try {
         const page = await newPage(ctx, url);

@@ -282,11 +282,25 @@ function fakeClock(iso){
       W.set(0); window.llThemes.select(keep);
       return out;
     });
-    const low = audit.filter((t) => t.lo < 4.5);
-    R.check("all 30 themes keep their text at 4.5:1 through a full-strength film", audit.length === 30 && low.length === 0,
-      low.map((t) => t.id + " " + t.lo).join(", "));
-    R.check("a roomy theme wears the full film, a tight one less", audit.some((t) => t.a >= 0.34) && audit.some((t) => !t.screen && t.a < 0.2),
+    const low = audit.filter((t) => t.lo < 4.5), builtIns = await page.evaluate(() => Object.keys(window.llThemes.THEMES).length);
+    R.check("every built-in theme keeps its text at 4.5:1 through a full-strength film", audit.length === builtIns && low.length === 0,
+      audit.length + " of " + builtIns + " audited; under 4.5: " + low.map((t) => t.id + " " + t.lo).join(", "));
+    /* every built-in has the contrast to spare for the whole film: 35 % on a light page, 12 % on a dark one */
+    R.check("every built-in wears the full film (0.35 light, 0.12 dark)", audit.every((t) => t.a === (t.screen ? 0.12 : 0.35)),
       audit.map((t) => t.id + ":" + t.a).join(" "));
+    /* a theme of the reader's own with no contrast to spare: grey text at 4.54:1 on white. Its panel and
+       secondary text are derived as for any own theme, and the panel, a shade darker, already holds the
+       text under 4.5:1, so its ceiling comes down to nothing (llThemes.create makes it; it is recoloured here) */
+    const tight = await page.evaluate(() => {
+      const T = window.llThemes, W = window.llType.warmth, keep = window.__ll.state.theme;
+      const c = T.create();
+      Object.assign(c, { bg: "#ffffff", ink: "#767676", autoInk: false, accent: "#0033cc" });
+      T.select("c:" + c.id); W.set(100);
+      const out = { text: Math.round(T.contrast(c.ink, c.bg) * 100) / 100, a: W.opacity() };
+      W.set(0); T.select(keep);
+      return out;
+    });
+    R.check("a custom theme with text at 4.54:1 wears almost none", tight.text === 4.54 && tight.a < 0.05, JSON.stringify(tight));
 
     /* paper and forced colours have no evening */
     await page.evaluate(() => window.llType.warmth.set(100)); await page.waitForTimeout(400);

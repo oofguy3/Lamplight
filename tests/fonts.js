@@ -161,7 +161,7 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     }
     await page.mouse.move(0, 0);
     await page.evaluate((id) => window.llThemes.select(id), themeBefore);
-    R.check("the note on the current row reads at 4.5:1 or better on all " + themes.length + " themes (min " + minPressed.toFixed(2) + ")", themes.length >= 25 && minPressed >= 4.5, lowNote.join(", "));
+    R.check("the note on the current row reads at 4.5:1 or better on all " + themes.length + " themes (min " + minPressed.toFixed(2) + ")", themes.length === 12 && minPressed >= 4.5, lowNote.join(", "));
     R.check("the note on a hovered row reads at 4.5:1 or better on every theme (min " + minHover.toFixed(2) + ")", minHover >= 4.5, lowNote.join(", "));
     /* keyboard: items are buttons; Escape closes the panel only — the sheet under it stays and
        focus returns to the browse button — and the close button does the same */

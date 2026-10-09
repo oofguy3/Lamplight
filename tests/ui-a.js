@@ -430,7 +430,7 @@ const SPEECH_STUB = `(() => {
   section("Screenshots");
   await guard("shots", async () => {
     for (const [w, h, tag] of [[1200, 800, "desktop"], [390, 844, "phone"]]){
-      for (const theme of ["day", "dusk", "newsprint", "terminal"]){
+      for (const theme of ["day", "dusk", "paper", "forest"]){
         const ctx = await b.newContext({ viewport: { width: w, height: h }, hasTouch: w < 600, isMobile: w < 600 });
         await ctx.addInitScript((t) => { try { localStorage.setItem("ll_prefs", JSON.stringify({ theme: t })); } catch(_){} }, theme);
         const page = await newPage(ctx, url);

@@ -2,7 +2,7 @@
    (Explain · Simpler), the translation under the word or the quote, a footer of actions on the
    passage, and a two-button selection pill. Roles and keys, lazy panels, the badge and the dot, Copy and
    Say it, contrast of the new tints on the hardest themes, the bottom sheet on a phone.
-   Screenshots of every tab at 1200×800 and 390×844 in Day, Dusk, Newsprint and Terminal go
+   Screenshots of every tab at 1200×800 and 390×844 in Day, Dusk, Paper and Forest go
    to $LL_SHOTS (default: the OS temp dir).
      NODE_PATH=$(npm root -g) node tests/ui-c.js */
 const fs = require("fs"), os = require("os"), path = require("path");
@@ -185,7 +185,7 @@ const CONTRAST = `(el, behind) => {
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
     /* the new tints on the hardest themes: selected and idle tabs, the badge, the primary chip, the quote */
-    for (const th of ["newsprint", "candle", "terminal", "hidark"]){
+    for (const th of ["sepia", "cocoa", "forest", "hidark"]){
       await theme(page, th); await page.waitForTimeout(150);
       await holdSentence(page, "Nobody could have");
       await page.waitForSelector("#dictQuote", { timeout: 10000 }).catch(() => null);
@@ -268,7 +268,8 @@ const CONTRAST = `(el, behind) => {
     R.check("the card follows the dock down when read aloud stops", d.card <= d.dock - 20 && d.card >= d.dock - 80, JSON.stringify(d));
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     await page.keyboard.press("p"); await page.waitForTimeout(400);
-    /* the role labels and the change notes on the ink tint read on the themes where muted did not */
+    /* the role labels and the change notes on the ink tint read at 4.5:1 or better, on Day and on three dark
+       themes (Canals and Forest give the lowest ratios of the twelve) */
     const TINTED = `(el, tint, behind) => {
       const parseColor = ${PARSE_COLOR};
       const over = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
@@ -278,7 +279,7 @@ const CONTRAST = `(el, behind) => {
       const bg = over(wash, base.rgb), fg = over(ink, bg);
       const [x, y] = [lum(fg), lum(bg)]; return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
     }`;
-    for (const th of ["day", "ink", "slate", "forest"]){
+    for (const th of ["day", "ink", "canals", "forest"]){
       await theme(page, th); await page.waitForTimeout(150);
       await holdSentence(page, "Nobody could have");
       await page.waitForFunction(() => document.querySelector("#dictCard .role b"), null, { timeout: 20000 });
@@ -339,7 +340,7 @@ const CONTRAST = `(el, behind) => {
       await ctx.addInitScript(STUB);
       const page = await newPage(ctx, url);
       await openFixture(page, "sample.md");
-      for (const th of ["day", "dusk", "newsprint", "terminal"]){
+      for (const th of ["day", "dusk", "paper", "forest"]){
         await theme(page, th); await page.waitForTimeout(150);
         const shot = (n) => page.screenshot({ path: path.join(SHOTS, view.name + "-" + th + "-" + n + ".png") });
         await tapWord(page, "unexpected");

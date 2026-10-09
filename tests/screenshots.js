@@ -94,7 +94,7 @@ const STATS = (() => {
   if (want("notes")){
     const ctx = await desktop(1100, 760), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "linen");
+    await theme(page, "day");
     await page.evaluate(() => {
       const M = window.__ll.Marks;
       M.addHighlight(40, 190); M.addHighlight(420, 560); M.addHighlight(900, 1010);
@@ -109,7 +109,7 @@ const STATS = (() => {
   if (want("themes")){
     const ctx = await quiet(await b.newContext({ viewport: { width: 1000, height: 2200 } })), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "midnight");
+    await theme(page, "canals");
     await page.evaluate(() => window.llThemes.create());
     await page.waitForTimeout(400);
     /* the whole editor in one picture: the sheet's own cap (78vh, 900px) lifted, as themes-browser.js does */
@@ -182,7 +182,7 @@ const STATS = (() => {
   if (want("simplify")){
     const ctx = await desktop(1000, 760), page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "parchment");
+    await theme(page, "sepia");
     /* a sentence with something to simplify, shown at the plainest strength */
     await page.evaluate(() => {
       const t = document.getElementById("doc").textContent;
@@ -224,7 +224,7 @@ const STATS = (() => {
     await ctx.addInitScript((s) => { localStorage.setItem("ll_stats", JSON.stringify(s)); }, STATS);
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "ocean");
+    await theme(page, "canals");
     await page.keyboard.press("g"); await page.waitForTimeout(1100);
     await shot(page, "stats");
     await ctx.close();
@@ -237,7 +237,7 @@ const STATS = (() => {
     await page.setInputFiles("#fileInput", ["sample.md", "sample.epub", "sample.txt"].map((f) => path.join(__dirname, "fixtures", f)));
     await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length === 3, null, { timeout: 30000 });
     await page.waitForTimeout(900);
-    await theme(page, "graphite");
+    await theme(page, "forest");
     await page.evaluate(() => window.llStorage.openPanel());
     await page.waitForTimeout(2500);
     await shot(page, "storage");
@@ -258,7 +258,7 @@ const STATS = (() => {
     }, ES);
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
-    await theme(page, "parchment");
+    await theme(page, "sepia");
     await page.evaluate(() => window.__ll.need(["translate"]).then(() => window.llTranslate.togglePage()));
     await page.waitForFunction(() => document.querySelectorAll("#doc .ll-tr").length >= 4, null, { timeout: 40000 });
     await page.waitForTimeout(2500);

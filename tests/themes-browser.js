@@ -210,7 +210,7 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     /* 7b. a theme saved from a light built-in derives secondary text that reads on the panel too */
     const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
     const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-    for (const seed of ["day", "newsprint", "paper"]){
+    for (const seed of ["day", "sepia", "paper"]){
       await page.evaluate((s) => window.llThemes.select(s), seed);
       await openSheet();
       await page.evaluate(() => window.llThemes.create()); await page.waitForTimeout(100);
@@ -242,10 +242,10 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     await page.addStyleTag({ content: "#sheet{max-height:none !important;}" });   /* the whole editor in one picture */
     for (const [width, height] of [[1200, 800], [390, 844]]){
       await page.setViewportSize({ width, height });
-      for (const seed of ["paper", "midnight"]){
+      for (const seed of ["paper", "canals"]){
         await page.evaluate((seed) => { window.llThemes.select(seed); window.llThemes.create(); }, seed);
         await openSheet();
-        await page.$eval(".cst-adv", (d, open) => { d.open = open; }, seed === "midnight");
+        await page.$eval(".cst-adv", (d, open) => { d.open = open; }, seed === "canals");
         await page.waitForTimeout(250);
         const file = path.join(SHOTS, "themes-editor-" + width + "-" + (seed === "paper" ? "light" : "dark") + ".png");
         await page.locator("#sheet").screenshot({ path: file });
