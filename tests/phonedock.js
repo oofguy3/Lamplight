@@ -12,6 +12,9 @@ const shown = (page, sel) => page.evaluate((s) => { const el = document.querySel
 const dockOpen = (page) => page.evaluate(() => document.body.classList.contains("dock-open"));
 const focusId = (page) => page.evaluate(() => document.activeElement && (document.activeElement.id || document.activeElement.tagName));
 const openDock = async (page) => { await page.tap("#dockBtn"); await page.waitForTimeout(250); };
+/* the strip at the foot: away (PhoneBar's strip-away) or in view, as the reader sees it */
+const strip = (page) => page.evaluate(() => { const f = document.getElementById("readFoot"), cs = getComputedStyle(f), r = f.getBoundingClientRect();
+  return { away: document.body.classList.contains("strip-away"), op: cs.opacity, taps: cs.pointerEvents, inView: r.top < innerHeight - 1 }; });
 /* a finger drag through the debugger (Playwright's touchscreen only taps) */
 async function touchDrag(page, x1, y1, x2, y2){
   const cdp = await page.context().newCDPSession(page), steps = 8;
@@ -345,6 +348,8 @@ async function phonePage(b, url, prefs){
     R.check("Pages: the top corners turn the page (no strip of their own any more)", (await pageNo(page)) === p0 + 1 && !(await dockOpen(page)));
     await page.touchscreen.tap(20, v.top + 20); await page.waitForTimeout(500);
     R.check("…both ways", (await pageNo(page)) === p0);
+    /* the pages turned sent the strip away: a swipe down brings the lamp back */
+    await touchDrag(page, 195, 300, 195, 600);
     await openDock(page);
     const head = await rect(page, "#phoneDock .pd-head");
     await touchDrag(page, 320, head.top + 24, 60, head.top + 28);
@@ -376,8 +381,10 @@ async function phonePage(b, url, prefs){
     const p0 = await pageNo(page), v = await rect(page, "#docView");
     await page.touchscreen.tap(195, v.top + v.height / 2); await page.waitForTimeout(500);
     const turned = (await pageNo(page)) === p0 + 1 && !(await dockOpen(page));
+    const kept = await strip(page);
     await openDock(page);
-    R.check("e-ink: a middle tap turns the page, the lamp opens the dock", turned && (await dockOpen(page)), JSON.stringify({ p0, now: await pageNo(page) }));
+    R.check("e-ink: a middle tap turns the page, the strip stays (e-ink has no swipe to bring it back), the lamp opens the dock", turned && kept.op === "1" && kept.inView && (await dockOpen(page)),
+      JSON.stringify({ p0, now: await pageNo(page), kept }));
     R.check("e-ink: no Day/Night switch in the dock", !(await shown(page, "#phoneDock .pd-dn")));
     await ctx.close();
   });
@@ -523,6 +530,43 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- the strip steps away while the reader reads on, and comes back on a scroll up ---------- */
+  await guard("the strip steps away", async () => {
+    let { ctx, page } = await phonePage(b, url, { flow: "scroll" });
+    await openFixture(page, "sample.md");
+    const opened = await strip(page);
+    R.check("Scroll flow: a book opens with the strip in view", !opened.away && opened.op === "1" && opened.inView, JSON.stringify(opened));
+    await page.mouse.move(195, 400);
+    await page.mouse.wheel(0, 400); await page.waitForTimeout(400);
+    const down = await strip(page);
+    R.check("Scroll flow: a scroll down sends the strip away, nothing of it to see or tap", down.away && down.op === "0" && down.taps === "none" && !down.inView, JSON.stringify(down));
+    await page.mouse.wheel(0, -60); await page.waitForTimeout(400);
+    const up = await strip(page);
+    R.check("Scroll flow: a scroll up brings it back", !up.away && up.op === "1" && up.inView, JSON.stringify(up));
+    /* the app's own scroll (no finger, wheel or key just before) leaves it as it is */
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => window.scrollBy(0, 300)); await page.waitForTimeout(400);
+    R.check("Scroll flow: the app's own scroll leaves the strip where it is", !(await strip(page)).away);
+    await openDock(page);
+    R.check("Scroll flow: the lamp opens the dock", await dockOpen(page));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+    R.check("Scroll flow: the dock closed, the strip is in view", !(await dockOpen(page)) && !(await strip(page)).away);
+    await ctx.close();
+    ({ ctx, page } = await phonePage(b, url, { flow: "pages" }));
+    await openFixture(page, "sample.md");
+    const v = await rect(page, "#docView");
+    await page.touchscreen.tap(v.right - 20, v.top + v.height / 2); await page.waitForTimeout(400);
+    const turned = await strip(page);
+    R.check("Pages flow: a page turned sends the strip away", turned.away && turned.op === "0", JSON.stringify(turned));
+    await touchDrag(page, 195, 300, 195, 600);
+    const swiped = await strip(page);
+    R.check("Pages flow: a swipe down brings it back, and opens nothing", !swiped.away && swiped.inView && !(await dockOpen(page)), JSON.stringify(swiped));
+    await touchDrag(page, 195, 600, 195, 300);
+    R.check("Pages flow: a swipe up still opens the dock", await dockOpen(page));
+    R.check("no page errors (strip)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
   /* ---------- zen, switching books, the modes, the copy ---------- */
   const zenOn = (page) => page.evaluate(() => document.body.classList.contains("zen"));
   await guard("zen", async () => {
@@ -530,27 +574,43 @@ async function phonePage(b, url, prefs){
     await openFixture(page, "sample.md");
     await openDock(page);
     await page.keyboard.press("z"); await page.waitForTimeout(500);
-    const z = await page.evaluate(() => ({ zen: document.body.classList.contains("zen"), dock: document.body.classList.contains("dock-open"), op: getComputedStyle(document.getElementById("dockBtn")).opacity,
+    const z = await page.evaluate(() => ({ zen: document.body.classList.contains("zen"), dock: document.body.classList.contains("dock-open"),
       note: getComputedStyle(document.getElementById("leftNote")).display !== "none", ring: getComputedStyle(document.querySelector("#dockBtn .ring")).display !== "none",
       line: getComputedStyle(document.getElementById("progress")).display !== "none", toast: (document.getElementById("toast") || {}).textContent || "" }));
-    R.check("zen: the dock closes, a faint lamp, no note, no ring, no progress line", z.zen && !z.dock && z.op === "0.4" && !z.note && !z.ring && !z.line, JSON.stringify(z));
-    R.check("zen toast: 'Zen mode — tap the lamp to leave'", z.toast === "Zen mode — tap the lamp to leave", z.toast);
+    const zs = await strip(page);
+    R.check("zen: the dock closes, the strip steps away (nothing of it on screen or to tap), no note, no ring, no progress line",
+      z.zen && !z.dock && zs.away && zs.op === "0" && zs.taps === "none" && !zs.inView && !z.note && !z.ring && !z.line, JSON.stringify({ z, zs }));
+    R.check("zen toast in Pages flow: 'Zen mode — swipe down and tap the lamp to leave'", z.toast === "Zen mode — swipe down and tap the lamp to leave", z.toast);
     const v = await rect(page, "#docView");
-    await page.touchscreen.tap(195, v.bottom - 20); await page.waitForTimeout(400);
     await page.touchscreen.tap(195, v.top + v.height / 2 + 7); await page.waitForTimeout(400);
-    R.check("zen: the bottom strip and the middle open nothing", !(await dockOpen(page)) && (await zenOn(page)));
+    const back = await strip(page), lampBg = await page.evaluate(() => getComputedStyle(document.getElementById("readFoot")).backgroundColor);
     const hint = await page.evaluate(() => (document.getElementById("toast") || {}).textContent || "");
+    R.check("zen: the middle tap brings the lamp back (on no band of its own) and opens nothing", !back.away && back.op === "1" && back.inView && lampBg === "rgba(0, 0, 0, 0)" &&
+      !(await dockOpen(page)) && (await zenOn(page)), JSON.stringify({ back, lampBg }));
     R.check("zen: the middle tap's hint says to tap the lamp", hint === "Tap the lamp to leave zen mode", hint);
-    /* a key that brings the focus to the lamp makes it clear */
+    await touchDrag(page, 195, 600, 195, 300);
+    await page.touchscreen.tap(195, v.bottom - 20); await page.waitForTimeout(400);
+    R.check("zen: a tap low on the page opens nothing", !(await dockOpen(page)) && (await zenOn(page)));
+    /* a swipe up sends it away again, a swipe down brings it back */
+    await touchDrag(page, 195, 600, 195, 300);
+    const up = await strip(page);
+    await touchDrag(page, 195, 300, 195, 600);
+    const down = await strip(page);
+    R.check("zen: a swipe up sends the lamp away, a swipe down brings it back, and neither opens the dock", up.away && down.away === false && down.inView && !(await dockOpen(page)) && (await zenOn(page)),
+      JSON.stringify({ up, down }));
+    /* a key that brings the focus to the lamp brings it into view, even while the strip is away */
+    await touchDrag(page, 195, 600, 195, 300);
     for (let i = 0; i < 40 && (await focusId(page)) !== "dockBtn"; i++) await page.keyboard.press("Tab");
-    R.check("zen: the lamp is clear while a key has brought the focus to it", (await focusId(page)) === "dockBtn" && (await page.$eval("#dockBtn", (e) => getComputedStyle(e).opacity)) === "1");
+    const kf = await strip(page);
+    R.check("zen: a key that brings the focus to the lamp brings it into view", (await focusId(page)) === "dockBtn" && kf.op === "1" && kf.inView, JSON.stringify(kf));
     await page.tap("#dockBtn"); await page.waitForTimeout(500);
-    R.check("zen: a tap on the lamp leaves zen, and opens nothing", !(await zenOn(page)) && !(await dockOpen(page)));
-    /* zen from the More sheet: the focus comes back to the lamp after the tap, and it stays faint */
+    R.check("zen: a tap on the lamp leaves zen, and opens nothing", !(await zenOn(page)) && !(await dockOpen(page)) && !(await strip(page)).away);
+    /* zen from the More sheet: the focus comes back to the lamp after the tap, and the strip stays away */
     await openDock(page); await page.tap("#more"); await page.waitForTimeout(300);
     await page.tap("#moreMenu button:has-text('Zen mode')"); await page.waitForTimeout(500);
-    const fz = await page.evaluate(() => ({ zen: document.body.classList.contains("zen"), focus: document.activeElement && document.activeElement.id, op: getComputedStyle(document.getElementById("dockBtn")).opacity }));
-    R.check("zen from the More sheet: the lamp has the focus and stays faint", fz.zen && fz.focus === "dockBtn" && fz.op === "0.4", JSON.stringify(fz));
+    const fz = await page.evaluate(() => ({ zen: document.body.classList.contains("zen"), focus: document.activeElement && document.activeElement.id }));
+    const fs = await strip(page);
+    R.check("zen from the More sheet: the lamp has the focus, and the strip stays away", fz.zen && fz.focus === "dockBtn" && fs.away && fs.op === "0", JSON.stringify({ fz, fs }));
     R.check("no page errors (zen)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
   });
