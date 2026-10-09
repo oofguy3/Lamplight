@@ -300,14 +300,16 @@
     { id: "seaair", day: "seaair", night: "canals" },
     { id: "hicon", day: "hicon", night: "hidark", name: "Contrast" }
   ];
-  /* Settings › Theme shows the built-ins in these groups (display only: the tone still comes from
-     the page colour), and the day and night lists offer them in the same order */
+  /* the two high-contrast themes, which have a tone of their own (applyTheme) */
   var HICON = ["hicon", "hidark"];
+  /* the built-ins in the groups the picker showed before the looks. Nothing on screen uses them now:
+     the picker and Settings show the looks, and the day and night lists sort by page colour
+     (themeOptions). They stay for the tests that still read them (tests/themes.js parses this table) */
   var THEME_GROUPS = {
     light:  ["day", "paper", "sepia", "parchment", "linen", "newsprint", "mist"],
     dark:   ["dusk", "ink", "graphite", "cocoa", "slate", "noir", "candle"],
     colour: ["rose", "peach", "sage", "mint", "sky", "lavender", "forest", "moss", "ocean", "midnight", "plum", "ember", "terminal", "amber"],
-    /* the four collections: a labelled group each in Settings › Theme */
+    /* the four collections */
     dutch:   ["delft", "vermeer", "rembrandt", "tulips", "polder", "canals"],
     nature:  ["autumn", "winter", "aurora", "seaair", "blossom"],
     cozy:    ["coffee", "library", "rain", "cabin", "nighttrain"],
@@ -655,7 +657,7 @@
   function pageHtml(id, t){
     return '<i class="pg" data-t="' + escapeHtml(id) + '" style="' + tileVars(t) + '"><b></b><s></s><s></s><q></q><q></q><u></u><em></em></i>';
   }
-  /* a tile for one theme: the reader's own, and in Settings each built-in */
+  /* a tile for one theme, one of the reader's own (Mine) */
   function tileHtml(id, t){
     return '<button type="button" class="chip tile" data-theme="' + escapeHtml(id) + '" aria-pressed="false"><i aria-hidden="true">' + pageHtml(id, t) +
       '</i><span class="tile-n">' + escapeHtml(themeName(id)) + '</span></button>';
@@ -710,30 +712,26 @@
     });
     if (t && customById(state.theme)) Array.prototype.forEach.call(root.querySelectorAll(".pg"), function(p){ if (p.dataset.t === state.theme) p.setAttribute("style", tileVars(t)); });
   }
-  /* the built-in groups (themeGroups), then the reader's own saved themes in a group of their own
-     (Mine): the day and night lists offer them so */
-  function pickerGroups(){
-    var g = themeGroups();
-    g.push({ id: "mine", name: _t("Mine"), ids: state.customs.map(function(c){ return "c:" + c.id; }) });
-    return g;
-  }
-  /* <option>s for a day / night theme list: every group, the reader's own last */
+  /* <option>s for the Day theme and Night theme lists (Settings › Theme): Light, the looks' day
+     themes and then any other built-in with a light page, in the table's order; Dark, the same for
+     the night themes and dark pages; and the reader's own under Mine. In each list AutoTheme.syncUI
+     disables the other half's theme, so the pair stays two themes */
   function themeOptions(){
-    return pickerGroups().map(function(g){
-      if (!g.ids.length) return "";
-      return '<optgroup label="' + escapeHtml(g.name) + '">' + g.ids.map(function(k){ return '<option value="' + k + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
-    }).join("");
+    var light = LOOKS.map(function(l){ return l.day; }), dark = LOOKS.map(function(l){ return l.night; });
+    Object.keys(THEMES).forEach(function(k){ if (light.indexOf(k) < 0 && dark.indexOf(k) < 0) (isDarkColor(THEMES[k].bg) ? dark : light).push(k); });
+    function group(name, ids){
+      if (!ids.length) return "";
+      return '<optgroup label="' + escapeHtml(name) + '">' + ids.map(function(k){ return '<option value="' + escapeHtml(k) + '">' + escapeHtml(themeName(k)) + '</option>'; }).join("") + '</optgroup>';
+    }
+    return group(_t("Light"), light) + group(_t("Dark"), dark) + group(_t("Mine"), state.customs.map(function(c){ return "c:" + c.id; }));
   }
-  /* Settings › Theme: every built-in under its group's label, then the reader's own under Mine,
-     the theme on screen pressed */
+  /* Settings › Theme: the popover's tiles, drawn by the same functions. The looks come first (the
+     pair's own tile ahead of them when the pair is no look), then the reader's own themes and New
+     theme under Mine; there is no ⋯ on an own theme here, since the editor row (#customRow) edits the
+     one on screen */
   function buildThemeChips(){
-    var html = "";
-    themeGroups().forEach(function(g){
-      html += '<div class="chip-group" role="group" aria-labelledby="tg-' + g.id + '"><div class="chip-group-label" id="tg-' + g.id + '">' + g.name + '</div><div class="tiles">' +
-        g.ids.map(function(k){ return tileHtml(k, THEMES[k]); }).join("") + '</div></div>';
-    });
-    html += '<div class="chip-group" role="group" aria-labelledby="tg-custom"><div class="chip-group-label" id="tg-custom">' + _t("Mine") + '</div><div class="tiles">' + mineHtml(false) + '</div></div>';
-    $("#themeChips").innerHTML = html;
+    $("#themeChips").innerHTML = '<div class="looks" role="group" aria-labelledby="themeL">' + looksHtml() + '</div><div class="sub-label" id="tg-custom">' + escapeHtml(_t("Mine")) +
+      '</div><div class="looks q-mine" role="group" aria-labelledby="tg-custom">' + mineHtml(false) + '</div>';
     tileMark($("#themeChips"), currentTheme());
   }
   function buildCustomUI(){
@@ -997,6 +995,9 @@
       var opts = themeOptions();
       ["#autoDay", "#autoNight"].forEach(function(sel){ var el = $(sel); if (el && el.getAttribute("data-opts") !== opts){ el.innerHTML = opts; el.setAttribute("data-opts", opts); } });
       $("#autoDay").value = state.autoDay; $("#autoNight").value = state.autoNight;
+      /* each list's option for the other half's theme is off, so the pair stays two themes */
+      Array.prototype.forEach.call($("#autoDay").options, function(o){ o.disabled = o.value === state.autoNight; });
+      Array.prototype.forEach.call($("#autoNight").options, function(o){ o.disabled = o.value === state.autoDay; });
       $("#nightFrom").value = state.nightFrom; $("#nightTo").value = state.nightTo;
       $("#autoHint").textContent = nowLine();
       $("#qNow").textContent = nowLine();
@@ -1020,11 +1021,27 @@
       state.auto = a; Prefs.save(); apply(true);
       if (Pop) Pop.sync();
     }
+    /* the Day theme and Night theme lists: one half of the pair. The other half's theme is refused
+       (the lists disable it), so the pair stays two themes. A change to the half on screen shows the
+       new theme at once, and a Day/Night hold carries over to it with its period and end; a change to
+       the other half changes only the pair. Neither ends a hold */
     function setPair(which, k){
-      if (!resolveTheme(k)) return;
-      clearHold();
+      if ((which !== "day" && which !== "night") || !resolveTheme(k) || k === (which === "day" ? state.autoNight : state.autoDay)) return;
+      var onScreen = halfOnScreen() === which;
       if (which === "day") state.autoDay = k; else state.autoNight = k;
-      Prefs.save(); apply(true);
+      /* saved and drawn again once the new theme is on screen, inside its cross-fade: apply then finds
+         the theme switching wants already there, and starts no second fade over the first */
+      function done(){ Prefs.save(); pairChanged(); apply(true); }
+      if (!onScreen){ done(); return; }
+      if (state.dnHold) state.dnHold.theme = k;
+      crossFade(function(){ selectTheme(k, { dayNight: true }); done(); });
+    }
+    /* the night hours (On a schedule), from Settings or the popover; an hour that is not one falls back
+       to 21:00 or 07:00. A change ends a Day/Night hold, as a change of mode does */
+    function setHours(from, to){
+      state.nightFrom = /^\d\d:\d\d$/.test(from) ? from : "21:00";
+      state.nightTo = /^\d\d:\d\d$/.test(to) ? to : "07:00";
+      clearHold(); Prefs.save(); apply(true);
       if (Pop) Pop.sync();
     }
     $("#autoChips").addEventListener("click", function(e){
@@ -1033,9 +1050,9 @@
     });
     $("#autoDay").addEventListener("change", function(e){ setPair("day", e.target.value); });
     $("#autoNight").addEventListener("change", function(e){ setPair("night", e.target.value); });
-    $("#nightFrom").addEventListener("change", function(e){ clearHold(); state.nightFrom = e.target.value || "21:00"; Prefs.save(); apply(); });
-    $("#nightTo").addEventListener("change", function(e){ clearHold(); state.nightTo = e.target.value || "07:00"; Prefs.save(); apply(); });
-    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair, hold: hold, clearHold: clearHold };
+    $("#nightFrom").addEventListener("change", function(e){ setHours(e.target.value, state.nightTo); });
+    $("#nightTo").addEventListener("change", function(e){ setHours(state.nightFrom, e.target.value); });
+    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair, setHours: setHours, hold: hold, clearHold: clearHold };
   })();
 
   /* ---------- warmth: a warm film over the screen for the evening ----------
@@ -1776,9 +1793,10 @@
     var pressed = null;
     $("#qMine").addEventListener("pointerdown", function(e){ var ch = e.target.closest(".chip[data-theme]"); pressed = ch ? ch.dataset.theme : null; }, true);
     longPress($("#qMine"), function(){ if (pressed && customById(pressed)) showActs(pressed); });
-    /* the night hours, the same as the sheet's (On a schedule) */
-    $("#qFrom").addEventListener("change", function(e){ state.nightFrom = e.target.value || "21:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
-    $("#qTo").addEventListener("change", function(e){ state.nightTo = e.target.value || "07:00"; Prefs.save(); AutoTheme.apply(true); syncTheme(); });
+    /* the night hours (On a schedule), through the sheet's own setter: a change ends a Day/Night
+       hold here too */
+    $("#qFrom").addEventListener("change", function(e){ AutoTheme.setHours(e.target.value, state.nightTo); });
+    $("#qTo").addEventListener("change", function(e){ AutoTheme.setHours(state.nightFrom, e.target.value); });
     $("#themeMore").addEventListener("click", function(){ var a = anchor; close(true); openSheetAt("#themeGroup", a); });
 
     /* the open pane follows the state (applyType / applyTheme call this), and the page's height
@@ -1797,8 +1815,9 @@
       var top = g.getBoundingClientRect().top - sheet.getBoundingClientRect().top + sheet.scrollTop - (strip ? strip.offsetHeight : 0) - 2;
       if (SheetTabs) SheetTabs.mark(g.id, 700);
       sheet.scrollTo({ top: Math.max(0, top), behavior: noMotion() ? "auto" : "smooth" });
-      /* the theme group: the pressed tile, where a keyboard picks up from */
-      var first = (sel === "#themeGroup" && g.querySelector('#themeChips .chip[aria-pressed="true"]')) || g.querySelector("input, select, button");
+      /* the theme group: the pressed tile, where a keyboard picks up from, or the first tile when none
+         is (a theme outside the pair), rather than the Day/Night switch ahead of the tiles */
+      var first = (sel === "#themeGroup" && (g.querySelector('#themeChips .chip[aria-pressed="true"]') || g.querySelector("#themeChips .chip"))) || g.querySelector("input, select, button");
       if (first) first.focus({ preventScroll: true });
     }
 
@@ -11749,9 +11768,9 @@
     a.unshift(prev);
     Store.set("ll_theme_recent", JSON.stringify(a.slice(0, 6)));
   }
-  /* opts.dayNight: the pair is already right (a Day/Night switch keeps it, a look has just set it),
-     so this neither rewrites the pair, nor ends a Day/Night hold (the switch sets one, a look
-     carries one over), nor counts as a recent pick */
+  /* opts.dayNight: the pair is already right (a Day/Night switch keeps it, a look or a list has
+     just set it), so this neither rewrites the pair, nor ends a Day/Night hold (the switch sets one,
+     a look or a list carries one over), nor counts as a recent pick */
   function selectTheme(theme, opts){
     var dn = !!(opts && opts.dayNight);
     if (theme !== state.theme && !dn) noteTheme(state.theme);
@@ -12062,7 +12081,7 @@
   });
   $("#cFix").addEventListener("click", fixContrast);
   /* exposed for tests (not a public API) */
-  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, pickerGroups: pickerGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
+  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
     customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast,
     pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight, hold: function(){ return state.dnHold; } };
 

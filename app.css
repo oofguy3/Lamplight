@@ -412,10 +412,6 @@
   /* custom theme builder */
   #customRow{display:none; --warn:#c8372d;}
   #customRow.show{display:grid; gap:var(--sp-3);}
-  /* theme chips in groups: light, dark, high contrast, custom */
-  #themeChips{display:grid; gap:var(--sp-4);}
-  .chip-group{display:grid; gap:var(--sp-2);}
-  .chip-group-label{font-size:var(--fs-small); font-weight:700; color:var(--muted);}
   .chip-new{border-style:dashed;}
   .cst-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-bottom:var(--sp-3); border-bottom:1px solid var(--line);}
   .cst-name{
@@ -817,9 +813,10 @@
     .tile .pg > u{height:17px;}
     .tile .pg > em{bottom:3.5px;}
   }
-  /* Settings' groups of single themes: as many to a row as fit, three on a phone */
-  #themeChips .tiles{display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:14px 10px; padding:6px 2px 2px;}
-  @media (max-width:560px){ #themeChips .tiles{grid-template-columns:repeat(3, minmax(0, 1fr));} }
+  /* Settings › Theme: the looks, then Mine under its label, spaced as the group's rows are. On a wide
+     screen the sheet is far wider than the popover, so the two columns stop at 432px in all and a
+     tile keeps its shape (a phone is narrower than that anyway) */
+  #themeChips{display:grid; grid-template-columns:minmax(0, 432px); gap:var(--sp-2);}
   /* the contrast tone: each page's edge 2px in the text colour */
   :root[data-tone="contrast"] .tile .pg{border-width:2px; border-color:var(--ink);}
   :root[data-tone="contrast"] .tile .pg + .pg{border-left-width:0;}

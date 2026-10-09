@@ -200,7 +200,11 @@
         <button type="button" class="chip" data-dn="day" aria-pressed="false"><span data-i18n>Day</span></button>
         <button type="button" class="chip" data-dn="night" aria-pressed="false"><span data-i18n>Night</span></button>
       </div>
-      <!-- day and night first (the pair the lamp's Day / Night buttons and t go to, and when to switch), then every theme -->
+      <!-- the same tiles as the lamp's popover (buildThemeChips in app.js): the six looks, a tap on one
+           making it the day and night pair, then the reader's own themes and New theme under Mine -->
+      <div id="themeChips"></div>
+      <!-- then day and night: when to switch, the two themes of the pair (the lists can mix any day theme
+           with any night theme) and the night hours -->
       <div class="sub-label" id="dnSubL" data-i18n>Day and night</div>
       <div class="rowline"><label id="autoLabel" data-i18n>Switch</label>
         <div class="chips seg" id="autoChips" role="group" aria-labelledby="autoLabel">
@@ -215,7 +219,6 @@
         <div class="rowline" id="autoTimes"><label for="nightFrom" data-i18n>Night from</label><input type="time" id="nightFrom" class="sel" value="21:00"><label for="nightTo" data-i18n>until</label><input type="time" id="nightTo" class="sel" value="07:00"></div>
         <div class="hint" id="autoHint"></div>
       </div>
-      <div id="themeChips"></div>
       <label class="check" data-i18n><input type="checkbox" role="switch" id="plainBg" aria-describedby="plainBgHint">Plain background</label>
       <div class="hint" id="plainBgHint" data-i18n>Leaves out the paper or cloth texture of the Textured themes.</div>
       <!-- the evening tint: a warm amber film over the whole screen, on its own or only at night -->

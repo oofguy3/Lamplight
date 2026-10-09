@@ -1,8 +1,11 @@
 /* The theme picker: six looks, each a day theme and a night theme that belong together, a Day/Night
    switch in its head, and the reader's own themes under Mine. A tap on a look makes it the reader's
    pair and shows its theme for the half on screen; Day and Night change the half; a pair that is no
-   look gets a tile of its own, first.
+   look gets a tile of its own, first. Settings › Theme shows the same tiles above its Day theme and
+   Night theme lists, which keep the pair two themes: a change to the half on screen shows at once,
+   and a Day/Night hold carries over to it.
      NODE_PATH=$(npm root -g) node tests/looks.js */
+const fs = require("fs"), path = require("path");
 const { serve, browser, openFixture, makeReport } = require("./lib");
 
 const st = (page) => page.evaluate(() => { const s = window.__ll.state; return { theme: s.theme, autoDay: s.autoDay, autoNight: s.autoNight, auto: s.auto, hold: s.dnHold }; });
@@ -20,7 +23,16 @@ const nameCut = (page, sel) => page.evaluate((s) => {
 }, sel);
 /* a Day/Night switch's state: "day:true,night:false" */
 const dnIn = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s + " [data-dn]")].map((b) => b.dataset.dn + ":" + b.getAttribute("aria-pressed")).join(","), sel);
+/* the Day theme and Night theme lists: each one's option groups (label and values), its disabled options and its value */
+const lists = (page) => page.evaluate(() => Object.fromEntries(["autoDay", "autoNight"].map((id) => {
+  const s = document.getElementById(id);
+  return [id, { groups: [...s.querySelectorAll("optgroup")].map((g) => ({ label: g.label, ids: [...g.querySelectorAll("option")].map((o) => o.value) })),
+    off: [...s.options].filter((o) => o.disabled).map((o) => o.value), value: s.value }];
+})));
 const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Contrast"];
+const DAYS = ["day", "paper", "sepia", "sage", "seaair", "hicon"], NIGHTS = ["dusk", "ink", "cocoa", "forest", "canals", "hidark"];
+/* the Dutch for "Mine" as i18n.js has it, whichever apostrophe that is */
+const MINE_NL = (/"Mine":\s*"([^"]*)"/.exec(fs.readFileSync(path.join(__dirname, "..", "i18n.js"), "utf8")) || [])[1];
 const NOON = new Date(2026, 9, 9, 12, 0, 0);
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
 const errors = [];
@@ -59,6 +71,9 @@ async function openTheme(page){
   await page.waitForTimeout(100);
 }
 async function tapLook(page, id){ await openTheme(page); await page.click('#qLooks [data-look="' + id + '"]'); await page.waitForTimeout(120); }
+async function openSettings(page){ await page.evaluate(() => window.llPop.sheet(true)); await page.waitForTimeout(400); }
+/* the pair's own tile is first and the one pressed, named `name`, with the six looks after it */
+const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].name === name && lk[0].on && lk.filter((l) => l.on).length === 1 && lk.slice(1).map((l) => l.id).join() === DAYS.join();
 
 (async () => {
   const { server, url } = await serve();
@@ -233,6 +248,157 @@ async function tapLook(page, id){ await openTheme(page); await page.click('#qLoo
       await tapLook(page, "sage");
       const s = await st(page), t = await toasts(page);
       R.check("a look over a look pair: no toast", s.theme === "sage" && s.autoDay === "sage" && s.autoNight === "forest" && t.length === 0, JSON.stringify(s) + JSON.stringify(t));
+      await ctx.close();
+    });
+
+    /* ---------------- Settings › Theme, and the Day theme and Night theme lists (§4.2, §5.5) ---------------- */
+    await guard("settings", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url, NOON);
+      await openSettings(page);
+      const set = await page.evaluate(() => {
+        const c = document.getElementById("themeChips"), lab = document.getElementById("tg-custom");
+        const mine = c && c.querySelector(':scope > .looks.q-mine[role="group"][aria-labelledby="tg-custom"]');
+        return { dn: !!document.querySelector('#themeGroup > #sDN [data-dn="day"]') && !!document.querySelector('#themeGroup > #sDN [data-dn="night"]'),
+          looks: !!(c && c.querySelector(':scope > .looks[role="group"][aria-labelledby="themeL"] > .tile.look')), mine: lab ? lab.textContent : null, add: !!(mine && mine.querySelector(".chip-new")) };
+      });
+      const lk = await looksIn(page, "#themeChips");
+      R.check("Settings › Theme has the switch, six looks and Mine", set.dn && set.looks && set.mine === "Mine" && set.add && lk.map((l) => l.id).join() === DAYS.join() &&
+        lk.map((l) => l.name).join("|") === NAMES.join("|") && lk.filter((l) => l.on).map((l) => l.id).join() === "day", JSON.stringify({ set, lk }));
+      const order = await page.evaluate(() => {
+        const els = ["sDN", "themeChips", "dnSubL", "autoRow"].map((id) => document.getElementById(id));
+        return els.every((e) => e && e.closest("#themeGroup")) && els.every((e, i) => !i || !!(els[i - 1].compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING));
+      });
+      R.check("Settings › Theme's order", order);
+      const grid = await page.evaluate(() => { const gs = [...document.querySelectorAll("#themeChips > .looks")], is = [...document.querySelectorAll("#themeChips .tile > i")];
+        return { cols: gs.map((g) => getComputedStyle(g).gridTemplateColumns.split(" ").length), min: is.length ? Math.min(...is.map((i) => i.getBoundingClientRect().height)) : 0 }; });
+      R.check("Settings: two columns, tiles ≥ 44px", grid.cols.join() === "2,2" && grid.min >= 44, JSON.stringify(grid));
+      /* the lists keep the pair two themes: the other half's theme is refused, and nothing changes */
+      const before = await prefs(page);
+      await page.evaluate(() => { const A = window.__ll.AutoTheme; A.setPair("night", "day"); A.setPair("day", "dusk"); A.setPair("day", "gone7"); });
+      const after = await prefs(page), s0 = await st(page);
+      R.check('setPair("night","day") on day/dusk changes nothing', after === before && s0.theme === "day" && s0.autoDay === "day" && s0.autoNight === "dusk", before + " → " + after);
+      /* each list disables the other half's theme, and follows when a look changes the pair */
+      const l1 = await lists(page);
+      await page.click('#themeChips [data-look="paper"]'); await page.waitForTimeout(150);
+      const l2 = await lists(page), s1 = await st(page);
+      R.check("lists: the other half's theme is disabled", l1.autoDay.off.join() === "dusk" && l1.autoNight.off.join() === "day" && l1.autoDay.value === "day" && l1.autoNight.value === "dusk" &&
+        s1.autoDay === "paper" && s1.autoNight === "ink" && l2.autoDay.off.join() === "ink" && l2.autoNight.off.join() === "paper" && l2.autoDay.value === "paper" && l2.autoNight.value === "ink",
+        JSON.stringify({ l1: [l1.autoDay.off, l1.autoNight.off], l2: [l2.autoDay.off, l2.autoNight.off, l2.autoDay.value, l2.autoNight.value], s1 }));
+      await ctx.close();
+    });
+    await guard("settings, the lists' groups", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", customs: [{ id: "t3a", name: "Reading lamp", bg: "#F4ECD8", ink: "#2A2118", autoInk: false, accent: "#7A3E12" }] } });
+      const page = await open(ctx, url, NOON);
+      await openSettings(page);
+      const l = await lists(page), ids = await page.evaluate(() => Object.keys(window.llThemes.THEMES));
+      /* both lists: Light and Dark open with the looks' day and night themes, every built-in is offered once (the
+         others after the twelve), and Mine holds the reader's own */
+      const ok = (x) => x.groups.map((g) => g.label).join() === "Light,Dark,Mine" && x.groups[0].ids.slice(0, 6).join() === DAYS.join() && x.groups[1].ids.slice(0, 6).join() === NIGHTS.join() &&
+        x.groups[2].ids.join() === "c:t3a" && ids.every((k) => x.groups[0].ids.concat(x.groups[1].ids).filter((v) => v === k).length === 1) && x.groups[0].ids.length + x.groups[1].ids.length === ids.length;
+      R.check("lists: Light, Dark, Mine groups with the twelve first", ok(l.autoDay) && ok(l.autoNight), JSON.stringify(l.autoDay.groups.map((g) => g.label + ":" + g.ids.slice(0, 7).join(" "))));
+      await ctx.close();
+    });
+    await guard("settings, a mixed pair", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "day", autoDay: "day", autoNight: "cocoa" } });
+      const page = await open(ctx, url, NOON);
+      await openSettings(page);
+      const lk = await looksIn(page, "#themeChips");
+      R.check('a mixed pair (day/cocoa seeded, theme day) shows "Day & Cocoa" first, pressed, in #themeChips', pairFirst(lk, "Day & Cocoa"), JSON.stringify(lk));
+      await ctx.close();
+    });
+    await guard("settings, Dutch", async () => {
+      const ctx = await context(b, { locale: "nl-NL" }, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url);
+      await openSettings(page);
+      const lab = await page.evaluate(() => { const l = document.querySelector("#themeChips > .sub-label#tg-custom"); return l ? l.textContent : null; });
+      R.check("Settings' Mine label is in Dutch on a Dutch device", !!MINE_NL && /^Mijn thema/.test(MINE_NL) && lab === MINE_NL, lab + " / " + MINE_NL);
+      await ctx.close();
+    });
+    await guard("settings, More theme settings…", async () => {
+      /* the popover's foot link lands on the pressed tile in #themeChips; with none pressed (a theme outside
+         the pair, which only the raw select leaves) on its first tile, not on the switch before it */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url, NOON);
+      const landed = async () => {
+        await openTheme(page);
+        await page.click("#themeMore"); await page.waitForTimeout(500);
+        const f = await page.evaluate(() => { const a = document.activeElement; return a && a.closest("#themeChips") ? (a.dataset.look || a.dataset.theme) + ":" + a.getAttribute("aria-pressed") : a && (a.id || a.outerHTML.slice(0, 60)); });
+        await page.evaluate(() => window.llPop.sheet(false)); await page.waitForTimeout(300);
+        return f;
+      };
+      const f1 = await landed();
+      await page.evaluate(() => window.llThemes.select("paper"));
+      const f2 = await landed();
+      R.check("More theme settings… puts focus on the pressed tile in #themeChips, or on its first tile when none is pressed", f1 === "day:true" && f2 === "day:false", f1 + " " + f2);
+      await ctx.close();
+    });
+    await guard("settings, list changes, Auto off", async () => {
+      let ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      let page = await open(ctx, url, NOON);
+      await openSettings(page);
+      await page.selectOption("#autoDay", "paper"); await page.waitForTimeout(150);
+      const s = await st(page), set = await looksIn(page, "#themeChips");
+      await page.evaluate(() => window.llPop.sheet(false)); await page.waitForTimeout(300);
+      await openTheme(page);
+      const pop = await looksIn(page, "#qLooks");
+      R.check('Auto off, Day on screen: Day theme → Paper shows Paper, pair paper/dusk, the pair tile "Paper & Dusk" first and pressed',
+        s.theme === "paper" && s.autoDay === "paper" && s.autoNight === "dusk" && pairFirst(set, "Paper & Dusk") && pairFirst(pop, "Paper & Dusk"), JSON.stringify({ s, set: set.slice(0, 2), pop: pop.slice(0, 2) }));
+      await ctx.close();
+      ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "dusk" } });
+      page = await open(ctx, url, NOON);
+      await openSettings(page);
+      await page.selectOption("#autoDay", "paper"); await page.waitForTimeout(150);
+      const d = await st(page), dset = await looksIn(page, "#themeChips");
+      R.check("Auto off, Dusk on screen: Day theme → Paper changes only the pair", d.theme === "dusk" && d.autoDay === "paper" && d.autoNight === "dusk" && !d.hold && pairFirst(dset, "Paper & Dusk"), JSON.stringify({ d, dset: dset.slice(0, 2) }));
+      await ctx.close();
+    });
+    await guard("settings, list changes, Auto on", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00" } });
+      const page = await open(ctx, url, NOON);
+      await openSettings(page);
+      await page.click('#sDN [data-dn="night"]'); await page.waitForTimeout(150);
+      const held = (await st(page)).hold;
+      await page.selectOption("#autoNight", "ink"); await page.waitForTimeout(150);
+      const s = await st(page);
+      /* the 30 s check comes round with the hold in force: Ink stays */
+      await page.clock.fastForward("00:31"); await page.waitForTimeout(100);
+      const s2 = await st(page);
+      R.check("Auto on (time, noon) with Night held: Night theme → Ink shows Ink and keeps the hold (same until), now on ink",
+        !!held && held.theme === "dusk" && held.period === "day" && s.theme === "ink" && s.autoDay === "day" && s.autoNight === "ink" && !!s.hold && s.hold.theme === "ink" && s.hold.until === held.until && s.hold.period === "day" &&
+        s2.theme === "ink" && !!s2.hold && s2.hold.theme === "ink", JSON.stringify({ held, s, s2 }));
+      await page.selectOption("#autoDay", "sepia"); await page.waitForTimeout(150);
+      const d = await st(page);
+      R.check("Auto on with Night held: Day theme → Sepia leaves the screen and the hold", d.theme === "ink" && d.autoDay === "sepia" && d.autoNight === "ink" && !!d.hold && d.hold.theme === "ink" && d.hold.until === held.until && d.hold.period === "day",
+        JSON.stringify(d));
+      await ctx.close();
+    });
+    await guard("settings, one fade", async () => {
+      /* with motion on, a list change to the half on screen cross-fades once: switching then finds the new
+         theme already on screen and starts no second fade, which would cut the first one short */
+      const ctx = await context(b, { reducedMotion: "no-preference" }, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00" } });
+      const page = await open(ctx, url, NOON);
+      await page.evaluate(() => {
+        window.__vt = [];
+        const orig = document.startViewTransition && document.startViewTransition.bind(document);
+        if (orig) document.startViewTransition = (cb) => { const rec = { skipped: false }; window.__vt.push(rec); const t = orig(cb); t.ready.catch(() => { rec.skipped = true; }); return t; };
+      });
+      await openSettings(page);
+      await page.selectOption("#autoDay", "paper"); await page.waitForTimeout(800);
+      const r = await page.evaluate(() => ({ vt: window.__vt, theme: window.__ll.state.theme }));
+      R.check("a list change to the half on screen cross-fades once (Auto on, motion on)", r.theme === "paper" && r.vt.length === 1 && !r.vt[0].skipped, JSON.stringify(r));
+      await ctx.close();
+    });
+    await guard("settings, the popover's hours", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00" } });
+      const page = await open(ctx, url, NOON);
+      await openTheme(page);
+      await page.click('#qDN [data-dn="night"]'); await page.waitForTimeout(150);
+      const held = (await st(page)).hold;
+      await page.evaluate(() => { const el = document.getElementById("qFrom"); el.value = "20:00"; el.dispatchEvent(new Event("change", { bubbles: true })); });
+      await page.waitForTimeout(150);
+      const s = await st(page), from = await page.evaluate(() => window.__ll.state.nightFrom + "/" + JSON.parse(localStorage.getItem("ll_prefs")).nightFrom);
+      R.check("the popover's hours end a hold", !!held && held.theme === "dusk" && s.hold === null && s.theme === "day" && from === "20:00/20:00", JSON.stringify({ held, s, from }));
       await ctx.close();
     });
 
