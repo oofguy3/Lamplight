@@ -290,11 +290,13 @@
     hidark:    {name:"Contrast dark", family:"neutral", bg:"#000000", panel:"#000000", raise:"#000000", ink:"#FFFFFF", muted:"#D0D0D0", line:"#FFFFFF", accent:"#FFD400", lamp:"#FFD400"}
   };
   /* the retired themes, by id. A reader of one moves on every load (Prefs.load, through movedTo) to `to`,
-     the nearest kept theme of the same tone, or to `alt`, the next nearest, where `to` would make the day
-     theme and the night theme one theme. `name` and the five colours are the retired theme's own (its
-     Dutch name stays in i18n.js), kept so that they can be offered back as a theme of the reader's own.
-     A literal of its own, since tests/themes.js reads THEMES alone; resolveTheme and the pickers never
-     look here */
+     a kept theme of the same tone: the one its merges led to when fifty themes became twelve (Amber went
+     into Candle, and Candle into Cocoa), or the nearest where they led to none that stays, so `to` is not
+     always the nearest. Where `to` would make the day theme and the night theme one theme, the reader
+     moves to `alt` instead, the nearest kept theme of that tone besides `to`. `name` and the five colours
+     are the retired theme's own (its Dutch name stays in i18n.js), kept so that they can be offered back
+     as a theme of the reader's own. A literal of its own, since tests/themes.js reads THEMES alone;
+     resolveTheme and the pickers never look here */
   var RETIRED = {
     parchment:  {to:"sepia",  alt:"sage",   name:"Parchment",       bg:"#F1E4C6", panel:"#F7ECD4", ink:"#2C2114", muted:"#67563A", accent:"#8B2F2A"},
     linen:      {to:"day",    alt:"sepia",  name:"Linen",           bg:"#F3EFE6", panel:"#FAF8F1", ink:"#2B2A26", muted:"#625F57", accent:"#5A6828"},
@@ -551,10 +553,10 @@
       ["theme", "autoDay", "autoNight"].forEach(function(k){ if (state[k] === "custom") state[k] = theme || (k === "autoNight" ? "dusk" : "day"); });
       state.custom = Object.assign({}, d);
     }
-    /* a reader of a retired theme moves to the nearest kept one (movedTo): the theme on screen, the day
-       theme and the night theme, and a Day/Night hold with the half it holds (any other hold through
-       `to`). The ids as they were are noted in themeWas the first time this moves one, and a note still
-       waiting there is never written over. Once nothing stored is retired, it changes nothing */
+    /* a reader of a retired theme moves to a kept one of the same tone (movedTo): the theme on screen,
+       the day theme and the night theme, and a Day/Night hold with the half it holds (any other hold
+       through `to`). The ids as they were are noted in themeWas the first time this moves one, and a
+       note still waiting there is never written over. Once nothing stored is retired, it changes nothing */
     function retireMove(){
       var was = { theme: state.theme, autoDay: state.autoDay, autoNight: state.autoNight }, m = movedTo(was), h = state.dnHold, r;
       state.theme = m.theme; state.autoDay = m.autoDay; state.autoNight = m.autoNight;

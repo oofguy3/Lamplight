@@ -880,6 +880,11 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       const hi = await loadAs({ auto: "off", theme: "hicon" }), hd = await loadAs({ auto: "off", theme: "hidark" });
       R.check("fold: theme hicon with day/dusk → hicon/hidark", both(hi, (x) => x.theme === "hicon" && x.autoDay === "hicon" && x.autoNight === "hidark"), JSON.stringify(hi));
       R.check("fold: theme hidark with day/dusk → hicon/hidark, Contrast dark on screen", both(hd, (x) => x.theme === "hidark" && x.autoDay === "hicon" && x.autoNight === "hidark"), JSON.stringify(hd));
+      /* the fold's order: a pair that is one theme twice is repaired first, and then a theme outside it takes its
+         half. The other way round, Forest would take the night half of Cocoa/Cocoa and leave Cocoa, a dark
+         theme, as the day theme */
+      const fe = await loadAs({ auto: "off", theme: "forest", autoDay: "ember", autoNight: "ember" });
+      R.check("fold after the collapsed-pair repair: forest over ember/ember → sepia/forest", both(fe, (x) => x.theme === "forest" && x.autoDay === "sepia" && x.autoNight === "forest"), JSON.stringify(fe));
     });
     await guard("moving readers, an own theme outside the pair", async () => {
       /* Review Focus 5: an own theme on screen outside the pair, Auto off, at the upgrade. It takes the half its
@@ -898,6 +903,12 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
     await guard("moving readers, holds and unknown ids", async () => {
       const ho = await loadAs({ auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "day", dnHold: { theme: "paper", period: "day", until: AT_21 } }, NOON);
       R.check("a hold on a theme outside the pair is dropped", both(ho, (x) => x.hold === null && x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk"), JSON.stringify(ho));
+      /* the fold's order: Contrast dark on screen outside the pair, and held, brings the contrast pair before a
+         hold on neither half is dropped, so by then the hold is on a half and stays, with Contrast dark on
+         screen at noon. Dropping first would end the hold, and Contrast would show */
+      const hk = await loadAs({ auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "hidark", dnHold: { theme: "hidark", period: "day", until: AT_21 } }, NOON);
+      R.check("a hold on Contrast dark outside day/dusk survives the fold: hicon/hidark, still held, Contrast dark on screen",
+        both(hk, (x) => x.autoDay === "hicon" && x.autoNight === "hidark" && x.theme === "hidark" && !!x.hold && x.hold.theme === "hidark" && x.hold.period === "day" && x.hold.until === AT_21), JSON.stringify(hk));
       const un = await loadAs({ auto: "off", theme: "gone7" });
       R.check("unknown id → day", both(un, (x) => x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk"), JSON.stringify(un));
       /* the checks make an unknown day theme Day, over a night theme that is Day (on screen): only a fold that
