@@ -362,7 +362,7 @@ function fakeClock(iso){
     R.check("the slider still remembers the chosen level", (await state(page, "warmth")) === 80 && (await page.$eval("#rWarm", (i) => i.value)) === "80");
     R.check("the hint says it is waiting for the night", /night window/.test(await page.$eval("#warmHint", (h) => h.textContent)));
 
-    /* with Auto on, the window is Auto's own */
+    /* On a schedule, the window is Auto's own hours and nothing else (Follow phone: the next section) */
     await page.evaluate(() => {
       const s = window.__ll.state;
       s.auto = "time"; s.nightFrom = "09:00"; s.nightTo = "18:00";
