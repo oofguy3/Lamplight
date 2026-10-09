@@ -2263,14 +2263,19 @@
      own place leaves --noticeH out, so the notice never lifts itself */
   #einkToast, #themeToast{z-index:72; padding:6px 6px 6px 20px; bottom:calc(var(--toastRow) + var(--updateH, 0px));}
   /* the notice's words are longer than the offer's, and so is its Keep the old colours: where they do not
-     fit on one row beside the buttons (a phone, or two changes in Dutch), the words take a row of their own
-     and the buttons go under them at the right. Its corners stop at 24px, which on one 48px row is still
-     the offer's pill: a pill's round ends would cut into lines of text. On their own row the words stop
-     20px from the right edge, as they start 20px from the left (the pill's 6px on the right is for the
-     round close button); the auto margin keeps them at the left. The 6px above and below the words sit
-     inside the buttons' height on one row, and keep them clear of the edge on two */
-  #themeToast{flex-wrap:wrap; justify-content:flex-end; border-radius:var(--r-xl);}
-  #themeToast > span{max-width:calc(100% - 14px); margin-right:auto; padding:6px 0;}
+     fit on one row beside the buttons (a phone, or a narrow window), the words take a row of their own and
+     the buttons go under them at the right. The two buttons are one box (.tn-acts), so they wrap together;
+     apart, the close button would drop to a row of its own wherever the words and Keep still fit. Its
+     corners stop at 28px, half its height on one row at the most (the contrast tone's 2px border with a
+     coarse pointer's 40px buttons), and the browser scales them down to half a lower row's height: one
+     row is always the offer's pill. A taller notice keeps 28px, as a pill's round ends would cut into its
+     lines of words. On their own row the words stop 20px from the right edge, as they start 20px from the
+     left (the pill's 6px on the right is for the round close button); the auto margin keeps them at the
+     left. The 6px above and below the words sit inside the buttons' height on one row, and keep them
+     clear of the edge on two */
+  #themeToast{flex-wrap:wrap; justify-content:flex-end; border-radius:28px;}
+  #themeToast > .tn-msg{max-width:calc(100% - 14px); margin-right:auto; padding:6px 0;}
+  #themeToast > .tn-acts{display:flex; flex:none; align-items:center; gap:10px;}
   #trStatus{display:none; z-index:57; bottom:calc(var(--toastRow) + 56px + var(--updateH, 0px) + var(--noticeH, 0px)); padding:6px 6px 6px 20px; font-variant-numeric:tabular-nums;}
   /* the "Finished" card (Journal in app.js) takes the foot of the page: the pill and the toasts sit above it meanwhile,
      so its date, Not now and Save stay in reach (--finishH: the card's height, set while it is up) */

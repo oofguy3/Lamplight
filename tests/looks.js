@@ -94,11 +94,14 @@ async function context(b, opts, seed){
   }, seed);
   return ctx;
 }
-/* a page, its clock held at `clock` when given, with every toast's text kept in window.__toasts */
-async function open(ctx, url, clock){
+/* a page, its clock set to `clock` when given, with every toast's text kept in window.__toasts. A `still` page's
+   clock stands still from before its boot, and through reloads: no timer of the app's fires, so a read sees what
+   the load left, and not the notice (800 ms on) clearing themeWas */
+async function open(ctx, url, clock, still){
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
-  if (clock) await page.clock.install({ time: clock });
+  if (clock || still) await page.clock.install({ time: clock || NOON });
+  if (still) await page.clock.pauseAt((clock || NOON).getTime() + 1000);
   await page.goto(url, { waitUntil: "load" });
   await watchToasts(page);
   return page;
@@ -855,10 +858,11 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
     /* each case stores a profile and loads it once. A pair case puts one of the pair's own themes on screen (its
        day theme, unless the theme on screen is what the case is about), so the fold of a theme outside the pair
        (step 7) cannot stand in for the rule under test. A hold is seeded at noon with the period that holds
-       then. What the load gave is read live and as boot saved it */
+       then. What the load gave is read live and as boot saved it, with the clock standing still, so the notice
+       cannot clear themeWas first */
     const loadAs = async (seed, clock) => {
       const ctx = await context(b, null, { ll_prefs: seed });
-      const page = await open(ctx, url, clock);
+      const page = await open(ctx, url, clock, true);
       const r = await moved(page);
       await ctx.close();
       return r;
@@ -951,18 +955,21 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       R.check("an unknown half that the checks make the other half's theme: gone/day → day/dusk", both(uh, (x) => x.theme === "day" && x.autoDay === "day" && x.autoNight === "dusk"), JSON.stringify(uh));
     });
     await guard("moving readers, a second load", async () => {
+      /* the clock stands still, so the notice cannot clear the note between the two reads: the note is part of what
+         the second load must leave as it was */
       const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "peach", autoDay: "linen", autoNight: "peach" } });
-      const page = await open(ctx, url);
+      const page = await open(ctx, url, null, true);
       const p1 = await prefs(page);
       await page.reload({ waitUntil: "load" }); await page.waitForTimeout(100);
       const p2 = await prefs(page);
-      R.check("a second load changes nothing", p1 === p2 && JSON.parse(p1).theme === "seaair", p1 + " → " + p2);
+      R.check("a second load changes nothing", p1 === p2 && JSON.parse(p1).theme === "seaair" && !!JSON.parse(p1).themeWas, p1 + " → " + p2);
       await ctx.close();
     });
     await guard("moving readers, themeWas", async () => {
+      /* the clock stands still, so the notice cannot clear the note between the two reads */
       const W = { theme: "candle", autoDay: "day", autoNight: "candle" }, same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
       const ctx = await context(b, null, { ll_prefs: Object.assign({ auto: "off" }, W) });
-      const page = await open(ctx, url);
+      const page = await open(ctx, url, null, true);
       const r1 = await moved(page);
       await page.reload({ waitUntil: "load" });
       const r2 = await moved(page);
@@ -1009,7 +1016,7 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
        (--noticeH) against its height; null when there is none */
     const notice = (page) => page.evaluate(() => {
       const n = document.getElementById("themeToast"), keep = document.getElementById("themeKeep"), no = document.getElementById("themeNo");
-      return n ? { role: n.getAttribute("role"), text: (n.querySelector("span") || {}).textContent, keep: keep && n.contains(keep) ? keep.textContent : null,
+      return n ? { role: n.getAttribute("role"), text: (n.querySelector(".tn-msg") || {}).textContent, keep: keep && n.contains(keep) ? keep.textContent : null,
         no: no && n.contains(no) ? no.getAttribute("aria-label") : null, room: document.body.style.getPropertyValue("--noticeH"), h: n.offsetHeight } : null;
     });
     const room = (page) => page.evaluate(() => document.body.style.getPropertyValue("--noticeH"));
@@ -1017,19 +1024,22 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
        corner of each line's box inside the curve, the radius as drawn, no more than half the box); how many rows (the
        buttons beside the words, or under them) and lines of words; whether its corners round its whole height (a
        pill); whether words on a row of their own keep 20px from both sides; whether the buttons sit at the right, Keep
-       before the close button */
+       before the close button; whether the two share a row (their middles level) */
     const shape = (page) => page.evaluate(() => {
       const n = document.getElementById("themeToast"), b = n.getBoundingClientRect(), r = Math.min(parseFloat(getComputedStyle(n).borderTopLeftRadius), b.height / 2, b.width / 2);
       const curve = (x, y) => { const cx = Math.min(Math.max(x, b.left + r), b.right - r), cy = Math.min(Math.max(y, b.top + r), b.bottom - r); return Math.hypot(x - cx, y - cy) <= r + 0.5; };
       const within = (q) => q.left >= b.left - 0.5 && q.right <= b.right + 0.5 && q.top >= b.top - 0.5 && q.bottom <= b.bottom + 0.5;
-      const range = document.createRange(); range.selectNodeContents(n.querySelector("span"));
+      const range = document.createRange(); range.selectNodeContents(n.querySelector(".tn-msg"));
       const lines = [...range.getClientRects()], keep = document.getElementById("themeKeep").getBoundingClientRect(), no = document.getElementById("themeNo").getBoundingClientRect();
       const bottom = Math.max(...lines.map((q) => q.bottom)), left = Math.min(...lines.map((q) => q.left)), right = Math.max(...lines.map((q) => q.right));
-      return { tone: document.documentElement.dataset.tone, w: Math.round(b.width), h: Math.round(b.height), r, lines: new Set(lines.map((q) => Math.round(q.top))).size,
+      return { tone: document.documentElement.dataset.tone, coarse: matchMedia("(pointer: coarse)").matches, w: Math.round(b.width), h: Math.round(b.height), r, lines: new Set(lines.map((q) => Math.round(q.top))).size,
         inside: lines.concat([keep, no]).every(within), clear: lines.every((q) => [[q.left, q.top], [q.right, q.top], [q.left, q.bottom], [q.right, q.bottom]].every(([x, y]) => curve(x, y))),
         overflow: n.scrollWidth > n.clientWidth, rows: keep.top >= bottom ? 2 : 1, pill: r >= b.height / 2 - 0.5,
-        inset: Math.round(left - b.left) >= 20 && Math.round(b.right - right) >= 20, right: keep.right <= no.left + 0.5 && b.right - no.right <= 8.5 && (keep.top >= bottom || keep.left >= right) };
+        inset: Math.round(left - b.left) >= 20 && Math.round(b.right - right) >= 20, right: keep.right <= no.left + 0.5 && b.right - no.right <= 8.5 && (keep.top >= bottom || keep.left >= right),
+        paired: Math.abs(keep.top + keep.bottom - no.top - no.bottom) < 2 };
     });
+    /* nothing of the notice leaves it, and no line of its words runs into its rounded corners */
+    const kept = (s) => s.inside && s.clear && !s.overflow;
     /* the reader's own themes, in order: their "c:" id, name, autoInk and five colours */
     const own = (page) => page.evaluate((five) => window.__ll.state.customs.map((c) => ({ k: "c:" + c.id, name: c.name, autoInk: c.autoInk,
       cols: five.map((x) => String(c[x]).toUpperCase()).join(" ") })), FIVE);
@@ -1180,7 +1190,7 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       const first = await page.evaluate(() => ({ eink: !!document.getElementById("einkToast"), notice: !!document.getElementById("themeToast"), was: window.__ll.state.themeWas,
         saved: JSON.parse(localStorage.getItem("ll_prefs")).themeWas }));
       await page.reload({ waitUntil: "load" });
-      const again = await noticeUp(page), second = await page.evaluate(() => ({ eink: !!document.getElementById("einkToast"), text: (document.querySelector("#themeToast span") || {}).textContent }));
+      const again = await noticeUp(page), second = await page.evaluate(() => ({ eink: !!document.getElementById("einkToast"), text: (document.querySelector("#themeToast .tn-msg") || {}).textContent }));
       R.check("the e-ink offer up: no notice this boot; next boot it shows", offered && first.eink && !first.notice && !!first.was && !!first.saved && again && !second.eink &&
         second.text === "Themes have changed: Linen is now Day and Peach is now Sea air.", JSON.stringify({ offered, first, again, second }));
       await ctx.close();
@@ -1211,10 +1221,10 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       const desk = await shape(x.page);
       await x.ctx.close();
       /* its words are longer than the e-ink offer's: on a desktop the three parts share one row, the offer's pill; on a
-         phone the words take a row of their own, with the buttons under them at the right. Either way nothing leaves
-         the notice and no line of its words runs into its rounded corners, and on their own row the words keep 20px
-         from both sides. Three changes in Dutch on a phone from 320 to 420px wide (where the lines break, and so how
-         near the right edge one ends, moves with the width), and 320px in the contrast tone */
+         phone the words take a row of their own, with the two buttons together under them at the right. Either way
+         nothing leaves the notice and no line of its words runs into its rounded corners, and on their own row the
+         words keep 20px from both sides. Three changes in Dutch on a phone from 320 to 420px wide (where the lines
+         break, and so how near the right edge one ends, moves with the width), and 320px in the contrast tone */
       const three = await withNotice({ auto: "off", theme: "peach", autoDay: "linen", autoNight: "candle" }, Object.assign({ locale: "nl-NL" }, PHONE));
       await three.page.evaluate(() => document.fonts.ready.then(() => true));
       const sweep = [];
@@ -1226,11 +1236,46 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       const narrow = await withNotice({ auto: "off", theme: "hicon", autoDay: "hicon", autoNight: "plum" }, Object.assign({ locale: "nl-NL" }, PHONE, { viewport: { width: 320, height: 700 } }));
       const nl320 = await shape(narrow.page);
       await narrow.ctx.close();
-      const kept = (s) => s.inside && s.clear && !s.overflow, phone = (s) => kept(s) && s.rows === 2 && s.inset && s.right;
+      const phone = (s) => kept(s) && s.rows === 2 && s.inset && s.right && s.paired;
       const bad = sweep.filter((s) => !phone(s) || s.lines < 2);
-      R.check("the notice on a desktop: one row, words then Keep then the close button, a pill", x.up && kept(desk) && desk.rows === 1 && desk.right && desk.pill, JSON.stringify(desk));
+      R.check("the notice on a desktop: one row, words then Keep then the close button, a pill", x.up && kept(desk) && desk.rows === 1 && desk.right && desk.paired && desk.pill, JSON.stringify(desk));
       R.check("the notice on a phone: the words on a row of their own, 20px in, the buttons under them at the right, nothing cut",
         three.up && narrow.up && sweep.length === 51 && !bad.length && phone(nl320) && nl320.tone === "contrast", JSON.stringify({ bad: bad.slice(0, 3), nl320 }));
+    });
+    await guard("the notice's shape, taller and narrower", async () => {
+      /* one row is the offer's pill whatever its height: taller than the light tone's 48px in the contrast tone (2px
+         borders), with a coarse pointer on a wide screen (40px buttons), and with both */
+      const CONTRAST = { auto: "off", theme: "hicon", autoDay: "hicon", autoNight: "plum" }, TABLET = Object.assign({}, PHONE, { viewport: { width: 1024, height: 768 } });
+      const tall = [];
+      for (const [seed, opts] of [[CONTRAST, null], [LINEN_PEACH, TABLET], [CONTRAST, TABLET]]){
+        const y = await withNotice(seed, opts);
+        tall.push(Object.assign({ up: y.up }, await shape(y.page)));
+        await y.ctx.close();
+      }
+      R.check("the notice on one row is a pill in the contrast tone, with a coarse pointer, and with both",
+        tall.every((s) => s.up && kept(s) && s.rows === 1 && s.right && s.paired && s.pill && s.h > 48) &&
+        tall.map((s) => s.tone === "contrast").join() === "true,false,true" && tall.map((s) => s.coarse).join() === "false,true,true", JSON.stringify(tall));
+      /* a desktop window narrowed: the three parts keep one row while they fit, and below that the words take a row of
+         their own with both buttons under them, never Keep beside the words with the close button alone under it.
+         In 2px steps from 80px under the width one row needs to 20px over it, in English and in Dutch, with one change
+         and with two; the sweep must see both layouts */
+      const narrowed = {};
+      for (const [name, seed, opts] of [["en, one", CANDLE, null], ["en, two", LINEN_PEACH, null], ["nl, one", CANDLE, { locale: "nl-NL" }], ["nl, two", LINEN_PEACH, { locale: "nl-NL" }]]){
+        const y = await withNotice(seed, opts);
+        await y.page.evaluate(() => document.fonts.ready.then(() => true));
+        const one = (await shape(y.page)).w + 32, seen = [];
+        for (let w = one - 80; w <= one + 20; w += 2){
+          await y.page.setViewportSize({ width: w, height: 800 });
+          seen.push(Object.assign({ at: w }, await shape(y.page)));
+        }
+        narrowed[name] = { up: y.up, one, seen };
+        await y.ctx.close();
+      }
+      const together = (s) => kept(s) && s.right && s.paired && (s.rows === 1 || s.inset);
+      const split = Object.entries(narrowed).flatMap(([name, n]) => n.seen.filter((s) => !together(s)).map((s) => Object.assign({ name }, s)));
+      const sawBoth = Object.values(narrowed).every((n) => n.up && n.seen.length === 51 && n.seen.some((s) => s.rows === 1) && n.seen.some((s) => s.rows === 2));
+      R.check("a narrowed desktop window: one row while it fits, then the words on a row of their own with Keep and the close button together under them",
+        sawBoth && !split.length, JSON.stringify({ split: split.slice(0, 3), one: Object.fromEntries(Object.entries(narrowed).map(([k, n]) => [k, n.one])) }));
     });
     await guard("the notice, a name taken, e-ink and Dutch", async () => {
       let x = await withNotice(Object.assign({ customs: [{ id: "k1", name: "Candle", bg: "#3A2A1A", ink: "#F2E6D0", autoInk: false, accent: "#E0A040" }] }, CANDLE));

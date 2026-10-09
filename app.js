@@ -1322,14 +1322,15 @@
   })();
   /* ---------- the notice after a move off a retired theme: "Keep the old colours" ----------
      A load that moved the reader off a retired theme noted the ids as they were (state.themeWas, see
-     retireMove in Prefs). The next boot says what became of them, once, about 800 ms after the first
-     screen: "Themes have changed: Candle is now Cocoa." Keep the old colours makes each of those
-     retired themes again as a theme of the reader's own, from the colours RETIRED keeps, and puts it
-     back where it was; the close button keeps the new themes. The note is cleared the moment the
-     notice shows, so it never shows twice. It never shows beside the e-ink offer either: whichever
-     comes first shows, and the other waits for the next boot. It has the e-ink offer's look and the
-     update offer's place: it keeps the bottom row and reports its height (--noticeH), and the toast and
-     the translation pill step up over it (app.css) */
+     retireMove in Prefs). The same boot then says what became of them, once, about 800 ms after the
+     first screen (or the next boot, when the e-ink offer came first): "Themes have changed: Candle is
+     now Cocoa." Keep the old colours makes each of those retired themes again as a theme of the
+     reader's own, from the colours RETIRED keeps, and puts it back where it was; the close button
+     keeps the new themes. The note is cleared the moment the notice shows, so it never shows twice.
+     It never shows beside the e-ink offer either: whichever comes first shows, and the other waits
+     for the next boot. It has the e-ink offer's look and the update offer's place: it keeps the
+     bottom row and reports its height (--noticeH), and the toast and the translation pill step up
+     over it (app.css) */
   var ThemeNotice = (function(){
     var el = null, ro = null;
     /* what the notice tells of: each retired id among the noted ones, once (the day theme's, then the
@@ -1388,8 +1389,9 @@
       el = document.createElement("div");
       el.id = "themeToast"; el.setAttribute("role", "status");
       document.body.appendChild(el);
-      el.innerHTML = '<span>' + escapeHtml(_t("Themes have changed: {changes}.", { changes: I18N.list(parts) })) + '</span><button type="button" id="themeKeep">' + escapeHtml(_t("Keep the old colours")) + '</button>' +
-        '<button type="button" id="themeNo" aria-label="' + escapeHtml(_t("No thanks")) + '" title="' + escapeHtml(_t("No thanks")) + '">' + ICONS.close + '</button>';
+      /* the two buttons are one box (.tn-acts), so they wrap under the words together (app.css) */
+      el.innerHTML = '<span class="tn-msg">' + escapeHtml(_t("Themes have changed: {changes}.", { changes: I18N.list(parts) })) + '</span><span class="tn-acts"><button type="button" id="themeKeep">' + escapeHtml(_t("Keep the old colours")) + '</button>' +
+        '<button type="button" id="themeNo" aria-label="' + escapeHtml(_t("No thanks")) + '" title="' + escapeHtml(_t("No thanks")) + '">' + ICONS.close + '</button></span>';
       setH = function(){ if (el && el.isConnected) document.body.style.setProperty("--noticeH", (el.offsetHeight + 8) + "px"); };
       setH();
       if (window.ResizeObserver){ ro = new ResizeObserver(setH); ro.observe(el); }
