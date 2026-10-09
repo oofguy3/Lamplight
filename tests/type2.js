@@ -341,8 +341,8 @@ function fakeClock(iso){
   await guard("night", async () => {
     const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, timezoneId: "UTC" });
     await ctx.addInitScript(fakeClock(), "2024-01-15T22:00:00Z");
-    /* a profile with Day and night off, so the night window is 21:00–07:00. A first run follows the phone
-       now, and with Day and night on the window is its own: on a light phone, never night */
+    /* a profile with Day and night off, so the night window is 21:00–07:00 and nothing else. A first run
+       follows the phone now: that case is the next section's */
     await ctx.addInitScript(() => { try { if (!localStorage.getItem("ll_prefs")) localStorage.setItem("ll_prefs", JSON.stringify({ auto: "off" })); } catch(_){} });
     const page = await newPage(ctx, url);
     await openFixture(page, "sample.md");
@@ -373,6 +373,54 @@ function fakeClock(iso){
       (await warmOpacity(page)) > 0);
 
     await page.evaluate(() => { const s = window.__ll.state; s.auto = "off"; window.llType.warmth.setAuto(false); window.llType.warmth.set(0); });
+    R.check("no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
+  /* ---------------- warm at night with Follow phone ---------------- */
+  /* nothing stored, so a first run, on Follow phone. The film's night is then the phone's dark mode and
+     also 21:00–07:00: on a phone that stays light it still comes on at night, as with Day and night off,
+     and a phone set to dark still brings it on by day */
+  section("Warm at night with Follow phone");
+  await guard("night, Follow phone", async () => {
+    const ctx = await b.newContext({ viewport: { width: 1200, height: 800 }, timezoneId: "UTC" });
+    await ctx.addInitScript(fakeClock(), "2024-01-15T22:00:00Z");
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    await page.evaluate(() => { window.llType.warmth.set(80); window.llType.warmth.setAuto(true); });
+    await page.waitForTimeout(500);
+    const film = () => page.evaluate(() => { const s = window.__ll.state, W = window.llType.warmth;
+      return { auto: s.auto, theme: s.theme, night: W.isNight(), level: W.level(), a: parseFloat(document.getElementById("warmth").style.opacity || "0"), hint: document.getElementById("warmHint").textContent }; });
+    const late = await film();
+    R.check("a first run on a light phone (Follow phone), at 22:00 with Warm at night on: the film is on, and the hint says so",
+      late.auto === "system" && late.theme === "day" && late.night === true && late.level === 80 && late.a > 0 && /night now/.test(late.hint), JSON.stringify(late));
+
+    await page.evaluate((fn) => { new Function("when", "(" + fn + ")(when)")("2024-01-15T10:00:00Z"); window.llType.warmth.apply(); },
+      String(fakeClock()));
+    await page.waitForTimeout(500);
+    const day = await film();
+    R.check("at 10:00 on the light phone the film is off, and the hint waits for the night window",
+      day.auto === "system" && day.night === false && day.level === 0 && day.a === 0 && /night window/.test(day.hint), JSON.stringify(day));
+
+    /* the phone turns dark: Follow phone shows Dusk, and the film comes on with it */
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForFunction(() => window.__ll.state.theme === "dusk", null, { timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const dark = await film();
+    R.check("at 10:00 a phone set to dark brings Dusk, and the film on with it",
+      dark.theme === "dusk" && dark.night === true && dark.level === 80 && dark.a > 0 && /night now/.test(dark.hint), JSON.stringify(dark));
+
+    /* On a schedule keeps to its own hours and nothing else: neither 21:00–07:00 nor the phone counts */
+    await page.evaluate((fn) => {
+      new Function("when", "(" + fn + ")(when)")("2024-01-15T22:00:00Z");
+      const s = window.__ll.state; s.auto = "time"; s.nightFrom = "09:00"; s.nightTo = "18:00";
+      window.__ll.AutoTheme.apply(); window.llType.warmth.apply();
+    }, String(fakeClock()));
+    await page.waitForTimeout(500);
+    const sched = await film();
+    R.check("On a schedule keeps its own hours: at 22:00, outside 09:00–18:00, the film is off, on a dark phone too",
+      sched.auto === "time" && sched.night === false && sched.level === 0 && sched.a === 0, JSON.stringify(sched));
+    await page.emulateMedia({ colorScheme: "light" });
     R.check("no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
   });

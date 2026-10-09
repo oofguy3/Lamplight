@@ -857,10 +857,10 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
 
     /* ---------------- first run (§6) ---------------- */
     /* with no ll_prefs, Day and night starts on Follow phone and the theme on screen is the half the phone asks
-       for, set before the first theme is applied, so the page never shows Day and then turns to Dusk; a device
-       that asks for more contrast starts in the contrast pair. A stored profile keeps its own setting, even one
-       with no auto field, and Clear everything makes the next load a first run. Every --bg the page sets on its
-       root is noted from before app.js runs */
+       for, set before the first theme is applied, so the page never applies Day and then Dusk (before app.js
+       runs it has app.css's Day, §9.1); a device that asks for more contrast starts in the contrast pair. A
+       stored profile keeps its own setting, even one with no auto field, and Clear everything makes the next
+       load a first run. Every --bg the page sets on its root is noted from before app.js runs */
     const firstRun = async (opts, seed) => {
       const ctx = await context(b, opts, seed);
       await ctx.addInitScript(() => {

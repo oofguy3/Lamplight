@@ -1152,10 +1152,12 @@
       caps[key] = a = Math.max(0, Math.round(a * 1000) / 1000);
       return a;
     }
-    /* the night window: the one Auto is using, or 21:00–07:00 when Auto is off */
+    /* the night window: Auto's hours when it is On a schedule; otherwise 21:00–07:00, and with Follow
+       phone also whenever the phone is set to dark. Follow phone keeps the hours because a first run
+       starts on it: on a phone that never turns dark the film would otherwise never come on */
     function isNight(){
       var n = AutoTheme.isNight();
-      if (n !== null) return n;
+      if (n === true || state.auto === "time") return n;
       var d = new Date(), now = d.getHours() * 60 + d.getMinutes();
       return now >= 21 * 60 || now < 7 * 60;
     }
@@ -14383,9 +14385,10 @@
   Store.remove("ll_apikey");   /* the key of the old online explainer: wiped from devices */
   Store.remove("ll_theme_recent");   /* the themes the picker's Recent row listed, which has gone */
   /* a first run (nothing stored, as after Clear everything): Day and night follows the phone, and the
-     theme on screen is the half the phone asks for, set before any theme is applied so the app never
-     opens in Day and then turns to Dusk. A device that asks for more contrast gets the contrast pair. A
-     stored profile keeps its own setting, even one with no auto field, since `state` starts Off */
+     theme on screen is the half the phone asks for, set before applyTheme first runs, so the app never
+     applies Day and then Dusk (until this script runs, the page has app.css's Day). A device that asks
+     for more contrast gets the contrast pair. A stored profile keeps its own setting, even one with no
+     auto field, since `state` starts Off */
   if (!Store.get("ll_prefs")){
     state.auto = "system";
     if (window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){ state.autoDay = "hicon"; state.autoNight = "hidark"; }

@@ -112,3 +112,15 @@ Milestone 2 (Tasks 6-10, at 79a04aa): every suite run on its own.
   ui-a failed two checks once ("the window did not move", y 8 against 0): the window was already 8px down before
   the popover opened, after the book opened on a busy machine. Both checks now compare the window's position
   before and after, as their names say (ui-a 114/114).
+
+Milestone 3 (Task 11, at de41d59): every suite run on its own.
+  2417/2424 checks passed: Milestone 2's 2409/2416 and looks.js's eight first-run checks (looks 138/138);
+  ui-a 114/114 and type2 64/64, as there. Still failing, as in the baseline: i18n (audiobook.js keys), pace K6
+  (two checks), translate (pack download), ui-c (the phone card's height).
+  Checks Task 11 rewrote, since a first run now follows the phone: they store Day and night off before the page
+  loads. ui-a's "the lamp opens the theme popover with the six looks, the current look and auto choice marked";
+  type2's "at 22:00 with Warm at night on, the film is on" and "the hint says the film is on now".
+  One flake, as in Milestone 1: speak.js "Dramatic pushes the offsets harder" failed once and passed on the rerun.
+  After the review fixes, the suites they touch: type2 69/69 (Warm at night keeps 21:00–07:00 with Follow
+  phone, spec 5.7; five checks added), themes-browser 65/65 (its editor pictures store Day and night off, so no
+  first-pick toast covers them), looks 138/138, tests/themes.js 281/281 pairs.

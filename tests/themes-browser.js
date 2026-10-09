@@ -236,8 +236,10 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
       mk.title === "Your own theme" && mk.name === "My Paper" && !!mk.draft && mk.draft.bg === THEMES.paper.bg.toLowerCase() &&
       made.n === n0 + 1 && made.theme === made.id && made.day === made.id && made.name === "My Paper" && made.bg === THEMES.paper.bg.toLowerCase() && !made.maker, JSON.stringify({ mk, made }));
 
-    /* 8. screenshots of the editor: desktop and phone, light and dark */
-    await page.evaluate(() => localStorage.removeItem("ll_prefs"));
+    /* 8. screenshots of the editor: desktop and phone, light and dark. A clean profile with Day and night
+       off: with nothing stored the reload would be a first run, on Follow phone, and the first theme made
+       would bring its one-time toast ("Day and night is on: …") into the pictures */
+    await page.evaluate(() => localStorage.setItem("ll_prefs", JSON.stringify({ auto: "off" })));
     await page.reload({ waitUntil: "load" });
     await page.addStyleTag({ content: "#sheet{max-height:none !important;}" });   /* the whole editor in one picture */
     for (const [width, height] of [[1200, 800], [390, 844]]){

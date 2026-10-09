@@ -356,13 +356,14 @@ A tap on an own theme's tile, a theme the Maker saves, New… in Settings, and S
 - `t`, the lamp's hold and the dock's Day/Night, with their toasts.
 - The Auto modes and the hours, and that changing either ends a hold. The popover's own "Night from … until" fields now end it too, through the same setter as Settings' fields; today only Settings' do (app.js:976-977 against 1786-1787).
 - The 30 s check.
-- Warmth, Extra dim and e-ink mode.
+- Warmth, Extra dim and e-ink mode, except Warm at night's night with Follow phone (below).
 
 **Changed from stage 1 (§6.5) and from today's code:**
 
 - A choice in the picker or the lists carries a hold over instead of ending it (5.0).
 - An own theme picked with Auto off goes into the half on screen instead of sitting outside the pair (5.4).
 - `pickTheme` for a built-in can set a hold, as the Day/Night switch does (5.8).
+- **Added in review.** With Follow phone, Warm at night's night is whenever the phone is set to dark, and also 21:00–07:00. Today it is the phone's dark mode alone. A new reader now starts on Follow phone (section 6), so on a phone that stays light the film would never come on, though its hint says it comes back on in the night window. Off keeps 21:00–07:00 and On a schedule its own hours, as today.
 
 **Collapsed pairs and themes outside the pair.** `dnOf` and `setDayNight` keep their rules for a pair left collapsed and for Contrast outside the pair, but neither state can arise any more: section 5 never creates one, and loading repairs those left by earlier versions (7.2).
 
@@ -396,6 +397,7 @@ A first run means there is no `ll_prefs`. That includes the first run after "Cle
 - **Only the first-run block changes.** The state literal keeps `auto: "off"`. A saved profile without an `auto` field, such as a test's `{theme: "dusk"}` seed, therefore stays off.
 - **With `prefers-contrast: more`,** the pair is Contrast / Contrast dark, and the theme is the half the phone asks for. Today the pair stayed Day/Dusk, and only the theme on screen was set.
 - **Existing readers keep their own Auto setting.** Their saved prefs win.
+- **Warm at night** still comes on from 21:00 to 07:00 on a phone that stays light: with Follow phone, its night is the phone's dark mode and those hours (5.7).
 
 ## 7. Readers of a retired theme
 
@@ -807,6 +809,7 @@ Each is checked with a search before removal.
   - a reader's own themes.
 - **Remove** the collections, textures and "a grid of round swatches".
 - **Also fix** lines 10, 12, 20, 53, 58, 183 and 187 (alt texts, warmth, test descriptions). The test list names the new `looks.js`.
+- **Warm at night's night** (line 58) is the one of 5.7: 21:00–07:00, or the schedule's hours with On a schedule, and with Follow phone also whenever the phone is set to dark.
 
 **docs/screenshots/:** the pictures are made again with tests/screenshots.js. Its retired ids change to the new set:
 
@@ -1004,6 +1007,7 @@ Every change keeps the check's intent with the new set.
   - fonts.js 159: 12 themes.
   - themes.js: rewritten (13.3).
 - **Fresh profiles now start with Follow phone (section 6).** Playwright's default scheme is light, so Day still shows, and seeded profiles stay as they are. The suites are run once with the change, and every check that assumed Auto off on a fresh profile is listed and fixed by seeding Auto off.
+  - **Added in review.** type2's Warm at night checks keep their Auto off seed, and a section of their own checks Follow phone on a fresh profile (5.7): the film at 22:00 on a light phone, none at 10:00, the film at 10:00 once the phone is dark, and On a schedule keeping to its own hours.
 - **Recent and Previous:** daynight.js's checks that Day/Night adds no Recent entry become a check that `ll_theme_recent` is never written.
 - **The stage-1 rules this spec changes (5.7),** in daynight.js:
   - §6, collapsed pairs: the lists now refuse them, and loading repairs them. These checks become "the lists keep the pair two themes"; the load repairs are tested in looks.js.
@@ -1051,7 +1055,7 @@ Every change keeps the check's intent with the new set.
 
 - **Test churn.** About 25 suites name themes or picker parts. The order of 13.6 keeps each step runnable. Every changed check is listed in the plan.
 - **Readers lose a hue.** Rose, Plum, Delft, Ocean and Midnight have no counterpart. The notice gives each reader the old colours back in one tap.
-- **The first run changes.** On a dark phone a new reader opens in Dusk. This is intended (section 6). Lighthouse runs light, so it still measures Day.
+- **The first run changes.** On a dark phone a new reader opens in Dusk. This is intended (section 6). Lighthouse runs light, so it still measures Day. With Follow phone, Warm at night came on only while the phone was dark, so a new reader on a phone that stays light would never have had the film; it now keeps 21:00–07:00 as well (5.7).
 - **Stale installs.** Without the version bump, an installed copy would keep the old table while new prefs arrive.
 - **Previous and Recent go.** The whole set fits on one screen, and the Day/Night switch covers the common way back. For a pair that was no look, a look tap offers Undo (5.2).
 - **The notice and other toasts.** It never shows with the e-ink offer. Toasts step over it, as they step over the update offer (7.4).
@@ -1094,6 +1098,7 @@ The owner said "Don't ask me questions", so the open choices were settled as bel
 | `llThemes.select` | A raw setter for tests; the pick paths carry the rules | review |
 | Textures and Plain background | Removed | ruling |
 | First run | Follow phone; Contrast pair with `prefers-contrast: more` | research recommendation, ruling |
+| Warm at night with Follow phone | Night is the phone's dark mode and also 21:00–07:00, so the default reader's film still comes on at night on a phone that stays light, as with Off; On a schedule keeps its own hours | review |
 | Dusk's page as the brand colour | Meta theme-color and manifest #0D121C | ruling |
 | The custom-theme editors | A later stage of their own; only their swatches change | research recommendation, ruling |
 
