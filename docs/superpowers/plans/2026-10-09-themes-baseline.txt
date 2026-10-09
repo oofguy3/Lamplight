@@ -103,3 +103,12 @@ Milestone 1 (Tasks 1-5, at ae119ad): every suite run on its own, as for the base
   holds, the first-pick toast, Recent), qol 2, themes-browser 5 and ui-a 6 (Task 5: the tabs became the looks).
   One flake: speak.js "Dramatic pushes the offsets harder" failed once in this run and passed in two reruns
   (126/126); it runs before any line Task 5 changed, and no app change touches read aloud.
+
+Milestone 2 (Tasks 6-10, at 79a04aa): every suite run on its own.
+  2409/2416 checks passed; tests/themes.js 281/281 pairs (the twelve themes); tests/looks.js 130/130; type2 64/64.
+  Still failing, as in the baseline: i18n (audiobook.js keys), pace K6 (two checks), translate (pack download),
+  ui-c (the phone card's height). Checks renamed by Task 10 (retired ids in their names, now kept ones): daynight 5,
+  fonts 2, themes-browser 3, ui-b 28, ui-c 4.
+  ui-a failed two checks once ("the window did not move", y 8 against 0): the window was already 8px down before
+  the popover opened, after the book opened on a busy machine. Both checks now compare the window's position
+  before and after, as their names say (ui-a 114/114).

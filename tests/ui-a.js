@@ -216,18 +216,21 @@ const SPEECH_STUB = `(() => {
     await openFixture(p2, "sample.md");
     await p2.evaluate(() => window.llThemes.pick("canals"));
     await p2.waitForFunction(() => window.__ll.state.theme === "canals", null, { timeout: 1500 }).catch(() => {});
+    /* the window's own position before the popover opens: opening the book may leave it a few pixels
+       down on a busy machine, and what this checks is that opening the popover does not move it */
+    const y0 = await p2.evaluate(() => window.scrollY);
     await p2.click("#lamp"); await p2.waitForTimeout(250);
     const cur = await p2.evaluate(() => { const on = Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')), t = on[0], s = window.__ll.state, p = document.getElementById("pop").getBoundingClientRect(), r = t ? t.getBoundingClientRect() : null;
       return { on: on.map((c) => c.dataset.look).join(","), pair: s.autoDay + "/" + s.autoNight, theme: s.theme, label: t ? t.getAttribute("aria-label") : null, focus: !!t && document.activeElement === t, inside: !!r && r.top >= p.top && r.bottom <= p.bottom, y: window.scrollY }; });
     R.check("a built-in picked by id marks its look: Canals gives Sea air & Canals, pressed, with the focus and in view when the popover opens, and the window did not move",
-      cur.on === "seaair" && cur.pair === "seaair/canals" && cur.theme === "canals" && cur.label === "Sea air & Canals, current theme" && cur.focus && cur.inside && cur.y === 0, JSON.stringify(cur));
+      cur.on === "seaair" && cur.pair === "seaair/canals" && cur.theme === "canals" && cur.label === "Sea air & Canals, current theme" && cur.focus && cur.inside && cur.y === y0, JSON.stringify(Object.assign({ y0: y0 }, cur)));
     R.check("the theme popover fits too", (await popFits(p2)).fits, JSON.stringify(await popFits(p2)));
     /* the tiles are a grid (no sideways strip): a wheel over them scrolls the popover, never the page
        (which would close it) */
     const st = await rect(p2, "#qLooks");
     await p2.mouse.move(st.left + st.width / 2, st.top + st.height / 2); await p2.mouse.wheel(0, 120); await p2.waitForTimeout(300);
     const wh = await p2.evaluate(() => ({ open: document.getElementById("pop").classList.contains("open"), y: window.scrollY }));
-    R.check("a wheel over the looks keeps the popover open and the page still", wh.open && wh.y === 0, JSON.stringify(wh));
+    R.check("a wheel over the looks keeps the popover open and the page still", wh.open && wh.y === cur.y, JSON.stringify(Object.assign({ before: cur.y }, wh)));
     await ctx2.close();
   });
 
