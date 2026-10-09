@@ -9,9 +9,12 @@
    one of the pair's two themes, and the two differ. On load, a reader of a retired theme moves to the
    nearest kept one, and what earlier versions left (a pair that is one theme twice, a theme on screen
    outside the pair, a hold on neither half) is folded back into that rule. Every built-in applies the
-   colours of the spec's table, and nothing is left of the textures and Plain background.
+   colours of the spec's table, and nothing is left of the textures and Plain background. Outside the
+   table, the first paint is Day's, the title bar's colour in the markup and the manifest is Dusk's
+   page, the editors' swatches come from the set, and the contrast and dark tones have their own ring,
+   sliders, Day and Night buttons and yellow highlight.
      NODE_PATH=$(npm root -g) node tests/looks.js */
-const { serve, browser, openFixture, makeReport } = require("./lib");
+const { serve, browser, openFixture, makeReport, parseColor } = require("./lib");
 
 const st = (page) => page.evaluate(() => { const s = window.__ll.state; return { theme: s.theme, autoDay: s.autoDay, autoNight: s.autoNight, auto: s.auto, hold: s.dnHold }; });
 const prefs = (page) => page.evaluate(() => localStorage.getItem("ll_prefs"));
@@ -1009,6 +1012,108 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       const pb = await page2.evaluate(() => ({ state: "plainBg" in window.__ll.state, saved: "plainBg" in JSON.parse(localStorage.getItem("ll_prefs") || "{}"), theme: window.__ll.state.theme }));
       R.check("a stored plainBg is not read, and not saved again", !pb.state && !pb.saved && pb.theme === "paper", JSON.stringify(pb));
       await ctx2.close();
+    });
+
+    /* ---------------- outside the table (§9.1-9.3, Appendix A) ---------------- */
+    /* spec §9.2: the editors' page row is the pages of the five looks' day themes and a lavender, then of
+       their night themes and a violet; the accent row keeps its eight, Canals' coral and Forest's green in
+       place of the two it had; the Maker's text row is seven of the set's text colours, and white */
+    const SW_BG = ["day", "paper", "sepia", "sage", "seaair"].map((id) => TABLE[id].bg).concat("#EDE7F3", ["dusk", "ink", "cocoa", "forest", "canals"].map((id) => TABLE[id].bg), "#171021");
+    const SW_ACC = ["#D8A24A", "#E58E6C", "#C25B78", "#A97FD6", "#5C9CD6", "#3FA08C", "#7AB785", "#C9A227"];
+    const SW_INK = ["paper", "day", "sepia", "seaair", "ink", "cocoa", "canals"].map((id) => TABLE[id].ink).concat("#FFFFFF");
+    await guard("outside the table, first paint and the swatches", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url);
+      /* app.css's own :root rule, which the first paint (and a Lighthouse run) uses until applyTheme sets the theme
+         on the element; and a page whose script never runs, which paints with it alone */
+      const first = await page.evaluate(() => {
+        const sheet = [...document.styleSheets].find((s) => /\/app\.css(\?|$)/.test(s.href || ""));
+        const rule = sheet && [...sheet.cssRules].find((r) => r.selectorText === ":root");
+        return rule ? Object.fromEntries(["bg", "panel", "raise", "ink", "muted", "line", "accent", "lamp"].map((k) => [k, rule.style.getPropertyValue("--" + k).trim().toUpperCase()])) : null;
+      });
+      const bare = await b.newContext({ javaScriptEnabled: false });
+      const still = await bare.newPage();
+      await still.goto(url, { waitUntil: "load" });
+      const paint = await still.evaluate(() => ({ bg: getComputedStyle(document.body).backgroundColor, ink: getComputedStyle(document.body).color }));
+      await bare.close();
+      const rgbOf = (hex) => "rgb(" + [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ") + ")";
+      R.check("first paint: :root defaults are the new Day", !!first && COLS.every((k) => first[k] === TABLE.day[k]) && paint.bg === rgbOf(TABLE.day.bg) && paint.ink === rgbOf(TABLE.day.ink),
+        JSON.stringify({ first, paint }));
+      const sw = await page.evaluate(() => Object.fromEntries(["bgSwatches", "accSwatches"].map((id) => [id, [...document.querySelectorAll("#" + id + " .sw")].map((s) => s.dataset.c.toUpperCase())])));
+      R.check("the editor's swatches are spec §9.2's", sw.bgSwatches.join() === SW_BG.join() && sw.accSwatches.join() === SW_ACC.join(), JSON.stringify(sw));
+      await page.evaluate(() => window.llThemes.maker.open({ from: "day" })); await page.waitForTimeout(200);
+      const mk = await page.evaluate(() => Object.fromEntries(["bg", "ink", "acc"].map((k) => [k, [...document.querySelectorAll('.mk-sw[data-k="' + k + '"] .sw')].map((s) => s.dataset.c.toUpperCase())])));
+      R.check("the Maker's swatches are spec §9.2's: the editor's page and accent rows, and its own text row", mk.bg.join() === SW_BG.join() && mk.acc.join() === SW_ACC.join() && mk.ink.join() === SW_INK.join(), JSON.stringify(mk));
+      await ctx.close();
+    });
+    await guard("outside the table, the title bar's colour", async () => {
+      /* the files as served: once the app runs, themeColor() rewrites the meta to the panel or the page on screen */
+      const html = await (await fetch(url + "index.html")).text();
+      const meta = (/<meta name="theme-color" content="([^"]*)"/.exec(html) || [])[1];
+      const man = JSON.parse(await (await fetch(url + "manifest.webmanifest")).text());
+      R.check("meta theme-color in the markup is #0D121C; the manifest's two colours are #0D121C", TABLE.dusk.bg === "#0D121C" &&
+        meta === TABLE.dusk.bg && man.background_color === TABLE.dusk.bg && man.theme_color === TABLE.dusk.bg, JSON.stringify({ meta, background: man.background_color, theme: man.theme_color }));
+    });
+    await guard("outside the table, the contrast tone", async () => {
+      /* a phone with a book open in Contrast: the lamp at the foot with its ring, and the dock under it */
+      const ctx = await context(b, PHONE, { ll_prefs: { auto: "off", theme: "hicon", autoDay: "hicon", autoNight: "hidark" }, ll_tips: "seen", ll_tip_doc: "1" });
+      const page = await open(ctx, url);
+      await openFixture(page, "sample.md");
+      const ring = await page.evaluate(() => {
+        const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+        return { tone: document.documentElement.dataset.tone, phone: document.body.classList.contains("phonebar"), btn: box(document.getElementById("dockBtn")), ring: box(document.querySelector("#dockBtn > .ring")) };
+      });
+      const near = (x, y) => Math.abs(x - y) < 0.05;
+      R.check("contrast tone: the ring is 68 × 68, its left and top 6px outside the lamp button's", ring.tone === "contrast" && ring.phone &&
+        near(ring.ring.width, 68) && near(ring.ring.height, 68) && near(ring.ring.left, ring.btn.left - 6) && near(ring.ring.top, ring.btn.top - 6), JSON.stringify(ring));
+      /* Chromium computes no style for the track's pseudo-element, so the rule itself is looked up (Chromium writes
+         the attribute selector with quotes); --track, the colour of the part not yet filled, does compute, and the
+         tone makes it transparent on every slider, the dock's included */
+      const track = await page.evaluate(() => {
+        const walk = (rules) => [...rules].flatMap((r) => [r].concat(r.cssRules ? walk(r.cssRules) : []));
+        const rule = [...document.styleSheets].flatMap((s) => { try { return walk(s.cssRules); } catch (_){ return []; } })
+          .find((r) => (r.selectorText || "").includes(':root[data-tone="contrast"] input[type="range"]::-webkit-slider-runnable-track'));
+        const tr = (id) => getComputedStyle(document.getElementById(id)).getPropertyValue("--track").trim();
+        return { sel: rule ? rule.selectorText : null, border: rule ? rule.style.border : null, height: rule ? rule.style.height : null, padding: rule ? rule.style.padding : null, dock: tr("dockPos"), warmth: tr("qWarm") };
+      });
+      R.check("contrast tone: the range track rule is in place", track.border === "2px solid var(--edge)" && track.height === "14px" && track.padding === "2px" &&
+        !!track.sel && track.sel.includes("#dockPos::-webkit-slider-runnable-track") && track.dock === "transparent" && track.warmth === "transparent", JSON.stringify(track));
+      /* the dock's Day and Night: no well round them, each its own outline in the line colour, the half on screen's in the accent */
+      const dn = await page.evaluate(() => {
+        const col = (v) => { const p = document.createElement("i"); p.style.color = v; document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; };
+        const well = getComputedStyle(document.querySelector("#phoneDock .pd-dn")), cs = (id) => getComputedStyle(document.getElementById(id));
+        return { well: [well.borderTopWidth, well.paddingTop, well.columnGap].join(" "), day: document.getElementById("dockDay").getAttribute("aria-pressed"),
+          on: cs("dockDay").borderTopColor, off: cs("dockNight").borderTopColor, width: cs("dockNight").borderTopWidth, accent: col("var(--accent)"), line: col("var(--line)") };
+      });
+      R.check("contrast tone: the dock's Day and Night are two outlined buttons, the half on screen in the accent", dn.well === "0px 0px 8px" && dn.day === "true" &&
+        dn.on === dn.accent && dn.off === dn.line && dn.on !== dn.off && dn.width === "2px", JSON.stringify(dn));
+      await ctx.close();
+    });
+    await guard("outside the table, the dark tone", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url);
+      /* a yellow highlight in the text, and for each theme its computed fill, the dock's unfilled track resolved to a colour, the line and the edge */
+      await page.evaluate(() => { const m = document.createElement("mark"); m.className = "ll-mark"; m.dataset.color = "sun"; m.id = "sunProbe"; m.textContent = "lamp"; document.getElementById("doc").appendChild(m); });
+      const read = (id) => page.evaluate((k) => {
+        window.llThemes.pick(k);
+        const probe = document.createElement("i"); document.body.appendChild(probe);
+        const col = (v) => { probe.style.color = ""; probe.style.color = v; return getComputedStyle(probe).color; };
+        const out = { theme: window.__ll.state.theme, tone: document.documentElement.dataset.tone, sun: getComputedStyle(document.getElementById("sunProbe")).backgroundColor,
+          track: col(getComputedStyle(document.getElementById("dockPos")).getPropertyValue("--track").trim()), line: col("var(--line)"), edge: col("var(--edge)") };
+        probe.remove();
+        return out;
+      }, id);
+      const dusk = await read("dusk"), day = await read("day"), hidark = await read("hidark");
+      const sun = (r) => { const c = parseColor(r.sun); return c ? c.rgb.map(Math.round).join() + "/" + c.a.toFixed(2) : r.sun; };
+      const yellow = "232,197,71";
+      R.check("dark tone: the sun mark is 38%; light tone and Contrast dark 42%", dusk.tone === "dark" && day.tone === "light" && hidark.tone === "contrast" &&
+        sun(dusk) === yellow + "/0.38" && sun(day) === yellow + "/0.42" && sun(hidark) === yellow + "/0.42", JSON.stringify({ dusk: [dusk.theme, dusk.tone, sun(dusk)], day: [day.theme, day.tone, sun(day)], hidark: [hidark.theme, hidark.tone, sun(hidark)] }));
+      /* 35% of the edge into the line, mixed in sRGB, as every other slider's track; a light page keeps the line alone */
+      const rgb = (c) => (parseColor(c) || { rgb: [NaN, NaN, NaN] }).rgb;
+      const mixOk = (r) => { const t = rgb(r.track), l = rgb(r.line), e = rgb(r.edge); return t.every((v, i) => Math.abs(v - (0.35 * e[i] + 0.65 * l[i])) < 0.6); };
+      const lineOk = (r) => { const t = rgb(r.track), l = rgb(r.line); return t.every((v, i) => Math.abs(v - l[i]) < 0.6); };
+      R.check("dark tone: #dockPos --track is the edge-line mix", mixOk(dusk) && lineOk(day), JSON.stringify({ dusk: [dusk.track, dusk.line, dusk.edge], day: [day.track, day.line] }));
+      await ctx.close();
     });
 
     /* ---------------- the tiles' drawing stays in the tiles ---------------- */

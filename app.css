@@ -1,9 +1,8 @@
   :root{
-    --bg:#EDEDE6; --ink:#1F2323; --muted:#5E6562; --panel:#F5F5EF;
-    --line:#D8D9CF; --accent:#2F6D5B;
-    /* the theme's lamp and raised surface (applyTheme sets both, with data-tone on this element;
-       these are Day's until it runs) */
-    --lamp:#955F0F; --raise:#FBFBF7;
+    /* the theme's colours, its lamp and raised surface among them (applyTheme sets all eight, with
+       data-tone on this element); until it runs they are Day's, for the first paint and a Lighthouse run */
+    --bg:#F5EFE3; --ink:#2D2924; --muted:#645F58; --panel:#FBF8F0;
+    --line:#DED8CB; --accent:#2C5D45; --lamp:#875C0C; --raise:#FEFCF8;
     --fsN:19; --fs:calc(var(--fsN) * 1rem / 16); --lh:1.75; --w:720px; --margin:0px;
     /* typography set in applyType: text weight, the heading and bold weights derived from it,
        letter and word spacing in em, and the gap under a paragraph */
@@ -507,7 +506,8 @@
   input.sel{padding-right:12px;}
   .sel:hover{border-color:var(--edge);}
   /* sliders: a 6px track, the part up to the thumb filled in the accent (--v, kept by app.js),
-     a 24px thumb on the surface ringed in the accent */
+     a 24px thumb on the surface ringed in the accent (the contrast tone's track is a hollow capsule,
+     at the end of this file) */
   input[type=range]{
     flex:1; min-width:140px; height:32px; margin:0; background:transparent; accent-color:var(--accent);
     -webkit-appearance:none; appearance:none; cursor:pointer; --track:color-mix(in srgb, var(--edge) 35%, var(--line));
@@ -1444,7 +1444,8 @@
     transition:opacity var(--t-fade) var(--ease-out), background var(--t-theme) ease, border-color var(--t-theme) ease;
   }
   #dockBtn > svg{width:24px; height:24px;}
-  /* the ring sits on the button's edge and starts at 12 o'clock */
+  /* the ring sits on the button's edge and starts at 12 o'clock (the contrast tone moves it out
+     past the edge, at the end of this file) */
   #dockBtn > .ring{
     position:absolute; left:calc(-1 * var(--bw)); top:calc(-1 * var(--bw)); width:56px; height:56px; transform:rotate(-90deg); pointer-events:none;
     fill:none; stroke:var(--lamp-mark, var(--lamp)); stroke-width:2; stroke-linecap:round; stroke-dasharray:0 170;
@@ -1506,7 +1507,8 @@
   #phoneDock:focus{outline:none;}
   .pd-grab{flex:none; width:36px; height:4px; margin:0 auto 8px; border-radius:var(--r-pill); background:color-mix(in oklab, var(--hair), var(--ink) 40%);}
   /* the place in the book: a slider with a 4px track, its filled part in the lamp's mark, and a
-     caption under it (the page or the percentage, and the time left in the chapter) */
+     caption under it (the page or the percentage, and the time left in the chapter). The contrast
+     tone and a night page draw the track their own way, at the end of this file */
   .pd-pos{flex:none; margin-top:var(--sp-2); padding:0 12px;}
   .pd-pos[hidden]{display:none;}
   #dockPos{display:block; width:100%; min-width:0; height:44px; --track:var(--line);}
@@ -1517,7 +1519,8 @@
   #dockPos::-moz-range-thumb{width:20px; height:20px; border:0; background:var(--ink); box-shadow:none;}
   .pd-cap{display:flex; justify-content:space-between; gap:var(--sp-3); margin:0; font-size:var(--fs-small); line-height:1.35; color:var(--muted); font-variant-numeric:tabular-nums;}
   #dockLeft{text-align:right;}
-  /* Day and Night: two buttons in a well, the half on screen lifted with the accent's edge */
+  /* Day and Night: two buttons in a well, the half on screen lifted with the accent's edge (in the
+     contrast tone two outlined buttons, at the end of this file) */
   .pd-dn{flex:none; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; margin-top:var(--sp-3); padding:4px; border:var(--bw) solid var(--line); border-radius:var(--r-md); background:var(--well);}
   .pd-dn[hidden]{display:none;}
   .dn-b{
@@ -2283,7 +2286,8 @@
     #moreMenu button.on::before{background:Highlight;}
     #side .side-switch button[aria-pressed="true"]{border-width:2px; border-color:Highlight;}
   }
-  /* marks: highlights in the text, and the list in the panel */
+  /* marks: highlights in the text, and the list in the panel (a night page has the yellow at 38%,
+     at the end of this file) */
   #doc mark.ll-mark{
     background:color-mix(in srgb, var(--accent) 32%, transparent); color:inherit; border-radius:2px;
     padding:.05em 0; box-decoration-break:clone; -webkit-box-decoration-break:clone; cursor:pointer;
@@ -2752,3 +2756,31 @@
   /* switching themes: a short cross-fade (app.js crossFade; none with reduced motion) */
   ::view-transition-old(root), ::view-transition-new(root){animation-duration:200ms;}
   @media (prefers-reduced-motion: reduce){ ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*){animation:none !important;} }
+
+  /* ---------- the contrast and dark tones: the lamp's ring, the sliders, the dock's Day and Night and
+     the yellow highlight, each made to read in that tone (after the phone dock's and the marks' own
+     rules, which they adjust) ---------- */
+  /* the Contrast pair: the lamp's progress ring 4px, about 3px clear of the button's 2px edge; the SVG
+     grows from 56px to 68px about the same centre, so the arc app.js measures still holds */
+  :root[data-tone="contrast"] #dockBtn > .ring{left:calc(-6px - var(--bw)); top:calc(-6px - var(--bw)); width:68px; height:68px; stroke-width:3.3; overflow:visible;}
+  /* every slider: a hollow capsule (a 2px rule in the edge colour round a 2px gap of the panel, a 6px fill) */
+  :root[data-tone="contrast"] input[type=range], :root[data-tone="contrast"] #dockPos{--track:transparent;}
+  :root[data-tone="contrast"] input[type=range]::-webkit-slider-runnable-track,
+  :root[data-tone="contrast"] #dockPos::-webkit-slider-runnable-track{height:14px; padding:2px; border:2px solid var(--edge); border-radius:999px; background-clip:content-box;}
+  :root[data-tone="contrast"] input[type=range]::-moz-range-track,
+  :root[data-tone="contrast"] #dockPos::-moz-range-track{box-sizing:border-box; height:14px; border:2px solid var(--edge); border-radius:999px; background:var(--panel);}
+  :root[data-tone="contrast"] input[type=range]::-moz-range-progress,
+  :root[data-tone="contrast"] #dockPos::-moz-range-progress{height:6px; border-radius:999px;}
+  /* the dock's handle: 24px with a 2px ring of the panel, and the accent's focus ring outside that */
+  :root[data-tone="contrast"] #dockPos::-webkit-slider-thumb{width:24px; height:24px; margin-top:-9px; box-shadow:0 0 0 2px var(--panel);}
+  :root[data-tone="contrast"] #dockPos:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 4px var(--accent);}
+  :root[data-tone="contrast"] #dockPos::-moz-range-thumb{width:24px; height:24px; box-shadow:0 0 0 2px var(--panel);}
+  :root[data-tone="contrast"] #dockPos:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--panel), 0 0 0 4px var(--accent);}
+  /* Day and Night in the dock: two outlined buttons, the half on screen in the accent's edge */
+  :root[data-tone="contrast"] .pd-dn{padding:0; gap:var(--sp-2); border:0;}
+  :root[data-tone="contrast"] .dn-b{border-color:var(--line); border-radius:var(--r-md);}
+  :root[data-tone="contrast"] .dn-b[aria-pressed="true"]{border-color:var(--accent);}
+  /* night pages: the yellow highlight at 38% (text on it 4.73:1 or more on every night theme) */
+  :root[data-tone="dark"] #doc mark.ll-mark[data-color="sun"]{background:color-mix(in srgb, #E8C547 38%, transparent);}
+  /* night pages: the dock's unfilled track, 35% of the edge into the line, like every other slider */
+  :root[data-tone="dark"] #dockPos{--track:color-mix(in srgb, var(--edge) 35%, var(--line));}

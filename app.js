@@ -408,9 +408,12 @@
   function fontName(f){ return f === FONTS.sans || f === FONTS.mono ? _t(f.name) : f.name; }
   function fontNote(f){ return _t(f.note); }
   function fontGroupName(g){ return _t(g.name); }
-  var BG_SWATCHES = ["#F6F1E4","#EFEFE8","#EDE7F3","#E4EFE7","#FBEDE0","#E8EFF5",
-                     "#14161B","#101711","#171021","#1A1310","#0D1420","#050506"];
-  var ACC_SWATCHES = ["#D8A24A","#C96A4A","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7FB069","#C9A227"];
+  /* the quick colours of both theme editors (Settings' and the Maker): the pages of the five looks'
+     day themes and a lavender the set lacks, then their night themes' pages and a violet; and eight
+     accents, Dusk's amber, Canals' coral and Forest's green among them */
+  var BG_SWATCHES = ["#F5EFE3","#FAFAF7","#F0E4CB","#DFE7D8","#DCEDF0","#EDE7F3",
+                     "#0D121C","#000000","#261914","#0E1A13","#0E1F22","#171021"];
+  var ACC_SWATCHES = ["#D8A24A","#E58E6C","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7AB785","#C9A227"];
   /* the single "Custom" theme of earlier versions; still read so a saved one carries over into `customs` */
   var CUSTOM_DEFAULT = {bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true};
 
@@ -11999,7 +12002,8 @@
      the theme back. */
   var Maker = (function(){
     var d = null;
-    var INK = ["#141414", "#2B2A26", "#40331F", "#25303A", "#C7C3B6", "#E9DBCF", "#CBD5E1", "#FFFFFF"];
+    /* the text row: the text of Paper, Day, Sepia and Sea air, then of Ink, Cocoa and Canals, and white */
+    var INK = ["#141414", "#2D2924", "#2E1E11", "#112126", "#D6D2C5", "#EEDFCB", "#D0DCD8", "#FFFFFF"];
     function esc(x){ return escapeHtml(String(x)); }
     function derive(){
       var bg = d.bg, ink = d.autoInk ? deriveInk(bg) : d.ink, fixed = false;
