@@ -1,6 +1,6 @@
 # Themes: twelve themes in six looks, and a picker that sets day and night in one tap
 
-- **Status:** decided on 2026-10-09 without approval gates. The owner asked for no more questions ("Don't ask me questions"), so every open choice is settled here as a ruling and listed in section 15. The owner's own choices from earlier stand: fewer, better themes; the whole app restyled; the phone reading screen first (done, stage 1).
+- **Status:** decided on 2026-10-09 without approval gates. The owner asked for no more questions ("Don't ask me questions"), so every open choice is settled here as a ruling and listed in section 15. Version 2, after an independent review against the code: the rulings it led to are marked "review" in section 15. The owner's own choices from earlier stand: fewer, better themes; the whole app restyled; the phone reading screen first (done, stage 1).
 - **Stage:** 2 of the whole-app restyle. Stage 1 was the phone reading screen (`docs/superpowers/specs/2026-10-08-phone-reading-screen-design.md`). Later stages: the library and start screen, then the remaining panels and sheets, then the two custom-theme editors.
 - **Research:** a review of all 50 themes, eight reading apps and the reading-comfort literature. It covered contrast, APCA, the distance between themes, comfort and look, and every place in the code that depends on the theme list. That research chose direction B, "six looks, twelve themes". Six designers then refined each look, and an integrator merged and checked the set. Section 3 gives the final colours.
 
@@ -18,7 +18,7 @@
   - Day is a putty page under a cool ink, with the weakest lamp of all 50 (4.55:1).
   - Dusk's secondary text is the weakest of all (APCA Lc 41, 4.67:1 on cards).
 - **Other apps keep it small.** Apple Books, Readwise, Kindle, Kobo, Libby and Play Books ship 3 to 6 looks. Apple Books and Readwise present a theme as one look in a light and a dark version. Comfort comes from brightness and an automatic dark mode, not from more themes. Fewer than 5% of people change any setting, so the default matters most.
-- **Readers can lose their theme.** A reader on a removed theme would wake to bright Day, even at night: `Prefs.load` maps every unknown id to Day (app.js:476).
+- **Readers can lose their theme.** `Prefs.load` maps an unknown theme to Day (app.js:476), so with Auto off a reader on a removed dark theme would wake to bright Day.
 
 ## 2. Goals and non-goals
 
@@ -226,12 +226,12 @@ The single-page drawing changes in the same way everywhere it is used. The lamp,
 | A look tile | the reader's pair is exactly that look, **and** the theme on screen is one of its two halves |
 | The pair tile | it is shown (the pair is no look) and the theme on screen is one of its halves |
 | An own theme's tile | it is the theme on screen (as today) |
-| Day / Night in the switch | `dnOf(state.theme)` is that half; neither when the theme on screen is outside the pair |
+| Day / Night in a switch | `dnOf(state.theme)` is that half |
 
 - **At most one look or pair tile is pressed.**
-- **An own theme outside the pair** (5.4): while it is on screen, no look is pressed, and neither half of the switch is.
-- **The same rules** apply in the popover, the sheet and Settings.
-- **E-ink mode** hides the switch, as the dock's switch already is: its colours are not shown.
+- **The theme on screen is always one of the pair's halves** (5.0), so a look or the pair tile is always pressed, and so is one half of the switch. The extra conditions above only matter after the raw test hook `llThemes.select` (5.8).
+- **The same rules** apply in the popover, the sheet, Settings and the dock.
+- **E-ink mode** hides both switches in the picker, as it already hides the dock's: its colours are not shown.
 
 ### 4.5 What goes
 
@@ -245,15 +245,31 @@ The single-page drawing changes in the same way everywhere it is used. The lamp,
 
 ## 5. What each control does
 
+### 5.0 One rule for every choice
+
+Whatever the reader chooses in the picker or in the Day theme and Night theme lists replaces **the half on screen**: a look replaces the whole pair and keeps the same half on screen; any single theme takes the place of the theme on screen, in its half.
+
+- **The half on screen** is `dnOf(state.theme)`. When the theme on screen is outside the pair (only after the raw test hook), its page colour decides: dark is night.
+- **A hold carries over.** With Auto on and a Day/Night hold in force, the hold moves to the theme that now stands in the held half: `dnHold.theme` becomes it, with its period and end unchanged.
+- **Only the Day/Night switches, `t` and the lamp's hold change the half.** Only a change of Auto's mode or of its hours ends a hold early, as today.
+
+So, after any choice:
+
+- the theme on screen is one of the pair's two themes;
+- the pair's two themes are never the same theme;
+- one half of the Day/Night switch is always marked.
+
+This changes two rules of stage 1: a choice no longer ends a hold (stage 1 §6.5), and a theme picked with Auto off no longer sits outside the pair (stage 1 §6.7). Section 15 records both.
+
 ### 5.1 A look
 
 A tap on a look tile does this:
 
-1. Make the look the reader's pair: `autoDay` = its day theme, `autoNight` = its night theme.
-2. Show the look's theme for **the half on screen**. That is `dnOf(state.theme)` taken before the tap. When the theme on screen is outside the pair, its page colour decides (dark is night).
-3. With Auto on and a Day/Night hold in force, the hold carries over: `dnHold.theme` becomes the theme now shown, with its period and end unchanged. Otherwise the half on screen is already the one the period wants.
-4. Cross-fade, as for any theme change, and save.
-5. No toast as a rule. The first-pick toast ("Day and night is on: … is now your day theme") is not shown for looks: a look covers both halves. The one exception is a pair that was no look (5.2).
+1. It makes the look the reader's pair: `autoDay` becomes its day theme, `autoNight` its night theme.
+2. It shows the look's theme for the half on screen (5.0).
+3. A hold in force carries over (5.0).
+4. It cross-fades, as for any theme change, and saves.
+5. It shows no toast. The one exception is in 5.2. The first-pick toast ("Day and night is on: … is now your day theme") is not shown for looks: a look covers both halves.
 
 **Examples:**
 
@@ -261,7 +277,7 @@ A tap on a look tile does this:
 - Dusk on screen; tap Sepia & Cocoa: Cocoa shows.
 - Auto on in the daytime, Night held (Dusk on screen); tap Sage & Forest: Forest shows and stays held until the next automatic switch.
 
-A tap on the look that is already the pair changes nothing, unless the theme on screen is outside it (5.4). Then the look's half for that page colour comes back.
+A tap on the look that is already the pair changes nothing.
 
 ### 5.2 The pair tile
 
@@ -276,19 +292,13 @@ This happens when the pair:
 - holds one of the reader's own themes (5.4);
 - was mixed in the Day theme and Night theme lists (5.5).
 
-A tap on it acts as on a look (5.1) with its own pair.
+A tap on it changes nothing.
 
-When a tap on a look replaces such a pair, a toast says "{name} for day and night" (the look's name) with **Undo**. Undo restores:
+When a tap on a look replaces such a pair, a toast says "{name} for day and night" (the look's name) with **Undo**. Undo restores the previous pair, the theme on screen and the hold, directly. This is the only toast a look tap shows.
 
-- the previous pair;
-- the theme on screen;
-- the hold.
+### 5.3 The Day/Night switches
 
-This is the only toast a look tap shows.
-
-### 5.3 The Day/Night switch
-
-- **A tap on Day or Night** calls `setDayNight` with that half, the same setter as the dock's switch, `t` and the lamp hold (stage 1, §6.2):
+- **A tap on Day or Night,** in the popover's head (`#qDN`), Settings › Theme (`#sDN`) or the dock, calls `setDayNight` with that half. It is the same setter as `t` and the lamp's hold (stage 1, §6.2):
   - the pair is never rewritten;
   - no toast, since the change is on screen;
   - with Auto on, it holds until the next automatic switch.
@@ -297,11 +307,14 @@ This is the only toast a look tap shows.
 
 ### 5.4 A theme of your own
 
-Unchanged from today, and from stage 1, §6.7:
+A tap on an own theme's tile, a theme the Maker saves, and New… in Settings follow 5.0:
 
-- **With Auto on,** a tap makes it the theme for the current period, so that half of the pair changes. The first time, the toast says so and offers "Turn off".
-- **With Auto off,** it changes only the screen. The pair stays, the theme sits outside it, and `t` or the switch goes back to the pair.
-- **When the Maker saves a new theme,** it is picked in the same way, as today.
+- **The theme replaces the theme on screen, in its half.** This holds with Auto on or off.
+  - Example: Day on screen with the pair Day/Dusk; tap My theme: My theme shows, the pair becomes My theme/Dusk, and the pair tile "My theme & Dusk" appears, pressed.
+  - A dark own theme picked while the day half is on screen becomes the day theme, as Candle did at noon in stage 1.
+- **An own theme that is already the other half** is shown the way the Day/Night switch would show it, and the pair does not change. This is how the two halves stay different.
+- **The first-pick toast:** with Auto on, the first time an own theme is picked, the toast says which half it went into and offers "Turn off", as today ("Day and night is on: {name} is now your night theme.").
+- **A hold carries over** (5.0).
 
 ### 5.5 The Day theme and Night theme lists (Settings › Theme)
 
@@ -311,43 +324,73 @@ Unchanged from today, and from stage 1, §6.7:
 - **Dark:** Dusk, Ink, Cocoa, Forest, Canals, Contrast dark;
 - **Mine.**
 
+**The other half's theme is disabled** in each list, so the pair's two themes cannot become the same.
+
 **Mixing.** A reader can mix any day theme with any night theme here, for example Paper by day and Dusk at night. A dark theme can still be a day theme, as today.
 
-**A change:**
+**A change follows 5.0:**
 
-- **With Auto on,** it applies at once if it is the half the period wants, as today.
-- **New: with Auto off and that half on screen,** the screen shows the new theme too. Today it keeps showing the old one, which then sits outside the pair.
+- **A change to the half on screen** shows the new theme at once, with Auto on or off. A hold carries over.
+
+  Today, with Auto off, the old theme stays on screen outside the pair; with Auto on, a change clears the hold, so the screen flips to the other half.
+- **A change to the other half** changes only the pair. The screen and a hold stay as they are.
 
 ### 5.6 Deleting a theme of your own
 
-- **The halves.** As today, a half that pointed at the deleted theme falls back: day to Day, night to Dusk.
-- **The screen.** When the deleted theme was on screen, the screen shows the pair's theme for the half it was in. If it was outside the pair, its page colour decides the half. This uses the Day/Night setter's path, so there is no pair rewrite and no hold.
+- **The halves.** As today, a half that pointed at the deleted theme falls back: day to Day, night to Dusk. If that would make the two halves the same theme, the pair becomes Day/Dusk.
+- **The screen.** When the deleted theme was on screen, the screen shows the theme now in its half, and a hold carries over.
 - **Previous.** Deletion no longer uses Previous, which goes.
-- **Undo** restores the theme, the pair and the screen, as today.
+- **Undo** restores, directly:
+  - the theme in the list;
+  - the pair;
+  - the theme on screen;
+  - the hold.
 
-### 5.7 Unchanged
+### 5.7 Unchanged, and changed from stage 1
+
+**Unchanged:**
 
 - `t`, the lamp's hold and the dock's Day/Night, with their toasts.
-- The Auto modes, holds and the 30 s check.
+- The Auto modes and the hours, and that changing either ends a hold.
+- The 30 s check.
 - Warmth, Extra dim and e-ink mode.
-- The rules for a pair left collapsed, and for Contrast and Contrast dark, in `dnOf` and `setDayNight`.
 
-### 5.8 Picking a built-in by id
+**Changed from stage 1 (§6.5, §6.7):**
 
-Only code and the tests pick a built-in by id; the picker has no single built-in tiles. `pickTheme(id)` for a built-in therefore does two things in one step:
+- A choice in the picker or the lists carries a hold over instead of ending it (5.0).
+- An own theme picked with Auto off goes into the half on screen instead of sitting outside the pair (5.4).
+- `pickTheme` for a built-in can set a hold, as the Day/Night switch does (5.8).
 
-1. it picks that theme's look, as 5.1;
-2. it shows that theme's half. With Auto on, this sets a hold when the period wants the other half, as a Day/Night switch would.
+**Collapsed pairs and themes outside the pair.** `dnOf` and `setDayNight` keep their rules for a pair left collapsed and for Contrast outside the pair, but neither state can arise any more: section 5 never creates one, and loading repairs those left by earlier versions (7.2).
 
-For example, `llThemes.pick("ink")` gives the pair Paper/Ink and shows Ink, with a hold if Auto wants Day.
+### 5.8 Picking by id, and the raw test hook
 
-`selectTheme` stays the raw setter the tests use. It now ignores an id that `resolveTheme` does not know, instead of saving it.
+Only code and the tests pick a built-in by id; the picker has no single built-in tiles.
+
+**`pickTheme(id)` for a built-in** does two things in one step:
+
+1. It picks that theme's look, as 5.1.
+2. It shows that theme's half. With Auto on, this sets a hold when the period wants the other half, as a Day/Night switch would.
+
+Example: `llThemes.pick("ink")` gives the pair Paper/Ink and shows Ink.
+
+It no longer returns early when the id is already on screen. So `pick("day")` with the pair Day/Cocoa gives Day & Dusk.
+
+**`pickTheme` for an own theme** follows 5.4.
+
+**`selectTheme`** (exported as `llThemes.select`) becomes the raw setter:
+
+- it shows a theme without touching the pair or the hold;
+- it ignores an id that `resolveTheme` does not know.
+
+Only the tests use it to make a state directly. A theme it leaves outside the pair is folded into the pair on the next load (7.2 step 7).
 
 ## 6. First run
 
 A first run means there is no `ll_prefs`. That includes the first run after "Clear everything".
 
 - **Auto starts on Follow phone** (`state.auto = "system"`). The theme is the half the phone asks for: Day, or Dusk when the phone is dark. It is set before `applyTheme` first runs, so the app does not switch from Day to Dusk after start-up.
+- **Only the first-run block changes.** The state literal keeps `auto: "off"`. A saved profile without an `auto` field, such as a test's `{theme: "dusk"}` seed, therefore stays off.
 - **With `prefers-contrast: more`,** the pair is Contrast / Contrast dark, and the theme is the half the phone asks for. Today the pair stayed Day/Dusk, and only the theme on screen was set.
 - **Existing readers keep their own Auto setting.** Their saved prefs win.
 
@@ -373,11 +416,12 @@ How the map was chosen:
 - Contrast and Contrast dark are never targets.
 - The rule: follow the research's merge targets until one survives (Amber → Candle → Cocoa). Otherwise take the nearest surviving page of the same tone, with distance deciding close calls.
 - The median move is a distance of 5.4.
-- The longest moves are Terminal, Amber, Delft blue, Plum and Midnight. Their hues are gone from the set.
+- Six moves are longer than 8: Terminal 20.4, Amber 13.1, Delft blue 8.8, Plum 8.3, Noir 8.3 and Midnight 8.05. Their hues are gone from the set.
+- **The second choice.** Each retired theme also has a second choice: the next-nearest kept theme of the same tone. It is used only when a pair's two halves would land on one theme (7.2 step 5). Each id's second choice is listed in 7.5.
 
 ### 7.2 When and over what
 
-The move runs inside `Prefs.load`, on **every load**. It changes nothing once the ids are current, so it is idempotent. It ships in the same build that removes the ids.
+The move runs inside `Prefs.load`, on **every load**. It changes nothing once the stored state is current, so it is idempotent. It ships in the same build that removes the ids.
 
 It covers:
 
@@ -387,19 +431,25 @@ It covers:
 
 `ll_theme_recent` is deleted rather than moved (4.5).
 
-The steps, in order:
+The steps, in order. `retireMove()` does steps 3, 4 and 5 (a). `foldPair()` does steps 5 (b), 7 and 8, after the validation that sits between them (app.js:476-484); Keep the old colours calls it too (7.4).
 
 1. Read the fields, as today.
 2. `migrateCustom`, as today.
-3. **Note the originals.** If any of `theme`, `autoDay` or `autoNight` is a retired id, keep the three original values in `state.themeWas` (a new field, 7.6). Keep it only if no earlier load left one there that has not yet been shown.
-4. **Map** each of the four fields through the retired table.
-5. **Pairs that would collapse.** If the two halves were different before the move and are now the same theme, the pair becomes that theme's look. For example, Linen/Peach becomes Day/Dusk, and Candle/Ember becomes Sepia/Cocoa.
-6. **Validate,** as today. An id still unknown becomes Day, Day or Dusk, and a bad hold becomes `null`.
-7. **A built-in outside the pair.** When `theme` is a built-in that is neither half:
+3. **Note the originals.** If any of `theme`, `autoDay` or `autoNight` is a retired id, keep the three original values in `state.themeWas` (a new field, 7.6). Do this only if no earlier load left a `themeWas` that has not yet been shown.
+4. **Map** each of the four fields through the retired table's `to`.
+5. **A pair that is one theme twice.**
+   - **(a) The move made it so:** the two halves were different before step 4.
+     - The half whose original was retired takes that id's second choice. If both were retired, the night half does.
+     - Examples: Linen/Peach becomes Day/Sea air; Candle/Ember becomes Cocoa/Dusk. Both keep their tones.
+   - **(b) It was so before the move:** a pair left collapsed by the old bug that stage 1 fixed.
+     - A built-in becomes its look: Day/Day becomes Day & Dusk, and Ember/Ember (Cocoa/Cocoa) becomes Sepia & Cocoa.
+     - An own theme keeps the half its page colour says, and the other half takes its default, Day or Dusk.
+6. **Validate,** as today. An id still unknown becomes Day, Day or Dusk, and a bad hold becomes `null`. If that makes the two halves the same, step 5 (b) repairs it, since `foldPair()` runs after this.
+7. **A theme on screen outside the pair.** Earlier versions left this state: a tile picked with Auto off changed only the screen.
    - Contrast or Contrast dark: the pair becomes Contrast / Contrast dark, so a high-contrast reader stays in high contrast.
-   - Any other built-in: it becomes the half its page colour says. For example, Paper on screen with the pair Day/Dusk gives Paper/Dusk.
+   - Any other theme, built-in or the reader's own: it becomes the half its page colour says. For example, Paper on screen with the pair Day/Dusk gives Paper/Dusk, so the reader keeps what they see.
 
-   Earlier versions left this state behind: a tile picked with Auto off changed only the screen. After this step it no longer exists for built-ins, and section 5 never creates it again. An own theme outside the pair stays legal (5.4).
+   Section 5 never creates this state; only the raw test hook does (5.8).
 8. **A hold on a theme that is not a half of the pair is dropped.** A hold only ever holds a half.
 
 ### 7.3 What does not move
@@ -410,33 +460,53 @@ The steps, in order:
 
 ### 7.4 The notice: "Keep the old colours"
 
-**When.** At boot, when `state.themeWas` is set, about 800 ms after the first screen. The e-ink offer has the same pattern and wins: while it is on screen, the notice waits for the next boot.
+**What it lists.** A change is listed for each distinct retired id among the three originals, as long as the reader can still see where it went.
+
+- The field it was in (`theme`, `autoDay` or `autoNight`) must still hold the theme the move gave it, its `to` or its second choice.
+- A change is not listed when steps 5 (b) or 7 replaced that theme. Example: Contrast on screen with the pair Linen/Plum becomes the Contrast pair, and Linen and Plum are no longer part of what the reader uses.
+- When nothing is listed, there is no notice, and `themeWas` is cleared.
+
+**When.** At boot, when `state.themeWas` lists a change, about 800 ms after the first screen.
+
+- It never shows together with the e-ink offer. Whichever comes first shows; the other waits for the next boot.
+- The e-ink offer, which comes at 600 ms, does not mark itself as asked while it waits.
 
 **What it says.** One line:
 
 > Themes have changed: Candle is now Cocoa.
 
-- With two or three changes, the changes are joined as a list in the interface's language: "Linen is now Day and Candle is now Cocoa". Use `Intl.ListFormat` where the browser has it, or ", " where it does not.
-- A change is listed for each distinct retired id among the three originals.
+- Each change reads "{old} is now {new}", where `{new}` is the theme the field holds after the move.
+- Two or three changes are joined as a list in the interface's language: "Linen is now Day and Peach is now Sea air". Use `Intl.ListFormat` where the browser has it, or ", " where it does not.
 
 **Its two buttons:**
 
-- **Keep the old colours.**
-- **A close button,** labelled "No thanks", which keeps the new themes.
+- **Keep the old colours** (`#themeKeep`).
+- **A close button** (`#themeNo`), labelled "No thanks", which keeps the new themes.
 
-**How it looks.** It looks and sits exactly like the e-ink offer (`#einkToast`): every CSS rule that names `#einkToast` also names `#themeToast`. It stays until it is answered or the app is closed.
+**How it looks and where it sits.**
 
-**Once only.** When the notice appears, `state.themeWas` is cleared and saved, so it is never shown twice. The originals are kept in memory for its button.
+- **Its look:** that of the e-ink offer (`#einkToast`):
+  - every rule that names `#einkToast` also names `#themeToast`;
+  - `#themeKeep` and `#themeNo` take `#einkYes`'s and `#einkNo`'s rules;
+  - the e-ink hover exemption (app.css:2460) names `#themeKeep` next to `#einkYes`.
+- **Its place:** the update offer's place.
+  - It keeps the bottom row and reports its height as `--noticeH`.
+  - The toast and the translation pill step over it, like they step over `--updateH`. So an Undo toast is never hidden behind it.
+  - It sits above the update offer if both show.
+- **How long:** it stays until it is answered or the app is closed.
+
+**Once only.** When the notice appears, `state.themeWas` is cleared and saved, so it is never shown twice. The listed changes are kept in memory for its button.
 
 **Keep the old colours:**
 
-1. For each distinct retired id among the originals, it makes one theme of the reader's own:
+1. **New own themes.** For each listed retired id, it makes one theme of the reader's own:
    - the retired theme's background, text, accent, panel and secondary text, from the retired table (`autoInk` false);
    - named with the retired theme's name in the interface's language ("Candle", "Kaars");
    - numbered if that name is taken ("Candle 2").
-2. It restores the three originals. A retired id is replaced by its new own theme; any other original is kept if it still resolves. This undoes the collapse and fold steps too.
-3. It clears the hold, applies, saves and redraws.
-4. It toasts "Your old colours are back, under Mine."
+2. **Each listed field** takes its new own theme.
+3. **`foldPair()` runs** (7.2 steps 5 (b), 7 and 8), so the theme on screen is a half of the pair and the halves differ.
+4. **It clears the hold,** applies, saves and redraws.
+5. **It toasts** "Your old colours are back, under Mine."
 
 **What these themes lose.** A texture, and a lamp different from the accent: a reader's own theme derives its lamp, raise and line.
 
@@ -445,16 +515,61 @@ The steps, in order:
 `RETIRED` in app.js holds the 38 retired ids. It is a separate literal after `THEMES`, because tests/themes.js parses `THEMES` on its own. For each id it keeps:
 
 - `to`, the new theme;
+- `alt`, its second choice (7.1);
 - `name`, the English name. Its Dutch stays in i18n.js;
 - `bg`, `panel`, `ink`, `muted` and `accent`, copied exactly from today's table.
 
 `resolveTheme`, `isBuiltIn` and the pickers never see it.
 
+The second choices, by retired id:
+
+| Retired | Second choice |
+|---|---|
+| blossom | sepia |
+| bookcloth | seaair |
+| handmade | seaair |
+| laid | sepia |
+| linen | sepia |
+| newsprint | sage |
+| peach | seaair |
+| polder | seaair |
+| rose | sepia |
+| tulips | seaair |
+| vellum | seaair |
+| coffee | sage |
+| parchment | sage |
+| mint | day |
+| delft | day |
+| lavender | day |
+| mist | day |
+| sky | day |
+| winter | day |
+| aurora | forest |
+| midnight | forest |
+| ocean | forest |
+| plum | canals |
+| rain | canals |
+| vermeer | canals |
+| noir | dusk |
+| terminal | dusk |
+| amber | dusk |
+| autumn | canals |
+| cabin | canals |
+| candle | canals |
+| ember | dusk |
+| nighttrain | dusk |
+| rembrandt | canals |
+| graphite | canals |
+| moss | dusk |
+| library | cocoa |
+| slate | cocoa |
+
+
 ### 7.6 Stored fields
 
 | Field | Change |
 |---|---|
-| `themeWas` | new in `FIELDS`: `{theme, autoDay, autoNight}` (strings) or `null`; anything else loads as `null` |
+| `themeWas` | new in `FIELDS`: `{theme, autoDay, autoNight}` (the original strings) or `null`; anything else loads as `null` |
 | `plainBg` | removed from `state` and `FIELDS`; an old saved value is simply not read |
 | `ll_theme_recent` | removed at boot |
 
@@ -512,10 +627,10 @@ These come from the design file and are reproduced in Appendix A:
    - Every slider is a hollow capsule: a 2px rule in the edge colour around a 2px gap, with a 6px fill.
    - The dock's handle gets a ring in the panel colour, and a focus ring in the accent outside that.
 3. **The Contrast pair: the dock's Day and Night.** These become two outlined buttons. Before, they were the accent's edge drawn inside the well's own rule.
-4. **Night pages: the yellow highlight.** On a dark page it is drawn at 38%, not 42%, so text on it reads at 4.73:1 or more on every night theme. Light pages and the contrast tone keep 42%.
-5. **Night pages: the dock's position slider.** Its unfilled track is 35% of the edge colour mixed into the line, as on every other slider. Before, it was the line alone, at 1.33–1.39:1, so the part of the book still to read did not show at night.
+4. **The dark tone: the yellow highlight.** In the dark tone it is drawn at 38%, not 42%, so text on it reads at 4.73:1 or more on every night theme. The light tone and the contrast tone keep 42%, Contrast dark included.
+5. **The dark tone: the dock's position slider.** Its unfilled track is 35% of the edge colour mixed into the line, as on every other slider. Before, it was the line alone, at 1.33–1.39:1, so the part of the book still to read did not show at night.
 
-**A known wrap.** In the design renders, the dock's "Read aloud" wraps onto two lines in the contrast tone. Its interface text is 15px there. The dock's tool names must stay on one line at 360 px and up in every tone. The fix: in the contrast tone, the names may use the whole cell, with no side padding; if that is not enough, they drop to 14px. A test covers it (13.3).
+**Wrapped tool names.** In the design renders, the dock's "Read aloud" wraps onto two lines in the contrast tone. That is stage 1's rule and stays: nothing under 15px in the contrast tone, and the tool names may wrap without being clipped (stage 1 §9.5; phonedock.js:594).
 
 ### 9.4 Comments that name themes
 
@@ -556,38 +671,48 @@ The warmth comment no longer names "tight" themes; the ceilings are computed.
 | `lookOf(id)` | the look a built-in belongs to |
 | `pairLook()` | the look equal to the pair, or `null` |
 | `lookName(l)` | a look's name: "{day} & {night}" from `themeName`, or `_tc("theme", "Contrast")` |
-| `lookTileHtml(id, day, night)` | a look or pair tile's markup |
+| `lookTileHtml(id, day, night)` | a look or pair tile's markup. Each small page carries `data-t` = its theme id |
 | `looksHtml()`, `mineHtml(withActions)` | the looks (with the pair tile first when needed), and Mine with New theme |
-| `selectLook(day, night)` | the tap of 5.1, and the Undo toast of 5.2 |
-| `retireMove()`, `foldPair()` | inside `Prefs.load`: steps 3–5, and steps 7–8, of 7.2 |
+| `halfOnScreen()` | `dnOf(state.theme)`, or the page colour's half when the theme is outside the pair |
+| `selectLook(day, night, half?)` | the tap of 5.1, the Undo toast of 5.2, and `pickTheme`'s built-ins (5.8) |
+| `pickOwn(id)` | an own theme into the half on screen (5.4). Used by `pickTheme`, `createCustom` and the Maker's save |
+| `pairChanged()` | redraws both grids (`#qLooks` and `#qMine` when the popover is open, `#themeChips` always), refills the lists and keeps focus on the tile that was focused, or on the pressed one. Every path that changes the pair or the list of own themes calls it: `selectLook` and its Undo, `AutoTheme.setPair`, `pickOwn`, `deleteCustom` and its Undo, Keep the old colours, and `customsChanged` |
+| `retireMove()`, `foldPair()` | inside `Prefs.load`: steps 3, 4 and 5 (a), and steps 5 (b), 7 and 8, of 7.2. `ThemeNotice` calls `foldPair()` for Keep |
 | `ThemeNotice` | the notice and Keep the old colours (7.4) |
 
 **Changed:**
 
 | Function | Change |
 |---|---|
-| `renderTheme` | draws the head switch, the looks, the pair tile, Mine and New theme |
-| `syncTheme` | marks the tiles and the switch (4.4). No Recent, Previous, Day/Night names or swatches |
-| `buildThemeChips` | draws the same looks and Mine into `#themeChips`; built from one shared function with `renderTheme` |
-| `themeOptions` | the Light, Dark and Mine groups of 5.5 |
-| `tileMark` | marks by the rules of 4.4 |
-| `AutoTheme.setPair` | the screen follows (5.5) |
-| `pickTheme` | built-ins as 5.8 |
-| `selectTheme` | ignores unknown ids |
+| `renderTheme` | draws the looks, the pair tile, Mine and New theme |
+| `syncTheme` | marks the tiles (4.4). No Recent, Previous, Day/Night names or swatches |
+| `buildThemeChips` | draws the same looks and Mine into `#themeChips`, then marks them |
+| `themeOptions` | the Light, Dark and Mine groups of 5.5. `AutoTheme.syncUI` disables, in each list, the other half's theme |
+| `AutoTheme.syncUI` | fills only `#autoDay` and `#autoNight`. `#qDaySel` and `#qNightSel` are gone, and so are their listeners in Pop |
+| `AutoTheme.setPair` | 5.5: refuses the other half's theme; the screen follows a change to the half on screen; a hold carries over; it no longer clears the hold |
+| `AutoTheme.userPicked` | removed; `pickOwn` replaces it |
+| `applyTheme` | marks every Day/Night switch (`#qDN`, `#sDN`, the dock's), hides the two picker switches in e-ink, and drops the texture code |
+| `tileMark` | marks by the rules of 4.4. It recolours every small page (`data-t`) of the own theme being edited, in the look and pair tiles too |
+| `pickTheme` | built-ins as 5.8; own themes through `pickOwn` |
+| `selectTheme` | the raw setter of 5.8. It no longer calls `userPicked` or clears the hold, and it ignores unknown ids |
+| `createCustom` | goes through `pickOwn` |
 | `deleteCustom` | as 5.6 |
-| `applyTheme` | no texture code |
+| `Pop.open`, `openSheetAt` | first focus on the pressed tile of the looks grid, or its first tile. They look for `.tiles .chip.on` today (app.js:1523, 1807) |
+| `Eink.offer` | waits while the notice is up, without marking itself as asked (7.4) |
 | first-run block | as section 6 |
 
 **Removed:**
 
 - `recentThemes`, `noteTheme` and `prevTheme`;
 - `paneOf`, `groupOf`, `showGroup` and the tab keys;
-- `GROUP_PANES` and `dnSwatch`;
+- `GROUP_PANES`, `dnSwatch` and `tileSwatch`;
+- `userPicked`;
 - the Plain background handler.
 
 ### 10.3 Test API (`window.llThemes`, not public)
 
-- **Exports:** `THEMES`, `LOOKS`, `RETIRED`, `resolve`, `current`, `customs`, `select`, `pick`, `look` (`selectLook`), `create`, `fix`, `remove`, `maker`, `dnOf`, `setDayNight` and `hold`.
+- **Exports:** `THEMES`, `LOOKS`, `RETIRED`, `contrast`, `resolve`, `current`, `customs`, `select` (raw, 5.8), `pick`, `look` (`selectLook`), `create`, `fix`, `remove`, `maker`, `dnOf`, `setDayNight` and `hold`.
+- **Kept:** `contrast` stays, because phonedock.js and type2.js call it.
 - **Removed:** `CYCLE`, `groups`, `pickerGroups` and `previous`.
 
 ### 10.4 Markup and CSS
@@ -599,8 +724,11 @@ The warmth comment no longer names "tight" themes; the ceilings are computed.
   - The tile rules (app.css:774-827) are reworked for 4.3.
   - These are removed:
     - `.q-groups`, `.q-colls`, `.q-coll`, `.q-prev`, `#qRecentSec`, `.q-make`;
-    - `.dn-pair`, `.dn`, `.dn-t`, `.dn-n`, `.dn-cur` and `.dn-sw`. The `.dn-cur` and `.dn.same` rules were already dead;
+    - `.dn-pair`, `.dn`, `.dn-t`, `.dn-n`, `.dn-cur`, `.dn-sw` and `.dn-sel` (app.css:2761). The `.dn-cur` and `.dn.same` rules were already dead;
+    - `#themePop .strip …` (app.css:2689), which stops matching;
+    - `.dn` in the e-ink chosen-control list (app.css:2461);
     - the texture block.
+  - The notice's rules (7.4): `#themeToast` joins `#einkToast`'s rules, and `--noticeH` joins `--updateH`'s sums.
   - The `.dn-b` dock buttons stay.
   - The new switch uses the existing `.seg` and `.chip`.
   - Appendix A is added.
@@ -718,17 +846,19 @@ Several checks read colours that come from an oklab mix, so the computed style i
   - text on 28% accent over the page (a found word);
   - text on 35% accent in the dark tone (a search hit);
   - text on the sentence read aloud: 24% lamp, or 18% dark;
-  - text on the yellow highlight: 42%, or 38% on a dark page;
+  - text on the yellow highlight: 42%, or 38% in the dark tone;
   - the lamp on `--lamp-soft`.
 
   The mixes copy the colour space app.css uses: sRGB for `color-mix(in srgb …)`, and OKLab for `in oklab`. A mix with `transparent` is laid over the page.
+
+  Each theme in the light or contrast tone has 23 pairs; each in the dark tone has 24, because the 35% search hit is the dark tone's own. That is 281 in all.
 - **`LOOKS`,** parsed from app.js like `THEMES`:
   - six looks;
   - every built-in in exactly one look;
   - each day half light and each night half dark (relative luminance, as today).
 - **`RETIRED`:**
   - 38 ids, none of them in `THEMES`;
-  - every `to` is a built-in of the same tone, and never `hicon` or `hidark`;
+  - every `to` and `alt` is a built-in of the same tone, never `hicon` or `hidark`, and `alt` differs from `to`;
   - every colour a hex value, and a name.
 - **No near-duplicates:** the weighted OKLab distance of 3.3 between any two themes of one tone is at least 4.5.
 
@@ -742,7 +872,7 @@ Several checks read colours that come from an oklab mix, so the computed style i
   - none of the parts in 4.5;
   - two columns;
   - tiles at least 44px tall.
-- **On 390 × 844,** the sheet shows "Day and night" without scrolling.
+- **On 390 × 844, on a fresh profile** (a look as the pair, no own themes), the sheet shows "Day and night" without scrolling.
 - **Looks (5.1):**
   - with Auto off, the half on screen is kept (Day → Paper, Dusk → Cocoa);
   - with Auto on and no hold, the period's half shows;
@@ -752,18 +882,29 @@ Several checks read colours that come from an oklab mix, so the computed style i
   - a seeded Day/Cocoa pair shows "Day & Cocoa" first, pressed;
   - a look tap replaces it with a toast;
   - Undo restores the pair, the screen and the hold.
-- **The switch (5.3):**
+- **The switches (5.3):**
   - Night shows Dusk, and the switch's state follows;
   - hidden in e-ink;
-  - in sync between the popover, Settings and the dock.
+  - in sync between the popover, Settings and the dock, also after `t`.
 - **Own themes (5.4):**
-  - with Auto off: on screen only; no look and neither half pressed; `t` goes back to the pair;
-  - with Auto on: a half is replaced, the pair tile appears, and the first-pick toast shows.
+  - with Auto off, Day on screen: it shows, the pair becomes it/Dusk, the pair tile appears pressed, and no toast;
+  - with Auto on and Night held: it takes the night half and the hold, and the first-pick toast names the night;
+  - an own theme that is already the other half: the pair stays, and the screen shows it as the switch would.
 - **The lists (5.5):**
   - their three groups and twelve built-ins;
-  - with Auto off and Day on screen, choosing Paper shows Paper, and the pair tile becomes Paper & Dusk.
-- **Deleting (5.6):** deleting the own theme on screen shows its half's fallback; Undo restores it.
-- **Picking by id (5.8):** `pick("ink")` gives Paper/Ink with Ink on screen.
+  - the other half's theme disabled in each list;
+  - with Auto off and Day on screen, choosing Paper shows Paper, and the pair tile becomes Paper & Dusk;
+  - with Dusk on screen, choosing Paper for the day half changes only the pair;
+  - with Auto on and Night held, changing the night theme keeps the hold on the new theme.
+- **Deleting (5.6):** deleting the own theme on screen shows its half's fallback with the hold carried over; Undo restores the theme, the pair, the screen and the hold.
+- **Picking by id (5.8):**
+  - `pick("ink")` gives Paper/Ink with Ink on screen, held when Auto wants Day;
+  - `pick("day")` on a Day/Cocoa pair gives Day & Dusk;
+  - `select("gone7")` changes nothing.
+- **The invariant (5.0):** after a mixed sequence of looks, own themes, list changes, switches and deletions, with Auto off and on, the theme on screen is a half of the pair and the halves differ.
+- **Redraws (10.2):**
+  - the pair tile appears and goes in the popover and in Settings without a reopen;
+  - after Enter on a look, focus is on the pressed tile.
 - **First run (6):**
   - a light phone gets Day and Follow phone;
   - a dark phone gets Dusk;
@@ -771,18 +912,26 @@ Several checks read colours that come from an oklab mix, so the computed style i
   - an existing profile with Auto off stays off.
 - **Moving readers (7):**
   - **every retired id** seeded as `theme` (Auto off) loads as its target and is saved;
-  - **pairs:** a mapped pair; the collapse rule (Linen/Peach → Day/Dusk; Candle/Ember → Sepia/Cocoa);
-  - **the fold:** Paper outside Day/Dusk → Paper/Dusk; Contrast outside → the Contrast pair;
+  - **pairs:**
+    - a mapped pair;
+    - pairs the move makes one theme twice: Linen/Peach becomes Day/Sea air, Candle/Ember becomes Cocoa/Dusk;
+    - legacy collapsed pairs: Day/Day becomes Day/Dusk, Ember/Ember becomes Sepia/Cocoa, an own theme twice keeps its half;
+  - **the fold:**
+    - Paper outside Day/Dusk becomes Paper/Dusk;
+    - an own theme outside the pair takes its half;
+    - Contrast outside becomes the Contrast pair;
   - **holds:** a mapped hold; a hold outside the pair dropped;
-  - **ids:** an unknown id → Day;
+  - **ids:** an unknown id becomes Day;
   - **stored state:** `ll_theme_recent` removed;
   - **idempotent:** a second load changes nothing.
 - **The notice (7.4):**
-  - its text for one change and for two;
-  - Keep makes the own themes with the old colours, restores the originals and toasts;
+  - its text for one change and for two, worded from the resulting pair ("Peach is now Sea air");
+  - no notice when the contrast fold replaced the retired halves;
+  - Keep makes the own themes with the old colours, puts them in the listed fields, keeps the theme on screen a half of the pair, and toasts;
   - the close button keeps the new themes;
   - it is never shown twice, also after a reload;
-  - it waits while the e-ink offer is up;
+  - it waits while the e-ink offer is up, and the e-ink offer waits for it;
+  - a toast shown while the notice is up sits above it, not under it;
   - a numbered name when "Candle" is taken.
 - **Colours:**
   - every built-in sets its tokens exactly;
@@ -791,9 +940,8 @@ Several checks read colours that come from an oklab mix, so the computed style i
   - the `:root` defaults.
 - **Appendix A:**
   - in the contrast tone, the ring is 68px and 6px outside, and the sliders' track has a 2px edge;
-  - on a dark page, the yellow highlight is 38% and the dock's track is the mix;
-  - on a light page, 42%.
-- **The dock's tool names** stay on one line at 360 and 390 px in all three tones (9.3).
+  - in the dark tone, the yellow highlight is 38% and the dock's track is the mix;
+  - in the light tone and in Contrast dark, 42%.
 
 ### 13.4 Existing tests to change
 
@@ -801,12 +949,12 @@ Every change keeps the check's intent with the new set.
 
 - **Picker selectors:**
   - tests/themes-browser.js is rewritten for the new picker. Its broken "New…" step now opens the Maker, and the rest of the file runs again.
-  - ui-a.js 179-226, qol.js 185-196, look.js 41-46 and daynight.js (its picker parts).
+  - ui-a.js 179-226, qol.js 185-196, look.js 41-46 and daynight.js 100-112 (the popover's pair becomes `#qDN`).
   - tests/lib.js gets helpers for showing the day or night half through the switch.
 - **Suites that click `#themeChips [data-theme=…]`** use the Settings switch or a look instead:
   - about, explain2, simplify, speak, translate, zen, print and ui-c.
 - **Retired ids in seeds and picks:**
-  - ui-a (terminal);
+  - ui-a (terminal; newsprint at 429);
   - ui-b and ui-c (candle, terminal, newsprint, slate);
   - daynight (ember, candle);
   - themes-browser (newsprint, midnight);
@@ -821,17 +969,20 @@ Every change keeps the check's intent with the new set.
     Every ceiling still clears 4.5:1 through the film.
   - fonts.js 159: 12 themes.
   - themes.js: rewritten (13.3).
-- **Fresh profiles now start with Follow phone (section 6).** Playwright's default scheme is light, so Day still shows. The checks that assumed Auto off on a fresh profile change:
-  - the default chips;
-  - "Now: Day, day and night";
-  - a hand pick with no first-pick toast.
-
-  The checks either seed Auto off or expect the Follow phone text.
+- **Fresh profiles now start with Follow phone (section 6).** Playwright's default scheme is light, so Day still shows, and seeded profiles stay as they are. The suites are run once with the change, and every check that assumed Auto off on a fresh profile is listed and fixed by seeding Auto off.
 - **Recent and Previous:** daynight.js's checks that Day/Night adds no Recent entry become a check that `ll_theme_recent` is never written.
+- **The stage-1 rules this spec changes (5.7),** in daynight.js:
+  - §6, collapsed pairs: the lists now refuse them, and loading repairs them. These checks become "the lists keep the pair two themes"; the load repairs are tested in looks.js.
+  - §9, the first-pick toast: it uses an own theme, not a retired built-in.
+  - The hold checks:
+    - "a tile pick during a hold clears it" becomes "an own theme picked during a hold takes the held half and keeps the hold";
+    - "setPair during a hold clears it" becomes "changing the held half in the lists keeps the hold on the new theme; changing the other half leaves it".
+  - The checks on Auto's mode and hours ending a hold stay.
+- **`llThemes.select`** stays raw (5.8), so the suites that use it to show a theme keep working with Auto on.
 
 ### 13.5 Acceptance
 
-- tests/themes.js passes for 12 themes. That is 24 pairs each, plus the looks, retired and distance rules.
+- tests/themes.js passes for 12 themes. That is 281 pairs (13.3), plus the looks, retired and distance rules.
 - tests/looks.js passes.
 - **Every other suite:**
   - every check that passed in the baseline passes;
@@ -844,7 +995,7 @@ Every change keeps the check's intent with the new set.
 
 1. **Baseline and the parser fixes** (13.1, 13.2).
 2. **The picker,** on today's colours. All twelve ids already exist, so this needs:
-   - `LOOKS`, the tiles, the switch, the pair tile and the tap rules of section 5;
+   - `LOOKS`, the tiles, the switches, the pair tile, the rule of 5.0 for every choice, and the redraws;
    - Settings › Theme;
    - removing tabs, Recent and Previous;
    - tests/looks.js's picker parts;
@@ -869,7 +1020,8 @@ Every change keeps the check's intent with the new set.
 - **The first run changes.** On a dark phone a new reader opens in Dusk. This is intended (section 6). Lighthouse runs light, so it still measures Day.
 - **Stale installs.** Without the version bump, an installed copy would keep the old table while new prefs arrive.
 - **Previous and Recent go.** The whole set fits on one screen, and the Day/Night switch covers the common way back. For a pair that was no look, a look tap offers Undo (5.2).
-- **The notice and other toasts.** It never shows with the e-ink offer, and the update offer only comes before the reload that brings the new version.
+- **The notice and other toasts.** It never shows with the e-ink offer. Toasts step over it, as they step over the update offer (7.4).
+- **Changed stage-1 rules.** Holds now carry over a choice, and an own theme picked with Auto off joins the pair (5.7). daynight.js's checks of the old rules are rewritten to the new ones, not deleted.
 
 ## 15. Rulings
 
@@ -884,12 +1036,19 @@ The owner said "Don't ask me questions", so the open choices were settled as bel
 | Ink | Pure black #000000 | research recommendation, ruling |
 | Picker | Six split look tiles ("Looks"), not two rows of day and night tiles | ruling, after mockups of both |
 | A look tap | Sets the whole pair and keeps the half on screen; a hold carries over | research recommendation, ruling |
-| An own theme's tap | As today | research recommendation, ruling |
+| Every other choice | One rule (5.0): it replaces the theme on screen in its half, and a hold carries over. So the theme on screen is always in the pair, and the pair is never one theme twice | review |
+| An own theme's tap | Follows 5.0, with Auto on or off. It changes stage 1 §6.7, where an Auto-off pick changed only the screen | review (was "as today") |
+| Holds | A choice carries a hold over instead of ending it; only Auto's mode and hours end one early. It changes stage 1 §6.5 | review |
+| The lists | The other half's theme is disabled; a change to the half on screen shows at once | review |
 | Mixing | Still possible, in Settings › Theme's Day theme and Night theme lists; the picker shows a mixed pair as its own tile | ruling |
 | Desktop Day/Night | A switch in the picker's head, on every screen size | research recommendation, ruling |
 | Recent, Previous, "Make my own from this one" | Removed | ruling |
 | Retired themes | Moved by the map of 7.1, on every load; one notice offering "Keep the old colours" | research recommendation, ruling |
-| Collapsed pairs and a theme outside the pair | The look of the shared theme; the outside theme takes its half (Contrast takes the Contrast pair) | ruling |
+| Pairs the move makes one theme twice | The retired half takes its second choice of the same tone | review (was "the look of the shared theme") |
+| Legacy collapsed pairs, and a theme outside the pair | A built-in twice becomes its look; an own theme twice keeps its half; a theme outside the pair takes its half, and Contrast takes the Contrast pair | ruling, review |
+| The notice's list and place | Only retired themes the reader can still see; worded from the resulting pair; toasts step over it | review |
+| Dock tool names in the contrast tone | Stage 1's rule stays: 15px, wrapping without clipping | review |
+| `llThemes.select` | A raw setter for tests; the pick paths carry the rules | review |
 | Textures and Plain background | Removed | ruling |
 | First run | Follow phone; Contrast pair with `prefers-contrast: more` | research recommendation, ruling |
 | Dusk's page as the brand colour | Meta theme-color and manifest #0D121C | ruling |
