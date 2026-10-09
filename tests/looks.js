@@ -31,6 +31,8 @@ const lists = (page) => page.evaluate(() => Object.fromEntries(["autoDay", "auto
 })));
 const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Contrast"];
 const DAYS = ["day", "paper", "sepia", "sage", "seaair", "hicon"], NIGHTS = ["dusk", "ink", "cocoa", "forest", "canals", "hidark"];
+/* a light theme of the reader's own, "c:t3a" */
+const LAMP = { id: "t3a", name: "Reading lamp", bg: "#F4ECD8", ink: "#2A2118", autoInk: false, accent: "#7A3E12" };
 /* the Dutch for "Mine" as i18n.js has it, whichever apostrophe that is */
 const MINE_NL = (/"Mine":\s*"([^"]*)"/.exec(fs.readFileSync(path.join(__dirname, "..", "i18n.js"), "utf8")) || [])[1];
 const NOON = new Date(2026, 9, 9, 12, 0, 0);
@@ -256,14 +258,16 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
       const page = await open(ctx, url, NOON);
       await openSettings(page);
+      /* `old`: what is left of the nine headed groups, their labels and their single built-in tiles (§4.5) */
       const set = await page.evaluate(() => {
         const c = document.getElementById("themeChips"), lab = document.getElementById("tg-custom");
         const mine = c && c.querySelector(':scope > .looks.q-mine[role="group"][aria-labelledby="tg-custom"]');
         return { dn: !!document.querySelector('#themeGroup > #sDN [data-dn="day"]') && !!document.querySelector('#themeGroup > #sDN [data-dn="night"]'),
-          looks: !!(c && c.querySelector(':scope > .looks[role="group"][aria-labelledby="themeL"] > .tile.look')), mine: lab ? lab.textContent : null, add: !!(mine && mine.querySelector(".chip-new")) };
+          looks: !!(c && c.querySelector(':scope > .looks[role="group"][aria-labelledby="themeL"] > .tile.look')), mine: lab ? lab.textContent : null, add: !!(mine && mine.querySelector(".chip-new")),
+          old: document.querySelectorAll('#themeChips .chip-group, #themeChips .chip-group-label, #themeChips .chip[data-theme]:not([data-theme^="c:"])').length };
       });
       const lk = await looksIn(page, "#themeChips");
-      R.check("Settings › Theme has the switch, six looks and Mine", set.dn && set.looks && set.mine === "Mine" && set.add && lk.map((l) => l.id).join() === DAYS.join() &&
+      R.check("Settings › Theme has the switch, six looks and Mine", set.dn && set.looks && set.mine === "Mine" && set.add && set.old === 0 && lk.map((l) => l.id).join() === DAYS.join() &&
         lk.map((l) => l.name).join("|") === NAMES.join("|") && lk.filter((l) => l.on).map((l) => l.id).join() === "day", JSON.stringify({ set, lk }));
       const order = await page.evaluate(() => {
         const els = ["sDN", "themeChips", "dnSubL", "autoRow"].map((id) => document.getElementById(id));
@@ -288,7 +292,7 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       await ctx.close();
     });
     await guard("settings, the lists' groups", async () => {
-      const ctx = await context(b, null, { ll_prefs: { auto: "off", customs: [{ id: "t3a", name: "Reading lamp", bg: "#F4ECD8", ink: "#2A2118", autoInk: false, accent: "#7A3E12" }] } });
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", customs: [LAMP] } });
       const page = await open(ctx, url, NOON);
       await openSettings(page);
       const l = await lists(page), ids = await page.evaluate(() => Object.keys(window.llThemes.THEMES));
@@ -333,6 +337,41 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       R.check("More theme settings… puts focus on the pressed tile in #themeChips, or on its first tile when none is pressed", f1 === "day:true" && f2 === "day:false", f1 + " " + f2);
       await ctx.close();
     });
+    await guard("settings, focus through a redraw", async () => {
+      /* a change of the pair draws the tiles again, and the focus stays on the tile that had it (§10.2).
+         Settings holds the looks and Mine in one grid, whose first pressed tile is the pair's, above
+         Mine: an own theme's tile there keeps the focus all the same, as it does in the popover's Mine.
+         A tile that has gone (the pair's own, once the pair is a look) hands it to the pressed one.
+         AutoTheme.setPair stands in for any change of the pair made while a tile has the focus */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "c:t3a", autoDay: "c:t3a", autoNight: "dusk", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      const setPair = (which, k) => page.evaluate(([w, t]) => window.__ll.AutoTheme.setPair(w, t), [which, k]);
+      /* the focused tile: what it shows, whether it is pressed, and which grid it is in */
+      const focused = () => page.evaluate(() => {
+        const a = document.activeElement;
+        return a ? (a.dataset.look || a.dataset.theme || a.tagName) + ":" + a.getAttribute("aria-pressed") + " in " +
+          (a.closest("#themeChips > .q-mine") ? "Settings' Mine" : a.closest("#themeChips > .looks") ? "Settings' looks" : a.closest("#qMine") ? "the popover's Mine" : a.closest("#qLooks") ? "the popover's looks" : "neither") : null;
+      });
+      await openSettings(page);
+      await page.focus('#themeChips .q-mine [data-theme="c:t3a"]');
+      await setPair("night", "ink"); await page.waitForTimeout(150);
+      const mine = await focused(), pairName = (await looksIn(page, "#themeChips"))[0].name;
+      await page.focus('#themeChips [data-look="pair"]');
+      await setPair("night", "dusk"); await page.waitForTimeout(150);
+      const pair = await focused();
+      await setPair("day", "day"); await page.waitForTimeout(150);
+      const gone = await focused();
+      await setPair("day", "c:t3a"); await page.waitForTimeout(150);
+      await page.evaluate(() => window.llPop.sheet(false)); await page.waitForTimeout(300);
+      await openTheme(page);
+      await page.focus('#qMine [data-theme="c:t3a"]');
+      await setPair("night", "ink"); await page.waitForTimeout(150);
+      const pop = await focused();
+      R.check("a redraw keeps focus on the tile that had it, in Settings' Mine too, or on the pressed one when that tile has gone",
+        pairName === "Reading lamp & Ink" && mine === "c:t3a:true in Settings' Mine" && pair === "pair:true in Settings' looks" && gone === "day:true in Settings' looks" && pop === "c:t3a:true in the popover's Mine",
+        JSON.stringify({ pairName, mine, pair, gone, pop }));
+      await ctx.close();
+    });
     await guard("settings, list changes, Auto off", async () => {
       let ctx = await context(b, null, { ll_prefs: { auto: "off" } });
       let page = await open(ctx, url, NOON);
@@ -351,6 +390,31 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       await page.selectOption("#autoDay", "paper"); await page.waitForTimeout(150);
       const d = await st(page), dset = await looksIn(page, "#themeChips");
       R.check("Auto off, Dusk on screen: Day theme → Paper changes only the pair", d.theme === "dusk" && d.autoDay === "paper" && d.autoNight === "dusk" && !d.hold && pairFirst(dset, "Paper & Dusk"), JSON.stringify({ d, dset: dset.slice(0, 2) }));
+      await ctx.close();
+    });
+    await guard("settings, a theme outside the pair", async () => {
+      /* a theme outside the pair (only the raw llThemes.select leaves one) is neither half, except that
+         Contrast counts as Day. A list that makes it a half changes only the pair, the screen stays, and
+         every Day/Night switch (the popover's, Settings', the dock's) then marks that half (§4.4): Cocoa
+         outside Day/Dusk made the day theme, Day; Contrast made the night theme, Night */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      const page = await open(ctx, url, NOON);
+      const marks = () => page.evaluate(() => ["qDN", "sDN"].map((id) => [...document.querySelectorAll("#" + id + " [data-dn]")].map((x) => x.dataset.dn + ":" + x.getAttribute("aria-pressed")).join(","))
+        .concat(document.getElementById("dockDay").getAttribute("aria-pressed") + "/" + document.getElementById("dockNight").getAttribute("aria-pressed")).join(" "));
+      const NONE = "day:false,night:false day:false,night:false false/false", DAY = "day:true,night:false day:true,night:false true/false", NIGHT = "day:false,night:true day:false,night:true false/true";
+      await openSettings(page);
+      await page.evaluate(() => window.llThemes.select("cocoa")); await page.waitForTimeout(100);
+      const c0 = await marks();
+      await page.selectOption("#autoDay", "cocoa"); await page.waitForTimeout(150);
+      const c1 = await marks(), cs = await st(page);
+      await page.selectOption("#autoDay", "day"); await page.waitForTimeout(150);
+      await page.evaluate(() => window.llThemes.select("hicon")); await page.waitForTimeout(100);
+      const h0 = await marks();
+      await page.selectOption("#autoNight", "hicon"); await page.waitForTimeout(150);
+      const h1 = await marks(), hs = await st(page);
+      R.check("a list that makes the theme on screen a half marks that half in every switch",
+        c0 === NONE && cs.theme === "cocoa" && cs.autoDay === "cocoa" && cs.autoNight === "dusk" && c1 === DAY &&
+        h0 === DAY && hs.theme === "hicon" && hs.autoDay === "day" && hs.autoNight === "hicon" && h1 === NIGHT, JSON.stringify({ c0, c1, cs, h0, h1, hs }));
       await ctx.close();
     });
     await guard("settings, list changes, Auto on", async () => {

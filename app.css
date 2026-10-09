@@ -412,7 +412,6 @@
   /* custom theme builder */
   #customRow{display:none; --warn:#c8372d;}
   #customRow.show{display:grid; gap:var(--sp-3);}
-  .chip-new{border-style:dashed;}
   .cst-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-bottom:var(--sp-3); border-bottom:1px solid var(--line);}
   .cst-name{
     flex:1; min-width:120px; font-family:var(--title-font); font-weight:600; font-size:var(--fs-title); line-height:1.3;

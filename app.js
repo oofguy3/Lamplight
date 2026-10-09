@@ -879,15 +879,7 @@
     root.style.colorScheme = dark ? "dark" : "light";
     document.body.classList.toggle("soften", state.soften && dark);
     themeColor();
-    /* every Day/Night switch (the picker's head, Settings › Theme, the phone dock): the half of the
-       theme on screen pressed, also while the maker's draft is shown (a preview, the half has not
-       changed); e-ink has no themes to switch, so none shows there */
-    var dnNow = dnOf(state.theme);
-    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg [data-dn]"), function(b){ b.setAttribute("aria-pressed", b.dataset.dn === dnNow ? "true" : "false"); });
-    $("#dockDay").setAttribute("aria-pressed", dnNow === "day" ? "true" : "false");
-    $("#dockNight").setAttribute("aria-pressed", dnNow === "night" ? "true" : "false");
-    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg"), function(s){ s.hidden = eink; });
-    $("#phoneDock .pd-dn").hidden = eink;
+    markDayNight();
     tileMark($("#themeChips"), themeDraft ? null : t);
     $("#customRow").classList.toggle("show", !!custom);
     if (custom) previewCustom(t);
@@ -897,6 +889,19 @@
     if (Warmth) Warmth.apply();
     if (Pop) Pop.sync();
     Prefs.save();
+  }
+  /* every Day/Night switch (the picker's head, Settings › Theme, the phone dock): the half of the
+     theme on screen pressed, also while the maker's draft is shown (a preview, the half has not
+     changed); e-ink has no themes to switch, so none shows there. applyTheme marks them, and so does
+     pairChanged: a new pair alone can change the half of the theme on screen, when a list makes a
+     theme outside the pair one of its halves */
+  function markDayNight(){
+    var dnNow = dnOf(state.theme), eink = state.eink === true;
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg [data-dn]"), function(b){ b.setAttribute("aria-pressed", b.dataset.dn === dnNow ? "true" : "false"); });
+    $("#dockDay").setAttribute("aria-pressed", dnNow === "day" ? "true" : "false");
+    $("#dockNight").setAttribute("aria-pressed", dnNow === "night" ? "true" : "false");
+    Array.prototype.forEach.call(document.querySelectorAll(".dn-seg"), function(s){ s.hidden = eink; });
+    $("#phoneDock .pd-dn").hidden = eink;
   }
   /* the installed app's title bar (the phone's status bar) takes the panel colour, or the page
      colour while reading on a phone, where the text runs up to it */
@@ -11830,15 +11835,22 @@
     if (l) selectLook(l.day, l.night);
   }
   /* the pair or the reader's own themes changed (a look, a list, an own theme saved, renamed, copied
-     or deleted): Settings' tiles, the day and night lists and the open popover are drawn again. A
-     tile that had the focus goes with its grid, so the focus moves to the grid's pressed tile (or
-     its first), where a keyboard left off */
+     or deleted): Settings' tiles, the day and night lists and the open popover are drawn again, and
+     the Day/Night switches marked again. A tile that had the focus goes with its grid, so the focus
+     moves to the same tile drawn anew, where a keyboard left off. It looks for that tile, not the
+     pressed one: Settings' looks and Mine share one grid (#themeChips), and its first pressed tile, a
+     look's, would pull the focus up from an own theme in Mine. When the tile has gone (the pair's own,
+     once the pair is a look), the focus moves to the grid's pressed tile, or its first */
   function pairChanged(){
-    var a = document.activeElement, grid = a && a.closest ? a.closest("#qLooks, #qMine, #themeChips") : null;
-    buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes();
+    /* which tile a tile is: its look (or the pair's), its own theme, or New theme */
+    function key(ch){ return ch.dataset.look ? "look:" + ch.dataset.look : ch.dataset.theme ? "theme:" + ch.dataset.theme : ch.dataset.new ? "new" : ""; }
+    var a = document.activeElement, grid = a && a.closest ? a.closest("#qLooks, #qMine, #themeChips") : null, was = grid ? key(a) : "";
+    buildThemeChips(); AutoTheme.syncUI(); Pop.refreshThemes(); markDayNight();
     if (!grid || document.contains(a)) return;
     grid = document.getElementById(grid.id);
-    var to = grid && (grid.querySelector('.chip[aria-pressed="true"]') || grid.querySelector(".chip"));
+    if (!grid) return;
+    var tiles = Array.prototype.slice.call(grid.querySelectorAll(".chip"));
+    var to = tiles.filter(function(ch){ return was && key(ch) === was; })[0] || grid.querySelector('.chip[aria-pressed="true"]') || tiles[0];
     if (to) to.focus({ preventScroll: true });
   }
   /* Edit, Rename, Duplicate and Delete for one of the reader's own themes */
