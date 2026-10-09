@@ -1,8 +1,10 @@
 /* Day and night: one setter for the dock switch, the t key and the lamp hold. It goes to the
    reader's day or night theme, never rewrites that pair (even while Day and night switching is
-   on), adds nothing to the Recent themes, and keeps high-contrast readers in high contrast.
-   With switching on, a switch holds until the next automatic change, survives a restart, and
-   any other theme choice ends it. The pair is shown, and marked, whether switching is on or off.
+   on), writes no list of recent themes, and keeps high-contrast readers in high contrast. The
+   Day theme and Night theme lists keep the pair two themes. With switching on, a switch holds
+   until the next automatic change and survives a restart; a change of mode or of the night hours
+   ends it, and any other choice carries it over to the theme it puts in the held half. The pair
+   is shown, and marked, whether switching is on or off.
      NODE_PATH=$(npm root -g) node tests/daynight.js */
 const { serve, browser, newPage, makeReport } = require("./lib");
 
@@ -59,10 +61,10 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   await setPair(page, "day", "day"); await setPair(page, "night", "dusk");
   await select(page, "day");
 
-  /* 3. no Recent entry, and a toast that says where t went */
-  await page.evaluate(() => localStorage.setItem("ll_theme_recent", "[]"));
+  /* 3. no list of recent themes (the picker's Recent row is gone, and boot removes the key), and a
+     toast that says where t went */
   await press(page, "t");
-  R.check("t adds no Recent entry", (await recent(page)) === "[]", await recent(page));
+  R.check("t writes no ll_theme_recent", (await recent(page)) === null, await recent(page));
   R.check("t shows the '{name} theme' toast", (await toasts(page, /Dusk theme/)).length >= 1, JSON.stringify(await page.evaluate(() => window.__toasts)));
 
   /* 4. from a theme that is neither: a light one goes to night, a dark one to day */
@@ -78,22 +80,16 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   R.check("pair day/hidark: from hidark t goes to day", (await theme(page)) === "day", await theme(page));
   await setPair(page, "night", "dusk");
 
-  /* 6. a collapsed pair (left by the old bug) still lets t reach a night theme */
-  await setPair(page, "night", "day"); await select(page, "day"); await press(page, "t");
-  R.check("collapsed pair day/day: from day t goes to dusk", (await theme(page)) === "dusk", await theme(page));
-  await setPair(page, "night", "dusk");
-  /* …and a dark one reaches a day theme: the pair's one theme is the half its colours say */
-  await setPair(page, "day", "dusk"); await select(page, "dusk");
-  const dd = await page.evaluate(() => window.llThemes.dnOf("dusk"));
-  await press(page, "t");
-  R.check("collapsed pair dusk/dusk: dusk is the night half, and t goes to day", dd === "night" && (await theme(page)) === "day", dd + " " + (await theme(page)));
-  await select(page, "dusk");
-  await page.evaluate(() => window.llThemes.setDayNight("day")); await page.waitForTimeout(400);
-  const toDay = await theme(page);
-  await page.evaluate(() => window.llThemes.setDayNight("night")); await page.waitForTimeout(400);
-  const toNight = await theme(page);
-  R.check("collapsed pair dusk/dusk: Day goes to day, and Night back to dusk", toDay === "day" && toNight === "dusk", toDay + " " + toNight);
-  await setPair(page, "day", "day");
+  /* 6. the lists keep the pair two themes: each refuses the other half's theme, so nothing changes
+     (a pair that earlier versions left collapsed is repaired when the prefs load, tests/looks.js) */
+  await select(page, "day");
+  const p6 = JSON.stringify(await prefs(page));
+  await setPair(page, "night", "day");
+  const n6 = JSON.stringify(await prefs(page)), sn = await st(page);
+  R.check('the lists keep the pair two themes: setPair("night","day") on day/dusk changes nothing', n6 === p6 && sn.theme === "day" && sn.autoDay === "day" && sn.autoNight === "dusk", p6 + " → " + n6);
+  await setPair(page, "day", "dusk");
+  const d6 = JSON.stringify(await prefs(page)), sd = await st(page);
+  R.check('the lists keep the pair two themes: setPair("day","dusk") on day/dusk changes nothing', d6 === p6 && sd.theme === "day" && sd.autoDay === "day" && sd.autoNight === "dusk", p6 + " → " + d6);
 
   /* 7. dnOf: which half a theme is */
   const r = await page.evaluate(() => window.llThemes.dnOf ? ["day", "dusk", "paper", "hicon"].map((k) => window.llThemes.dnOf(k)) : "no dnOf");
@@ -116,11 +112,12 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   R.check("Auto off: the settings sheet shows the day/night pickers", await page.evaluate(() => getComputedStyle(document.getElementById("autoRow")).display !== "none"));
   await page.keyboard.press("Escape"); await page.waitForTimeout(150);
 
-  /* 9. a tile picked while switching is on becomes that period's theme, and the toast says so */
+  /* 9. an own theme picked while switching is on goes into the half on screen, and the first time the
+     toast says which (llThemes.create makes one from the colours on screen and picks it) */
   await setMode(page, "time");
-  await page.evaluate(() => window.llThemes.pick("candle", true));
+  const made = await page.evaluate(() => window.llThemes.create().name);
   await page.waitForTimeout(100);
-  R.check("Auto on, tile pick at noon: the toast says it is now your day theme", (await toasts(page, /Candle is now your day theme/)).length === 1, JSON.stringify(await page.evaluate(() => window.__toasts.slice(-2))));
+  R.check("Auto on, an own theme at noon: the toast says it is now your day theme", (await toasts(page, new RegExp(made + " is now your day theme"))).length === 1, JSON.stringify(await page.evaluate(() => window.__toasts.slice(-2))));
   await setMode(page, "off"); await setPair(page, "day", "day"); await select(page, "day");
 
   R.check("no page errors", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -163,14 +160,25 @@ const toasts = (page, re) => page.evaluate((src) => window.__toasts.filter((t) =
   await page.close();
   page = await openAt(actx, D(11, 22));
   R.check("reopened the next night (past the boundary): no hold, ember", (await hold(page)) === null && (await theme(page)) === "ember", JSON.stringify(await hold(page)) + " " + await theme(page));
-  /* any other theme choice ends the hold */
+  /* any other choice carries the hold over to the theme it puts in the held half: an own theme picked
+     during a Day hold (llThemes.create picks the one it makes) takes the day half, and the hold */
   await dn(page, "day");
-  await page.evaluate(() => window.llThemes.pick("candle", true));
+  const held = await hold(page);
+  const own = await page.evaluate(() => "c:" + window.llThemes.create().id);
   await page.clock.fastForward("00:31");
-  R.check("a tile pick during a hold clears it (candle stays after 31 s)", (await theme(page)) === "candle" && (await hold(page)) === null, (await theme(page)) + " " + JSON.stringify(await hold(page)));
-  await setPair(page, "night", "ember"); await dn(page, "day");
+  const o1 = await st(page), oh = await hold(page);
+  R.check("an own theme picked during a hold takes the held half and keeps the hold (still on screen after 31 s)",
+    !!held && held.theme === "sepia" && o1.theme === own && o1.autoDay === own && o1.autoNight === "ember" && !!oh && oh.theme === own && oh.period === held.period && oh.until === held.until,
+    JSON.stringify({ held, o1, oh }));
+  /* the lists: a change to the held half keeps the hold, now on the new theme; a change to the other half
+     leaves the screen and the hold alone */
   await setPair(page, "day", "sepia");
-  R.check("setPair during a hold clears it", (await hold(page)) === null, JSON.stringify(await hold(page)));
+  const l1 = await st(page), lh1 = await hold(page);
+  await setPair(page, "night", "cocoa");
+  const l2 = await st(page), lh2 = await hold(page);
+  R.check("changing the held half keeps the hold on the new theme; changing the other half leaves it",
+    l1.theme === "sepia" && l1.autoDay === "sepia" && !!lh1 && lh1.theme === "sepia" && lh1.until === held.until &&
+    l2.theme === "sepia" && l2.autoNight === "cocoa" && !!lh2 && lh2.theme === "sepia" && lh2.until === held.until, JSON.stringify({ l1, lh1, l2, lh2 }));
   await dn(page, "day"); await setMode(page, "system");
   R.check("setMode during a hold clears it", (await hold(page)) === null, JSON.stringify(await hold(page)));
   await setMode(page, "time"); await dn(page, "day");

@@ -302,9 +302,10 @@
   ];
   /* the two high-contrast themes, which have a tone of their own (applyTheme) */
   var HICON = ["hicon", "hidark"];
-  /* the built-ins in the groups the picker showed before the looks. Nothing on screen uses them now:
+  /* the built-ins in the groups the picker showed before the looks. Nothing in the app uses them now:
      the picker and Settings show the looks, and the day and night lists sort by page colour
-     (themeOptions). They stay for the tests that still read them (tests/themes.js parses this table) */
+     (themeOptions). They stay while the table holds themes outside the looks, since tests/themes.js
+     still checks every built-in against these groups */
   var THEME_GROUPS = {
     light:  ["day", "paper", "sepia", "parchment", "linen", "newsprint", "mist"],
     dark:   ["dusk", "ink", "graphite", "cocoa", "slate", "noir", "candle"],
@@ -662,11 +663,13 @@
     return '<button type="button" class="chip tile" data-theme="' + escapeHtml(id) + '" aria-pressed="false"><i aria-hidden="true">' + pageHtml(id, t) +
       '</i><span class="tile-n">' + escapeHtml(themeName(id)) + '</span></button>';
   }
-  /* the look a built-in belongs to; a look by its id; the look the reader's pair is, or null when the
-     pair is no look (mixed in the lists, or holding a theme of the reader's own) */
+  /* the look a built-in belongs to; a look by its id; the look a day theme and a night theme make, and
+     the one the reader's pair makes, or null when they make none (mixed in the lists, or holding a
+     theme of the reader's own) */
   function lookOf(id){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].day === id || LOOKS[i].night === id) return LOOKS[i]; return null; }
   function lookById(id){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].id === id) return LOOKS[i]; return null; }
-  function pairLook(){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].day === state.autoDay && LOOKS[i].night === state.autoNight) return LOOKS[i]; return null; }
+  function lookFor(day, night){ for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].day === day && LOOKS[i].night === night) return LOOKS[i]; return null; }
+  function pairLook(){ return lookFor(state.autoDay, state.autoNight); }
   /* "Day & Dusk": the two themes' names joined, in the interface's language; Contrast has its own */
   function lookName(l){
     return l.name ? _tc("theme", l.name) : _t("{day} & {night}", { day: themeName(l.day), night: themeName(l.night) });
@@ -1007,18 +1010,12 @@
       $("#autoHint").textContent = nowLine();
       $("#qNow").textContent = nowLine();
     }
-    /* the user picked a theme by hand: keep auto on, but remember it for the current period */
-    function userPicked(theme){
-      var n = isNight();
-      if (n === null) return;
-      if (n) state.autoNight = theme; else state.autoDay = theme;
-      syncUI(); Prefs.save();
-    }
     function fadeApply(){ apply(true); }
     if (mq){ (mq.addEventListener ? mq.addEventListener("change", fadeApply) : mq.addListener(fadeApply)); }
     timer = setInterval(function(){ if (state.auto === "time" || state.dnHold) apply(true); }, 30000);
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") apply(); });
-    /* Off, Follow phone or On a schedule: turning it on asks again, once, when a theme is then picked by hand */
+    /* Off, Follow phone or On a schedule: turning it on asks again, once, when a theme of the reader's
+       own is then picked (pickOwn's toast) */
     function setMode(a){
       if (!/^(off|system|time)$/.test(a)) return;
       if (a !== "off" && a !== state.auto) Store.set("ll_auto_asked", "0");
@@ -1039,7 +1036,7 @@
       function done(){ Prefs.save(); pairChanged(); apply(true); }
       if (!onScreen){ done(); return; }
       if (state.dnHold) state.dnHold.theme = k;
-      crossFade(function(){ selectTheme(k, { dayNight: true }); done(); });
+      crossFade(function(){ selectTheme(k); done(); });
     }
     /* the night hours (On a schedule), from Settings or the popover; an hour that is not one falls back
        to 21:00 or 07:00. A change ends a Day/Night hold, as a change of mode does */
@@ -1057,7 +1054,7 @@
     $("#autoNight").addEventListener("change", function(e){ setPair("night", e.target.value); });
     $("#nightFrom").addEventListener("change", function(e){ setHours(e.target.value, state.nightTo); });
     $("#nightTo").addEventListener("change", function(e){ setHours(state.nightFrom, e.target.value); });
-    return { apply: apply, userPicked: userPicked, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair, setHours: setHours, hold: hold, clearHold: clearHold };
+    return { apply: apply, isNight: isNight, inWindow: inWindow, syncUI: syncUI, nowLine: nowLine, setMode: setMode, setPair: setPair, setHours: setHours, hold: hold, clearHold: clearHold };
   })();
 
   /* ---------- warmth: a warm film over the screen for the evening ----------
@@ -11188,8 +11185,9 @@
   }
   /* one setter for the switch, t and the hold: the pair's theme for that half. A high-contrast
      reader whose pair has no contrast theme stays in high contrast, and a pair left collapsed
-     (the same theme twice) still reaches Dusk or Day. It never rewrites the pair, adds no Recent
-     entry, and t and the hold say where they went */
+     (the same theme twice) still reaches Dusk or Day. It never rewrites the pair; t and the hold
+     say where they went (opts.toast), and a theme of the reader's own just saved shows without the
+     cross-fade (opts.noFade, from pickOwn) */
   function setDayNight(which, opts){
     var cur = state.theme, day = state.autoDay, night = state.autoNight, to;
     if (which !== "day" && which !== "night") return;
@@ -11198,7 +11196,7 @@
     else to = which === "day" ? day : night;
     if (to === cur && dnOf(cur) !== which) to = which === "day" ? "day" : "dusk";
     if (!resolveTheme(to)) to = which === "day" ? "day" : "dusk";
-    if (to !== cur) crossFade(function(){ selectTheme(to, { dayNight: true }); });
+    if (to !== cur){ if (opts && opts.noFade) selectTheme(to); else crossFade(function(){ selectTheme(to); }); }
     AutoTheme.hold(to);
     if (opts && opts.toast) Marks.toast(_t("{name} theme", { name: themeName(to) || resolveTheme(to).name }));
   }
@@ -11764,31 +11762,14 @@
     if (ch) pickTheme(ch.dataset.theme);
   });
   $("#sDN").addEventListener("click", function(e){ var b = e.target.closest("[data-dn]"); if (b) setDayNight(b.dataset.dn); });
-  /* the themes picked by hand, the latest first: deleting the theme on screen goes back to the one
-     before it (prevTheme) */
-  function recentThemes(){ try { var a = JSON.parse(Store.get("ll_theme_recent") || "[]"); return Array.isArray(a) ? a : []; } catch(_){ return []; } }
-  function noteTheme(prev){
-    if (!prev) return;
-    var a = recentThemes().filter(function(k){ return k !== prev; });
-    a.unshift(prev);
-    Store.set("ll_theme_recent", JSON.stringify(a.slice(0, 6)));
-  }
-  /* opts.dayNight: the pair is already right (a Day/Night switch keeps it, a look or a list has
-     just set it), so this neither rewrites the pair, nor ends a Day/Night hold (the switch sets one,
-     a look or a list carries one over), nor counts as a recent pick */
-  function selectTheme(theme, opts){
-    var dn = !!(opts && opts.dayNight);
-    if (theme !== state.theme && !dn) noteTheme(state.theme);
+  /* shows a theme and nothing more: the pair and a Day/Night hold are left alone. Every choice (a look,
+     an own theme, a list, a Day/Night switch) settles those first and then shows its theme through
+     this; llThemes.select is this too, for the tests. An id it does not know is ignored */
+  function selectTheme(theme){
+    if (!resolveTheme(theme)) return;
     state.theme = theme;
     if (customById(theme)) syncCustomUI();
     applyTheme();
-    if (!dn){ AutoTheme.clearHold(); AutoTheme.userPicked(theme); }
-  }
-  /* the theme before this one: the latest used that still exists */
-  function prevTheme(){
-    var a = recentThemes();
-    for (var i = 0; i < a.length; i++) if (a[i] !== state.theme && resolveTheme(a[i])) return a[i];
-    return null;
   }
   /* a short cross-fade from one theme to the next (the browser's view transition); none with
      reduced motion, in e-ink mode, or where the browser has none */
@@ -11798,16 +11779,34 @@
     }
     fn();
   }
-  /* a theme picked by hand in a picker: applied at once, with the fade. While day and night
-     switching is on it becomes the theme for this period (day or night), and the first time that
-     happens the toast says so and offers to turn switching off */
+  /* a theme picked by its id (the tests, and own themes' tiles): a built-in brings its look and shows
+     its own half, held with switching on as a Day/Night switch would hold it (selectLook with the
+     half); any other theme takes the half on screen (pickOwn). Nothing is skipped when the theme is
+     on screen already: pick("day") over Day/Cocoa gives Day & Dusk */
   function pickTheme(theme, noFade){
-    if (!resolveTheme(theme) || theme === state.theme) return;
-    if (noFade) selectTheme(theme); else crossFade(function(){ selectTheme(theme); });
+    var l = lookOf(theme);
+    if (l) selectLook(l.day, l.night, theme === l.day ? "day" : "night");
+    else if (resolveTheme(theme)) pickOwn(theme, noFade);
+  }
+  /* a theme of the reader's own, picked, made or copied: it takes the place of the theme on screen, in
+     its half (the pair's other half stays), and a Day/Night hold carries over to it, its period and end
+     unchanged. One that is already a half shows as that half's Day/Night switch would show it, so the
+     pair stays two themes. noFade: at once, without the cross-fade (a theme just made or copied). With
+     switching on, the first time this happens the toast says which half it went into and offers to
+     turn switching off */
+  function pickOwn(k, noFade){
+    if (!resolveTheme(k)) return;
+    if (k === state.autoDay || k === state.autoNight){ setDayNight(k === state.autoDay ? "day" : "night", { noFade: noFade }); return; }
+    var h = halfOnScreen();
+    if (h === "day") state.autoDay = k; else state.autoNight = k;
+    if (state.dnHold) state.dnHold.theme = k;
+    /* saved here too: applyTheme does not save while the maker's draft is on screen */
+    var go = function(){ selectTheme(k); Prefs.save(); pairChanged(); };
+    if (noFade) go(); else crossFade(go);
     if (state.auto !== "off" && Store.get("ll_auto_asked") !== "1"){
       Store.set("ll_auto_asked", "1");
-      var nm = themeName(theme);
-      Marks.toast(AutoTheme.isNight() ? _t("Day and night is on: {name} is now your night theme.", { name: nm }) : _t("Day and night is on: {name} is now your day theme.", { name: nm }), { action: _t("Turn off"), ms: 7000, run: function(){
+      var nm = themeName(k);
+      Marks.toast(h === "night" ? _t("Day and night is on: {name} is now your night theme.", { name: nm }) : _t("Day and night is on: {name} is now your day theme.", { name: nm }), { action: _t("Turn off"), ms: 7000, run: function(){
         AutoTheme.setMode("off"); Marks.toast(_t("Day and night switching is off"));
       } });
     }
@@ -11815,32 +11814,47 @@
   /* a look: it becomes the reader's pair, and its theme for the half on screen shows; a Day/Night
      hold carries over to that theme, its period and end unchanged. With `half` ("day" or "night")
      that half shows instead, and with switching on it holds as a Day/Night switch would. The pair,
-     the hold and the theme change together, inside the cross-fade */
+     the hold and the theme change together, inside the cross-fade. A look that replaces a pair that
+     was no look (the pair's own tile was showing) says so in a toast, whose Undo puts that pair, the
+     theme on screen and the hold back as they were */
   function selectLook(day, night, half){
     if (!resolveTheme(day) || !resolveTheme(night) || day === night) return;
     var shown = (half || halfOnScreen()) === "night" ? night : day;
     if (!half && day === state.autoDay && night === state.autoNight && shown === state.theme) return;
+    /* a pair that was no look, replaced: what Undo puts back, taken before the change (the hold a
+       copy, since carrying it over changes it) */
+    var was = !pairLook() && (day !== state.autoDay || night !== state.autoNight) ?
+      { day: state.autoDay, night: state.autoNight, theme: state.theme, hold: state.dnHold ? Object.assign({}, state.dnHold) : null } : null;
     crossFade(function(){
       state.autoDay = day; state.autoNight = night;
       if (!half && state.dnHold) state.dnHold.theme = shown;
-      selectTheme(shown, { dayNight: true });
+      selectTheme(shown);
       if (half && state.auto !== "off") AutoTheme.hold(shown);
       Prefs.save();
       pairChanged();
     });
+    if (was) Marks.toast(_t("{name} for day and night", { name: lookName(lookFor(day, night) || { day: day, night: night }) }), { undo: function(){
+      crossFade(function(){
+        state.autoDay = was.day; state.autoNight = was.night;
+        state.dnHold = was.hold ? Object.assign({}, was.hold) : null;
+        selectTheme(was.theme);
+        Prefs.save();
+        pairChanged();
+      });
+    } });
   }
   /* a tap on a look's tile; the pair's own tile is the pair already, so a tap on it does nothing */
   function chooseLook(id){
     var l = id === "pair" ? null : lookById(id);
     if (l) selectLook(l.day, l.night);
   }
-  /* the pair or the reader's own themes changed (a look, a list, an own theme saved, renamed, copied
-     or deleted): Settings' tiles, the day and night lists and the open popover are drawn again, and
-     the Day/Night switches marked again. A tile that had the focus goes with its grid, so the focus
-     moves to the same tile drawn anew, where a keyboard left off. It looks for that tile, not the
-     pressed one: Settings' looks and Mine share one grid (#themeChips), and its first pressed tile, a
-     look's, would pull the focus up from an own theme in Mine. When the tile has gone (the pair's own,
-     once the pair is a look), the focus moves to the grid's pressed tile, or its first */
+  /* the pair or the reader's own themes changed (a look, a list, an own theme picked, saved, renamed,
+     copied or deleted, an Undo): Settings' tiles, the day and night lists and the open popover are
+     drawn again, and the Day/Night switches marked again. A tile that had the focus goes with its
+     grid, so the focus moves to the same tile drawn anew, where a keyboard left off. It looks for that
+     tile, not the pressed one: Settings' looks and Mine share one grid (#themeChips), and its first
+     pressed tile, a look's, would pull the focus up from an own theme in Mine. When the tile has gone
+     (the pair's own, once the pair is a look), the focus moves to the grid's pressed tile, or its first */
   function pairChanged(){
     /* which tile a tile is: its look (or the pair's), its own theme, or New theme */
     function key(ch){ return ch.dataset.look ? "look:" + ch.dataset.look : ch.dataset.theme ? "theme:" + ch.dataset.theme : ch.dataset.new ? "new" : ""; }
@@ -11874,23 +11888,31 @@
     Marks.toast(_t("Copied as \u201C{name}\u201D", { name: d.name }));
     return d;
   }
-  /* Delete asks first, then offers Undo; the theme in use gives way to the one before it */
+  /* Delete asks first, then offers Undo. A half that was the deleted theme falls back, the day half to
+     Day and the night half to Dusk (both, when that would make the pair one theme twice). The half on
+     screen stays on screen: when its theme in the new pair is not the one showing, that theme shows,
+     and a Day/Night hold carries over to it. Undo puts back the theme in its place, the pair, the theme
+     on screen and the hold, as they were */
   function deleteCustom(c){
     if (!c || !confirm(_t("Delete the theme \u201C{name}\u201D?", { name: c.name }))) return false;
-    var at = state.customs.indexOf(c), gone = "c:" + c.id, was = { theme: state.theme, day: state.autoDay, night: state.autoNight };
+    var at = state.customs.indexOf(c), gone = "c:" + c.id;
     if (at < 0) return false;
+    /* taken before the change: the half on screen, and what Undo puts back (the hold a copy) */
+    var h = halfOnScreen(), was = { theme: state.theme, day: state.autoDay, night: state.autoNight, hold: state.dnHold ? Object.assign({}, state.dnHold) : null };
     state.customs.splice(at, 1);
     if (state.autoDay === gone) state.autoDay = "day";
     if (state.autoNight === gone) state.autoNight = "dusk";
-    pairChanged();
-    if (state.theme === gone) selectTheme(prevTheme() || (isDarkColor(c.bg) ? "dusk" : "day")); else Prefs.save();
+    if (state.autoDay === state.autoNight){ state.autoDay = "day"; state.autoNight = "dusk"; }
+    var to = h === "day" ? state.autoDay : state.autoNight;
+    if (state.theme !== to){ if (state.dnHold) state.dnHold.theme = to; selectTheme(to); }
+    Prefs.save(); pairChanged();
     Marks.toast(_t("Deleted \u201C{name}\u201D", { name: c.name }), { undo: function(){
       if (customById(gone)) return;
       state.customs.splice(Math.min(at, state.customs.length), 0, c);
       state.autoDay = was.day; state.autoNight = was.night;
-      pairChanged();
-      if (was.theme === gone) selectTheme(gone); else Prefs.save();
-      AutoTheme.syncUI(); Pop.sync();
+      state.dnHold = was.hold ? Object.assign({}, was.hold) : null;
+      selectTheme(was.theme);
+      Prefs.save(); pairChanged();
     } });
     return true;
   }
@@ -11987,8 +12009,12 @@
       Side.close();
       pairChanged();
       var id = "c:" + c.id;
-      if (state.theme === id){ syncCustomUI(); applyTheme(); } else pickTheme(id, true);
+      /* the toast first: the first time an own theme is picked with switching on, pickOwn's toast (which
+         half it went into, and Turn off) takes its place */
       Marks.toast(_t("Saved \u201C{name}\u201D", { name: name }));
+      /* the theme on screen, edited, is simply drawn again; any other (a new one, or one edited from its
+         ⋯ in Mine) shows at once, as a picked own theme does (pickOwn) */
+      if (state.theme === id){ syncCustomUI(); applyTheme(); } else pickOwn(id, true);
     }
     Side.body.addEventListener("click", function(e){
       if (!Side.is("maker") || !d) return;
@@ -12008,12 +12034,15 @@
     });
     return { open: open, save: save, draft: function(){ return d; } };
   })();
-  function focusChip(theme){ var ch = $('#themeChips .chip[data-theme="' + theme + '"]'); if (ch) ch.focus(); }
-  /* New…: a saved theme that starts from the colours on screen */
+  /* the focus on a theme's tile in Settings, or on the pressed tile there when the theme has none of
+     its own (a built-in shows in its look; a deleted theme has gone) */
+  function focusChip(theme){ var ch = $('#themeChips .chip[data-theme="' + theme + '"]') || $('#themeChips .chip[aria-pressed="true"]'); if (ch) ch.focus(); }
+  /* a saved theme that starts from the colours on screen (llThemes.create): it shows at once in the
+     half on screen, as a picked own theme does, with the focus on its tile */
   function createCustom(){
     var t = currentTheme();
     var c = addCustom({ name: customName(), bg: normHex(t.bg), ink: normHex(t.ink), autoInk: true, accent: normHex(t.accent) });
-    pairChanged(); selectTheme("c:" + c.id); focusChip("c:" + c.id);
+    pickOwn("c:" + c.id, true); focusChip("c:" + c.id);
     return c;
   }
 
@@ -12021,19 +12050,22 @@
   function editing(){ return customById(state.theme); }
   function edited(){ syncCustomUI(); applyTheme(); }
   $("#cRename").addEventListener("click", function(){ var c = editing(); if (c) renameCustom(c); });
+  /* Duplicate and Save as new: the copy takes the place of the theme on screen, in its half, at once
+     (pickOwn). Their toast comes first, so the first own theme picked with switching on keeps
+     pickOwn's toast instead */
   $("#cDup").addEventListener("click", function(){
     var c = editing(); if (!c) return;
     var d = copyCustom(c, customName(_t("{name} copy", { name: c.name })));
-    pairChanged(); selectTheme("c:" + d.id);
     Marks.toast(_t("Copied as “{name}”", { name: d.name }));
+    pickOwn("c:" + d.id, true);
   });
   $("#cSaveAs").addEventListener("click", function(){
     var c = editing(); if (!c) return;
     var name = prompt(_t("Name for the new theme"), customName());
     if (name === null) return;
     var d = copyCustom(c, name.trim().slice(0, 60) || customName());
-    pairChanged(); selectTheme("c:" + d.id);
     Marks.toast(_t("Saved as “{name}”", { name: d.name }));
+    pickOwn("c:" + d.id, true);
   });
   $("#cDel").addEventListener("click", function(){ var c = editing(); if (c && deleteCustom(c)) focusChip(state.theme); });
   /* background: quick swatches, the tint / brightness sliders, or any colour */
@@ -12093,9 +12125,9 @@
   });
   $("#cFix").addEventListener("click", fixContrast);
   /* exposed for tests (not a public API) */
-  window.llThemes = { THEMES: THEMES, CYCLE: CYCLE, groups: themeGroups, contrast: contrast, resolve: resolveTheme, current: currentTheme,
-    customs: function(){ return state.customs; }, select: selectTheme, create: createCustom, fix: fixContrast,
-    pick: pickTheme, previous: prevTheme, remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight, hold: function(){ return state.dnHold; } };
+  window.llThemes = { THEMES: THEMES, LOOKS: LOOKS, contrast: contrast, resolve: resolveTheme, current: currentTheme,
+    customs: function(){ return state.customs; }, select: selectTheme, pick: pickTheme, look: selectLook, create: createCustom, fix: fixContrast,
+    remove: deleteCustom, maker: Maker, dnOf: dnOf, setDayNight: setDayNight, hold: function(){ return state.dnHold; } };
 
   $("#flowChips").addEventListener("click", function(e){
     var ch = e.target.closest(".chip");
@@ -14175,6 +14207,7 @@
   /* ---------- boot ---------- */
   Prefs.load();
   Store.remove("ll_apikey");   /* the key of the old online explainer: wiped from devices */
+  Store.remove("ll_theme_recent");   /* the themes the picker's Recent row listed, which has gone */
   /* first run on a device that asks for more contrast: start with the high-contrast theme */
   if (!Store.get("ll_prefs") && window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches){
     state.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "hidark" : "hicon";

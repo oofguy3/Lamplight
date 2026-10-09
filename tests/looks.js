@@ -1,9 +1,12 @@
 /* The theme picker: six looks, each a day theme and a night theme that belong together, a Day/Night
    switch in its head, and the reader's own themes under Mine. A tap on a look makes it the reader's
    pair and shows its theme for the half on screen; Day and Night change the half; a pair that is no
-   look gets a tile of its own, first. Settings › Theme shows the same tiles above its Day theme and
-   Night theme lists, which keep the pair two themes: a change to the half on screen shows at once,
-   and a Day/Night hold carries over to it.
+   look gets a tile of its own, first, and a look tapped over it offers Undo. Settings › Theme shows
+   the same tiles above its Day theme and Night theme lists, which keep the pair two themes: a change
+   to the half on screen shows at once, and a Day/Night hold carries over to it. An own theme picked,
+   made or copied takes the place of the theme on screen in its half, and deleting one shows that
+   half's fallback; a built-in picked by id brings its look. After every choice the theme on screen is
+   one of the pair's two themes, and the two differ.
      NODE_PATH=$(npm root -g) node tests/looks.js */
 const fs = require("fs"), path = require("path");
 const { serve, browser, openFixture, makeReport } = require("./lib");
@@ -36,6 +39,8 @@ const LAMP = { id: "t3a", name: "Reading lamp", bg: "#F4ECD8", ink: "#2A2118", a
 /* the Dutch for "Mine" as i18n.js has it, whichever apostrophe that is */
 const MINE_NL = (/"Mine":\s*"([^"]*)"/.exec(fs.readFileSync(path.join(__dirname, "..", "i18n.js"), "utf8")) || [])[1];
 const NOON = new Date(2026, 9, 9, 12, 0, 0);
+/* 22:00 the same day, and the end of a hold made then (On a schedule, night 21:00–07:00) */
+const NIGHT = new Date(2026, 9, 9, 22, 0, 0), NEXT_7 = new Date(2026, 9, 10, 7, 0, 0).getTime();
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
 const errors = [];
 
@@ -66,6 +71,14 @@ async function watchToasts(page){
   });
 }
 const toasts = (page) => page.evaluate(() => window.__toasts.slice());
+/* the toast on screen: its message and its button's label, or null when none shows */
+const toastNow = (page) => page.evaluate(() => {
+  const t = document.getElementById("toast");
+  if (!t || !t.classList.contains("on")) return null;
+  return { text: [...t.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim(), act: ((t.querySelector(".toast-act") || {}).textContent || "").trim() };
+});
+/* confirm() is answered yes, prompt() with `name` */
+const answer = (page, name) => page.on("dialog", (d) => d.accept(d.type() === "prompt" ? name : undefined));
 const popOpen = (page) => page.evaluate(() => document.getElementById("pop").classList.contains("open") && !document.getElementById("themePop").hidden);
 async function openTheme(page){
   if (!(await popOpen(page))) await page.click("#lamp");
@@ -463,6 +476,263 @@ const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].
       await page.waitForTimeout(150);
       const s = await st(page), from = await page.evaluate(() => window.__ll.state.nightFrom + "/" + JSON.parse(localStorage.getItem("ll_prefs")).nightFrom);
       R.check("the popover's hours end a hold", !!held && held.theme === "dusk" && s.hold === null && s.theme === "day" && from === "20:00/20:00", JSON.stringify({ held, s, from }));
+      await ctx.close();
+    });
+
+    /* ---------------- own themes (§5.4) ---------------- */
+    await guard("own themes, Auto off", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      await openTheme(page);
+      await page.click('#qMine [data-theme="c:t3a"]'); await page.waitForTimeout(150);
+      /* read with the popover still open: the pair tile comes without a reopen, in Settings too */
+      const s = await st(page), pop = await looksIn(page, "#qLooks"), set = await looksIn(page, "#themeChips"), t = await toasts(page);
+      const mine = await page.evaluate(() => ["#qMine", "#themeChips .q-mine"].map((g) => { const x = document.querySelector(g + ' [data-theme="c:t3a"]'); return x ? x.getAttribute("aria-pressed") : "none"; }).join());
+      R.check('own theme, Auto off, Day on screen: it shows, pair c:t3a/dusk, the pair tile "Reading lamp & Dusk" first and pressed, its Mine tile pressed, no toast',
+        s.theme === "c:t3a" && s.autoDay === "c:t3a" && s.autoNight === "dusk" && pairFirst(pop, "Reading lamp & Dusk") && pairFirst(set, "Reading lamp & Dusk") && mine === "true,true" && t.length === 0,
+        JSON.stringify({ s, pop: pop.slice(0, 2), set: set.slice(0, 2), mine, t }));
+      await ctx.close();
+    });
+    await guard("own themes, Auto on", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      await openTheme(page);
+      await page.click('#qDN [data-dn="night"]'); await page.waitForTimeout(150);
+      const held = (await st(page)).hold;
+      await page.click('#qMine [data-theme="c:t3a"]'); await page.waitForTimeout(150);
+      const s = await st(page), t = await toasts(page);
+      /* the 30 s check comes round with the hold in force: the own theme stays */
+      await page.clock.fastForward("00:31"); await page.waitForTimeout(100);
+      const s2 = await st(page);
+      R.check('own theme, Auto on (time, noon) with Night held: autoNight becomes it, the hold keeps its until, now on it; the first-pick toast says "is now your night theme"',
+        !!held && held.theme === "dusk" && held.period === "day" && s.theme === "c:t3a" && s.autoDay === "day" && s.autoNight === "c:t3a" && !!s.hold && s.hold.theme === "c:t3a" && s.hold.until === held.until && s.hold.period === "day" &&
+        s2.theme === "c:t3a" && t.some((x) => x.indexOf("Day and night is on: Reading lamp is now your night theme.") >= 0), JSON.stringify({ held, s, s2, t }));
+      await ctx.close();
+    });
+    await guard("own themes, already the other half", async () => {
+      /* Reading lamp is the night theme of Day/Reading lamp. A tap on its tile and a tap on Night, each in a tab
+         of its own, end the same way: Reading lamp on screen, held at noon, the pair as it was */
+      const seed = { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "day", autoDay: "day", autoNight: "c:t3a", customs: [LAMP] } };
+      const after = async (sel) => {
+        const ctx = await context(b, null, seed);
+        const page = await open(ctx, url, NOON);
+        await openTheme(page);
+        await page.click(sel); await page.waitForTimeout(150);
+        const r = { s: await st(page), dn: await dnIn(page, "#qDN"), t: await toasts(page) };
+        await ctx.close();
+        return r;
+      };
+      const own = await after('#qMine [data-theme="c:t3a"]'), night = await after('#qDN [data-dn="night"]');
+      R.check("own theme that is already the other half: the pair stays; it shows as Night would",
+        own.s.theme === "c:t3a" && own.s.autoDay === "day" && own.s.autoNight === "c:t3a" && !!own.s.hold && own.s.hold.theme === "c:t3a" && own.dn === "day:false,night:true" && own.t.length === 0 &&
+        JSON.stringify(own.s) === JSON.stringify(night.s) && own.dn === night.dn, JSON.stringify({ own, night }));
+    });
+
+    /* ---------------- focus through a choice that draws the tiles again ---------------- */
+    await guard("focus, an own theme", async () => {
+      /* Enter on an own theme's tile brings the pair's tile in ahead of the looks, so the grids are drawn again:
+         the focus stays on the own theme's tile, now pressed (Review Focus 1), in the popover and in Settings */
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      const focused = () => page.evaluate(() => {
+        const a = document.activeElement, g = a && a.closest ? a.closest("#qMine, #themeChips") : null;
+        return (a && a.dataset.theme) + ":" + (a && a.getAttribute("aria-pressed")) + " in " + (g ? g.id : "neither") + ", pair tile " + !!document.querySelector((g && g.id === "qMine" ? "#qLooks" : "#themeChips") + ' [data-look="pair"]');
+      });
+      await openTheme(page);
+      await page.focus('#qMine [data-theme="c:t3a"]');
+      await page.keyboard.press("Enter"); await page.waitForTimeout(150);
+      const pop = await focused();
+      /* back to Day & Dusk, then the same in Settings */
+      await page.click('#qLooks [data-look="day"]'); await page.waitForTimeout(150);
+      await page.keyboard.press("Escape"); await page.waitForTimeout(150);
+      await openSettings(page);
+      await page.focus('#themeChips [data-theme="c:t3a"]');
+      await page.keyboard.press("Enter"); await page.waitForTimeout(150);
+      const set = await focused();
+      R.check("Enter on an own theme: the pair tile appears, and the focus stays on the own theme's tile, pressed, in the popover and in Settings",
+        pop === "c:t3a:true in qMine, pair tile true" && set === "c:t3a:true in themeChips, pair tile true", JSON.stringify({ pop, set }));
+      await ctx.close();
+    });
+
+    /* ---------------- deleting an own theme (§5.6) ---------------- */
+    await guard("delete, Auto on", async () => {
+      /* Reading lamp is the day theme, on screen at 22:00 under a Day hold. Deleted from the popover's ⋯, the day
+         half falls back to Day, which shows, and the hold moves to it; Undo puts everything back */
+      const hold = { theme: "c:t3a", period: "night", until: NEXT_7 };
+      const ctx = await context(b, null, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "c:t3a", autoDay: "c:t3a", autoNight: "dusk", customs: [LAMP], dnHold: hold } });
+      const page = await open(ctx, url, NIGHT);
+      answer(page);
+      const s0 = await st(page);
+      await openTheme(page);
+      await page.click('#qMine .mine-ed[data-acts="c:t3a"]'); await page.waitForTimeout(100);
+      await page.click('#qActs [data-act="del"]'); await page.waitForTimeout(150);
+      const s1 = await st(page), saved1 = JSON.parse(await prefs(page)), t1 = await toastNow(page);
+      await page.click("#toast .toast-act"); await page.waitForTimeout(150);
+      const s2 = await st(page), saved2 = JSON.parse(await prefs(page)), ids = await page.evaluate(() => window.llThemes.customs().map((c) => c.id).join());
+      await page.clock.fastForward("00:31"); await page.waitForTimeout(100);
+      const s3 = await st(page);
+      const same = (h, theme) => !!h && h.theme === theme && h.period === "night" && h.until === NEXT_7;
+      R.check("deleting the own theme on screen (the day half, Auto on, Day held at night) shows Day, the hold now on day; Undo restores the theme, pair, screen and hold",
+        s0.theme === "c:t3a" && same(s0.hold, "c:t3a") &&
+        s1.theme === "day" && s1.autoDay === "day" && s1.autoNight === "dusk" && same(s1.hold, "day") && saved1.theme === "day" && same(saved1.dnHold, "day") && !!t1 && t1.text === "Deleted “Reading lamp”" && t1.act === "Undo" &&
+        ids === "t3a" && s2.theme === "c:t3a" && s2.autoDay === "c:t3a" && s2.autoNight === "dusk" && same(s2.hold, "c:t3a") && saved2.theme === "c:t3a" && saved2.autoDay === "c:t3a" && same(saved2.dnHold, "c:t3a") &&
+        s3.theme === "c:t3a", JSON.stringify({ s0, s1, t1, s2, ids, s3 }));
+      await ctx.close();
+    });
+    await guard("delete, Dusk/own", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "dusk", autoDay: "dusk", autoNight: "c:t3a", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      answer(page);
+      await page.evaluate(() => window.llThemes.remove(window.llThemes.customs()[0])); await page.waitForTimeout(150);
+      const s = await st(page), saved = JSON.parse(await prefs(page));
+      R.check("deleting the night own theme over Dusk/own (Dusk as the day theme, on screen): the pair becomes day/dusk and the day half shows Day",
+        s.theme === "day" && s.autoDay === "day" && s.autoNight === "dusk" && saved.theme === "day" && saved.autoDay === "day" && saved.autoNight === "dusk", JSON.stringify({ s, saved: [saved.theme, saved.autoDay, saved.autoNight] }));
+      await ctx.close();
+    });
+    await guard("delete, Settings' editor", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "c:t3a", autoDay: "c:t3a", autoNight: "dusk", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      answer(page);
+      await openSettings(page);
+      await page.click("#cDel"); await page.waitForTimeout(200);
+      const f = await page.evaluate(() => { const a = document.activeElement; return { inChips: !!(a && a.closest("#themeChips")), look: a && a.dataset.look, on: a && a.getAttribute("aria-pressed"), theme: window.__ll.state.theme }; });
+      R.check("Delete in Settings' editor leaves focus on the pressed tile", f.inChips && f.look === "day" && f.on === "true" && f.theme === "day", JSON.stringify(f));
+      await ctx.close();
+    });
+
+    /* ---------------- Settings' editor: Duplicate and Save as new (§5.4) ---------------- */
+    await guard("Settings' editor, Duplicate and Save as new", async () => {
+      /* Reading lamp is the night theme, on screen. Each copy takes its place in the night half at once: the
+         state has changed by the time the click returns, and no cross-fade starts (motion is on here) */
+      const ctx = await context(b, { reducedMotion: "no-preference" }, { ll_prefs: { auto: "off", theme: "c:t3a", autoDay: "day", autoNight: "c:t3a", customs: [LAMP] } });
+      const page = await open(ctx, url, NOON);
+      answer(page, "Lamp two");
+      /* every cross-fade counted (the browser has view transitions, or the count would prove nothing) */
+      const counting = await page.evaluate(() => {
+        window.__vt = 0;
+        const orig = document.startViewTransition && document.startViewTransition.bind(document);
+        if (orig) document.startViewTransition = (cb) => { window.__vt++; return orig(cb); };
+        return !!orig;
+      });
+      await openSettings(page);
+      const click = (id) => page.evaluate((x) => {
+        document.getElementById(x).click();
+        const s = window.__ll.state, c = window.llThemes.customs(), last = c[c.length - 1];
+        return { theme: s.theme, day: s.autoDay, night: s.autoNight, last: "c:" + last.id, name: last.name, n: c.length };
+      }, id);
+      const dup = await click("cDup"), sav = await click("cSaveAs"), vt = await page.evaluate(() => window.__vt);
+      const ok = (r, n, name) => r.n === n && r.name === name && r.theme === r.last && r.night === r.last && r.day === "day";
+      R.check("Duplicate shows the copy as the half on screen; Save as new likewise; both instant", ok(dup, 2, "Reading lamp copy") && ok(sav, 3, "Lamp two") && counting && vt === 0, JSON.stringify({ dup, sav, counting, vt }));
+      await ctx.close();
+    });
+
+    /* ---------------- picking by id (§5.8) ---------------- */
+    await guard("by id", async () => {
+      let ctx = await context(b, null, { ll_prefs: { auto: "off" } });
+      let page = await open(ctx, url, NOON);
+      const api = await page.evaluate(() => { const T = window.llThemes; return { looks: Array.isArray(T.LOOKS) && T.LOOKS.map((l) => l.id).join(), look: typeof T.look, gone: ["CYCLE", "groups", "pickerGroups", "previous"].filter((k) => k in T),
+        missing: ["THEMES", "contrast", "resolve", "current", "customs", "select", "pick", "create", "fix", "remove", "maker", "dnOf", "setDayNight", "hold"].filter((k) => !(k in T)) }; });
+      R.check("llThemes has LOOKS and look; CYCLE, groups, pickerGroups and previous are gone", api.looks === DAYS.join() && api.look === "function" && !api.gone.length && !api.missing.length, JSON.stringify(api));
+      await page.evaluate(() => window.llThemes.pick("ink")); await page.waitForTimeout(100);
+      const off = await st(page);
+      const bg = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--bg"));
+      const before = await prefs(page), bg0 = await bg();
+      await page.evaluate(() => window.llThemes.select("gone7")); await page.waitForTimeout(100);
+      const gone = { s: await st(page), same: (await prefs(page)) === before, bg: [bg0, await bg()] };
+      R.check('select("gone7") changes nothing and saves nothing', gone.s.theme === "ink" && gone.same && !!gone.bg[0] && gone.bg[0] === gone.bg[1], JSON.stringify(gone));
+      await ctx.close();
+      ctx = await context(b, null, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00" } });
+      page = await open(ctx, url, NOON);
+      await page.evaluate(() => window.llThemes.pick("ink")); await page.waitForTimeout(100);
+      const on = await st(page);
+      R.check('pick("ink") gives paper/ink with Ink on screen; at noon with Auto on, a hold on ink',
+        off.theme === "ink" && off.autoDay === "paper" && off.autoNight === "ink" && !off.hold && on.theme === "ink" && on.autoDay === "paper" && on.autoNight === "ink" && !!on.hold && on.hold.theme === "ink" && on.hold.period === "day",
+        JSON.stringify({ off, on }));
+      await ctx.close();
+      ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "day", autoDay: "day", autoNight: "cocoa" } });
+      page = await open(ctx, url, NOON);
+      await page.evaluate(() => window.llThemes.pick("day")); await page.waitForTimeout(100);
+      const dd = await st(page);
+      R.check('pick("day") on a day/cocoa pair gives day/dusk', dd.theme === "day" && dd.autoDay === "day" && dd.autoNight === "dusk", JSON.stringify(dd));
+      await ctx.close();
+    });
+
+    /* ---------------- the pair tile's Undo (§5.2) ---------------- */
+    await guard("pair tile, Undo", async () => {
+      let ctx = await context(b, null, { ll_prefs: { auto: "off", theme: "day", autoDay: "day", autoNight: "cocoa" } });
+      let page = await open(ctx, url, NOON);
+      await tapLook(page, "sepia");
+      const s = await st(page), t = await toastNow(page);
+      R.check('Sepia & Cocoa replaces a day/cocoa pair: toast "Sepia & Cocoa for day and night" with Undo',
+        s.theme === "sepia" && s.autoDay === "sepia" && s.autoNight === "cocoa" && !!t && t.text === "Sepia & Cocoa for day and night" && t.act === "Undo", JSON.stringify({ s, t }));
+      await ctx.close();
+      /* at 22:00 with Day held on day: the look carries the hold over to Sepia, which changes the live hold, so
+         only a copy taken before the tap can put the hold on day back */
+      ctx = await context(b, null, { ll_prefs: { auto: "time", nightFrom: "21:00", nightTo: "07:00", theme: "day", autoDay: "day", autoNight: "cocoa", dnHold: { theme: "day", period: "night", until: NEXT_7 } } });
+      page = await open(ctx, url, NIGHT);
+      const s0 = await st(page);
+      await tapLook(page, "sepia");
+      const s1 = await st(page);
+      /* the click on Undo, outside the popover, closes it: the pair's tile is back in Settings, and in the
+         popover once it opens again */
+      await page.click("#toast .toast-act"); await page.waitForTimeout(150);
+      const s2 = await st(page), saved = JSON.parse(await prefs(page)), set = await looksIn(page, "#themeChips");
+      await openTheme(page);
+      const pop = await looksIn(page, "#qLooks");
+      await page.clock.fastForward("00:31"); await page.waitForTimeout(100);
+      const s3 = await st(page);
+      const held = (h, theme) => !!h && h.theme === theme && h.period === "night" && h.until === NEXT_7;
+      R.check("Undo restores day/cocoa, the screen and the hold",
+        s0.theme === "day" && held(s0.hold, "day") && s1.theme === "sepia" && held(s1.hold, "sepia") &&
+        s2.theme === "day" && s2.autoDay === "day" && s2.autoNight === "cocoa" && held(s2.hold, "day") && saved.theme === "day" && saved.autoNight === "cocoa" && held(saved.dnHold, "day") &&
+        pairFirst(set, "Day & Cocoa") && pairFirst(pop, "Day & Cocoa") && s3.theme === "day", JSON.stringify({ s0, s1, s2, s3, set: set.slice(0, 1), pop: pop.slice(0, 1) }));
+      await ctx.close();
+    });
+
+    /* ---------------- the rule for every choice (§5.0) ---------------- */
+    for (const auto of ["off", "time"]){
+      await guard("invariant, Auto " + auto, async () => {
+        const ctx = await context(b, null, { ll_prefs: { auto, nightFrom: "21:00", nightTo: "07:00", customs: [LAMP] } });
+        const page = await open(ctx, url, NOON);
+        answer(page, "Lamp three");
+        const bad = [], trail = [];
+        const step = async (label, fn) => {
+          await fn(); await page.waitForTimeout(150);
+          const s = await st(page);
+          trail.push(label + ": " + s.theme + " " + s.autoDay + "/" + s.autoNight);
+          if (!((s.theme === s.autoDay || s.theme === s.autoNight) && s.autoDay !== s.autoNight)) bad.push(label + " " + JSON.stringify(s));
+        };
+        await step("look Paper & Ink", () => tapLook(page, "paper"));
+        await step("Night", () => page.click('#qDN [data-dn="night"]'));
+        await step("own theme", () => page.click('#qMine [data-theme="c:t3a"]'));
+        await step("Settings' Duplicate", async () => { await page.keyboard.press("Escape"); await page.waitForTimeout(150); await openSettings(page); await page.click("#cDup"); });
+        await step("Settings' Save as new", () => page.click("#cSaveAs"));
+        await step("list Day theme → Sage", () => page.selectOption("#autoDay", "sage"));
+        await step("look Sea air & Canals", () => page.click('#themeChips [data-look="seaair"]'));
+        await step("t", () => page.keyboard.press("t"));
+        await step("delete the own theme", () => page.evaluate(() => window.llThemes.remove(window.llThemes.customs().filter((c) => c.id === "t3a")[0])));
+        await step("list Night theme → Cocoa", () => page.selectOption("#autoNight", "cocoa"));
+        await step("Day", () => page.click('#sDN [data-dn="day"]'));
+        R.check("the invariant, Auto " + auto + ": after every choice the theme on screen is a half of the pair, and the halves differ", bad.length === 0 && trail.length === 11, (bad.length ? bad.join(" | ") + " … " : "") + trail.join(" · "));
+        await ctx.close();
+      });
+    }
+
+    /* ---------------- Recent goes (§4.5) ---------------- */
+    await guard("Recent", async () => {
+      const ctx = await context(b, null, { ll_prefs: { auto: "off", customs: [LAMP] }, ll_theme_recent: ["sepia"] });
+      const page = await open(ctx, url, NOON);
+      const recent = () => page.evaluate(() => localStorage.getItem("ll_theme_recent"));
+      const r0 = await recent();
+      await page.reload({ waitUntil: "load" }); await page.waitForTimeout(150);
+      const r1 = await recent();
+      await tapLook(page, "paper");
+      await page.click('#qMine [data-theme="c:t3a"]'); await page.waitForTimeout(150);
+      await page.keyboard.press("Escape"); await page.waitForTimeout(150);
+      await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+      await page.keyboard.press("t"); await page.waitForTimeout(150);
+      const r2 = await recent(), s = await st(page);
+      R.check("ll_theme_recent is removed at boot and never written", r0 === null && r1 === null && r2 === null && s.theme === "ink" && s.autoDay === "c:t3a", JSON.stringify({ r0, r1, r2, s }));
       await ctx.close();
     });
 

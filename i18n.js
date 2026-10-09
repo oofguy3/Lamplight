@@ -1828,6 +1828,8 @@
     "Turn off": "Uitzetten",
     "Day and night switching is off": "Wisselen tussen dag en nacht staat uit",
     "Deleted \u201C{name}\u201D": "\u201C{name}\u201D verwijderd",
+    /* a look tapped over a pair that was no look; the toast offers Undo */
+    "{name} for day and night": "{name} voor dag en nacht",
     "Saved \u201C{name}\u201D": "\u201C{name}\u201D opgeslagen",
     "{what}: any colour": "{what}: elke kleur",
     "Chapter three": "Hoofdstuk drie",
