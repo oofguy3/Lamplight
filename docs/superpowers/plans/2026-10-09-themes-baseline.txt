@@ -71,14 +71,17 @@ Failing checks (verbatim):
 Known causes: themes-browser stops at its line 82 (New… now opens the Maker); type2 wants 30 themes and a light theme
 with a ceiling under 0.2; fonts' colour parser cannot read oklab(); ui-a's custom-theme row check and its
 smooth-scroll timing; i18n's audiobook.js keys; translate's pack download and ui-c's three timeouts and the
-dictionary card height depend on the machine and the network; pace's K6 counts animation frames. A check listed
-here may pass later; a check not listed must keep passing unless a task rewrites it.
+dictionary card height depend on the machine and the network (After Task 1 below corrects this for the three
+timeouts); pace's K6 counts animation frames. A check listed here may pass later; a check not listed must keep
+passing unless a task rewrites it.
 
 After Task 1 (tests/lib.js's parseColor reads oklab(); fonts.js, ui-b.js and ui-c.js use it). These results
 replace the three suites' lines above:
   fonts.js: 89/89 (one check added, "parseColor reads oklab"; its two oklab checks now pass, min 5.96 on both)
   ui-b.js: 117/117
   ui-c.js: 46/50, the same four failures as above
+
+Browser and node suites with check counts after Task 1: 2212/2229 checks passed (was 2209/2228).
 
 The fixed parser reveals no failing dark-theme check on today's colours. The ratios the old parser overstated
 come down but stay above 4.5:1. In ui-b, the current search result reads 7.18 on dusk (the old parser said

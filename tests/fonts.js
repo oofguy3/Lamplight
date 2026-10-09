@@ -124,11 +124,14 @@ const starts = (family) => new RegExp("^[\"']?" + family + "\\b");
     R.check("a chosen font gets its italic face too", woff(page).indexOf("lora-latin-wght-italic.woff2") >= 0, woff(page).join(", "));
     R.check("a merely previewed font did not", woff(page).indexOf("source-serif-4-latin-wght-italic.woff2") < 0, woff(page).join(", "));
     /* the shared colour parser reads what Chromium reports for a colour mixed in oklab (an oklab()
-       value, here Dusk's accent #D8A24A at 18%) and in srgb (a color(srgb …) value) */
-    const p = parseColor("oklab(0.7466 0.0274 0.1192 / 0.18)");
+       value, here Dusk's accent #D8A24A at 18%) and in srgb (a color(srgb …) value), and keeps the
+       minus signs: the blue #2E6DB4 has negative a and b, and a parser that drops them reads it as
+       an orange-brown */
+    const p = parseColor("oklab(0.7466 0.0274 0.1192 / 0.18)"), n = parseColor("oklab(0.5299 -0.0363 -0.1239)");
     R.check("parseColor reads oklab", p && p.rgb.map(Math.round).join() === "216,162,74" && p.a === 0.18 &&
+      n && n.rgb.map(Math.round).join() === "46,109,180" &&
       parseColor("oklab(0 0 0)").rgb.map(Math.round).join() === "0,0,0" && parseColor("oklab(1 0 0)").rgb.map(Math.round).join() === "255,255,255" &&
-      parseColor("color(srgb 1 0.5 0 / 0.5)").rgb.join() === "255,127.5,0", JSON.stringify(p));
+      parseColor("color(srgb 1 0.5 0 / 0.5)").rgb.join() === "255,127.5,0", JSON.stringify([p, n]));
     /* the note on the current (tinted) row and on a hovered row must read at 4.5:1 on every theme:
        the row's translucent background is composited over the panel, then WCAG contrast. This runs
        in the page, so it rebuilds the shared parser from its source */
