@@ -213,7 +213,7 @@ async function phonePage(b, url, prefs){
   });
 
   /* ---------- the ring, the note, the position slider ---------- */
-  const NOTE = /^(Under a minute|\d+ min|\d+ h( \d+ min)?) left in chapter$/;
+  const NOTE = /^(Under a minute left|\d+ min left|\d+ h( \d+ min)? left)$/;
   const ringPct = (page) => page.evaluate(() => { const c = document.querySelector("#dockBtn .ring circle"), da = (c.style.strokeDasharray || getComputedStyle(c).strokeDasharray).split(/[ ,]+/).map(parseFloat);
     return { ring: da[0] / (2 * Math.PI * 27) * 100, bar: +document.getElementById("progress").getAttribute("aria-valuenow"), pct: document.getElementById("dockPct").textContent, desc: document.getElementById("dockBtn").getAttribute("aria-describedby") }; });
   await guard("ring and note", async () => {
@@ -227,11 +227,11 @@ async function phonePage(b, url, prefs){
     R.check("ring follows progress (scroll to ~50%)", Math.abs(r.ring - r.bar) < 1 && r.bar > 30 && r.bar < 70, JSON.stringify(r));
     R.check("the lamp says how far through, to a screen reader", /^\d+% through the book$/.test(r.pct) && r.desc === "dockPct", JSON.stringify(r));
     const note = await page.$eval("#leftNote", (e) => e.textContent);
-    R.check("the note: the time left in the chapter", NOTE.test(note), note);
+    R.check("the note: the time left in the whole book (sample.epub has chapters, and the note is not the chapter's)", NOTE.test(note), note);
     await openDock(page);
     const cap = await page.evaluate(() => ({ page: document.getElementById("dockPage").textContent, left: document.getElementById("dockLeft").textContent, note: document.getElementById("leftNote").textContent,
       pos: document.getElementById("dockPos"), shown: !document.querySelector(".pd-pos").hidden }));
-    R.check("the dock's caption: the place on the left, the chapter's time on the right", cap.shown && /^\d+%$/.test(cap.page) && cap.left === cap.note, JSON.stringify(cap));
+    R.check("the dock's caption: the place on the left, the book's time on the right", cap.shown && /^\d+%$/.test(cap.page) && cap.left === cap.note, JSON.stringify(cap));
     const mark = await page.evaluate(() => { const r = document.documentElement.style; return window.llThemes.contrast(r.getPropertyValue("--lamp-mark").trim(), r.getPropertyValue("--panel").trim()); });
     R.check("the ring's colour shows at 3:1 or more on the panel", mark >= 3, mark.toFixed(2));
     R.check("no page errors (ring)", !(page._errors || []).length, (page._errors || []).join(" | "));
@@ -298,7 +298,7 @@ async function phonePage(b, url, prefs){
     await openFixture(page, "sample.epub");
     await page.evaluate(() => window.scrollBy(0, 300)); await page.waitForTimeout(600);
     const nl = await page.evaluate(() => ({ note: document.getElementById("leftNote").textContent, pct: document.getElementById("dockPct").textContent }));
-    R.check("Dutch: 'Nog 4 min in dit hoofdstuk' form", /^Nog (geen minuut|\d+ min|\d+ u( \d+ min)?) in dit hoofdstuk$/.test(nl.note) && /^\d+% van het boek gelezen$/.test(nl.pct), JSON.stringify(nl));
+    R.check("Dutch: 'Nog 4 min' form", /^Nog (geen minuut|\d+ min|\d+ u( \d+ min)?)$/.test(nl.note) && /^\d+% van het boek gelezen$/.test(nl.pct), JSON.stringify(nl));
     await ctx.close();
   });
 

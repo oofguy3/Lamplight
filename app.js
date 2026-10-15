@@ -7301,8 +7301,6 @@
       return lo;
     }
     function docWords(){ return indexReady() ? index.words : 0; }
-    /* the words between two character offsets of the text: the index once it is built, null until then */
-    function wordsBetween(a, b){ return ensureIndex() ? Math.max(0, idx(b) - idx(a)) : null; }
 
     /* ---- PDF words per page, asked for once a page has been in the rested window ---- */
     var pageWords = {}, pageAsked = {}, pdfWordsDoc = null;
@@ -8369,7 +8367,7 @@
     window.llPace = { state: stateOut, runs: runsOut, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence,
                       summary: summary, reset: reset, _debug: debug };
     return { poke: poke, wpm: wpm, ppm: ppm, docWpm: docWpm, docPpm: docPpm, confidence: confidence, docConfidence: docConfidence, summary: summary,
-             state: stateOut, runs: runsOut, docWords: docWords, wordsBetween: wordsBetween, reset: reset, flush: save, noteBlock: noteBlock };
+             state: stateOut, runs: runsOut, docWords: docWords, reset: reset, flush: save, noteBlock: noteBlock };
   })();
 
   /* ============================================================
@@ -8401,42 +8399,8 @@
       var h = Math.floor(min / 60), m = Math.round(min % 60);
       return m ? _t("{h} h {m} min left", { h: h, m: m }) : _t("{h} h left", { h: h });
     }
-    /* the phone's note and the dock: the time left in the chapter (to the next top-level contents
-       entry, at the measured speed), or the whole book's for one without chapters; "" while there is
-       nothing to say, and the first letter upper-cased ("Under a minute left", "Nog 4 min") */
-    function fmtCh(min){
-      if (!isFinite(min) || min < 0) return "";
-      if (min < 1) return _t("Under a minute left in chapter");
-      var t = Math.round(min), h = Math.floor(t / 60), m = t % 60;
-      if (!h) return _t("{n} min left in chapter", { n: t });
-      return m ? _t("{h} h {m} min left in chapter", { h: h, m: m }) : _t("{h} h left in chapter", { h: h });
-    }
+    /* the first letter upper-cased, for the phone's note ("Under a minute left", "Nog 4 min") */
     function cap(s){ return s ? s.charAt(0).toLocaleUpperCase(I18N.locale()) + s.slice(1) : ""; }
-    function chapterLeft(){
-      if (state.mode === "doc"){
-        var n = words();
-        if (n <= 80) return "";
-        var top = state.flow === "pages" ? pageTopOffset() : Library.topCharOffset(), end = Section.chapterEnd(top);
-        if (end === null) return cap(fmt((1 - Math.max(0, Math.min(1, readFrac()))) * n / currentWpm()));
-        var w = Pace.wordsBetween(top, end);
-        if (w === null) w = (end - top) / Math.max(1, Anchor.textLength()) * n;      /* the index is still being built */
-        return fmtCh(w / currentWpm());
-      }
-      if (state.mode === "pdf" && state.pdfDoc){
-        var pages = state.pdfDoc.numPages, page = Library.currentPdfPage(), list = pdfOutline(), next = null;
-        if (pages <= 3) return "";
-        if (list && list.length){
-          var lvl = Math.min.apply(null, list.map(function(e){ return e.level || 1; })), inOne = false;
-          list.forEach(function(e){
-            if ((e.level || 1) !== lvl || !e.page) return;
-            if (e.page <= page) inOne = true; else if (next === null) next = e.page;
-          });
-          if (next === null && inOne) next = pages + 1;     /* the last chapter runs to the end */
-        }
-        return next === null ? cap(fmt((pages - page) / currentPpm())) : fmtCh((next - page) / currentPpm());
-      }
-      return "";
-    }
     function put(el, s){ if (el && el.textContent !== s) el.textContent = s; }
     function show(text){
       /* in Pages flow the page-turn bar carries the readout; the pill is for Scroll flow, and
@@ -8480,11 +8444,12 @@
       show(text);
       strip();
     }
-    /* a phone: the note at the foot, and the dock's position and caption */
+    /* a phone: the note at the foot and the dock's caption (the time left in the whole book, at the
+       measured speed, capitalised; "" while there is nothing to say), and the dock's position */
     function strip(){
       if (!document.body.classList.contains("phonebar")) return;
-      var ch = chapterLeft();
-      put($("#leftNote"), ch); put($("#dockLeft"), ch);
+      var t = cap(left());
+      put($("#leftNote"), t); put($("#dockLeft"), t);
       PhoneBar.syncPos();
     }
     /* the time left from here, worded for the page-turn bar ("18 min left"), or "" when the
@@ -8500,7 +8465,7 @@
       }
       return "";
     }
-    return { tick: tick, strip: strip, wpm: currentWpm, ppm: currentPpm, left: left, chapterLeft: chapterLeft, sample: function(){ return Pace.summary(); }, docWords: words };
+    return { tick: tick, strip: strip, wpm: currentWpm, ppm: currentPpm, left: left, sample: function(){ return Pace.summary(); }, docWords: words };
   })();
 
   /* ============================================================
@@ -11922,23 +11887,11 @@
       clearTimeout(timer);
       timer = setTimeout(function(){ last = Date.now(); pick(); }, Math.max(60, 500 - (Date.now() - last)));
     }
-    /* where the chapter around character `top` ends (the phone's "min left in chapter"): at the
-       next top-level contents entry, or the end of the text. A first entry named like the book (its
-       title heading) is no chapter; with no chapters left, null: the whole book is the span */
-    function chapterEnd(top){
-      if (top === null || top === undefined) return null;
-      var book = fname.textContent.trim();
-      var es = entries().filter(function(e){ return !(e.i === 0 && e.title && (e.title === book || book.indexOf(e.title + " ") === 0)); });
-      if (!es.length) return null;
-      var lvl = Math.min.apply(null, es.map(function(e){ return e.level; }));
-      for (var i = 0; i < es.length; i++) if (es[i].level === lvl && es[i].off > top + 1) return es[i].off;
-      return Anchor.textLength();
-    }
     function reset(){ offs = null; set(""); }
     window.addEventListener("scroll", update, { passive: true });
     if (window.MutationObserver) new MutationObserver(update).observe($("#pgInfo"), { childList: true, characterData: true, subtree: true });
     document.addEventListener("ll:fileopened", function(){ reset(); Pop.close(true); });
-    return { update: update, reset: reset, at: at, chapterEnd: chapterEnd };
+    return { update: update, reset: reset, at: at };
   })();
 
   /* ---- first-run tips on the start screen, and one toast on the first document ever opened ---- */
