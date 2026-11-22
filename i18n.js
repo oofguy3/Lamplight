@@ -362,9 +362,17 @@
 
   /* ==== 2. app.js, part A ==== */
   add({
-    /* the themes' names: the twelve built-ins, and the retired ones (RETIRED in app.js), kept so that a
+    /* the themes' names: the twenty built-ins, and the retired ones (RETIRED in app.js), kept so that a
        retired theme can still be named to its readers */
     "theme|Day": "Dag",
+    "Blush": "Blos",
+    "Wine": "Wijn",
+    "Lilac": "Sering",
+    "Indigo": "Indigo",
+    "Butter": "Boter",
+    "Lantern": "Lantaarn",
+    "Fog": "Nevel",
+    "Storm": "Storm",
     "Sepia": "Sepia",
     "Mist": "Mist",
     "Rose": "Roze",

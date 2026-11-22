@@ -1,4 +1,4 @@
-/* Themes in the browser: every built-in applies; the six looks, in the settings sheet and the lamp's
+/* Themes in the browser: every built-in applies; the ten looks, in the settings sheet and the lamp's
    popover (their names, each drawn as its day theme and night theme side by side, the look on
    screen marked); t between day and night; the custom editor on a theme made with llThemes.create
    (pickers and hex fields, the contrast meter and Fix contrast, rename / duplicate / save as /
@@ -30,7 +30,7 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
   const settle = (k) => page.waitForFunction((t) => window.__ll.state.theme === t, k, { timeout: 1500 }).catch(() => {});
   /* a hex colour as getComputedStyle gives it */
   const asRgb = (h) => "rgb(" + [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ") + ")";
-  const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Contrast"];
+  const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Blush & Wine", "Lilac & Indigo", "Butter & Lantern", "Fog & Storm", "Contrast"];
   try {
     /* 1. every built-in theme applies */
     const THEMES = await page.evaluate(() => window.llThemes.THEMES);
@@ -41,19 +41,19 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
       if ((await cssVar("--bg")) === THEMES[id].bg.toLowerCase() && (await cssVar("--panel")) === THEMES[id].panel.toLowerCase() &&
           (await cssVar("--raise")).toLowerCase() === THEMES[id].raise.toLowerCase() && (await cssVar("--lamp")).toLowerCase() === THEMES[id].lamp.toLowerCase()) applied++; else wrong.push(id);
     }
-    R.check("every built-in theme applies, its raised surface and lamp too (" + applied + " of " + ids.length + ")", applied === ids.length && ids.length === 12, wrong.join(","));
+    R.check("every built-in theme applies, its raised surface and lamp too (" + applied + " of " + ids.length + ")", applied === ids.length && ids.length === 20, wrong.join(","));
     /* the looks: a day theme and a night theme each, in the picker's order */
     const LOOKS = await page.evaluate(() => window.llThemes.LOOKS);
     const pairs = LOOKS.map((l) => l.id + ":" + l.day + "/" + l.night).join(",");
-    R.check("the looks pair the built-ins, day half first: Day & Dusk, Paper & Ink, Sepia & Cocoa, Sage & Forest, Sea air & Canals, Contrast",
-      pairs === "day:day/dusk,paper:paper/ink,sepia:sepia/cocoa,sage:sage/forest,seaair:seaair/canals,hicon:hicon/hidark" && LOOKS.every((l) => THEMES[l.day] && THEMES[l.night]), pairs);
+    R.check("the looks pair the built-ins, day half first: Day & Dusk, Paper & Ink, Sepia & Cocoa, Sage & Forest, Sea air & Canals, Blush & Wine, Lilac & Indigo, Butter & Lantern, Fog & Storm, Contrast",
+      pairs === "day:day/dusk,paper:paper/ink,sepia:sepia/cocoa,sage:sage/forest,seaair:seaair/canals,blush:blush/wine,lilac:lilac/indigo,butter:butter/lantern,fog:fog/storm,hicon:hicon/hidark" && LOOKS.every((l) => THEMES[l.day] && THEMES[l.night]), pairs);
     await page.evaluate(() => window.llThemes.pick("day")); await settle("day");
     await openSheet();
     const tiles = await page.evaluate(() => ({ names: Array.from(document.querySelectorAll("#themeChips .tile.look .tile-n")).map((n) => n.textContent),
       labels: Array.from(document.querySelectorAll("#themeChips .sub-label")).map((l) => l.textContent), looks: document.querySelectorAll("#themeChips .tile.look").length,
       own: document.querySelectorAll("#themeChips .chip[data-theme]").length, pages: Array.from(document.querySelectorAll("#themeChips .tile.look .pg")).map((g) => g.dataset.t).join(",") }));
-    R.check("the sheet's tiles are named for the six looks, then Mine", tiles.names.join("|") === NAMES.join("|") && tiles.labels.join("|") === "Mine", JSON.stringify(tiles));
-    R.check("one tile per look, drawing its two themes, and none for a single built-in", tiles.looks === 6 && tiles.own === 0 && tiles.pages === LOOKS.map((l) => l.day + "," + l.night).join(","), JSON.stringify(tiles));
+    R.check("the sheet's tiles are named for the ten looks, then Mine", tiles.names.join("|") === NAMES.join("|") && tiles.labels.join("|") === "Mine", JSON.stringify(tiles));
+    R.check("one tile per look, drawing its two themes, and none for a single built-in", tiles.looks === 10 && tiles.own === 0 && tiles.pages === LOOKS.map((l) => l.day + "," + l.night).join(","), JSON.stringify(tiles));
     /* each half is a small page in its theme's colours: the page, "Aa" in the text colour, lines of
        secondary text, the panel strip and the lamp on it (the expected values from the table) */
     const sw = await page.$$eval('#themeChips [data-look="sepia"] .pg', (pgs) => pgs.map((g) => ({ t: g.dataset.t, bg: getComputedStyle(g).backgroundColor, ink: getComputedStyle(g.querySelector("b")).color,
@@ -71,7 +71,7 @@ const SHOTS = process.env.LL_SHOTS || os.tmpdir();
     R.check("the lamp opens the theme popover", await page.evaluate(() => window.llPop.is("theme") && document.getElementById("pop").classList.contains("open") && document.getElementById("lamp").getAttribute("aria-expanded") === "true"));
     const rows = await page.evaluate(() => ({ looks: Array.from(document.querySelectorAll("#qLooks .tile.look")).map((c) => c.dataset.look).join(","), names: Array.from(document.querySelectorAll("#qLooks .tile.look .tile-n")).map((n) => n.textContent).join("|"),
       on: Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')).map((c) => c.dataset.look).join(","), focus: document.activeElement && document.activeElement.dataset.look }));
-    R.check("the popover lists the six looks in order, with the current one marked", rows.looks === LOOKS.map((l) => l.id).join(",") && rows.names === NAMES.join("|") && rows.on === "sepia", JSON.stringify(rows));
+    R.check("the popover lists the ten looks in order, with the current one marked", rows.looks === LOOKS.map((l) => l.id).join(",") && rows.names === NAMES.join("|") && rows.on === "sepia", JSON.stringify(rows));
     R.check("the popover opens on the current look: its tile has the focus", rows.focus === "sepia", JSON.stringify(rows));
     await page.keyboard.press("Escape"); await page.waitForTimeout(100);
     /* back to Day & Dusk, with Day on screen; t cross-fades too */
