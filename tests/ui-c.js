@@ -313,22 +313,61 @@ const CONTRAST = `(el, behind) => {
         footH: c.querySelector(".foot").getBoundingClientRect().height, overflow: c.scrollWidth > c.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth + 1 };
     });
     /* the sheet's corners are the design's --r-xl (24px) */
-    R.check("phone: the card is a bottom sheet with a grab handle", sheet.left === 0 && Math.round(sheet.right) === 390 && Math.round(sheet.bottom) === 844 && sheet.radius === "24px" && sheet.grab && sheet.height <= 844 * 0.66 + 1, JSON.stringify(sheet));
+    R.check("phone: the card is a bottom sheet with a grab handle", sheet.left === 0 && Math.round(sheet.right) === 390 && Math.round(sheet.bottom) === 844 && sheet.radius === "24px" && sheet.grab, JSON.stringify(sheet));
+    /* small, in reach of the thumb: under half the screen until the reader makes it tall */
+    R.check("phone: the card opens small (under half the screen)", sheet.height <= 844 * 0.46 + 1 && sheet.height <= 401, JSON.stringify(sheet.height));
+    const grow = await page.evaluate(async () => {
+      const c = document.getElementById("dictCard"), g = c.querySelector(".grow"), l0 = g.getAttribute("aria-label"); g.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const tall = c.classList.contains("tall"), h = c.getBoundingClientRect().height, l1 = g.getAttribute("aria-label"); g.click();
+      await new Promise((r) => setTimeout(r, 300));
+      return { l0, l1, tall, h, small: !c.classList.contains("tall"), h2: c.getBoundingClientRect().height, shown: !!g.offsetParent };
+    });
+    R.check("phone: the arrow in the head makes the card tall, and small again", grow.shown && grow.l0 === "Bigger card" && grow.l1 === "Smaller card" && grow.tall && grow.h > 844 * 0.46 + 1 && grow.small && grow.h2 <= 844 * 0.46 + 1, JSON.stringify(grow));
     R.check("phone: tabs are equal width and 44px tall", Math.max.apply(null, sheet.tabW) - Math.min.apply(null, sheet.tabW) <= 1 && sheet.tabH.every((h) => h === 44), JSON.stringify({ w: sheet.tabW, h: sheet.tabH }));
     /* the scrim is the shared --scrim token: the text colour at 30% on a light page (a see-through colour) */
     R.check("phone: a scrim dims the page; the footer fits in one row; nothing overflows sideways", /\/ 0\.3\)$|, 0\.3\)$/.test(sheet.scrim) && sheet.footH < 64 && !sheet.overflow, JSON.stringify({ scrim: sheet.scrim, footH: sheet.footH, overflow: sheet.overflow }));
     const small = await page.evaluate(() => Array.from(document.querySelectorAll("#dictCard button")).filter((x) => x.getClientRects().length && x.getBoundingClientRect().height < 40).map((x) => x.className + ":" + Math.round(x.getBoundingClientRect().height)));
     R.check("phone: every button in the card is at least 40px tall (the close 48)", small.length === 0 && (await page.$eval("#dictCard .x", (x) => Math.round(x.getBoundingClientRect().height) === 48)), small.join(","));
-    /* a finger drag on the scrim neither scrolls the page nor closes the card */
+    /* a finger that slides over the dimmed page closes the card (the reader who meant to scroll); the page stays where it was */
     const y0 = await page.evaluate(() => window.scrollY);
     const cdp = await page.context().newCDPSession(page), pt = (x, y) => ({ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 });
-    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [pt(195, 200)] });
-    for (let i = 1; i <= 8; i++){ await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [pt(195, 200 - 20 * i)] }); await page.waitForTimeout(16); }
-    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await cdp.detach(); await page.waitForTimeout(400);
-    const held = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("dictCard").classList.contains("open") }));
-    R.check("phone: a drag on the scrim leaves the page still and the card open", held.y === y0 && held.open, JSON.stringify(held) + " y0 " + y0);
+    const drag = async (x, ya, yb) => {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [pt(x, ya)] });
+      for (let i = 1; i <= 8; i++){ await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [pt(x, ya + (yb - ya) * i / 8)] }); await page.waitForTimeout(16); }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await page.waitForTimeout(400);
+    };
+    const isOpen = () => page.evaluate(() => document.getElementById("dictCard").classList.contains("open"));
+    await drag(195, 200, 40);
+    const slid = await page.evaluate(() => ({ y: window.scrollY, open: document.getElementById("dictCard").classList.contains("open") }));
+    R.check("phone: a finger sliding over the scrim closes the card and leaves the page still", slid.y === y0 && !slid.open, JSON.stringify(slid) + " y0 " + y0);
+    /* a pull down on the card's own text closes it too */
+    await holdSentence(page, "Nobody could have"); await page.waitForTimeout(500);
+    const body = await page.evaluate(() => { const r = document.querySelector("#dictCard .quote").getBoundingClientRect(); return { x: r.left + 40, y: r.top + 12 }; });
+    await drag(body.x, body.y, body.y + 20);
+    R.check("phone: a short pull on the card leaves it open", await isOpen());
+    await drag(body.x, body.y, body.y + 170);
+    R.check("phone: a pull down on the card closes it", !(await isOpen()));
+    /* a pull up on the head makes it tall; the next card opens small again */
+    await holdSentence(page, "Nobody could have"); await page.waitForTimeout(500);
+    const head = await page.evaluate(() => { const r = document.querySelector("#dictCard .term").getBoundingClientRect(); return { x: r.left + 8, y: r.top + 8 }; });
+    await drag(head.x, head.y, head.y - 120);
+    R.check("phone: a pull up on the head makes the card tall", await page.evaluate(() => document.getElementById("dictCard").classList.contains("tall")));
+    await page.tap("#dictCard .x"); await page.waitForTimeout(300);
+    await holdSentence(page, "Nobody could have"); await page.waitForTimeout(500);
+    R.check("phone: the next card opens small again", await page.evaluate(() => { const c = document.getElementById("dictCard"); return c.classList.contains("open") && !c.classList.contains("tall"); }));
+    await cdp.detach();
     await page.tap("#dictScrim", { position: { x: 120, y: 120 } }); await page.waitForTimeout(300);
     R.check("phone: a tap on the scrim closes it", await page.evaluate(() => !document.getElementById("dictCard").classList.contains("open")));
+    /* a tap that lands as the page stops scrolling is the thumb stopping it, not a word asked for */
+    await page.evaluate(() => window.scrollBy(0, -160)); await page.waitForTimeout(500);
+    const wp = await textPoint(page, "predicted"); await page.waitForTimeout(40);
+    await page.touchscreen.tap(wp.x + 8, wp.y); await page.waitForTimeout(500);
+    R.check("phone: a tap just as the page stops scrolling opens nothing", !(await isOpen()));
+    await page.waitForTimeout(400);
+    await page.touchscreen.tap(wp.x + 8, wp.y);
+    await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 }).catch(() => {});
+    R.check("phone: a tap on a word a moment later opens its card", await isOpen());
     R.check("no page errors (phone)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
   });

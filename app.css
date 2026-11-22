@@ -1444,13 +1444,20 @@
   .glass{fill:var(--lamp);}
   body.phonebar #readFoot{
     display:block; position:fixed; left:0; right:0; bottom:0; z-index:15; height:calc(92px + env(safe-area-inset-bottom));
-    background:var(--bg); transition:transform .22s var(--ease-out), opacity .22s ease, background var(--t-theme) ease;
+    background:var(--bg); transition:transform .22s var(--ease-out), opacity 0s, background var(--t-theme) ease;
+    /* a layer of its own from the start, and a slide with no fade: a strip that turned into a layer and
+       went see-through each time the reader scrolled made the whole screen shimmer under the warm and
+       dim films (the films were mixed again over a changed stack, a shade off on a very dark screen) */
+    will-change:transform;
   }
   /* it steps away while the reader reads on (strip-away, set by PhoneBar: a scroll down, a page
      turned, zen) and comes back on a scroll up: it slides out past the screen's edge, and nothing in
      it takes a tap meanwhile. A keyboard focus inside brings it back; read aloud and the dock keep it,
      and so does e-ink mode, whose taps all turn pages and which has no swipes to bring it back by */
-  body.phonebar.strip-away:not(.tts-on):not(.dock-open):not(.eink) #readFoot:not(:has(:focus-visible)){transform:translateY(calc(100% + 12px)); opacity:0; pointer-events:none;}
+  body.phonebar.strip-away:not(.tts-on):not(.dock-open):not(.eink) #readFoot:not(:has(:focus-visible)){
+    transform:translateY(calc(100% + 12px)); opacity:0; pointer-events:none;
+    transition:transform .22s var(--ease-out), opacity 0s linear .22s, background var(--t-theme) ease;
+  }
   #leftNote{
     position:absolute; left:24px; right:96px; bottom:calc(28px + env(safe-area-inset-bottom)); height:56px; margin:0;
     display:flex; align-items:center; font-family:var(--ui-font); font-size:var(--fs-small); line-height:1.35; color:var(--muted);
@@ -2445,11 +2452,17 @@
      flips the blend: light themes are multiplied (the page darkens towards amber), dark ones are
      screened at a much lower strength (the page glows amber instead of turning muddy). The
      strength is capped per theme so no theme's text falls under 4.5:1 — see Warmth in app.js. */
+  /* Both films reach well past the screen's edges: a phone's browser bars slide away while the page
+     scrolls and the screen grows before the page is laid out again, and a film cut to the old size
+     leaves a bright strip along the bottom that comes and goes with every scroll. Each film is a
+     layer of its own that nothing in it ever repaints, and a film at 0 is not drawn at all. */
   #warmth{
-    position:fixed; inset:0; z-index:1000; pointer-events:none;
+    position:fixed; inset:-160px -40px; z-index:1000; pointer-events:none;
     background:rgb(255, 150, 50); mix-blend-mode:multiply; opacity:0;
-    transition:opacity .35s ease;
+    transition:opacity .35s ease, visibility 0s linear .35s;
+    contain:strict; backface-visibility:hidden; visibility:hidden;
   }
+  #warmth.on{visibility:visible; transition:opacity .35s ease, visibility 0s;}
   body.warm-dark #warmth{mix-blend-mode:screen;}
   /* paper has no night, and under forced colours the system palette is the whole point */
   @media print{ #warmth{display:none !important;} }
@@ -2462,9 +2475,11 @@
      with reduced motion (the rule below). Black stays black under forced colours: the point is
      less light, whatever the palette. */
   #dim{
-    position:fixed; inset:0; z-index:2147483647; pointer-events:none;
-    background:#000; opacity:0; transition:opacity .3s ease; forced-color-adjust:none;
+    position:fixed; inset:-160px -40px; z-index:2147483647; pointer-events:none;
+    background:#000; opacity:0; transition:opacity .3s ease, visibility 0s linear .3s; forced-color-adjust:none;
+    contain:strict; backface-visibility:hidden; visibility:hidden;
   }
+  #dim.on{visibility:visible; transition:opacity .3s ease, visibility 0s;}
   @media print{ #dim{display:none !important;} }
 
   /* ---------- e-ink mode (Eink in app.js) ----------

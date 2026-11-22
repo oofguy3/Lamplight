@@ -228,6 +228,12 @@ function fakeClock(iso){
       return cs.position === "fixed" && cs.pointerEvents === "none" && parseInt(cs.zIndex, 10) >= 1000 && document.elementsFromPoint(600, 400).indexOf(w) < 0;
     }));
     R.check("at 0 % nothing is added", (await warmOpacity(page)) === 0);
+    /* a film at 0 is not drawn at all, and both films reach well past the screen's edges (a phone's browser
+       bars slide away as the page scrolls: a film cut to the old size leaves a bright strip that comes and goes) */
+    const films = await page.evaluate(() => ["warmth", "dim"].map((id) => { const e = document.getElementById(id), r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+      return { id, vis: cs.visibility, over: Math.min(-r.top, r.bottom - innerHeight, -r.left, r.right - innerWidth) }; }));
+    R.check("both films reach past every edge of the screen, and a film at 0 is not drawn", films.every((f) => f.over >= 40 && f.vis === "hidden") &&
+      (await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)), JSON.stringify(films));
 
     await page.$eval("#rWarm", (i) => { i.value = "50"; i.dispatchEvent(new Event("input", { bubbles: true })); });
     await page.waitForTimeout(500);
@@ -239,6 +245,7 @@ function fakeClock(iso){
     R.check("the value reads 100 % in the sheet and the lamp popover",
       (await page.$eval("#vWarm", (v) => v.textContent)) === "100 %" && (await page.$eval("#qWarmV", (v) => v.textContent)) === "100 %" &&
       (await page.$eval("#qWarm", (i) => i.value)) === "100");
+    R.check("a film that is on is drawn", (await css(page, "#warmth", "visibility")) === "visible");
     R.check("a light theme multiplies its warm amber", (await css(page, "#warmth", "mixBlendMode")) === "multiply" &&
       (await css(page, "#warmth", "backgroundColor")) === "rgb(255, 150, 50)");
 
