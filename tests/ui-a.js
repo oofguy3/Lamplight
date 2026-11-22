@@ -181,7 +181,7 @@ const SPEECH_STUB = `(() => {
     await page.click("#lamp"); await page.waitForTimeout(250);
     const rows = await page.evaluate(() => ({ looks: Array.from(document.querySelectorAll("#qLooks .tile.look")).map((c) => c.dataset.look).join(","),
       on: Array.from(document.querySelectorAll('#qLooks .chip[aria-pressed="true"]')).map((c) => c.dataset.look).join(","), auto: document.querySelector('#qAuto .chip[aria-pressed="true"]').dataset.auto }));
-    R.check("the lamp opens the theme popover with the six looks, the current look and auto choice marked", (await page.evaluate(() => window.llPop.is("theme"))) && rows.looks === "day,paper,sepia,sage,seaair,hicon" && rows.on === "day" && rows.auto === "off", JSON.stringify(rows));
+    R.check("the lamp opens the theme popover with the ten looks, the current look and auto choice marked", (await page.evaluate(() => window.llPop.is("theme"))) && rows.looks === "day,paper,sepia,sage,seaair,blush,lilac,butter,fog,hicon" && rows.on === "day" && rows.auto === "off", JSON.stringify(rows));
     const bg0 = await page.evaluate(() => document.documentElement.style.getPropertyValue("--bg"));
     /* a choice cross-fades (the theme lands a frame or two later), so wait for it rather than a fixed pause */
     const settle = (k) => page.waitForFunction((x) => window.__ll.state.theme === x, k, { timeout: 1500 }).catch(() => {});

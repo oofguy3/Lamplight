@@ -260,13 +260,31 @@ function fakeClock(iso){
 
     await setTheme(page, "dusk");
     await page.evaluate(() => window.llType.warmth.set(100)); await page.waitForTimeout(700);
-    R.check("a dark theme screens instead, at a lower strength", (await css(page, "#warmth", "mixBlendMode")) === "screen" &&
-      (await page.evaluate(() => document.body.classList.contains("warm-dark"))) && (await warmOpacity(page)) < full);
+    /* a dark page is multiplied too, the way a phone's night light works: its text turns warm and black stays
+       black (a screened film laid an amber glow over the black, a barely lit screen under a strong dim) */
+    R.check("a dark theme multiplies too, at the same strength", (await css(page, "#warmth", "mixBlendMode")) === "multiply" &&
+      (await page.evaluate(() => document.body.classList.contains("warm-dark"))) && (await warmOpacity(page)) === full);
     await page.waitForTimeout(300);
     const duskWarm = await sampleContrast(page, await textShot(page));
     await page.evaluate(() => window.llType.warmth.set(0)); await page.waitForTimeout(600);
     const duskPlain = await sampleContrast(page, await textShot(page));
-    R.check("Dusk at 100 %: the page really is warmer on screen", duskWarm.bg !== duskPlain.bg, duskPlain.bg + " → " + duskWarm.bg);
+    R.check("Dusk at 100 %: the text really is warmer on screen", duskWarm.ink !== duskPlain.ink, duskPlain.ink + " → " + duskWarm.ink);
+    /* under a deep dim a dark page is true black (its pixels off, not barely lit); a light page, or a light dim, keeps its colour */
+    const deep = await page.evaluate(async () => {
+      const L = window.__ll.state, root = document.documentElement, bg = () => getComputedStyle(root).getPropertyValue("--bg").trim().toLowerCase();
+      const set = (on, level) => { const c = document.getElementById("cDim"); if (c.checked !== on){ c.checked = on; c.dispatchEvent(new Event("change", { bubbles: true })); }
+        const r = document.getElementById("rDim"); r.value = String(level); r.dispatchEvent(new Event("input", { bubbles: true })); };
+      const out = {};
+      set(true, 85); out.duskDeep = [root.classList.contains("deep-dim"), bg()];
+      set(true, 30); out.duskLight = [root.classList.contains("deep-dim"), bg()];
+      set(true, 85); window.llThemes.select("day"); out.day = [root.classList.contains("deep-dim"), bg()];
+      window.llThemes.select("dusk"); out.back = [root.classList.contains("deep-dim"), bg()];
+      set(false, 85); out.off = [root.classList.contains("deep-dim"), bg()];
+      return out;
+    });
+    R.check("a deep dim draws a dark page in true black; a light dim, a light page and no dim leave the page its colour",
+      deep.duskDeep[0] && deep.duskDeep[1] === "#000" && !deep.duskLight[0] && deep.duskLight[1] === "#0d121c" && !deep.day[0] && deep.day[1] === "#f5efe3" &&
+      deep.back[0] && deep.back[1] === "#000" && !deep.off[0] && deep.off[1] === "#0d121c", JSON.stringify(deep));
     R.check("Dusk at 100 %: sampled text contrast stays at 4.5:1 or better", duskWarm.ratio >= 4.5,
       duskWarm.ink + " on " + duskWarm.bg + " = " + duskWarm.ratio.toFixed(2) + ":1 (was " + duskPlain.ratio.toFixed(2) + ")");
 
@@ -278,7 +296,7 @@ function fakeClock(iso){
       for (const id in T){
         window.llThemes.select(id);
         W.set(100);
-        const a = W.opacity(), screen = document.body.classList.contains("warm-dark");
+        const a = W.opacity(), screen = false;
         let lo = 99;
         pairs.forEach(function(p){
           const r = C(W.through(T[id][p[0]], screen, a), W.through(T[id][p[1]], screen, a));
@@ -292,8 +310,8 @@ function fakeClock(iso){
     const low = audit.filter((t) => t.lo < 4.5), builtIns = await page.evaluate(() => Object.keys(window.llThemes.THEMES).length);
     R.check("every built-in theme keeps its text at 4.5:1 through a full-strength film", audit.length === builtIns && low.length === 0,
       audit.length + " of " + builtIns + " audited; under 4.5: " + low.map((t) => t.id + " " + t.lo).join(", "));
-    /* every built-in has the contrast to spare for the whole film: 35 % on a light page, 12 % on a dark one */
-    R.check("every built-in wears the full film (0.35 light, 0.12 dark)", audit.every((t) => t.a === (t.screen ? 0.12 : 0.35)),
+    /* every built-in has the contrast to spare for the whole film: 35 %, light page or dark */
+    R.check("every built-in wears the full film (0.35)", audit.every((t) => t.a === 0.35),
       audit.map((t) => t.id + ":" + t.a).join(" "));
     /* a theme of the reader's own with no contrast to spare: grey text at 4.54:1 on white (llThemes.create
        makes it; it is recoloured here). Its panel and secondary text are derived as for any own theme, and
@@ -321,7 +339,7 @@ function fakeClock(iso){
       const c = T.create();
       Object.assign(c, { bg: "#ffffff", ink: "#767676", panel: "#ffffff", muted: "#767676", autoInk: false, accent: "#0033cc" });
       T.select("c:" + c.id); W.set(100);
-      const t = T.current(), a = W.opacity(), screen = document.body.classList.contains("warm-dark");
+      const t = T.current(), a = W.opacity(), screen = false;
       const lowest = (f) => Math.round(Math.min(...pairs.map((p) => T.contrast(W.through(t[p[0]], screen, f), W.through(t[p[1]], screen, f)))) * 1000) / 1000;
       const out = { plain: lowest(0), a: a, at: lowest(a), next: lowest(a + 0.005) };
       W.set(0); T.select(keep);

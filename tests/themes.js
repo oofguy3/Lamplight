@@ -1,4 +1,4 @@
-/* Contrast audit of the twelve built-in themes, and the rules of the set (no browser needed):
+/* Contrast audit of the twenty built-in themes, and the rules of the set (no browser needed):
      node tests/themes.js
    Every pair the interface relies on must read at 4.5:1 or better (WCAG AA; 7:1 is the aim):
    text, secondary text, the accent and the lamp on the page, the panel and the raised surface
@@ -18,14 +18,16 @@
    in oklab (the dark tone's --lamp-soft), and a mix with transparent is its colour laid over what is
    behind it, in sRGB as the browser composites. "Dark" is the dark tone: a page under 0.18 relative
    luminance, Contrast dark aside (the two contrast themes have a tone of their own).
-   The table, the looks and the retired themes are read straight out of app.js. The set is the twelve
-   ids in the spec's order; every theme has a name, a family (warm, cool or neutral), the eight
-   colours and no texture, and the contrast pair's raised surface is its panel. The six looks hold
+   The table, the looks and the retired themes are read straight out of app.js. The set is the twenty
+   ids in the picker's order; every theme has a name, a family (warm, cool or neutral), the eight
+   colours and no texture, and the contrast pair's raised surface is its panel. The ten looks hold
    every built-in once, a light page by day and a dark one by night. Each retired theme moves to a
    kept theme of its own tone (a page on the same side of 0.18) other than the contrast pair, with a
    second choice of that tone that differs from the first, and keeps its name and five colours. And no
    two themes of one tone are near-duplicates: the weighted OKLab distance of the spec (§3.3),
-   100 × (0.45 ΔE page + 0.30 ΔE text + 0.15 ΔE accent + 0.10 ΔE lamp), is at least 4.5. */
+   100 × (0.45 ΔE page + 0.30 ΔE text + 0.15 ΔE accent + 0.10 ΔE lamp), is at least 4.5, and the pages
+   themselves are at least 4.5 apart (100 × ΔE of the two page colours): two themes of one tone never
+   differ in their accents alone, the page is a different colour at a glance. */
 const fs = require("fs"), path = require("path");
 const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 function literal(name, re){
@@ -62,7 +64,7 @@ const dE = (a, b) => { const A = toOklab(a), B = toOklab(b); return Math.hypot(A
 /* the spec's distance between two themes (§3.3): about 2 is just visible, under 4.5 a near-duplicate */
 const distance = (x, y) => 100 * (0.45 * dE(x.bg, y.bg) + 0.30 * dE(x.ink, y.ink) + 0.15 * dE(x.accent, y.accent) + 0.10 * dE(x.lamp, y.lamp));
 const HICON = ["hicon", "hidark"];
-const IDS = ["day", "dusk", "paper", "ink", "sepia", "cocoa", "sage", "forest", "seaair", "canals", "hicon", "hidark"];
+const IDS = ["day", "dusk", "paper", "ink", "sepia", "cocoa", "sage", "forest", "seaair", "canals", "blush", "wine", "lilac", "indigo", "butter", "lantern", "fog", "storm", "hicon", "hidark"];
 const TOKENS = ["bg", "ink", "muted", "panel", "raise", "line", "accent", "lamp"];
 const FAMILIES = ["warm", "cool", "neutral"];
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -115,12 +117,12 @@ for (const [id, t0] of Object.entries(THEMES)){
   console.log(id.padEnd(8) + cells.join(""));
 }
 
-/* the set: the twelve, in the spec's order */
+/* the set: the twenty, in the picker's order */
 const ids = Object.keys(THEMES);
 if (ids.join() !== IDS.join()) failures.push("the built-ins are " + ids.join(", ") + " (expected " + IDS.join(", ") + ")");
 
-/* the looks: six, every built-in in exactly one, a light page by day and a dark one by night */
-if (LOOKS.length !== 6) failures.push(LOOKS.length + " looks (6 expected)");
+/* the looks: ten, every built-in in exactly one, a light page by day and a dark one by night */
+if (LOOKS.length !== 10) failures.push(LOOKS.length + " looks (10 expected)");
 const halves = LOOKS.flatMap((l) => [l.day, l.night]);
 for (const id of ids){ const n = halves.filter((x) => x === id).length; if (n !== 1) failures.push(id + " is in " + n + " looks (1 expected)"); }
 for (const l of LOOKS){
@@ -145,7 +147,7 @@ for (const [id, r] of Object.entries(RETIRED)){
 }
 
 /* no near-duplicates within a tone */
-const near = [], closest = {};
+const near = [], closest = {}, samePage = [], closestPage = {};
 for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++){
   const x = THEMES[ids[i]], y = THEMES[ids[j]];
   if (!TOKENS.every((k) => HEX.test(x[k] || "") && HEX.test(y[k] || ""))) continue;
@@ -154,9 +156,17 @@ for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++){
   const d = distance(x, y);
   if (!closest[tone] || d < closest[tone].d) closest[tone] = { d, pair: ids[i] + "–" + ids[j] };
   if (d < 4.5) near.push(ids[i] + "–" + ids[j] + " " + d.toFixed(2));
+  /* the pages themselves: the contrast pair's are white and black as Paper's and Ink's nearly are, on purpose */
+  const page = 100 * dE(x.bg, y.bg);
+  if (!HICON.includes(ids[i]) && !HICON.includes(ids[j])){
+    if (!closestPage[tone] || page < closestPage[tone].d) closestPage[tone] = { d: page, pair: ids[i] + "–" + ids[j] };
+    if (page < 4.5) samePage.push(ids[i] + "–" + ids[j] + " " + page.toFixed(2));
+  }
 }
+for (const n of samePage) failures.push("pages too alike (under 4.5 apart): " + n);
 for (const n of near) failures.push("near-duplicates (distance under 4.5): " + n);
 console.log("\nclosest of one tone: " + Object.entries(closest).map(([tone, c]) => tone + " " + c.pair + " " + c.d.toFixed(2)).join(", "));
+console.log("closest pages of one tone: " + Object.entries(closestPage).map(([tone, c]) => tone + " " + c.pair + " " + c.d.toFixed(2)).join(", "));
 
 console.log("\n" + ids.length + " themes, " + (pairs - low) + "/" + pairs + " pairs pass (text 4.5:1, boundaries 3:1)");
 if (failures.length){ console.log("Failures:"); failures.forEach((f) => console.log(" - " + f)); }

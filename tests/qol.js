@@ -193,8 +193,8 @@ const STUB = `(() => {
       grid: getComputedStyle(document.getElementById("qLooks")).display, nameUnder: (() => { const c = document.querySelector("#qLooks .chip"), i = c.querySelector("i").getBoundingClientRect(), n = c.querySelector(".tile-n").getBoundingClientRect(); return n.top >= i.bottom && n.height > 10; })(),
       badge: (() => { const on = document.querySelector('#qLooks .chip[aria-pressed="true"]'); if (!on) return ""; const b = getComputedStyle(on, "::before"); return b.content + " " + b.width + " " + b.backgroundColor; })(),
       accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
-    R.check("the theme popover leads with the Day/Night switch (the half on screen pressed) and the six looks, Contrast the high-contrast pair; the pickers, Recent and the groups are gone",
-      tp.dn.join() === "Day*,Night" && tp.looks.join() === "day,paper,sepia,sage,seaair,hicon" && tp.hi.join() === "hicon,hidark" && !tp.gone.length, JSON.stringify(tp));
+    R.check("the theme popover leads with the Day/Night switch (the half on screen pressed) and the ten looks, Contrast the high-contrast pair; the pickers, Recent and the groups are gone",
+      tp.dn.join() === "Day*,Night" && tp.looks.join() === "day,paper,sepia,sage,seaair,blush,lilac,butter,fog,hicon" && tp.hi.join() === "hicon,hidark" && !tp.gone.length, JSON.stringify(tp));
     const hex = (h) => "rgb(" + [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ") + ")";
     R.check("phone: the looks as a grid of preview tiles at least 44px tall, two to a row, the name under each and a check badge on the one on screen",
       tp.grid === "grid" && tp.cols === 2 && tp.tileH >= 44 && tp.nameUnder && /^"(\\2713|\u2713)" 20px /.test(tp.badge) && tp.badge.endsWith(hex(tp.accent)), JSON.stringify(tp));

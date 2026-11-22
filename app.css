@@ -2448,9 +2448,9 @@
 
   /* ---------- warmth (the evening tint) ---------- */
   /* a fixed film of warm amber over the whole page — bars, panels and cards included, the way a
-     night-light sits in front of the screen. app.js sets its opacity from the Warmth setting and
-     flips the blend: light themes are multiplied (the page darkens towards amber), dark ones are
-     screened at a much lower strength (the page glows amber instead of turning muddy). The
+     night-light sits in front of the screen. app.js sets its opacity from the Warmth setting. It
+     multiplies on every page: each colour keeps its red and loses some green and more blue, so a
+     light page darkens towards amber, a dark page's text turns warm, and black stays black. The
      strength is capped per theme so no theme's text falls under 4.5:1 — see Warmth in app.js. */
   /* Both films reach well past the screen's edges: a phone's browser bars slide away while the page
      scrolls and the screen grows before the page is laid out again, and a film cut to the old size
@@ -2463,7 +2463,6 @@
     contain:strict; backface-visibility:hidden; visibility:hidden;
   }
   #warmth.on{visibility:visible; transition:opacity .35s ease, visibility 0s;}
-  body.warm-dark #warmth{mix-blend-mode:screen;}
   /* paper has no night, and under forced colours the system palette is the whole point */
   @media print{ #warmth{display:none !important;} }
   @media (forced-colors: active){ #warmth{display:none !important;} }
@@ -2480,6 +2479,8 @@
     contain:strict; backface-visibility:hidden; visibility:hidden;
   }
   #dim.on{visibility:visible; transition:opacity .3s ease, visibility 0s;}
+  /* a dark page under a deep dim (Dim.deep in app.js) is true black: its pixels are off, not barely lit */
+  :root.deep-dim{--bg:#000 !important;}
   @media print{ #dim{display:none !important;} }
 
   /* ---------- e-ink mode (Eink in app.js) ----------

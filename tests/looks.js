@@ -1,4 +1,4 @@
-/* The theme picker: six looks, each a day theme and a night theme that belong together, a Day/Night
+/* The theme picker: ten looks, each a day theme and a night theme that belong together, a Day/Night
    switch in its head, and the reader's own themes under Mine. A tap on a look makes it the reader's
    pair and shows its theme for the half on screen; Day and Night change the half; a pair that is no
    look gets a tile of its own, first, and a look tapped over it offers Undo. Settings › Theme shows
@@ -43,8 +43,8 @@ const lists = (page) => page.evaluate(() => Object.fromEntries(["autoDay", "auto
   return [id, { groups: [...s.querySelectorAll("optgroup")].map((g) => ({ label: g.label, ids: [...g.querySelectorAll("option")].map((o) => o.value) })),
     off: [...s.options].filter((o) => o.disabled).map((o) => o.value), value: s.value }];
 })));
-const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Contrast"];
-const DAYS = ["day", "paper", "sepia", "sage", "seaair", "hicon"], NIGHTS = ["dusk", "ink", "cocoa", "forest", "canals", "hidark"];
+const NAMES = ["Day & Dusk", "Paper & Ink", "Sepia & Cocoa", "Sage & Forest", "Sea air & Canals", "Blush & Wine", "Lilac & Indigo", "Butter & Lantern", "Fog & Storm", "Contrast"];
+const DAYS = ["day", "paper", "sepia", "sage", "seaair", "blush", "lilac", "butter", "fog", "hicon"], NIGHTS = ["dusk", "ink", "cocoa", "forest", "canals", "wine", "indigo", "lantern", "storm", "hidark"];
 /* a light theme of the reader's own, "c:t3a", and a dark one, "c:t6d" */
 const LAMP = { id: "t3a", name: "Reading lamp", bg: "#F4ECD8", ink: "#2A2118", autoInk: false, accent: "#7A3E12" };
 const EMBERS = { id: "t6d", name: "Embers", bg: "#1E1611", ink: "#EADBC8", autoInk: false, accent: "#D9964A" };
@@ -57,18 +57,26 @@ const MOVES = Object.fromEntries(Object.entries({
 /* spec §3.1, each built-in's colours, copied here rather than read from the app's own table */
 const COLS = ["bg", "panel", "raise", "ink", "muted", "line", "accent", "lamp"];
 const TABLE = Object.fromEntries(Object.entries({
-  day:    "#F5EFE3 #FBF8F0 #FEFCF8 #2D2924 #645F58 #DED8CB #2C5D45 #875C0C",
-  dusk:   "#0D121C #141A26 #1C2330 #DAD7CF #A6A39B #2A313E #D8A24A #D8A24A",
-  paper:  "#FAFAF7 #FFFFFF #FFFFFF #141414 #5C5C58 #DCDCD5 #A8261F #A8261F",
-  ink:    "#000000 #151413 #1F1E1C #D6D2C5 #A3A097 #302F2C #E87A69 #E87A69",
-  sepia:  "#F0E4CB #F7EDD8 #FAF4E6 #2E1E11 #695544 #DFCDAE #7C2623 #855510",
-  cocoa:  "#261914 #30201A #3A2920 #EEDFCB #AEA394 #49372C #D8A067 #D8A067",
-  sage:   "#DFE7D8 #EAF0E5 #F4F7F0 #1A261F #4E5C51 #C7D2BE #9C4925 #124830",
-  forest: "#0E1A13 #14221A #1A2B21 #D4DACC #9DA595 #283B2E #7AB785 #7AB785",
-  seaair: "#DCEDF0 #E9F5F6 #F4FAFA #112126 #41545A #C2DCE0 #0B5A74 #984121",
-  canals: "#0E1F22 #13292D #193337 #D0DCD8 #9DB1B0 #24403F #E58E6C #F2C66B",
-  hicon:  "#FFFFFF #FFFFFF #FFFFFF #000000 #3A3A3A #000000 #0033CC #0033CC",
-  hidark: "#000000 #000000 #000000 #F2F2F2 #D0D0D0 #F2F2F2 #FFC72C #FFC72C"
+  day:     "#F5EFE3 #FBF8F0 #FEFCF8 #2D2924 #645F58 #DED8CB #2C5D45 #875C0C",
+  dusk:    "#0D121C #141A26 #1C2330 #DAD7CF #A6A39B #2A313E #D8A24A #D8A24A",
+  paper:   "#FFFFFF #F4F4F1 #FFFFFF #141414 #5C5C58 #DCDCD5 #A8261F #A8261F",
+  ink:     "#000000 #151413 #1F1E1C #D6D2C5 #A3A097 #302F2C #E87A69 #E87A69",
+  sepia:   "#E8D3A6 #F4E9D3 #FAF6ED #31200F #614E36 #D2BD93 #7C2623 #74460A",
+  cocoa:   "#2E1D0F #372517 #422F20 #F2E2C8 #B2A18B #544030 #E3AA6C #E3AA6C",
+  sage:    "#CFE3C3 #E7F1E1 #F5F9F3 #17251B #4A5A49 #B8CCAE #96401D #124830",
+  forest:  "#0F2A12 #17331A #213E23 #DAE5CF #A0B099 #324F34 #8BCB86 #8BCB86",
+  seaair:  "#C4E3F3 #E2F1F9 #F3F9FD #0E2131 #445A6B #ADCBDB #0A4F78 #933E1F",
+  canals:  "#062B38 #0F3442 #1A3F4D #D3E3E4 #9EB3B8 #2B505F #F29A7C #F2C66B",
+  blush:   "#F7D9DF #FBECEF #FEF7F9 #3A1B27 #70505A #E0C2C8 #A3264F #6B2F85",
+  wine:    "#3A0E1F #441727 #502031 #F5DDE2 #BA99A2 #643142 #F593AE #F2C078",
+  lilac:   "#E0D3F8 #EFE9FC #F9F6FE #1E1838 #575073 #C8BCE1 #4B36B0 #7A4E00",
+  indigo:  "#16114A #1D1A55 #262562 #DEDFF7 #9A9DC1 #353776 #AAB5FF #FFD166",
+  butter:  "#F9E894 #FCF4CC #FEFBEB #2A2410 #635A34 #E0D084 #0C5566 #944500",
+  lantern: "#0D0703 #150E08 #1E1710 #FFBD66 #B28346 #2E261F #FF8F63 #FFE08A",
+  fog:     "#D2D2CF #E8E8E7 #F6F6F5 #1A1C20 #4C4E51 #BBBCBA #1B4E9C #9C2D1C",
+  storm:   "#2C3139 #353A42 #3F444D #F4F5F7 #BBBDC1 #50565F #A5D0F7 #FFC9A6",
+  hicon:   "#FFFFFF #FFFFFF #FFFFFF #000000 #3A3A3A #000000 #0033CC #0033CC",
+  hidark:  "#000000 #000000 #000000 #F2F2F2 #D0D0D0 #F2F2F2 #FFC72C #FFC72C"
 }).map(([id, s]) => [id, Object.fromEntries(s.split(" ").map((c, i) => [COLS[i], c]))]));
 /* what a stored profile became once loaded: the theme, the pair, the hold and themeWas, in the state
    (with the half of the theme on screen) and as boot saved them */
@@ -131,8 +139,8 @@ async function openTheme(page){
 }
 async function tapLook(page, id){ await openTheme(page); await page.click('#qLooks [data-look="' + id + '"]'); await page.waitForTimeout(120); }
 async function openSettings(page){ await page.evaluate(() => window.llPop.sheet(true)); await page.waitForTimeout(400); }
-/* the pair's own tile is first and the one pressed, named `name`, with the six looks after it */
-const pairFirst = (lk, name) => lk.length === 7 && lk[0].id === "pair" && lk[0].name === name && lk[0].on && lk.filter((l) => l.on).length === 1 && lk.slice(1).map((l) => l.id).join() === DAYS.join();
+/* the pair's own tile is first and the one pressed, named `name`, with the ten looks after it */
+const pairFirst = (lk, name) => lk.length === DAYS.length + 1 && lk[0].id === "pair" && lk[0].name === name && lk[0].on && lk.filter((l) => l.on).length === 1 && lk.slice(1).map((l) => l.id).join() === DAYS.join();
 /* how many pixels differ between two screenshots of the same box (decoded and compared in the page) */
 const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
   const load = (s) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = "data:image/png;base64," + s; });
@@ -160,8 +168,8 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       const dn = await dnIn(page, "#qDN");
       R.check("popover: head has Theme and a Day/Night switch, Day pressed", head.text.indexOf("Theme") >= 0 && head.dn && dn === "day:true,night:false", JSON.stringify(head) + " " + dn);
       const lk = await looksIn(page, "#qLooks");
-      R.check("popover: six looks in order", lk.map((l) => l.id).join() === "day,paper,sepia,sage,seaair,hicon" && lk.map((l) => l.name).join("|") === NAMES.join("|"), JSON.stringify(lk));
-      R.check("popover: Day & Dusk is pressed, and is the only one", lk.length === 6 && lk.filter((l) => l.on).map((l) => l.id).join() === "day", JSON.stringify(lk));
+      R.check("popover: ten looks in order", lk.map((l) => l.id).join() === DAYS.join() && lk.map((l) => l.name).join("|") === NAMES.join("|"), JSON.stringify(lk));
+      R.check("popover: Day & Dusk is pressed, and is the only one", lk.length === 10 && lk.filter((l) => l.on).map((l) => l.id).join() === "day", JSON.stringify(lk));
       const mine = await page.evaluate(() => { const s = document.getElementById("qMineSec"), l = document.getElementById("qMineL"); return { sec: !!s, label: l ? l.textContent.trim() : null, inSec: !!(s && l && s.contains(l)), add: !!document.querySelector("#qMineSec #qMine .chip-new") }; });
       R.check("popover: Mine has New theme", mine.sec && mine.inSec && mine.label === "Mine" && mine.add, JSON.stringify(mine));
       R.check("popover: opens with focus on the pressed look", (await page.evaluate(() => document.activeElement && document.activeElement.dataset.look)) === "day", await page.evaluate(() => document.activeElement && document.activeElement.outerHTML.slice(0, 80)));
@@ -169,7 +177,7 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       R.check("popover: the old parts are gone", gone.length === 0, gone.join(", "));
       const grid = await page.evaluate(() => { const g = document.getElementById("qLooks"), is = [...document.querySelectorAll("#qLooks .tile.look > i")];
         return { cols: g ? getComputedStyle(g).gridTemplateColumns.split(" ").length : 0, n: is.length, min: is.length ? Math.min(...is.map((i) => i.getBoundingClientRect().height)) : 0 }; });
-      R.check("popover: two columns, tiles ≥ 44px", grid.cols === 2 && grid.n === 6 && grid.min >= 44, JSON.stringify(grid));
+      R.check("popover: two columns, tiles ≥ 44px", grid.cols === 2 && grid.n === 10 && grid.min >= 44, JSON.stringify(grid));
       const label = await page.evaluate(() => { const t = document.querySelector('#qLooks .tile.look[aria-pressed="true"]'); return t ? t.getAttribute("aria-label") : null; });
       R.check('the pressed look\'s accessible name is "Day & Dusk, current theme"', label === "Day & Dusk, current theme", label);
       await ctx.close();
@@ -181,7 +189,8 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       await page.waitForTimeout(300);
       const fit = await page.evaluate(() => { const lab = document.querySelector("#themePop .q-auto .plabel").getBoundingClientRect(), pop = document.getElementById("pop").getBoundingClientRect();
         return { label: Math.round(lab.bottom), visible: Math.round(Math.min(pop.bottom, innerHeight)), scrolled: document.getElementById("pop").scrollTop }; });
-      R.check("phone sheet, fresh profile: Day and night label is visible without scrolling", fit.scrolled === 0 && fit.label <= fit.visible, JSON.stringify(fit));
+      /* ten looks are five rows on a phone: the sheet opens at its top, on the looks, and Day and night is a scroll below them */
+      R.check("phone sheet, fresh profile: it opens at the top, and the Day and night label follows the looks", fit.scrolled === 0 && fit.label > 0, JSON.stringify(fit));
       await ctx.close();
     });
     await guard("picker, Dutch at 320px", async () => {
@@ -321,7 +330,7 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       await openTheme(page);
       const lk = await looksIn(page, "#qLooks");
       R.check('a mixed pair (day/cocoa seeded, theme day) shows "Day & Cocoa" first, pressed, in #qLooks',
-        lk.length === 7 && lk[0].id === "pair" && lk[0].name === "Day & Cocoa" && lk[0].on && lk.filter((l) => l.on).length === 1 && lk.slice(1).map((l) => l.id).join() === "day,paper,sepia,sage,seaair,hicon", JSON.stringify(lk));
+        pairFirst(lk, "Day & Cocoa"), JSON.stringify(lk));
       /* Enter on a look: the pair tile goes, the grid is drawn again, and focus stays on the look (Review Focus 1) */
       await page.focus('#qLooks [data-look="paper"]');
       await page.keyboard.press("Enter"); await page.waitForTimeout(150);
@@ -352,7 +361,7 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
           old: document.querySelectorAll('#themeChips .chip-group, #themeChips .chip-group-label, #themeChips .chip[data-theme]:not([data-theme^="c:"])').length };
       });
       const lk = await looksIn(page, "#themeChips");
-      R.check("Settings › Theme has the switch, six looks and Mine", set.dn && set.looks && set.mine === "Mine" && set.add && set.old === 0 && lk.map((l) => l.id).join() === DAYS.join() &&
+      R.check("Settings › Theme has the switch, ten looks and Mine", set.dn && set.looks && set.mine === "Mine" && set.add && set.old === 0 && lk.map((l) => l.id).join() === DAYS.join() &&
         lk.map((l) => l.name).join("|") === NAMES.join("|") && lk.filter((l) => l.on).map((l) => l.id).join() === "day", JSON.stringify({ set, lk }));
       const order = await page.evaluate(() => {
         const els = ["sDN", "themeChips", "dnSubL", "autoRow"].map((id) => document.getElementById(id));
@@ -383,9 +392,9 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
       const l = await lists(page), ids = await page.evaluate(() => Object.keys(window.llThemes.THEMES));
       /* both lists: Light and Dark hold the looks' day and night themes, every built-in once, and Mine holds
          the reader's own */
-      const ok = (x) => x.groups.map((g) => g.label).join() === "Light,Dark,Mine" && x.groups[0].ids.slice(0, 6).join() === DAYS.join() && x.groups[1].ids.slice(0, 6).join() === NIGHTS.join() &&
+      const ok = (x) => x.groups.map((g) => g.label).join() === "Light,Dark,Mine" && x.groups[0].ids.slice(0, 10).join() === DAYS.join() && x.groups[1].ids.slice(0, 10).join() === NIGHTS.join() &&
         x.groups[2].ids.join() === "c:t3a" && ids.every((k) => x.groups[0].ids.concat(x.groups[1].ids).filter((v) => v === k).length === 1) && x.groups[0].ids.length + x.groups[1].ids.length === ids.length;
-      R.check("lists: Light, Dark, Mine groups with the twelve first", ok(l.autoDay) && ok(l.autoNight), JSON.stringify(l.autoDay.groups.map((g) => g.label + ":" + g.ids.slice(0, 7).join(" "))));
+      R.check("lists: Light, Dark, Mine groups with the twenty first", ok(l.autoDay) && ok(l.autoNight), JSON.stringify(l.autoDay.groups.map((g) => g.label + ":" + g.ids.slice(0, 7).join(" "))));
       await ctx.close();
     });
     await guard("settings, a mixed pair", async () => {
@@ -1458,7 +1467,7 @@ const changedPixels = (page, a, b) => page.evaluate(async ([x, y]) => {
         if (got.theme !== id || off.length) wrong.push(id + (got.theme !== id ? " (on screen: " + got.theme + ")" : "") + (off.length ? ": " + off.map((k) => k + " " + got.tokens[k] + " not " + want[k]).join(", ") : ""));
         if (got.texture !== null) textured.push(id + ":" + got.texture);
       }
-      R.check("every built-in applies its tokens", Object.keys(TABLE).length === 12 && wrong.length === 0, wrong.join(" | "));
+      R.check("every built-in applies its tokens", Object.keys(TABLE).length === 20 && wrong.length === 0, wrong.join(" | "));
       /* nothing left of the textures: no attribute on the page, no rule that would draw one, and no Plain background switch */
       const left = await page.evaluate(() => {
         const walk = (rules) => [...rules].flatMap((r) => [r].concat(r.cssRules ? walk(r.cssRules) : []));

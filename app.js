@@ -219,7 +219,7 @@
     }).catch(function(err){ console.warn("docx worker unavailable, converting on the main thread", err); return onMain(); });
   }
 
-  /* Built-in themes: twelve, which pair into the six looks (LOOKS below), each look's day theme before
+  /* Built-in themes: twenty, which pair into the ten looks (LOOKS below), each look's day theme before
      its night theme. Every pair the reader meets is at least 4.5:1 — tests/themes.js audits this
      table: text, secondary text, the accent and the lamp on the page, the panel and the raised
      surface; the panel colour on a lamp or accent fill, and the page colour on an accent fill; the
@@ -237,14 +237,22 @@
   var THEMES = {
     day:       {name:"Day",           family:"warm",    bg:"#F5EFE3", panel:"#FBF8F0", raise:"#FEFCF8", ink:"#2D2924", muted:"#645F58", line:"#DED8CB", accent:"#2C5D45", lamp:"#875C0C"},
     dusk:      {name:"Dusk",          family:"warm",    bg:"#0D121C", panel:"#141A26", raise:"#1C2330", ink:"#DAD7CF", muted:"#A6A39B", line:"#2A313E", accent:"#D8A24A", lamp:"#D8A24A"},
-    paper:     {name:"Paper",         family:"neutral", bg:"#FAFAF7", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#141414", muted:"#5C5C58", line:"#DCDCD5", accent:"#A8261F", lamp:"#A8261F"},
+    paper:     {name:"Paper",         family:"neutral", bg:"#FFFFFF", panel:"#F4F4F1", raise:"#FFFFFF", ink:"#141414", muted:"#5C5C58", line:"#DCDCD5", accent:"#A8261F", lamp:"#A8261F"},
     ink:       {name:"Ink",           family:"neutral", bg:"#000000", panel:"#151413", raise:"#1F1E1C", ink:"#D6D2C5", muted:"#A3A097", line:"#302F2C", accent:"#E87A69", lamp:"#E87A69"},
-    sepia:     {name:"Sepia",         family:"warm",    bg:"#F0E4CB", panel:"#F7EDD8", raise:"#FAF4E6", ink:"#2E1E11", muted:"#695544", line:"#DFCDAE", accent:"#7C2623", lamp:"#855510"},
-    cocoa:     {name:"Cocoa",         family:"warm",    bg:"#261914", panel:"#30201A", raise:"#3A2920", ink:"#EEDFCB", muted:"#AEA394", line:"#49372C", accent:"#D8A067", lamp:"#D8A067"},
-    sage:      {name:"Sage",          family:"cool",    bg:"#DFE7D8", panel:"#EAF0E5", raise:"#F4F7F0", ink:"#1A261F", muted:"#4E5C51", line:"#C7D2BE", accent:"#9C4925", lamp:"#124830"},
-    forest:    {name:"Forest",        family:"cool",    bg:"#0E1A13", panel:"#14221A", raise:"#1A2B21", ink:"#D4DACC", muted:"#9DA595", line:"#283B2E", accent:"#7AB785", lamp:"#7AB785"},
-    seaair:    {name:"Sea air",       family:"cool",    bg:"#DCEDF0", panel:"#E9F5F6", raise:"#F4FAFA", ink:"#112126", muted:"#41545A", line:"#C2DCE0", accent:"#0B5A74", lamp:"#984121"},
-    canals:    {name:"Canals",        family:"cool",    bg:"#0E1F22", panel:"#13292D", raise:"#193337", ink:"#D0DCD8", muted:"#9DB1B0", line:"#24403F", accent:"#E58E6C", lamp:"#F2C66B"},
+    sepia:     {name:"Sepia",         family:"warm",    bg:"#E8D3A6", panel:"#F4E9D3", raise:"#FAF6ED", ink:"#31200F", muted:"#614E36", line:"#D2BD93", accent:"#7C2623", lamp:"#74460A"},
+    cocoa:     {name:"Cocoa",         family:"warm",    bg:"#2E1D0F", panel:"#372517", raise:"#422F20", ink:"#F2E2C8", muted:"#B2A18B", line:"#544030", accent:"#E3AA6C", lamp:"#E3AA6C"},
+    sage:      {name:"Sage",          family:"cool",    bg:"#CFE3C3", panel:"#E7F1E1", raise:"#F5F9F3", ink:"#17251B", muted:"#4A5A49", line:"#B8CCAE", accent:"#96401D", lamp:"#124830"},
+    forest:    {name:"Forest",        family:"cool",    bg:"#0F2A12", panel:"#17331A", raise:"#213E23", ink:"#DAE5CF", muted:"#A0B099", line:"#324F34", accent:"#8BCB86", lamp:"#8BCB86"},
+    seaair:    {name:"Sea air",       family:"cool",    bg:"#C4E3F3", panel:"#E2F1F9", raise:"#F3F9FD", ink:"#0E2131", muted:"#445A6B", line:"#ADCBDB", accent:"#0A4F78", lamp:"#933E1F"},
+    canals:    {name:"Canals",        family:"cool",    bg:"#062B38", panel:"#0F3442", raise:"#1A3F4D", ink:"#D3E3E4", muted:"#9EB3B8", line:"#2B505F", accent:"#F29A7C", lamp:"#F2C66B"},
+    blush:     {name:"Blush",         family:"warm",    bg:"#F7D9DF", panel:"#FBECEF", raise:"#FEF7F9", ink:"#3A1B27", muted:"#70505A", line:"#E0C2C8", accent:"#A3264F", lamp:"#6B2F85"},
+    wine:      {name:"Wine",          family:"warm",    bg:"#3A0E1F", panel:"#441727", raise:"#502031", ink:"#F5DDE2", muted:"#BA99A2", line:"#643142", accent:"#F593AE", lamp:"#F2C078"},
+    lilac:     {name:"Lilac",         family:"cool",    bg:"#E0D3F8", panel:"#EFE9FC", raise:"#F9F6FE", ink:"#1E1838", muted:"#575073", line:"#C8BCE1", accent:"#4B36B0", lamp:"#7A4E00"},
+    indigo:    {name:"Indigo",        family:"cool",    bg:"#16114A", panel:"#1D1A55", raise:"#262562", ink:"#DEDFF7", muted:"#9A9DC1", line:"#353776", accent:"#AAB5FF", lamp:"#FFD166"},
+    butter:    {name:"Butter",        family:"warm",    bg:"#F9E894", panel:"#FCF4CC", raise:"#FEFBEB", ink:"#2A2410", muted:"#635A34", line:"#E0D084", accent:"#0C5566", lamp:"#944500"},
+    lantern:   {name:"Lantern",       family:"warm",    bg:"#0D0703", panel:"#150E08", raise:"#1E1710", ink:"#FFBD66", muted:"#B28346", line:"#2E261F", accent:"#FF8F63", lamp:"#FFE08A"},
+    fog:       {name:"Fog",           family:"neutral", bg:"#D2D2CF", panel:"#E8E8E7", raise:"#F6F6F5", ink:"#1A1C20", muted:"#4C4E51", line:"#BBBCBA", accent:"#1B4E9C", lamp:"#9C2D1C"},
+    storm:     {name:"Storm",         family:"neutral", bg:"#2C3139", panel:"#353A42", raise:"#3F444D", ink:"#F4F5F7", muted:"#BBBDC1", line:"#50565F", accent:"#A5D0F7", lamp:"#FFC9A6"},
     /* the contrast pair, for low vision or bright sunlight: black on pure white and a softened white on
        pure black, each with one strong accent */
     hicon:     {name:"Contrast",      family:"neutral", bg:"#FFFFFF", panel:"#FFFFFF", raise:"#FFFFFF", ink:"#000000", muted:"#3A3A3A", line:"#000000", accent:"#0033CC", lamp:"#0033CC"},
@@ -329,6 +337,10 @@
     { id: "sepia", day: "sepia", night: "cocoa" },
     { id: "sage", day: "sage", night: "forest" },
     { id: "seaair", day: "seaair", night: "canals" },
+    { id: "blush", day: "blush", night: "wine" },
+    { id: "lilac", day: "lilac", night: "indigo" },
+    { id: "butter", day: "butter", night: "lantern" },
+    { id: "fog", day: "fog", night: "storm" },
     { id: "hicon", day: "hicon", night: "hidark", name: "Contrast" }
   ];
   /* the two high-contrast themes, which have a tone of their own (applyTheme) */
@@ -411,8 +423,8 @@
   /* the quick colours of both theme editors (Settings' and the Maker): the day pages of every look but
      Contrast (Day, Paper, Sepia, Sage, Sea air) and a lavender the set lacks, then the same looks' night
      pages and a violet; and eight accents, Dusk's amber, Canals' coral and Forest's green among them */
-  var BG_SWATCHES = ["#F5EFE3","#FAFAF7","#F0E4CB","#DFE7D8","#DCEDF0","#EDE7F3",
-                     "#0D121C","#000000","#261914","#0E1A13","#0E1F22","#171021"];
+  var BG_SWATCHES = ["#F5EFE3","#FFFFFF","#E8D3A6","#CFE3C3","#C4E3F3","#EDE7F3",
+                     "#0D121C","#000000","#2E1D0F","#0F2A12","#062B38","#171021"];
   var ACC_SWATCHES = ["#D8A24A","#E58E6C","#C25B78","#A97FD6","#5C9CD6","#3FA08C","#7AB785","#C9A227"];
   /* the single "Custom" theme of earlier versions; still read so a saved one carries over into `customs` */
   var CUSTOM_DEFAULT = {bg:"#101418", ink:"#e7e2d6", accent:"#e0a458", autoInk:true};
@@ -743,7 +755,7 @@
     return '<button type="button" class="chip tile look" data-look="' + id + '" aria-pressed="false"><i aria-hidden="true">' + pageHtml(day, d) + pageHtml(night, n) +
       '</i><span class="tile-n">' + escapeHtml(lookName(lookById(id) || { day: day, night: night })) + '</span></button>';
   }
-  /* the six looks, and first the pair's own tile when the pair is no look */
+  /* the ten looks, and first the pair's own tile when the pair is no look */
   function looksHtml(){
     return (pairLook() ? "" : lookTileHtml("pair", state.autoDay, state.autoNight)) + LOOKS.map(function(l){ return lookTileHtml(l.id, l.day, l.night); }).join("");
   }
@@ -947,6 +959,7 @@
     /* the evening tint blends differently on a light and a dark page, and its ceiling depends
        on how much contrast this theme has to spare */
     if (Warmth) Warmth.apply();
+    if (Dim) Dim.apply();         /* a deep dim draws a dark page in true black: asked again for the new page */
     if (Pop) Pop.sync();
     Prefs.save();
   }
@@ -1117,15 +1130,16 @@
   })();
 
   /* ---------- warmth: a warm film over the screen for the evening ----------
-     `#warmth` is a fixed sheet of amber above everything. On a light page it multiplies (the
-     page darkens towards amber, the way a lamp shade would); on a dark page it screens at a
-     much lower strength (a dark page multiplied by amber only turns muddy). Warmth is a
-     percentage of the theme's ceiling, and that ceiling is whatever the theme can give up
-     without any of its text — ink and secondary text, on the page and on the panel — falling
-     under 4.5:1 once the film is over it. Every built-in reaches the full 35 % (12 % on a dark
-     page); a custom theme with less contrast to spare stops earlier. */
+     `#warmth` is a fixed sheet of amber above everything, and it multiplies on every page, light or
+     dark: each colour keeps its red and loses some green and more blue, the way a phone's own night
+     light works, so black stays black. (A dark page used to be screened instead, which laid a faint
+     amber glow over its black; under a strong dim film that left the whole screen barely lit, and
+     that is where a phone's screen shimmers.) Warmth is a percentage of the theme's ceiling, and that
+     ceiling is whatever the theme can give up without any of its text — ink and secondary text, on
+     the page and on the panel — falling under 4.5:1 once the film is over it. Every built-in reaches
+     the full 35 %; a custom theme with less contrast to spare stops earlier. */
   var Warmth = (function(){
-    var el = $("#warmth"), MAX_LIGHT = 0.35, MAX_DARK = 0.12, WARM = [255, 150, 50];
+    var el = $("#warmth"), MAX = 0.35, WARM = [255, 150, 50];
     var PAIRS = [["ink", "bg"], ["ink", "panel"], ["muted", "bg"], ["muted", "panel"]];
     var caps = {}, timer = null;
     function hex2(v){ return Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0"); }
@@ -1149,8 +1163,8 @@
     function cap(t){
       var key = t.bg + t.ink + t.muted + t.panel;
       if (caps[key] !== undefined) return caps[key];
-      var screen = isDarkColor(t.bg), top = screen ? MAX_DARK : MAX_LIGHT, a = top;
-      while (a > 0.0001 && lowest(t, screen, a) < 4.5) a -= 0.005;
+      var a = MAX;
+      while (a > 0.0001 && lowest(t, false, a) < 4.5) a -= 0.005;
       caps[key] = a = Math.max(0, Math.round(a * 1000) / 1000);
       return a;
     }
@@ -1208,9 +1222,20 @@
     function isNight(){ return AutoTheme.inWindow(); }
     /* how dark it is right now: nothing while off, or by day when it is set to night only */
     function level(){ return !state.dim || (state.dimNight && !isNight()) ? 0 : Math.max(0, Math.min(MAX, state.dimLevel)); }
+    /* a dark page under a deep dim is drawn in true black (app.css :root.deep-dim): what the film leaves of
+       its colour would be a barely lit grey, 10 of 255 or less in every channel, and a phone's screen
+       cannot hold pixels that faint steady — the whole screen shimmers as the page moves. Black pixels
+       are simply off, and at that depth the eye cannot tell the two apart */
+    function deep(){
+      var l = level(), t = themeDraft || currentTheme();
+      if (!l || state.eink === true || !isDarkColor(t.bg)) return false;
+      var c = hexToRgb(t.bg);
+      return Math.max(c[0], c[1], c[2]) * (1 - l / 100) <= 10;
+    }
     function apply(){
       el.classList.toggle("on", level() > 0);
       el.style.opacity = String(level() / 100);
+      document.documentElement.classList.toggle("deep-dim", deep());
       syncUI();
     }
     /* the sheet's controls and the theme popover's are the same three twice */
@@ -1913,7 +1938,7 @@
     }
     placeMore();
 
-    /* ---- the theme pane: "Theme" with the Day/Night switch in its head, the six looks (with the
+    /* ---- the theme pane: "Theme" with the Day/Night switch in its head, the ten looks (with the
        pair's own tile first when the pair is no look), the reader's own themes under Mine with New
        theme, and Day and night (Off, Follow phone, On a schedule; what it does now). A tile applies
        at once and leaves the popover open ---- */
@@ -11948,7 +11973,13 @@
      reduced motion, in e-ink mode, or where the browser has none */
   function crossFade(fn){
     if (!noMotion() && document.startViewTransition && document.visibilityState === "visible"){
-      try { document.startViewTransition(fn); return; } catch(_){}
+      /* a second change of theme while the first still fades skips the first one, and the browser says so by
+         rejecting its promises: that is no error, the newer theme is the one on screen */
+      try {
+        var vt = document.startViewTransition(fn), quiet = function(){};
+        if (vt){ ["ready", "finished", "updateCallbackDone"].forEach(function(k){ if (vt[k] && vt[k].catch) vt[k].catch(quiet); }); }
+        return;
+      } catch(_){}
     }
     fn();
   }
@@ -12118,7 +12149,7 @@
   var Maker = (function(){
     var d = null;
     /* the text row: the text of Paper, Day, Sepia and Sea air, then of Ink, Cocoa and Canals, and white */
-    var INK = ["#141414", "#2D2924", "#2E1E11", "#112126", "#D6D2C5", "#EEDFCB", "#D0DCD8", "#FFFFFF"];
+    var INK = ["#141414", "#2D2924", "#31200F", "#0E2131", "#D6D2C5", "#F2E2C8", "#D3E3E4", "#FFFFFF"];
     function esc(x){ return escapeHtml(String(x)); }
     function derive(){
       var bg = d.bg, ink = d.autoInk ? deriveInk(bg) : d.ink, fixed = false;
