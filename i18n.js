@@ -1167,6 +1167,8 @@
     "Parts": "Woorddelen",
     "Simpler": "Eenvoudiger",
     "Show all": "Alles tonen",
+    "Bigger card": "Grotere kaart",
+    "Smaller card": "Kleinere kaart",
     "Show less": "Minder tonen",
     "Word": "Woord",
     "Sentence": "Zin",

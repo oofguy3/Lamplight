@@ -1169,7 +1169,9 @@
     function apply(){
       var t = currentTheme();
       document.body.classList.toggle("warm-dark", isDarkColor(t.bg));
-      el.style.opacity = String(opacity());
+      var o = opacity();
+      el.classList.toggle("on", o > 0);       /* at 0 the film is not drawn at all (app.css) */
+      el.style.opacity = String(o);
       syncUI();
     }
     function syncUI(){
@@ -1207,6 +1209,7 @@
     /* how dark it is right now: nothing while off, or by day when it is set to night only */
     function level(){ return !state.dim || (state.dimNight && !isNight()) ? 0 : Math.max(0, Math.min(MAX, state.dimLevel)); }
     function apply(){
+      el.classList.toggle("on", level() > 0);
       el.style.opacity = String(level() / 100);
       syncUI();
     }
@@ -11416,10 +11419,18 @@
       document.body.classList.toggle("strip-away", away);
     }
     ["touchstart", "touchmove", "wheel", "keydown"].forEach(function(t){ window.addEventListener(t, function(){ userAt = Date.now(); }, { passive: true, capture: true }); });
+    /* a turn of the phone lays the text out again and scrolls it back to its place: not the reader's scroll,
+       and the strip is there when the phone is upright again */
+    var sizedAt = 0, lastW = window.innerWidth;
+    window.addEventListener("resize", function(){
+      if (window.innerWidth === lastW) return;       /* a browser's bars sliding away change the height only */
+      lastW = window.innerWidth; sizedAt = Date.now();
+      if (away && !Zen.isOn()) setAway(false);
+    });
     window.addEventListener("scroll", function(){
       var y = window.scrollY, d = y - lastY;
       lastY = y;
-      if (!d || !document.body.classList.contains("phonebar") || pagedActive() || isDockOpen() || Date.now() - userAt > 1000) return;
+      if (!d || !document.body.classList.contains("phonebar") || pagedActive() || isDockOpen() || Date.now() - userAt > 1000 || Date.now() - sizedAt < 800) return;
       moved = (moved < 0) === (d < 0) ? moved + d : d;
       if (moved >= 24 && !away) setAway(true);
       else if (moved <= -24 && away) setAway(false);
@@ -12598,7 +12609,8 @@
       translate: "M4 5h9 M8 5v2c0 4-2 7-5 9 M6 10c1 3 3 5 6 6 | M13 20l4-9 4 9 M14.5 17h5",
       highlight: "M4 20h6 | M14 4l6 6-9 9H5v-6l9-9z",
       star:      "M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z",
-      close:     "M6 6l12 12 M18 6L6 18"
+      close:     "M6 6l12 12 M18 6L6 18",
+      grow:      "M6 15l6-6 6 6"
     };
     function icon(name, size){
       return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -12660,6 +12672,14 @@
       "}",
       "#dictCard .x svg{width:22px; height:22px;}",
       "#dictCard .x:hover{background:var(--accent-soft);}",
+      /* a phone's card opens small; this makes it tall, and small again (the arrow turns over) */
+      "#dictCard .grow{",
+      "  display:none; flex:none; width:44px; height:48px; margin-right:-10px; border:0; border-radius:50%;",
+      "  background:transparent; color:var(--muted); align-items:center; justify-content:center; cursor:pointer;",
+      "}",
+      "#dictCard .grow svg{width:22px; height:22px; transition:transform var(--t-fade) ease;}",
+      "#dictCard.tall .grow svg{transform:rotate(180deg);}",
+      "#dictCard .grow:hover{background:var(--accent-soft);}",
       /* the sentence itself, cut at three lines with a way to see it all */
       "#dictCard .quote{",
       "  flex:none; margin:10px 16px 0; padding:10px 14px; font-family:var(--reader-font); font-size:1rem; line-height:1.55;",
@@ -12876,7 +12896,12 @@
       "}",
       /* a phone's footer keeps its actions (Highlight, Note…, Read from here, Copy) on one row: they
          share the width, at the small size, rather than wrapping into a second row of the card */
+      /* a phone's card is a small one, in reach of the thumb that holds the phone: half the screen at most, the
+         rest of it scrolling inside. The arrow in its head (or a pull up on the head) makes it tall */
       "@media (max-width:560px){",
+      "  #dictCard{max-height:min(46vh, 400px);}",
+      "  #dictCard.tall{max-height:min(86vh, calc(100vh - 48px));}",
+      "  #dictCard .grow{display:flex;}",
       "  #dictCard .foot{flex-wrap:nowrap;}",
       "  #dictCard .foot .act{flex:1 1 auto; min-width:0; justify-content:center; padding:0 8px; font-size:var(--fs-small); white-space:nowrap;}",
       "}",
@@ -12949,7 +12974,14 @@
     var openedAt = 0, cardOpener = null;
     card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "false"); card.setAttribute("aria-label", _t("Dictionary")); card.tabIndex = -1;
     /* focusEl: a control inside the card to land on instead of the card itself */
+    /* a phone's card: small (the way it opens) or tall */
+    function setTall(v){
+      card.classList.toggle("tall", !!v);
+      var b = inner.querySelector(".grow"), l = v ? _t("Smaller card") : _t("Bigger card");
+      if (b){ b.setAttribute("aria-label", l); b.title = l; }
+    }
     function openCard(focusEl){
+      if (!card.classList.contains("open")) setTall(false);
       openedAt = Date.now(); scrim.classList.add("on"); card.classList.add("open"); hidePill();
       document.documentElement.classList.add("lock-card");   /* a phone holds the page still under the sheet */
       if (!cardOpener) cardOpener = document.activeElement;
@@ -12976,8 +13008,53 @@
     }
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
     scrim.addEventListener("click", function(){ if (Date.now() - openedAt > 400) closeCard(); });
+    /* a finger that slides over the dimmed page closes the card as a tap there does: the reader who meant to
+       scroll on, and got a word instead, just keeps scrolling */
+    (function(){
+      var x0 = 0, y0 = 0, on = false;
+      scrim.addEventListener("touchstart", function(e){ on = e.touches.length === 1; if (on){ x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } }, { passive: true });
+      scrim.addEventListener("touchmove", function(e){
+        if (!on || !e.touches.length || Date.now() - openedAt <= 400) return;
+        if (Math.abs(e.touches[0].clientX - x0) > 10 || Math.abs(e.touches[0].clientY - y0) > 10){ on = false; closeCard(); }
+      }, { passive: true });
+    })();
     card.querySelector(".grab").addEventListener("click", closeCard);
     dragToClose(card, [card], closeCard, function(){ return card.classList.contains("open"); }, ".grab, .head");
+    /* a phone: a pull down anywhere on the card closes it once its text is at the top (the handle and the head
+       are dragToClose's), and a pull up on the handle or the head makes it tall */
+    (function(){
+      var x0 = 0, y0 = null, dy = 0, t0 = 0, drag = false, head = false;
+      function reset(){ y0 = null; drag = false; card.style.transition = ""; card.style.transform = ""; card.classList.remove("dragging"); }
+      card.addEventListener("touchstart", function(e){
+        y0 = null; drag = false;
+        if (e.touches.length !== 1 || !isPhone() || !card.classList.contains("open")) return;
+        if (e.target.closest && e.target.closest("input, textarea, select")) return;
+        head = !!(e.target.closest && e.target.closest(".grab, .head"));
+        if (!head && inner.scrollTop > 0) return;
+        x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dy = 0; t0 = Date.now();
+      }, { passive: true });
+      card.addEventListener("touchmove", function(e){
+        if (y0 === null || !e.touches.length) return;
+        dy = e.touches[0].clientY - y0;
+        if (head){
+          if (dy < -24){ y0 = null; if (!card.classList.contains("tall")) setTall(true); }
+          return;
+        }
+        if (!drag){
+          if (Math.abs(dy) < 6) return;
+          if (dy < 0 || Math.abs(e.touches[0].clientX - x0) > Math.abs(dy) || !e.cancelable){ y0 = null; return; }
+          drag = true; card.classList.add("dragging"); card.style.transition = "none";
+        }
+        if (e.cancelable) e.preventDefault();
+        card.style.transform = "translateY(" + Math.max(0, Math.round(dy)) + "px)";
+      }, { passive: false });
+      card.addEventListener("touchend", function(){
+        var go = drag && (dy > 70 || (dy > 24 && Date.now() - t0 < 260));
+        reset();
+        if (go) closeCard();
+      });
+      card.addEventListener("touchcancel", reset);
+    })();
     /* the card sits over the side panel and the sheet, so while it is open it takes Escape first
        (capture phase) and the layers under it stay as they are */
     document.addEventListener("keydown", function(e){
@@ -13003,6 +13080,7 @@
       stopSpeech();
       var h = '<div class="head"><div class="mark">' + icon(o.icon, 20) + '</div><div class="hw">' +
               '<div class="term"' + (o.kind === "word" ? ' lang="en"' : '') + '>' + esc(o.title) + '</div>' + (o.ipa ? '<div class="ipa">' + esc(o.ipa) + '</div>' : '') + '</div>' +
+              '<button type="button" class="grow">' + icon("grow", 20) + '</button>' +
               '<button type="button" class="x" aria-label="' + esc(_t("Close")) + '" title="' + esc(_t("Close")) + '">' + icon("close", 20) + '</button></div>';
       /* the translation line (filled by translate.js): under the word, or under the sentence it translates */
       var trl = o.tr ? '<div class="trline' + (o.quote ? ' clamp' : '') + '" id="dictTr" data-kind="' + o.tr + '" hidden>' +
@@ -13037,6 +13115,8 @@
       inner.innerHTML = h;
       card.setAttribute("aria-label", o.dialogLabel);
       inner.querySelector(".x").addEventListener("click", closeCard);
+      inner.querySelector(".grow").addEventListener("click", function(){ setTall(!card.classList.contains("tall")); });
+      setTall(card.classList.contains("tall"));
       var more = inner.querySelector(".more");
       if (more) more.addEventListener("click", function(){
         var open = !inner.querySelector("#dictQuote").classList.toggle("clamp"), trl = inner.querySelector("#dictTr");
@@ -14061,6 +14141,10 @@
     applyMode();
 
     var tStart = 0, tX = 0, tY = 0, held = false, holdTimer = null, moved = false;
+    /* a tap that lands while the page is still moving, or just as it stops, is the reader's thumb stopping
+       the scroll, not a word asked for */
+    var scrolledAt = 0;
+    window.addEventListener("scroll", function(){ scrolledAt = Date.now(); }, { passive: true });
 
     function inMiddleBand(x, y){
       if (!document.body.classList.contains("paged")) return true;
@@ -14110,6 +14194,7 @@
         if (dictMode !== "tap") return;
         if (held){ held = false; e.stopPropagation(); return; }
         if (moved) return;
+        if (e.pointerType !== "mouse" && Date.now() - scrolledAt < 300) return;
         if (e.target.closest && (e.target.closest("a") || e.target.closest("mark.ll-mark"))) return;
         if (selectionText()) return;              /* a drag-selection is handled by the pill */
         if (!inMiddleBand(e.clientX, e.clientY)) return;
