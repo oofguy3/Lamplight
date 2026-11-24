@@ -112,7 +112,7 @@ const STATS = (() => {
     await ctx.close();
   }
   /* ---- themes: Settings › Theme, from its head row (the title and the Day/Night switch) through the
-         six looks, Mine and Day and night, down to where Warmth starts. The device is set to dark, so
+         ten looks, Mine and Day and night, down to where Warmth starts. The device is set to dark, so
          Follow phone (where a first run starts) wants the night half, and Sea air & Canals is picked:
          Canals on screen, Night pressed. A theme of one's own waits under Mine: made from Canals, given
          the editor's lavender page and violet accent, and then replaced on screen by Canals again from

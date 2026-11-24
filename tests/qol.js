@@ -2,7 +2,7 @@
    switcher, long presses on the speaker and the lamp, swipe down to close a bottom sheet, the
    settings as a bottom sheet, the bars in Pages flow (vertical swipes and the edge strips, never the
    dictionary from blank space), the one-row player's speed chip, Undo in the toast (bookmark, book,
-   highlight), background sounds in one tap, the theme popover's Day/Night switch and its six looks,
+   highlight), background sounds in one tap, the theme popover's Day/Night switch and its ten looks,
    the rows that follow a switch, and the progress pill that fades.
      NODE_PATH=$(npm root -g) node tests/qol.js                                                    */
 const path = require("path");
@@ -183,7 +183,7 @@ const STUB = `(() => {
     await page.evaluate(() => window.llSounds.setOn(false));
   });
   await part("theme", async () => {
-    /* the theme popover: Day | Night in its head, then the six looks, each a day theme and a night
+    /* the theme popover: Day | Night in its head, then the ten looks, each a day theme and a night
        theme drawn side by side, Contrast's the high-contrast pair */
     await dock(page); await page.tap("#lamp"); await page.waitForTimeout(400);
     const tp = await page.evaluate(() => ({ dn: Array.from(document.querySelectorAll("#themePop .pop-head #qDN [data-dn]")).map((x) => x.textContent.trim() + (x.getAttribute("aria-pressed") === "true" ? "*" : "")),
