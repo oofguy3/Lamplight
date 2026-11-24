@@ -1189,13 +1189,14 @@
       syncUI();
     }
     function syncUI(){
-      $("#rWarm").value = state.warmth; $("#qWarm").value = state.warmth;
-      $("#vWarm").textContent = state.warmth + " %"; $("#qWarmV").textContent = state.warmth + " %";
+      $("#rWarm").value = state.warmth; $("#qWarm").value = state.warmth; $("#dkWarm").value = state.warmth;
+      $("#vWarm").textContent = state.warmth + " %"; $("#qWarmV").textContent = state.warmth + " %"; $("#dkWarmV").textContent = state.warmth + " %";
       $("#cWarmAuto").checked = !!state.warmAuto; $("#qWarmAuto").checked = !!state.warmAuto;
       /* "Warm at night" by day: the film is off, so the slider steps back (it still sets the night's level) */
       var idle = !!state.warmAuto && !isNight();
       $("#warmRow").classList.toggle("is-idle", idle);
       var qRow = $("#qWarm").closest(".prow"); if (qRow) qRow.classList.toggle("is-idle", idle);
+      $("#dkWarmRow").classList.toggle("is-idle", idle);
       $("#warmHint").textContent = !state.warmAuto ? _t("A warm film over the screen for evening reading. At 0\u00A0% nothing is added.")
         : isNight() ? _t("It\u2019s night now \u2014 the warm film is on.") : _t("Off until the night window; it comes back on then.");
     }
@@ -1203,6 +1204,7 @@
     function setAuto(v){ state.warmAuto = !!v; Prefs.save(); apply(); }
     $("#rWarm").addEventListener("input", function(e){ set(+e.target.value); });
     $("#qWarm").addEventListener("input", function(e){ set(+e.target.value); });
+    $("#dkWarm").addEventListener("input", function(e){ set(+e.target.value); });
     $("#cWarmAuto").addEventListener("change", function(e){ setAuto(e.target.checked); });
     $("#qWarmAuto").addEventListener("change", function(e){ setAuto(e.target.checked); });
     /* the night window is checked every minute, and again whenever the page comes back */
@@ -1238,8 +1240,13 @@
       document.documentElement.classList.toggle("deep-dim", deep());
       syncUI();
     }
-    /* the sheet's controls and the theme popover's are the same three twice */
+    /* the sheet's controls and the theme popover's are the same three twice; the dock has one slider, at 0
+       while Extra dim is off */
     function syncUI(){
+      var dk = state.dim ? state.dimLevel + " %" : _t("Off");
+      $("#dkDim").value = state.dim ? state.dimLevel : 0; $("#dkDimV").textContent = dk; $("#dkDim").setAttribute("aria-valuetext", dk);
+      $("#dkDimRow").classList.toggle("is-idle", !!state.dim && !!state.dimNight && !isNight());
+      $("#dockLight").hidden = state.eink === true;      /* e-ink mode leaves both films out */
       $("#cDim").checked = !!state.dim; $("#qDim").checked = !!state.dim;
       $("#cDimNight").checked = !!state.dimNight; $("#qDimNight").checked = !!state.dimNight;
       $("#rDim").value = state.dimLevel; $("#qDimLevel").value = state.dimLevel;
@@ -1271,6 +1278,19 @@
     $("#qDim").addEventListener("change", function(e){ setOn(e.target.checked); });
     $("#rDim").addEventListener("input", function(e){ set(+e.target.value); });
     $("#qDimLevel").addEventListener("input", function(e){ set(+e.target.value); });
+    /* the dock's slider: above 0 it turns Extra dim on at that level, at 0 it turns it off and keeps the level
+       it had before the drag, for the switch to turn on again */
+    var dkFrom = null;
+    function dkStart(){ if (dkFrom === null) dkFrom = state.dimLevel; }
+    ["pointerdown", "touchstart", "keydown"].forEach(function(t){ $("#dkDim").addEventListener(t, dkStart, { passive: true }); });
+    $("#dkDim").addEventListener("input", function(e){
+      dkStart();
+      var v = Math.max(0, Math.min(MAX, Math.round(+e.target.value)));
+      if (v > 0){ state.dim = true; state.dimLevel = v; }
+      else { state.dim = false; if (dkFrom > 0) state.dimLevel = dkFrom; }
+      Prefs.save(); apply();
+    });
+    $("#dkDim").addEventListener("change", function(){ dkFrom = null; });
     $("#cDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
     $("#qDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
     /* the same hours as Auto's Night from … until */
@@ -1458,11 +1478,13 @@
     }
     return { boot: boot };
   })();
-  /* ---------- keep the screen on while a document is open ---------- */
+  /* ---------- keep the screen on while a document is open ----------
+     ... until the reader has let it be for a while: Rest (below) lets the lock go after ten minutes with no
+     touch, key or wheel, and takes it back at the next one */
   var Wake = (function(){
-    var lock = null, wanted = false, held = false;
+    var lock = null, wanted = false, held = false, resting = false;
     /* held: something plays on its own (speed reading) and keeps the screen on whatever the setting, as a video would */
-    function want(){ return held || (wanted && state.wake); }
+    function want(){ return held || (wanted && state.wake && !resting); }
     function request(){
       if (!want() || !("wakeLock" in navigator) || document.visibilityState !== "visible" || lock) return;
       navigator.wakeLock.request("screen").then(function(l){
@@ -1474,9 +1496,117 @@
     function sync(){ if (want()) request(); else release(); }
     function set(v){ wanted = v; sync(); }
     function hold(v){ held = !!v; sync(); }
+    function rest(v){ v = !!v; if (v === resting) return; resting = v; sync(); }
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") request(); });
     $("#cWake").addEventListener("change", function(e){ state.wake = e.target.checked; Prefs.save(); sync(); });
-    return { set: set, hold: hold, active: function(){ return !!lock; } };
+    return { set: set, hold: hold, rest: rest, resting: function(){ return resting; }, wanted: function(){ return wanted; }, active: function(){ return !!lock; } };
+  })();
+
+  /* ---------- the screen may sleep: a reader who falls asleep with the book open ----------
+     Ten minutes with no touch, key or wheel, and nothing playing on its own (read aloud, auto-scroll; speed
+     reading holds the lock itself), and the screen lock is let go: the phone's own timeout turns the screen
+     off, so it is not lit all night and the page is not left under a sleeping hand. The next touch, or the
+     page shown again, takes the lock back.
+     It also keeps the reader's steps through the book (the places Library saves as they settle): reading is
+     a run of steps a few seconds to a few minutes apart, and the place a run ends on is where the reader
+     stopped. When the page was moved after that (a brush of the hand, a fling of the phone) by more than a
+     screen, coming back offers the way to that place. Places a moment apart are one step (a fling and its
+     settling); a place kept for 4.5 minutes or more (Pace's HARD_PAUSE_MS: no longer reading) ends a run. A
+     move made after a touch on the app's controls (the dock's slider, the contents, search), a key or the
+     wheel was the reader's own, awake: after one of those there is nothing to offer. */
+  var Rest = (function(){
+    var P = { IDLE: 600000, STILL: 270000, STEP: 5000, BUSY_POLL: 30000, RUN: 3, KEEP: 60 };
+    var lastActive = Date.now(), timer = null, steps = [], offer = null, navAt = 0;
+    /* something that moves the text on its own (read aloud, auto-scroll, speed reading): the screen stays on,
+       and the ten minutes start when it stops */
+    function busy(){
+      return !!((typeof Speak !== "undefined" && Speak && Speak.isPlaying && Speak.isPlaying()) ||
+                (typeof Auto !== "undefined" && Auto && Auto.isOn && Auto.isOn() && !Auto.isPaused()) ||
+                (typeof Rsvp !== "undefined" && Rsvp && Rsvp.isPlaying && Rsvp.isPlaying()));
+    }
+    function schedule(ms){ clearTimeout(timer); timer = setTimeout(check, Math.max(1000, ms)); }
+    function check(){
+      timer = null;
+      if (!Wake.wanted() || Wake.resting()) return;
+      if (busy()){ lastActive = Date.now(); schedule(P.BUSY_POLL); return; }
+      var left = lastActive + P.IDLE - Date.now();
+      if (left > 0){ schedule(left); return; }
+      sleep();
+    }
+    function sleep(){
+      if (typeof Library !== "undefined" && Library.flush) Library.flush();     /* the place now, as the last step */
+      offer = stopPlace();
+      Wake.rest(true);
+    }
+    /* a touch, a key, the wheel, or the page shown again */
+    function active(){
+      lastActive = Date.now();
+      if (Wake.resting()){
+        Wake.rest(false);
+        var o = offer; offer = null;
+        if (o) show(o);
+      }
+      schedule(P.IDLE);
+    }
+    ["pointerdown", "touchstart", "keydown", "wheel"].forEach(function(t){ window.addEventListener(t, active, { passive: true, capture: true }); });
+    /* the reader's own moves: a key, the wheel, or a touch anywhere but on the text itself */
+    window.addEventListener("pointerdown", function(e){ if (!(e.target && e.target.closest && e.target.closest("#docView, #pdf"))) navAt = Date.now(); }, { passive: true, capture: true });
+    ["keydown", "wheel"].forEach(function(t){ window.addEventListener(t, function(){ navAt = Date.now(); }, { passive: true, capture: true }); });
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") active(); });
+
+    /* Library: a place has settled (or was saved again as the page was hidden) */
+    function note(pos){
+      if (!pos || !pos.id) return;
+      var at = pos.mode === "pdf" ? pos.pdfPage : pos.off;
+      if (typeof at !== "number" || !isFinite(at)) return;
+      var now = pos.updated || Date.now(), last = steps[steps.length - 1];
+      if (last && (last.id !== pos.id || last.mode !== pos.mode)){ steps = []; last = null; }
+      if (last && last.at === at) return;
+      var end = pos.mode !== "pdf" && typeof pos.offEnd === "number" && isFinite(pos.offEnd) && pos.offEnd > at ? pos.offEnd : at;
+      /* nav: the controls, a key or the wheel since the place before (a jump in the dock is only saved once the
+         dock has closed, so the time since the touch says nothing) */
+      var p = { id: pos.id, mode: pos.mode, at: at, end: end, t: now, nav: navAt > (last ? last.t : 0) };
+      if (last && now - last.t < P.STEP){ p.nav = p.nav || last.nav; steps[steps.length - 1] = p; }
+      else { steps.push(p); if (steps.length > P.KEEP) steps.shift(); }
+    }
+    /* where the reader stopped, when the page is now more than a screen (a PDF: a page) away from it */
+    function stopPlace(){
+      var id = typeof Library !== "undefined" ? Library.currentId() : null, now = Date.now(), s = steps;
+      if (!id || !s.length || s[0].id !== id || s[0].mode !== state.mode) return null;
+      function reading(i){ return (i + 1 < s.length ? s[i + 1].t : now) - s[i].t < P.STILL; }
+      for (var i = s.length - 2; i >= P.RUN - 1; i--){
+        var run = true;
+        for (var k = 0; k < P.RUN; k++) if (!reading(i - k)){ run = false; break; }
+        if (!run) continue;
+        var stop = s[i + 1], cur = s[s.length - 1];
+        if (stop === cur) return null;
+        for (var j = i + 2; j < s.length; j++) if (s[j].nav) return null;
+        var far = stop.mode === "pdf" ? stop.at !== cur.at : Math.abs(cur.at - stop.at) > Math.max(400, stop.end - stop.at);
+        return far ? { id: id, mode: stop.mode, at: stop.at } : null;
+      }
+      return null;
+    }
+    function show(o){
+      if (typeof Library === "undefined" || Library.currentId() !== o.id || state.mode !== o.mode) return;
+      Marks.toast(_t("The page moved after you stopped reading."), { action: _t("Go back"), ms: 10000, run: function(){ go(o); } });
+    }
+    function go(o){
+      if (Library.currentId() !== o.id || state.mode !== o.mode) return;
+      if (o.mode === "doc") revealOffset(o.at);
+      else if (state.pdfDoc){
+        var n = Math.max(1, Math.min(o.at, state.pdfDoc.numPages));
+        if (state.flow === "pages"){ if (state.pdfPageNum !== n){ state.pdfPageNum = n; renderPdfSingle(); } }
+        else {
+          var c = $("#pdf").querySelector('.pdf-page[data-page="' + n + '"]');
+          if (c) window.scrollTo(0, Math.max(0, c.getBoundingClientRect().top + window.scrollY - Library.headerHeight() - 6));
+        }
+      }
+      Library.notePosition();
+    }
+    schedule(P.IDLE);
+    return { note: note, active: active, isResting: function(){ return Wake.resting(); },
+             _debug: { params: function(o){ Object.assign(P, o || {}); lastActive = Date.now(); schedule(Math.min(P.IDLE, 1000)); return P; },
+                       steps: function(){ return steps.slice(); }, offer: function(){ return offer; }, stopPlace: stopPlace, sleep: sleep } };
   })();
 
   /* ---------- text weight: what the chosen family can actually do ----------
@@ -3556,6 +3686,7 @@
       if (!pos) return;
       positions[pos.id] = pos;
       Recap.note(pos);          /* the reading sessions behind "Previously…" */
+      Rest.note(pos);           /* the reader's steps, behind the way back after the screen slept */
       tx("positions", "readwrite", function(st){ st.put(pos); }).catch(function(){});
     }
     function flush(){ if (current && !pending) savePosition(); }
@@ -12647,8 +12778,9 @@
       return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         ICONS[name].split(" | ").map(function(d){ return '<path d="' + d + '"/>'; }).join("") + '</svg>';
     }
-    var LS_MODE = "ll_dictmode";   // "tap" | "hold" | "off"
+    var LS_MODE = "ll_dictmode";   // "tap" | "dbl" (double-tap) | "hold" | "off"
     var dictMode = Store.get(LS_MODE) || "tap";
+    if (["tap", "dbl", "hold", "off"].indexOf(dictMode) < 0) dictMode = "tap";
 
     /* ---------- styles ----------
        One card for everything the reader touches: a head, a tab strip, one panel per tab and a
@@ -12662,6 +12794,11 @@
       "    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;",
       "  }",
       "}",
+      /* Double-tap: the browser's own double-tap zoom stays out of it (panning and pinching stay) */
+      "#doc.dbltap{touch-action:manipulation;}",
+      /* Settings › Dictionary: the four ways to look a word up wrap onto a second row on a narrow phone
+         rather than scroll out of sight */
+      "#dictChips{width:auto; flex-wrap:wrap; row-gap:4px; overflow:visible; border-radius:var(--r-lg);}",
       ".ll-hit{background:var(--accent); color:var(--bg); border-radius:3px;}",
       /* on a dark page the accent at full strength, dimmed under the scrim, turns murky: a tint with the text colour on it */
       ":root[data-tone=dark] .ll-hit{background:color-mix(in oklab, var(--accent) 35%, transparent); color:var(--ink);}",
@@ -14168,10 +14305,14 @@
     function applyMode(){
       if (!doc) return;
       doc.classList.toggle("nosel", dictMode !== "off");
+      doc.classList.toggle("dbltap", dictMode === "dbl");      /* no double-tap zoom over the text (app.css below) */
     }
     applyMode();
 
     var tStart = 0, tX = 0, tY = 0, held = false, holdTimer = null, moved = false;
+    /* Double-tap: one tap on a word does nothing, a second on the same word soon after looks it up. firstTap is
+       the tap before (when and where); a scroll, a drag or a tap off the words forgets it */
+    var DBL_MS = 350, DBL_PX = 40, firstTap = null;
     /* a tap that lands while the page is still moving, or just as it stops, is the reader's thumb stopping
        the scroll, not a word asked for */
     var scrolledAt = 0;
@@ -14220,18 +14361,28 @@
       }, { passive: true });
 
       doc.addEventListener("touchend", function(){ clearTimeout(holdTimer); }, { passive: true });
+      /* a mouse's double-click would select the word before its second click arrives: in Double-tap that click looks it up */
+      doc.addEventListener("mousedown", function(e){ if (dictMode === "dbl" && e.detail > 1 && e.button === 0) e.preventDefault(); });
 
       doc.addEventListener("click", function(e){
-        if (dictMode !== "tap") return;
-        if (held){ held = false; e.stopPropagation(); return; }
-        if (moved) return;
-        if (e.pointerType !== "mouse" && Date.now() - scrolledAt < 300) return;
+        if (dictMode !== "tap" && dictMode !== "dbl") return;
+        if (held){ held = false; firstTap = null; e.stopPropagation(); return; }
+        if (moved){ firstTap = null; return; }
+        if (e.pointerType !== "mouse" && Date.now() - scrolledAt < 300){ firstTap = null; return; }
         if (e.target.closest && (e.target.closest("a") || e.target.closest("mark.ll-mark"))) return;
         if (selectionText()) return;              /* a drag-selection is handled by the pill */
         if (!inMiddleBand(e.clientX, e.clientY)) return;
         var w = wordAt(e.clientX, e.clientY);
-        if (!w) return;
+        if (!w){ firstTap = null; return; }
         e.stopPropagation();
+        /* Double-tap: the first tap on a word is kept (and does nothing else: in Pages flow it opens no dock),
+           the second, soon after and close by, looks the word up */
+        if (dictMode === "dbl"){
+          var now = Date.now(), f = firstTap;
+          firstTap = { t: now, x: e.clientX, y: e.clientY };
+          if (!f || now - f.t > DBL_MS || Math.abs(e.clientX - f.x) > DBL_PX || Math.abs(e.clientY - f.y) > DBL_PX) return;
+          firstTap = null;
+        }
         var s0 = Anchor.offsetOf(w.node, w.s), hit = s0 === null ? null : { start: s0, end: s0 + (w.e - w.s) };
         markHit(w.node, w.s, w.e);
         defineWord(w.word, hit);
@@ -14343,12 +14494,11 @@
         '<div class="label" id="dictLabel">' + esc(_t("Dictionary")) + '</div>' +
         '<div class="chips seg" id="dictChips" role="group" aria-labelledby="dictLabel">' +
           '<button type="button" class="chip" data-dm="tap" aria-pressed="false">' + esc(_t("Tap a word")) + '</button>' +
+          '<button type="button" class="chip" data-dm="dbl" aria-pressed="false">' + esc(_t("Double-tap")) + '</button>' +
           '<button type="button" class="chip" data-dm="hold" aria-pressed="false">' + esc(_t("Hold only")) + '</button>' +
           '<button type="button" class="chip" data-dm="off" aria-pressed="false">' + esc(_t("Off")) + '</button>' +
         '</div>' +
-        '<div class="hint">' +
-          esc(_t("Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline.")) +
-        '</div>' +
+        '<div class="hint" id="dictModeHint"></div>' +
         '<div class="rowline"><label class="check"><input type="checkbox" role="switch" id="dictEx" aria-describedby="dictExHint">' + esc(_t("Show example sentences (online)")) + '</label></div>' +
         '<div class="hint" id="dictExHint">' + esc(_t("Sentences from Tatoeba under the meaning. The word you tap is sent to Tatoeba; sentences you have seen stay on this device.")) + '</div>';
       sheet.appendChild(g);
@@ -14359,10 +14509,13 @@
         g.querySelectorAll("#dictChips .chip").forEach(function(c){
           var on = c.dataset.dm === dictMode; c.classList.toggle("on", on); c.setAttribute("aria-pressed", on ? "true" : "false");
         });
+        g.querySelector("#dictModeHint").textContent = dictMode === "dbl"
+          ? _t("Double-tap a word for its meaning; a single tap does nothing. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline.")
+          : _t("Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline.");
       }
       g.querySelectorAll("#dictChips .chip").forEach(function(c){
         c.addEventListener("click", function(){
-          dictMode = c.dataset.dm;
+          dictMode = c.dataset.dm; firstTap = null;
           Store.set(LS_MODE, dictMode);
           syncChips(); applyMode();
         });
@@ -14498,7 +14651,7 @@
   })();
 
   /* exposed for tests and other scripts (not a public API) */
-  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Songs: Songs, Sounds: Sounds, Dim: Dim, Eink: Eink, PhoneBar: PhoneBar, SheetTabs: SheetTabs, UiLang: UiLang, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset,
+  window.__ll = { need: need, state: state, Store: Store, Library: Library, Marks: Marks, Toc: Toc, Search: Search, Speak: Speak, Progress: Progress, Ruler: Ruler, Auto: Auto, AutoTheme: AutoTheme, Wake: Wake, Rest: Rest, Tabs: Tabs, Anchor: Anchor, Side: Side, Menu: Menu, PdfText: PdfText, Focus: Focus, Recap: Recap, Rsvp: Rsvp, Songs: Songs, Sounds: Sounds, Dim: Dim, Eink: Eink, PhoneBar: PhoneBar, SheetTabs: SheetTabs, UiLang: UiLang, status: status, openFile: openFile, openFiles: openFiles, show: show, revealOffset: revealOffset,
                  /* Pages flow: lay the columns out again after the text changed, landing on the same text (translate.js) */
                  relayoutPages: function(){ if (state.mode === "doc" && state.flow === "pages") relayoutDocPages(); } };
   window.Search = Search;

@@ -428,6 +428,45 @@ async function phonePage(b, url, prefs){
     await ctx.close();
   });
 
+  /* ---------- Warmth and Dim in the dock ---------- */
+  await guard("warmth and dim", async () => {
+    const { ctx, page } = await phonePage(b, url);
+    await openFixture(page, "sample.md");
+    await openDock(page);
+    const d0 = await page.evaluate(() => { const l = document.getElementById("dockLight"), dn = document.querySelector("#phoneDock .pd-dn").getBoundingClientRect(), lr = l.getBoundingClientRect();
+      return { shown: !l.hidden && l.getClientRects().length > 0, under: lr.top >= dn.bottom - 1, warm: document.getElementById("dkWarm").value, dim: document.getElementById("dkDim").value, dimV: document.getElementById("dkDimV").textContent,
+        labels: [...l.querySelectorAll("label")].map((x) => x.textContent + ">" + x.htmlFor).join(), rows: [...l.querySelectorAll(".prow")].map((r) => Math.round(r.getBoundingClientRect().height)),
+        tools: document.getElementById("actRow").getBoundingClientRect().bottom <= innerHeight, top: Math.round(document.getElementById("phoneDock").getBoundingClientRect().top) }; });
+    R.check("the dock has Warmth and Dim under Day and Night, labelled, each row a finger tall; Dim at 0 reads Off; the tools stay in view",
+      d0.shown && d0.under && d0.warm === "0" && d0.dim === "0" && d0.dimV === "Off" && d0.labels === "Warmth>dkWarm,Dim>dkDim" && d0.rows.every((h) => h >= 44) && d0.tools, JSON.stringify(d0));
+    const slide = (id, v) => page.evaluate(([id, v]) => { const r = document.getElementById(id); r.dispatchEvent(new Event("pointerdown")); r.value = String(v); r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true })); }, [id, v]);
+    await slide("dkWarm", 60); await page.waitForTimeout(500);
+    const w = await page.evaluate(() => ({ s: window.__ll.state.warmth, film: document.getElementById("warmth").classList.contains("on") && parseFloat(getComputedStyle(document.getElementById("warmth")).opacity) > 0,
+      q: document.getElementById("qWarm").value, r: document.getElementById("rWarm").value, v: document.getElementById("dkWarmV").textContent, open: document.body.classList.contains("dock-open") }));
+    R.check("the dock's Warmth sets the film, and the popover's and the sheet's sliders follow; the dock stays open", w.s === 60 && w.film && w.q === "60" && w.r === "60" && w.v === "60 %" && w.open, JSON.stringify(w));
+    await slide("dkDim", 50); await page.waitForTimeout(500);
+    const d1 = await page.evaluate(() => ({ on: window.__ll.state.dim, lvl: window.__ll.state.dimLevel, op: getComputedStyle(document.getElementById("dim")).opacity, sw: document.getElementById("cDim").checked, q: document.getElementById("qDimLevel").value, v: document.getElementById("dkDimV").textContent }));
+    R.check("the dock's Dim above 0 turns Extra dim on at that level", d1.on && d1.lvl === 50 && d1.op === "0.5" && d1.sw && d1.q === "50" && d1.v === "50 %", JSON.stringify(d1));
+    await slide("dkDim", 0); await page.waitForTimeout(500);
+    const d2 = await page.evaluate(() => ({ on: window.__ll.state.dim, lvl: window.__ll.state.dimLevel, film: document.getElementById("dim").classList.contains("on"), sw: document.getElementById("cDim").checked, v: document.getElementById("dkDimV").textContent, val: document.getElementById("dkDim").value, vt: document.getElementById("dkDim").getAttribute("aria-valuetext") }));
+    R.check("at 0 it turns Extra dim off and keeps the level for the switch", !d2.on && d2.lvl === 50 && !d2.film && !d2.sw && d2.v === "Off" && d2.val === "0" && d2.vt === "Off", JSON.stringify(d2));
+    await page.evaluate(() => document.getElementById("cDim").click()); await page.waitForTimeout(300);
+    R.check("the switch elsewhere turns it on again at 50, and the dock shows it", (await page.evaluate(() => document.getElementById("dkDim").value + "|" + document.getElementById("dkDimV").textContent)) === "50|50 %");
+    /* a drag down that starts on a slider is the slider's, not a swipe that closes the dock */
+    const dr = await rect(page, "#dkDim");
+    await touchDrag(page, dr.left + dr.width * 0.5, dr.top + dr.height / 2, dr.left + dr.width * 0.5 + 10, dr.top + dr.height / 2 + 140);
+    R.check("a drag down from the Dim slider leaves the dock open", await page.evaluate(() => document.body.classList.contains("dock-open")));
+    /* e-ink mode leaves both films out, and the dock leaves out their sliders */
+    await page.evaluate(() => document.getElementById("cEink").click()); await page.waitForTimeout(300);
+    const e1 = await page.evaluate(() => document.getElementById("dockLight").hidden);
+    await page.evaluate(() => document.getElementById("cEink").click()); await page.waitForTimeout(300);
+    const e2 = await page.evaluate(() => document.getElementById("dockLight").hidden);
+    R.check("e-ink mode hides the dock's Warmth and Dim, and they come back with it off", e1 === true && e2 === false, JSON.stringify([e1, e2]));
+    await page.evaluate(() => { window.__ll.Dim.setOn(false); window.llType.warmth.set(0); }); await page.waitForTimeout(400);
+    R.check("no page errors (warmth and dim)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
   /* ---------- the More sheet leaves out what the dock has ---------- */
   const menuItems = (page) => page.$$eval("#moreMenu button[role=menuitem]", (bs) => bs.map((b) => (b.querySelector("span") || b).textContent.trim()));
   await guard("more sheet", async () => {

@@ -372,6 +372,85 @@ const CONTRAST = `(el, behind) => {
     await ctx.close();
   });
 
+  /* ---------------- Double-tap: one tap on a word does nothing, two look it up ---------------- */
+  await guard("double-tap", async () => {
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await ctx.addInitScript(STUB);
+    await ctx.addInitScript(() => { try { localStorage.setItem("ll_dictmode", "dbl"); localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch(_){} });
+    const page = await newPage(ctx, url);
+    await openFixture(page, "sample.md");
+    const isOpen = () => page.evaluate(() => document.getElementById("dictCard").classList.contains("open"));
+    const closeCard = async () => { await page.evaluate(() => { const x = document.querySelector("#dictCard .x"); if (x && document.getElementById("dictCard").classList.contains("open")) x.click(); }); await page.waitForTimeout(400); };
+    R.check("double-tap: the text takes no double-tap zoom", (await page.evaluate(() => getComputedStyle(document.getElementById("doc")).touchAction)) === "manipulation");
+    const wp = await textPoint(page, "predicted"); await page.waitForTimeout(500);
+    await page.touchscreen.tap(wp.x + 8, wp.y); await page.waitForTimeout(700);
+    R.check("double-tap: one tap on a word opens nothing", !(await isOpen()));
+    await page.touchscreen.tap(wp.x + 8, wp.y); await page.waitForTimeout(60); await page.touchscreen.tap(wp.x + 10, wp.y + 1);
+    await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 }).catch(() => {});
+    const term = await page.evaluate(() => (document.querySelector("#dictCard .term") || {}).textContent || "");
+    R.check("double-tap: two quick taps on a word open its card", (await isOpen()) && /^predict/i.test(term), term);
+    await closeCard(); await page.waitForTimeout(400);
+    /* two taps too far apart, in time or on the page, are two single taps */
+    await page.touchscreen.tap(wp.x + 8, wp.y); await page.waitForTimeout(600); await page.touchscreen.tap(wp.x + 8, wp.y); await page.waitForTimeout(700);
+    R.check("double-tap: two taps 0.6 s apart open nothing", !(await isOpen()));
+    await page.waitForTimeout(500);
+    const far = await textPoint(page, "consequences"); await page.waitForTimeout(500);
+    const near = await textPoint(page, "predicted"); await page.waitForTimeout(500);
+    if (Math.abs(far.y - near.y) > 40 || Math.abs(far.x - near.x) > 40){
+      await page.touchscreen.tap(near.x + 8, near.y); await page.waitForTimeout(60); await page.touchscreen.tap(far.x + 8, far.y); await page.waitForTimeout(700);
+      R.check("double-tap: quick taps on two words far apart open nothing", !(await isOpen()));
+    }
+    /* Pages flow: a single tap on a word in the middle of the page opens neither the card nor the dock */
+    await page.evaluate(() => document.querySelector('#flowChips [data-flow="pages"]').click()); await page.waitForTimeout(800);
+    const mid = await page.evaluate(() => {
+      const v = document.getElementById("docView").getBoundingClientRect(), x = v.left + v.width / 2;
+      for (let y = v.top + 120; y < v.bottom - 120; y += 8){
+        const r = document.caretRangeFromPoint(x, y);
+        if (!r || !r.startContainer || r.startContainer.nodeType !== 3 || !document.getElementById("doc").contains(r.startContainer)) continue;
+        const t = r.startContainer.nodeValue, i = r.startOffset;
+        if (!/[A-Za-z]/.test(t.charAt(i) || "") || !/[A-Za-z]/.test(t.charAt(i - 1) || "")) continue;
+        const wr = document.createRange(); wr.setStart(r.startContainer, i - 1); wr.setEnd(r.startContainer, i + 1);
+        const b = wr.getBoundingClientRect();
+        if (b.width && x >= b.left - 1 && x <= b.right + 1 && y >= b.top && y <= b.bottom) return { x, y };
+      }
+      return null;
+    });
+    if (mid){
+      await page.touchscreen.tap(mid.x, mid.y); await page.waitForTimeout(700);
+      const st = await page.evaluate(() => ({ card: document.getElementById("dictCard").classList.contains("open"), dock: document.body.classList.contains("dock-open") }));
+      R.check("double-tap, Pages flow: one tap on a word in the middle opens neither the card nor the dock", !st.card && !st.dock, JSON.stringify(st));
+      await page.touchscreen.tap(mid.x, mid.y); await page.waitForTimeout(60); await page.touchscreen.tap(mid.x + 1, mid.y);
+      await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 }).catch(() => {});
+      const st2 = await page.evaluate(() => ({ card: document.getElementById("dictCard").classList.contains("open"), dock: document.body.classList.contains("dock-open") }));
+      R.check("double-tap, Pages flow: two taps on it open its card, and no dock", st2.card && !st2.dock, JSON.stringify(st2));
+      await closeCard();
+    } else R.check("double-tap, Pages flow: a word in the middle of the page", false, "none found");
+    R.check("no page errors (double-tap, phone)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+    /* a mouse: one click does nothing, a double-click looks the word up and leaves no selection behind */
+    const dctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
+    await dctx.addInitScript(STUB);
+    await dctx.addInitScript(() => { try { localStorage.setItem("ll_dictmode", "dbl"); localStorage.setItem("ll_tips", "seen"); localStorage.setItem("ll_tip_doc", "1"); } catch(_){} });
+    const dp = await newPage(dctx, url);
+    await openFixture(dp, "sample.md");
+    const pt = await textPoint(dp, "predicted"); await dp.waitForTimeout(400);
+    await dp.mouse.click(pt.x + 8, pt.y); await dp.waitForTimeout(700);
+    R.check("double-tap, a mouse: one click opens nothing", !(await dp.evaluate(() => document.getElementById("dictCard").classList.contains("open"))));
+    await dp.waitForTimeout(400);
+    await dp.mouse.dblclick(pt.x + 8, pt.y);
+    await dp.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 }).catch(() => {});
+    const dd = await dp.evaluate(() => ({ open: document.getElementById("dictCard").classList.contains("open"), term: (document.querySelector("#dictCard .term") || {}).textContent || "", sel: String(window.getSelection()) }));
+    R.check("double-tap, a mouse: a double-click opens the card, with no word selected", dd.open && /^predict/i.test(dd.term) && !dd.sel.trim(), JSON.stringify(dd));
+    /* the setting: four ways, Double-tap pressed, its own hint */
+    const set = await dp.evaluate(() => ({ chips: [...document.querySelectorAll("#dictChips .chip")].map((c) => c.dataset.dm + ":" + c.getAttribute("aria-pressed")).join(), hint: document.getElementById("dictModeHint").textContent }));
+    R.check("Settings › Dictionary offers Tap a word, Double-tap, Hold only and Off, with Double-tap pressed and its own hint", set.chips === "tap:false,dbl:true,hold:false,off:false" && /^Double-tap a word for its meaning; a single tap does nothing/.test(set.hint), JSON.stringify(set));
+    await dp.evaluate(() => document.querySelector('#dictChips [data-dm="tap"]').click());
+    const back = await dp.evaluate(() => ({ mode: localStorage.getItem("ll_dictmode"), cls: document.getElementById("doc").classList.contains("dbltap"), hint: document.getElementById("dictModeHint").textContent }));
+    R.check("back on Tap a word: stored, the zoom guard gone, the tap hint back", back.mode === "tap" && !back.cls && /^Tap a word for its meaning/.test(back.hint), JSON.stringify(back));
+    R.check("no page errors (double-tap, mouse)", !(dp._errors || []).length, (dp._errors || []).join(" | "));
+    await dctx.close();
+  });
+
   /* ---------------- screenshots: every tab, both widths, four themes ---------------- */
   await guard("screenshots", async () => {
     for (const view of [{ name: "desktop", vp: { width: 1200, height: 800 } }, { name: "phone", vp: { width: 390, height: 844 }, mobile: true }]){
