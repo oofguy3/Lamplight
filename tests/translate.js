@@ -261,6 +261,18 @@ const DUTCH = ["The Project Gutenberg eBook of Eline Vere. This eBook is for the
     const hp4 = await page.evaluate(() => { const h = document.querySelector("#doc .ll-trpeek").nextElementSibling, r = h.getBoundingClientRect(); return { x: r.left + 30, y: r.top + 6 }; });
     await page.mouse.click(hp4.x, hp4.y, { button: "right" }); await page.waitForTimeout(300);
     R.check("a right-click (a hold on a phone) on a translation shows its original too, and no sentence card", rc.n === 1 && !rc.card && (await page.evaluate(() => document.querySelectorAll("#doc .ll-trpeek").length)) === 0, JSON.stringify(rc));
+    /* Double-tap (Settings › Dictionary): one click on a translation does nothing, a double-click shows the original */
+    await page.evaluate(() => { localStorage.setItem("ll_dictmode", "dbl"); document.querySelector('#dictChips [data-dm="dbl"]').click(); });
+    const hp5 = await page.evaluate(() => { const h = document.querySelectorAll("#doc .ll-tr.only")[5]; h.scrollIntoView({ block: "center" }); const r = h.getBoundingClientRect(); return { x: r.left + 30, y: r.top + 6 }; });
+    await page.waitForTimeout(150);
+    await page.mouse.click(hp5.x, hp5.y); await page.waitForTimeout(500);
+    const one = await page.evaluate(() => document.querySelectorAll("#doc .ll-trpeek").length);
+    await page.mouse.dblclick(hp5.x, hp5.y); await page.waitForTimeout(300);
+    const two = await page.evaluate(() => ({ n: document.querySelectorAll("#doc .ll-trpeek").length, card: document.getElementById("dictCard").classList.contains("open") }));
+    R.check("Double-tap: one click on a translation does nothing, a double-click shows its original", one === 0 && two.n === 1 && !two.card, JSON.stringify({ one, two }));
+    const hp6 = await page.evaluate(() => { const h = document.querySelector("#doc .ll-trpeek").nextElementSibling, r = h.getBoundingClientRect(); return { x: r.left + 30, y: r.top + 6 }; });
+    await page.mouse.dblclick(hp6.x, hp6.y); await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector('#dictChips [data-dm="tap"]').click());
     await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(300);
     await shot(page, "translate-only-desktop-day");
 

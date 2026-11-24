@@ -247,6 +247,9 @@
       "Scrollen: de balken verdwijnen tijdens het lezen en komen terug als je omhoog scrolt. Pagina’s: tik op de linker- of rechterrand of veeg opzij om om te slaan. Veeg omlaag of tik op de boven- of onderrand van de pagina om de balken te tonen; veeg omhoog om ze te verbergen.",
     "Two pages side by side on wide screens": "Twee pagina’s naast elkaar op brede schermen",
     "Keep the screen awake while reading": "Scherm aan laten tijdens het lezen",
+    "Until ten minutes pass without a touch: if you fall asleep reading, the screen goes off on its own. Read aloud and auto-scroll keep it on.": "Tot er tien minuten niets is aangeraakt: val je in slaap tijdens het lezen, dan gaat het scherm vanzelf uit. Voorlezen en automatisch scrollen houden het aan.",
+    "The page moved after you stopped reading.": "De pagina is verschoven nadat je stopte met lezen.",
+    "Go back": "Terug",
     "Pure black on white with nothing moving, for e-paper screens. The Pages flow stays on while it is — tap the left third to go back a page, anywhere else to go on — and highlights are drawn as lines.":
       "Puur zwart op wit, zonder beweging, voor e-paperschermen. Zolang dit aanstaat, blijft de paginaweergave aan — tik op het linkerderde van het scherm om terug te bladeren en ergens anders om verder te bladeren — en markeringen worden als lijnen getekend.",
     "Follow system": "Systeem volgen",
@@ -1271,6 +1274,8 @@
     /* Settings › Dictionary */
     "Tap a word": "Tikken",
     "Hold only": "Lang drukken",
+    "Double-tap": "Dubbeltikken",
+    "Double-tap a word for its meaning; a single tap does nothing. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline.": "Tik twee keer op een woord voor de betekenis; één tik doet niets. Druk lang op een zin (of selecteer tekst) voor uitleg — zinsdelen, wie wat deed, werkwoordstijd, uitdrukkingen en een eenvoudigere versie, allemaal offline.",
     "Tap a word for its meaning. Hold on a sentence (or select text) to have it explained — clauses, who did what, tense, idioms and a plainer rewrite, all offline.": "Tik op een woord voor de betekenis. Druk lang op een zin (of selecteer tekst) voor uitleg — zinsdelen, wie wat deed, werkwoordstijd, uitdrukkingen en een eenvoudigere versie, allemaal offline.",
     /* Settings › Translation, and the translation entries of the menu */
     "Translation": "Vertaling",
