@@ -109,7 +109,37 @@ async function fresh(b, url){
     await page.click("#toast .toast-act"); await wait(page, 700);
     const back = await top(page);
     R.check("Go back returns to where the reader stopped", Math.abs(back - stopped) < 200, JSON.stringify({ back, stopped }));
+    R.check("the offer is used up: nothing is kept for later", (await page.evaluate(() => localStorage.getItem("ll_wayback"))) === null);
     R.check("no page errors (way back)", !(page._errors || []).length, (page._errors || []).join(" | "));
+    await ctx.close();
+  });
+
+  /* ---------- the app ended overnight while the screen was off: the offer waits for the book ---------- */
+  await guard("way back after a restart", async () => {
+    const { ctx, page } = await fresh(b, url);
+    for (let i = 0; i < 4; i++) await readOn(page, 0.9, 900);
+    await page.evaluate(() => window.__ll.Rest.active());
+    await page.evaluate(() => window.scrollBy(0, Math.round(innerHeight * 0.9)));
+    await wait(page, 900);
+    const stopped = await top(page);
+    await wait(page, 2300);
+    await page.evaluate(() => { window.__ll.Rest.active(); window.scrollBy(0, Math.round(innerHeight * 3)); });
+    await wait(page, 6100);
+    const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("ll_wayback") || "null"));
+    R.check("asleep with somewhere to go back to: the offer is kept on the device", !!kept && Math.abs(kept.at - stopped) < 5, JSON.stringify({ kept, stopped }));
+    /* the phone ends the app; the reader starts it again and opens the book from the library */
+    await page.reload({ waitUntil: "load" });
+    await wait(page, 1500);
+    await page.evaluate((id) => { if (window.__ll.state.mode !== "doc") return window.__ll.Library.openId(id); }, kept.id);
+    await page.waitForFunction(() => document.getElementById("docView").style.display === "block" && document.getElementById("doc").textContent.length > 10000, null, { timeout: 30000 });
+    await page.waitForFunction(() => { const el = document.getElementById("toast"); return !!el && el.classList.contains("on") && /page moved/.test(el.textContent); }, null, { timeout: 6000 }).catch(() => {});
+    const t = await page.evaluate(() => { const el = document.getElementById("toast"); return { on: !!el && el.classList.contains("on"), text: el ? el.textContent : "" }; });
+    R.check("after a restart, the same book reopened: the toast offers the way back", t.on && /^The page moved after you stopped reading\./.test(t.text), JSON.stringify(t));
+    await page.click("#toast .toast-act"); await wait(page, 700);
+    const back = await top(page);
+    R.check("…and Go back goes there", Math.abs(back - stopped) < 200, JSON.stringify({ back, stopped }));
+    R.check("…once: the kept offer is gone", (await page.evaluate(() => localStorage.getItem("ll_wayback"))) === null);
+    R.check("no page errors (after a restart)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
   });
 

@@ -1006,16 +1006,24 @@
     var r = v.getBoundingClientRect(), f = (x - r.left) / r.width;
     return f >= 0.35 && f <= 0.65;
   }
-  var heldAt = 0, holdTimer = null, holdX = 0, holdY = 0;
+  var heldAt = 0, holdTimer = null, holdX = 0, holdY = 0, firstTap = null;
   document.addEventListener("click", function(e){
     /* the click a hold leaves behind lands on the original it just showed: not a tap on a word */
     if (Date.now() - heldAt < 800 && e.target && e.target.closest && e.target.closest("#doc")){ heldAt = 0; e.stopPropagation(); e.preventDefault(); return; }
     var h = onlyHost(e);
     if (!h) return;
-    if (dictMode() !== "tap" || !middle(e.clientX)) return;
+    var m = dictMode();
+    if ((m !== "tap" && m !== "dbl") || !middle(e.clientX)) return;
     var sel = window.getSelection();
     if (sel && !sel.isCollapsed && sel.toString().trim()) return;
     e.stopPropagation();
+    /* Double-tap (Settings › Dictionary): as with a word, one tap does nothing and the second soon after shows the original */
+    if (m === "dbl"){
+      var now = Date.now(), f = firstTap;
+      firstTap = { t: now, x: e.clientX, y: e.clientY };
+      if (!((e.pointerType === "mouse" && e.detail >= 2) || (f && now - f.t <= 350 && Math.abs(e.clientX - f.x) <= 40 && Math.abs(e.clientY - f.y) <= 40))) return;
+      firstTap = null;
+    }
     peek(h);
   }, true);
   document.addEventListener("touchstart", function(e){

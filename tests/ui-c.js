@@ -389,6 +389,19 @@ const CONTRAST = `(el, behind) => {
     await page.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 }).catch(() => {});
     const term = await page.evaluate(() => (document.querySelector("#dictCard .term") || {}).textContent || "");
     R.check("double-tap: two quick taps on a word open its card", (await isOpen()) && /^predict/i.test(term), term);
+    /* with the card open, a double-tap on another word: the first tap closes the card, the second opens that word */
+    const other = await page.evaluate(() => {
+      const w = document.createTreeWalker(document.getElementById("doc"), NodeFilter.SHOW_TEXT); let n;
+      while ((n = w.nextNode())){ const i = n.nodeValue.indexOf("Nobody"); if (i >= 0){ const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 6); const b = r.getBoundingClientRect(); return { x: b.left + 10, y: b.top + b.height / 2 }; } }
+      return null;
+    });
+    if (other){
+      await page.waitForTimeout(600);          /* the card takes no tap in its first 0.4 s (the click a long press leaves) */
+      await page.touchscreen.tap(other.x, other.y); await page.waitForTimeout(60); await page.touchscreen.tap(other.x + 1, other.y);
+      await page.waitForFunction(() => /^nobody/i.test((document.querySelector("#dictCard .term") || {}).textContent || ""), null, { timeout: 20000 }).catch(() => {});
+      const nt = await page.evaluate(() => ({ open: document.getElementById("dictCard").classList.contains("open"), term: (document.querySelector("#dictCard .term") || {}).textContent || "" }));
+      R.check("double-tap: with the card open, a double-tap on another word opens that word", nt.open && /^nobody/i.test(nt.term), JSON.stringify(nt));
+    } else R.check("double-tap: with the card open, a double-tap on another word opens that word", false, "no point for Nobody");
     await closeCard(); await page.waitForTimeout(400);
     /* two taps too far apart, in time or on the page, are two single taps */
     await page.touchscreen.tap(wp.x + 8, wp.y); await page.waitForTimeout(600); await page.touchscreen.tap(wp.x + 8, wp.y); await page.waitForTimeout(700);
@@ -425,6 +438,24 @@ const CONTRAST = `(el, behind) => {
       R.check("double-tap, Pages flow: two taps on it open its card, and no dock", st2.card && !st2.dock, JSON.stringify(st2));
       await closeCard();
     } else R.check("double-tap, Pages flow: a word in the middle of the page", false, "none found");
+    /* focus reading: a single tap on a word leaves its bold start as it was (the lookup joins the word only to look it up) */
+    await page.evaluate(() => document.querySelector('#flowChips [data-flow="scroll"]').click()); await page.waitForTimeout(800);
+    await page.evaluate(() => { const c = document.getElementById("cFocus"); c.checked = true; c.dispatchEvent(new Event("change")); }); await page.waitForTimeout(600);
+    /* "predicted" is split now: its bold start and the rest */
+    const boldOf = () => page.evaluate(() => {
+      const b = Array.from(document.querySelectorAll("#doc b.ll-focus")).find((x) => /^pred/.test(x.textContent) && /^icted/.test((x.nextSibling || {}).nodeValue || ""));
+      if (!b) return null;
+      const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.evaluate(() => { const b = Array.from(document.querySelectorAll("#doc b.ll-focus")).find((x) => /^pred/.test(x.textContent)); if (b) window.scrollBy(0, b.getBoundingClientRect().top - innerHeight / 2 + 120); });
+    await page.waitForTimeout(700);
+    const fp = await boldOf();
+    const bold = async () => !!(await boldOf());
+    const b0 = await bold();
+    if (fp){ await page.touchscreen.tap(fp.x, fp.y); await page.waitForTimeout(700); }
+    const b1 = await bold();
+    R.check("double-tap with focus reading: a single tap on a word leaves its bold start", b0 && b1 && !(await isOpen()), JSON.stringify({ b0, b1 }));
+    await page.evaluate(() => { const c = document.getElementById("cFocus"); c.checked = false; c.dispatchEvent(new Event("change")); }); await page.waitForTimeout(400);
     R.check("no page errors (double-tap, phone)", !(page._errors || []).length, (page._errors || []).join(" | "));
     await ctx.close();
     /* a mouse: one click does nothing, a double-click looks the word up and leaves no selection behind */
@@ -441,6 +472,11 @@ const CONTRAST = `(el, behind) => {
     await dp.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 }).catch(() => {});
     const dd = await dp.evaluate(() => ({ open: document.getElementById("dictCard").classList.contains("open"), term: (document.querySelector("#dictCard .term") || {}).textContent || "", sel: String(window.getSelection()) }));
     R.check("double-tap, a mouse: a double-click opens the card, with no word selected", dd.open && /^predict/i.test(dd.term) && !dd.sel.trim(), JSON.stringify(dd));
+    /* a slow double-click (the system's double-click time, longer than a tap's 350 ms) still counts */
+    await dp.evaluate(() => document.querySelector("#dictCard .x").click()); await dp.waitForTimeout(500);
+    await dp.mouse.click(pt.x + 8, pt.y); await dp.waitForTimeout(450); await dp.mouse.click(pt.x + 8, pt.y, { clickCount: 2 });
+    await dp.waitForFunction(() => document.getElementById("dictCard").classList.contains("open"), null, { timeout: 20000 }).catch(() => {});
+    R.check("double-tap, a mouse: a slow double-click (0.45 s) opens the card too", await dp.evaluate(() => document.getElementById("dictCard").classList.contains("open")));
     /* the setting: four ways, Double-tap pressed, its own hint */
     const set = await dp.evaluate(() => ({ chips: [...document.querySelectorAll("#dictChips .chip")].map((c) => c.dataset.dm + ":" + c.getAttribute("aria-pressed")).join(), hint: document.getElementById("dictModeHint").textContent }));
     R.check("Settings › Dictionary offers Tap a word, Double-tap, Hold only and Off, with Double-tap pressed and its own hint", set.chips === "tap:false,dbl:true,hold:false,off:false" && /^Double-tap a word for its meaning; a single tap does nothing/.test(set.hint), JSON.stringify(set));

@@ -1189,11 +1189,14 @@
       syncUI();
     }
     function syncUI(){
-      $("#rWarm").value = state.warmth; $("#qWarm").value = state.warmth; $("#dkWarm").value = state.warmth;
-      $("#vWarm").textContent = state.warmth + " %"; $("#qWarmV").textContent = state.warmth + " %"; $("#dkWarmV").textContent = state.warmth + " %";
-      $("#cWarmAuto").checked = !!state.warmAuto; $("#qWarmAuto").checked = !!state.warmAuto;
-      /* "Warm at night" by day: the film is off, so the slider steps back (it still sets the night's level) */
+      /* "Warm at night" by day: the film is off, so the slider steps back (it still sets the night's level); the
+         dock, with no hint under it, says in the value when the film comes on (Follow phone: at nine at the latest) */
       var idle = !!state.warmAuto && !isNight();
+      var dk = idle && state.warmth > 0 ? _t("Off until {time}.", { time: state.auto === "time" ? state.nightFrom : "21:00" }) : state.warmth + " %";
+      $("#rWarm").value = state.warmth; $("#qWarm").value = state.warmth; $("#dkWarm").value = state.warmth;
+      $("#vWarm").textContent = state.warmth + " %"; $("#qWarmV").textContent = state.warmth + " %";
+      $("#dkWarmV").textContent = dk; $("#dkWarm").setAttribute("aria-valuetext", dk);
+      $("#cWarmAuto").checked = !!state.warmAuto; $("#qWarmAuto").checked = !!state.warmAuto;
       $("#warmRow").classList.toggle("is-idle", idle);
       var qRow = $("#qWarm").closest(".prow"); if (qRow) qRow.classList.toggle("is-idle", idle);
       $("#dkWarmRow").classList.toggle("is-idle", idle);
@@ -1243,9 +1246,10 @@
     /* the sheet's controls and the theme popover's are the same three twice; the dock has one slider, at 0
        while Extra dim is off */
     function syncUI(){
-      var dk = state.dim ? state.dimLevel + " %" : _t("Off");
+      var waits = !!state.dim && !!state.dimNight && !isNight();
+      var dk = waits ? _t("Off until {time}.", { time: state.nightFrom }) : state.dim ? state.dimLevel + " %" : _t("Off");
       $("#dkDim").value = state.dim ? state.dimLevel : 0; $("#dkDimV").textContent = dk; $("#dkDim").setAttribute("aria-valuetext", dk);
-      $("#dkDimRow").classList.toggle("is-idle", !!state.dim && !!state.dimNight && !isNight());
+      $("#dkDimRow").classList.toggle("is-idle", waits);
       $("#dockLight").hidden = state.eink === true;      /* e-ink mode leaves both films out */
       $("#cDim").checked = !!state.dim; $("#qDim").checked = !!state.dim;
       $("#cDimNight").checked = !!state.dimNight; $("#qDimNight").checked = !!state.dimNight;
@@ -1271,26 +1275,29 @@
       q.hidden = !(eink && state.dim) && !state.dimNight;
       q.textContent = eink ? _t("Not used in E-ink mode.") : _t("Night: {hours} \u00b7 Settings \u203a Theme sets the hours.", { hours: hours });
     }
-    function set(v){ state.dimLevel = Math.max(0, Math.min(MAX, Math.round(v))); Prefs.save(); apply(); }
-    function setOn(v){ state.dim = !!v; Prefs.save(); apply(); }
+    function set(v){ dkFrom = null; state.dimLevel = Math.max(0, Math.min(MAX, Math.round(v))); Prefs.save(); apply(); }
+    function setOn(v){ dkFrom = null; state.dim = !!v; Prefs.save(); apply(); }
     function setNight(v){ state.dimNight = !!v; Prefs.save(); apply(); }
     $("#cDim").addEventListener("change", function(e){ setOn(e.target.checked); });
     $("#qDim").addEventListener("change", function(e){ setOn(e.target.checked); });
     $("#rDim").addEventListener("input", function(e){ set(+e.target.value); });
     $("#qDimLevel").addEventListener("input", function(e){ set(+e.target.value); });
     /* the dock's slider: above 0 it turns Extra dim on at that level, at 0 it turns it off and keeps the level
-       it had before the drag, for the switch to turn on again */
-    var dkFrom = null;
+       it had before, for the switch to turn on again. "Before" is one snapshot per interaction: a drag (until the
+       finger lifts), or the steps of the arrow keys or a screen reader (until the slider loses focus); a change
+       made anywhere else starts afresh */
+    var dkFrom = null, dkEl = $("#dkDim");
     function dkStart(){ if (dkFrom === null) dkFrom = state.dimLevel; }
-    ["pointerdown", "touchstart", "keydown"].forEach(function(t){ $("#dkDim").addEventListener(t, dkStart, { passive: true }); });
-    $("#dkDim").addEventListener("input", function(e){
+    function dkEnd(){ dkFrom = null; }
+    ["pointerdown", "keydown"].forEach(function(t){ dkEl.addEventListener(t, dkStart, { passive: true }); });
+    ["pointerup", "pointercancel", "blur"].forEach(function(t){ dkEl.addEventListener(t, dkEnd); });
+    dkEl.addEventListener("input", function(e){
       dkStart();
       var v = Math.max(0, Math.min(MAX, Math.round(+e.target.value)));
       if (v > 0){ state.dim = true; state.dimLevel = v; }
       else { state.dim = false; if (dkFrom > 0) state.dimLevel = dkFrom; }
       Prefs.save(); apply();
     });
-    $("#dkDim").addEventListener("change", function(){ dkFrom = null; });
     $("#cDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
     $("#qDimNight").addEventListener("change", function(e){ setNight(e.target.checked); });
     /* the same hours as Auto's Night from … until */
@@ -1515,7 +1522,8 @@
      move made after a touch on the app's controls (the dock's slider, the contents, search), a key or the
      wheel was the reader's own, awake: after one of those there is nothing to offer. */
   var Rest = (function(){
-    var P = { IDLE: 600000, STILL: 270000, STEP: 5000, BUSY_POLL: 30000, RUN: 3, KEEP: 60 };
+    var P = { IDLE: 600000, STILL: 270000, STEP: 5000, BUSY_POLL: 30000, RUN: 3, KEEP: 60, AGE: 24 * 3600000 };
+    var KEY = "ll_wayback";          /* the offer, kept in case the phone ends the app while the screen is off */
     var lastActive = Date.now(), timer = null, steps = [], offer = null, navAt = 0;
     /* something that moves the text on its own (read aloud, auto-scroll, speed reading): the screen stays on,
        and the ten minutes start when it stops */
@@ -1536,6 +1544,7 @@
     function sleep(){
       if (typeof Library !== "undefined" && Library.flush) Library.flush();     /* the place now, as the last step */
       offer = stopPlace();
+      if (offer) Store.set(KEY, JSON.stringify({ id: offer.id, mode: offer.mode, at: offer.at, t: Date.now() })); else Store.remove(KEY);
       Wake.rest(true);
     }
     /* a touch, a key, the wheel, or the page shown again */
@@ -1543,7 +1552,7 @@
       lastActive = Date.now();
       if (Wake.resting()){
         Wake.rest(false);
-        var o = offer; offer = null;
+        var o = offer; offer = null; Store.remove(KEY);
         if (o) show(o);
       }
       schedule(P.IDLE);
@@ -1586,6 +1595,17 @@
       }
       return null;
     }
+    /* the app was ended while the screen was off (a phone does that overnight) and started again: the first book whose
+       text is in and its place restored (Library's docReady / pdfReady) is offered the way back, if it is that book */
+    function reopened(){
+      var raw = Store.get(KEY);
+      if (!raw || offer) return;
+      var o = null;
+      try { o = JSON.parse(raw); } catch(_){}
+      Store.remove(KEY);
+      if (!o || typeof o.at !== "number" || !isFinite(o.at) || Date.now() - (+o.t || 0) > P.AGE) return;
+      setTimeout(function(){ show(o); }, 600);
+    }
     function show(o){
       if (typeof Library === "undefined" || Library.currentId() !== o.id || state.mode !== o.mode) return;
       Marks.toast(_t("The page moved after you stopped reading."), { action: _t("Go back"), ms: 10000, run: function(){ go(o); } });
@@ -1604,7 +1624,7 @@
       Library.notePosition();
     }
     schedule(P.IDLE);
-    return { note: note, active: active, isResting: function(){ return Wake.resting(); },
+    return { note: note, active: active, reopened: reopened, isResting: function(){ return Wake.resting(); },
              _debug: { params: function(o){ Object.assign(P, o || {}); lastActive = Date.now(); schedule(Math.min(P.IDLE, 1000)); return P; },
                        steps: function(){ return steps.slice(); }, offer: function(){ return offer; }, stopPlace: stopPlace, sleep: sleep } };
   })();
@@ -3766,8 +3786,8 @@
       if (b && b.title !== title){ b.title = title; tx("books", "readwrite", function(st){ st.put(b); }).catch(function(){}); render(); Tabs.render(); }
     }
     function titleOf(id){ return bookName(byId(id)); }
-    function docReady(){ ready.doc = true; ready.pdfPages = {}; tryRestore(); Marks.docReady(); Recap.check(); }
-    function pdfReady(){ tryRestore(); Recap.check(); }
+    function docReady(){ ready.doc = true; ready.pdfPages = {}; tryRestore(); Marks.docReady(); Recap.check(); Rest.reopened(); }
+    function pdfReady(){ tryRestore(); Recap.check(); Rest.reopened(); }
     function pdfPageReady(n){ ready.pdfPages[n] = true; tryRestore(); Recap.check(); }
 
     /* ---- the list on the start screen ---- */
@@ -11762,17 +11782,40 @@
       if (e.target.closest("#dockBtn") || !pagedActive() || state.eink === true || document.body.classList.contains("zen")) return;
       openDock();
     });
-    /* a swipe down that starts on the dock (scrolled to its top) or on the page around it closes it, in every flow */
+    /* a swipe down that starts on one of the dock's sliders (the place, Warmth, Dim): Chrome moves the thumb to the
+       finger the moment it lands, before it knows the swipe is vertical, then hands the swipe to the page
+       (pointercancel). That swipe is the reader putting the dock away, so the slider goes back to where it was, and
+       its setting with it (a sudden brightness at night), and the place slider's jump, due on the change that
+       follows, never comes */
+    var grabbed = null, dropped = null;
+    dock.addEventListener("pointerdown", function(e){
+      dropped = null;
+      var r = e.pointerType === "touch" && e.target.closest ? e.target.closest("input[type=range]") : null;
+      grabbed = r ? { el: r, v: r.value } : null;
+    }, true);
+    dock.addEventListener("keydown", function(){ dropped = null; }, true);
+    dock.addEventListener("pointerup", function(){ grabbed = null; }, true);
+    dock.addEventListener("pointercancel", function(e){
+      if (!grabbed || e.target !== grabbed.el) return;
+      var g = grabbed; grabbed = null; dropped = g.el;
+      if (g.el.value !== g.v){ g.el.value = g.v; g.el.dispatchEvent(new Event("input", { bubbles: true })); }
+      if (g.el === pos){ sliding = false; syncPos(); }
+    }, true);
+    dock.addEventListener("change", function(e){ if (dropped && e.target === dropped){ dropped = null; e.stopImmediatePropagation(); } }, true);
+    /* a swipe down that starts on the dock (scrolled to its top) or on the page around it closes it, in every flow;
+       from a slider, only the swipe the page took over (above) */
     function swipeDownCloses(el){
-      var y0 = null, x0 = 0;
+      var y0 = null, x0 = 0, rng = null;
       el.addEventListener("touchstart", function(e){
-        y0 = (el === dock && dock.scrollTop > 0) || (e.target.closest && e.target.closest("input[type=range]")) ? null : e.touches[0].clientY;
+        rng = e.target.closest ? e.target.closest("input[type=range]") : null;
+        y0 = el === dock && dock.scrollTop > 0 ? null : e.touches[0].clientY;
         x0 = e.touches[0].clientX;
       }, { passive: true });
       el.addEventListener("touchend", function(e){
         if (y0 === null || !isDockOpen()) return;
         var dy = e.changedTouches[0].clientY - y0, dx = e.changedTouches[0].clientX - x0;
         y0 = null;
+        if (rng && dropped !== rng) return;
         if (dy > 55 && dy > Math.abs(dx) * 1.4) closeDock();
       }, { passive: true });
     }
@@ -13175,7 +13218,12 @@
       cardOpener = null;
     }
     /* the click that some browsers synthesise when a long-press finger lifts must not close the card */
-    scrim.addEventListener("click", function(){ if (Date.now() - openedAt > 400) closeCard(); });
+    scrim.addEventListener("click", function(e){
+      if (Date.now() - openedAt <= 400) return;
+      closeCard();
+      /* Double-tap: the tap that closes the card is the first of a double-tap on the next word */
+      if (dictMode === "dbl") firstTap = { t: Date.now(), x: e.clientX, y: e.clientY };
+    });
     /* a finger that slides over the dimmed page closes the card as a tap there does: the reader who meant to
        scroll on, and got a word instead, just keeps scrolling */
     (function(){
@@ -14208,9 +14256,13 @@
           var b = rects[i];
           if (x >= b.left - pad && x <= b.right + pad && y >= b.top - pad && y <= b.bottom + pad) return w;
         }
-        return rects.length ? null : w;
+        if (rects.length){ if (w.joined) rebold(w.node); return null; }
+        return w;
       } catch(_){ return w; }
     }
+    /* a word focus reading had split, joined for a lookup that does not happen after all (a tap on the blank
+       beside it, the first tap of a double-tap): its paragraph is bolded again, as closing the card does */
+    function rebold(n){ if (n && n.parentNode && Focus.on()) Focus.again(n.parentNode); }
     /* the word around character `offset` of text node `n` inside the document (a tap, or the caret) */
     function wordInNode(n, offset){
       if (!n || n.nodeType !== 3) return null;
@@ -14218,6 +14270,12 @@
       /* focus reading splits a word in two (its bold start and the rest): one text node again for the lookup */
       var whole = Focus.on() ? Focus.unsplit(n, offset) : null;
       if (whole){ n = whole.node; offset = whole.offset; }
+      var w = wordIn(n, offset);
+      if (w) w.joined = !!whole;          /* joined for this lookup: rebold() if it does not happen */
+      else if (whole) rebold(n);
+      return w;
+    }
+    function wordIn(n, offset){
       var t = n.textContent, i = Math.min(offset, t.length - 1);
       if (i < 0) return null;
       if (!WORDCH.test(t[i]) && i > 0 && WORDCH.test(t[i-1])) i--;
@@ -14380,7 +14438,10 @@
         if (dictMode === "dbl"){
           var now = Date.now(), f = firstTap;
           firstTap = { t: now, x: e.clientX, y: e.clientY };
-          if (!f || now - f.t > DBL_MS || Math.abs(e.clientX - f.x) > DBL_PX || Math.abs(e.clientY - f.y) > DBL_PX) return;
+          /* a mouse's double-click counts at the system's own double-click speed (e.detail) */
+          var second = (e.pointerType === "mouse" && e.detail >= 2) ||
+                       (!!f && now - f.t <= DBL_MS && Math.abs(e.clientX - f.x) <= DBL_PX && Math.abs(e.clientY - f.y) <= DBL_PX);
+          if (!second){ if (w.joined) rebold(w.node); return; }
           firstTap = null;
         }
         var s0 = Anchor.offsetOf(w.node, w.s), hit = s0 === null ? null : { start: s0, end: s0 + (w.e - w.s) };
