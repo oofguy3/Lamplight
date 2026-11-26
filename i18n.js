@@ -247,7 +247,7 @@
       "Scrollen: de balken verdwijnen tijdens het lezen en komen terug als je omhoog scrolt. Pagina’s: tik op de linker- of rechterrand of veeg opzij om om te slaan. Veeg omlaag of tik op de boven- of onderrand van de pagina om de balken te tonen; veeg omhoog om ze te verbergen.",
     "Two pages side by side on wide screens": "Twee pagina’s naast elkaar op brede schermen",
     "Keep the screen awake while reading": "Scherm aan laten tijdens het lezen",
-    "Until ten minutes pass without a touch: if you fall asleep reading, the screen goes off on its own. Read aloud and auto-scroll keep it on.": "Tot er tien minuten niets is aangeraakt: val je in slaap tijdens het lezen, dan gaat het scherm vanzelf uit. Voorlezen en automatisch scrollen houden het aan.",
+    "Until ten minutes pass without a touch: if you fall asleep reading, the screen goes off on its own. The device voice and auto-scroll keep it on; the natural and ElevenLabs voices read on with the screen off.": "Tot er tien minuten niets is aangeraakt: val je in slaap tijdens het lezen, dan gaat het scherm vanzelf uit. De apparaatstem en automatisch scrollen houden het aan; de natuurlijke stemmen en ElevenLabs lezen door met het scherm uit.",
     "The page moved after you stopped reading.": "De pagina is verschoven nadat je stopte met lezen.",
     "Go back": "Terug",
     "Pure black on white with nothing moving, for e-paper screens. The Pages flow stays on while it is — tap the left third to go back a page, anywhere else to go on — and highlights are drawn as lines.":
