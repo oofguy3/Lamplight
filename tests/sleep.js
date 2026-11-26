@@ -68,12 +68,19 @@ async function fresh(b, url){
     /* read aloud keeps it on, and the time starts again when it stops */
     await page.evaluate(() => { window.__realPlaying = window.__ll.Speak.isPlaying; window.__ll.Speak.isPlaying = () => true; });
     await wait(page, 6500);
-    R.check("read aloud playing: the screen stays on", (await lockState(page)).active);
+    R.check("the device voice reading aloud: the screen stays on", (await lockState(page)).active);
     await page.evaluate(() => { window.__ll.Speak.isPlaying = window.__realPlaying; });
     await wait(page, 2500);
     R.check("…and for the whole time after it stops", (await lockState(page)).active);
     await wait(page, 3500);
     R.check("…then it is let go", !(await lockState(page)).active);
+    /* a natural voice reads on with the screen off: it does not keep the screen on, and there is no way back to offer */
+    await page.touchscreen.tap(6, 420); await wait(page, 200);
+    await page.evaluate(() => { const S = window.__ll.Speak; window.__real = { p: S.isPlaying, a: S.activeEngine, i: S.isActive }; S.isPlaying = () => true; S.isActive = () => true; S.activeEngine = () => ({ name: "kokoro" }); });
+    await wait(page, 5800);
+    const nat = await page.evaluate(() => ({ active: window.__ll.Wake.active(), resting: window.__ll.Rest.isResting(), offer: window.__ll.Rest._debug.offer() }));
+    R.check("a natural voice reading: the screen is let go after the time all the same, with no way back to offer", !nat.active && nat.resting && !nat.offer, JSON.stringify(nat));
+    await page.evaluate(() => { const S = window.__ll.Speak; S.isPlaying = window.__real.p; S.activeEngine = window.__real.a; S.isActive = window.__real.i; });
     /* Keep the screen awake off: nothing is held at all */
     await page.touchscreen.tap(6, 420); await wait(page, 200);
     await page.evaluate(() => document.getElementById("cWake").click()); await wait(page, 200);

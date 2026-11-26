@@ -2427,7 +2427,9 @@
   function prepEnd(msg){ feed.prep = false; if (msg) feed.msg = msg; wakeOff(); prepSync(); }
   function feedStep(){
     feed.t = null;
-    if (feed.busy || typeof document === "undefined" || document.visibilityState === "hidden") return;   /* hidden: goes on once visible */
+    /* hidden, it rests and goes on once visible; unless read aloud is playing on: a reader listening with the screen off
+       (the voice plays on through the audio element) needs the clips made ahead as much as one with it on */
+    if (feed.busy || typeof document === "undefined" || (document.visibilityState === "hidden" && !natRunning(natCur()))) return;
     if (!feedOn()){ if (feed.prep) prepEnd(); return; }
     /* nothing is downloaded unasked: without Prepare book the model must be on the device (or on its way for reading) */
     var m = natCur();
@@ -2761,8 +2763,8 @@
       e.stopPropagation(); e.preventDefault();
       holdRelease();
     }, true);
-    /* the feeder rests while the page is hidden (a start waiting on it goes ahead) and carries on when it is back;
-       another document stops it */
+    /* the feeder rests while the page is hidden, unless read aloud plays on (feedStep), and carries on when it is back; a
+       start waiting on it goes ahead; another document stops it */
     document.addEventListener("visibilitychange", function(){
       if (document.visibilityState === "visible"){ wakeOn(); feedKick(); }
       else holdRelease();

@@ -1525,10 +1525,18 @@
     var P = { IDLE: 600000, STILL: 270000, STEP: 5000, BUSY_POLL: 30000, RUN: 3, KEEP: 60, AGE: 24 * 3600000 };
     var KEY = "ll_wayback";          /* the offer, kept in case the phone ends the app while the screen is off */
     var lastActive = Date.now(), timer = null, steps = [], offer = null, navAt = 0;
-    /* something that moves the text on its own (read aloud, auto-scroll, speed reading): the screen stays on,
-       and the ten minutes start when it stops */
+    /* something that moves the text on its own and needs the screen (the device voice, auto-scroll, speed reading):
+       the screen stays on, and the ten minutes start when it stops. The natural and ElevenLabs voices play through an
+       audio element, which goes on with the screen off (the phone's media controls with it): a reader who falls asleep
+       listening has the screen go off as with a book, and the voice reads on */
+    function deviceVoice(){
+      if (typeof Speak === "undefined" || !Speak || !Speak.isPlaying || !Speak.isPlaying()) return false;
+      var e = Speak.activeEngine ? Speak.activeEngine() : null;
+      return !e || e.name === "device";
+    }
+    function listening(){ return !!(typeof Speak !== "undefined" && Speak && Speak.isActive && Speak.isActive()); }
     function busy(){
-      return !!((typeof Speak !== "undefined" && Speak && Speak.isPlaying && Speak.isPlaying()) ||
+      return !!(deviceVoice() ||
                 (typeof Auto !== "undefined" && Auto && Auto.isOn && Auto.isOn() && !Auto.isPaused()) ||
                 (typeof Rsvp !== "undefined" && Rsvp && Rsvp.isPlaying && Rsvp.isPlaying()));
     }
@@ -1543,7 +1551,8 @@
     }
     function sleep(){
       if (typeof Library !== "undefined" && Library.flush) Library.flush();     /* the place now, as the last step */
-      offer = stopPlace();
+      /* read aloud on: the voice moves the page on as it reads, with the screen off too; there is no way back to offer */
+      offer = listening() ? null : stopPlace();
       if (offer) Store.set(KEY, JSON.stringify({ id: offer.id, mode: offer.mode, at: offer.at, t: Date.now() })); else Store.remove(KEY);
       Wake.rest(true);
     }
