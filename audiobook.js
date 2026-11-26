@@ -84,6 +84,8 @@
     "bellow bellows bellowed whine whines whined wail wails wailed beg begs begged boast boasts boasted scoff scoffs scoffed " +
     "croak croaks croaked squeal squeals squealed stutter stutters stuttered persist persists persisted advise advises advised " +
     "sing sings sang coax coaxes coaxed scold scolds scolded soothe soothes soothed " +
+    "boom booms boomed deadpan deadpans deadpanned quip quips quipped chirp chirps chirped purr purrs purred rasp rasps rasped " +
+    "grunt grunts grunted shriek shrieks shrieked squeak squeaks squeaked bark barks barked trill trills trilled holler hollers hollered " +
     /* Dutch ("zei Pieter", "vroeg ze", "antwoordde ik"): words English text never has, so English books are not touched */
     "zei zegt zeiden vroeg vraagt vroegen riep roept riepen antwoordde antwoordt fluisterde fluistert mompelde mompelt zuchtte zucht " +
     "lachte lacht schreeuwde schreeuwt snauwde snauwt stamelde stamelt herhaalde herhaalt vervolgde vervolgt sprak spreekt bromde bromt " +
@@ -183,6 +185,8 @@
                          NAME + "\\s*[,!?]", "g"),
     vocMid: new RegExp("[,;]\\s+(?:(?:[Mm]y\\s+)?(?:dear|dearest|good|poor|little)\\s+)?" + NAME + "\\s*(?=[,.!?\\u2026;:\\u2014\\u2013-]|$)", "g"),
     spouse: /\b(his|her)\s+(wife|husband|lady)\b/g,
+    possSubj: new RegExp("^[^A-Za-z\\u00C0-\\u024F]*((?:" + TITLE + ")?" + SAINT + WORD + "(?:\\s+" + SAINT + WORD + "){0,2})['\u2019]s\\s+(?:[a-z]+\\s+)?" +
+                        "(voice|eyes|ears|face|gaze|mouth|lips|jaw|brow|hands?|shoulders|head|smile|expression|tone|cheeks|chin)\\b", "g"),
     intro: new RegExp("(?:^|[.;,:!?\u2014]\\s*|\\b(?:and|when|then|as|while|until|till)\\s+)[Aa]n?\\s+(?:[a-z]+,?\\s+){0,3}?(" + PERSONS + ")\\s+(?:[a-z]+ly\\s+)?" + VERBISH + "\\b", "g"),
     /* "at Hunsford", "in Gracechurch Street": a place, not a person */
     place: /\b(?:at|in|near|into|towards|toward|from|through|across|inside|outside)\s+(?:the\s+)?$/i,
@@ -446,6 +450,10 @@
     var out = [], ss = sentencesOf(text), i, m, s;
     for (i = 0; i < ss.length; i++){
       s = text.slice(ss[i].s, ss[i].e);
+      RX.possSubj.lastIndex = 0;
+      var pm = RX.possSubj.exec(s), px = null, pn = pm && pm.index < 90 ? cleanName(pm[1]) : null;
+      if (pn) px = { kind: "name", nm: pn, voice: pm[2] === "voice", at: ss[i].s + pm.index, rest: s.slice(pm.index + pm[0].length) };
+      var before0 = out.length;
       RX.subject.lastIndex = 0;
       while ((m = RX.subject.exec(s)) && m.index < 90){
         var np = m[1], w0 = np.split(/\s+/)[0], x = null;
@@ -454,9 +462,10 @@
           var w = np.split(/\s+/);
           x = { kind: "desc", d: { desc: np.toLowerCase(), poss: w0.toLowerCase(), noun: w[w.length - 1].toLowerCase(), adj: w.length > 2 ? w.slice(1, -1).join(" ").toLowerCase() : "" } };
         } else { var nm = cleanName(np); if (nm) x = { kind: "name", nm: nm }; }
-        if (x){ x.at = ss[i].s + m.index; x.rest = s.slice(m.index + m[0].length); out.push(x); break; }
+        if (x){ x.at = ss[i].s + m.index; x.rest = s.slice(m.index + m[0].length); if (px && px.at <= x.at) x = px; out.push(x); break; }
         RX.subject.lastIndex = m.index + 1;
       }
+      if (px && out.length === before0) out.push(px);
     }
     return out;
   }
@@ -588,6 +597,7 @@
           if (subs[j].kind === "pron" && subs[j].pron === "i") iSubj++;
           if (subs[j].kind !== "name") continue;
           var sc = cand(subs[j].nm); sc.subj = 1;
+          if (subs[j].voice && p.quotes.length) sc.tag = 1;
           sc.m += count(RX.male, subs[j].rest); sc.f += count(RX.female, subs[j].rest);
         }
       }
