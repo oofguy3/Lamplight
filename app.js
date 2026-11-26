@@ -6419,12 +6419,16 @@
     /* ---- expression: pitch, rate and volume for a unit, read off its punctuation, and the
        breath after it. Pure: unit + { prev, next, expr } → { pitch, rate, volume, pauseAfter }.
        pitch and rate are relative to 1; the caller adds the user's pitch and speed. ---- */
+    /* energy: how much life a line gets beyond pitch and pace, for the natural voices (louder or softer, and Piper's
+       liveliness: see natStyle in audiobook.js); the device voice ignores it */
     var TAGS = [
-      [/\b(whisper|murmur|mutter|breath)/i, { volume: 0.55, rate: 0.9 }],
-      [/\b(shout|yell|scream|cried|exclaim|roar)/i, { volume: 1, pitch: 0.12, rate: 1.1 }],
-      [/\b(sigh|slowly|wear)/i, { rate: 0.85 }],
-      [/\b(laugh|grin|chuckl)/i, { pitch: 0.08 }],
-      [/\b(hiss|snap|growl)/i, { pitch: -0.08, rate: 1.05 }]
+      [/\b(whisper|murmur|mutter|breath)/i, { volume: 0.55, rate: 0.9, energy: -1 }],
+      [/\b(shout|yell|scream|cried|exclaim|roar|boom|bellow|holler|shriek)/i, { volume: 1, pitch: 0.12, rate: 1.1, energy: 1 }],
+      [/\b(sigh|slowly|wear)/i, { rate: 0.85, energy: -0.5 }],
+      [/\b(laugh|grin|chuckl|beam|cheerful|chirp)/i, { pitch: 0.08, energy: 0.5 }],
+      [/\b(hiss|snap|growl)/i, { pitch: -0.08, rate: 1.05, energy: 0.5 }],
+      /* said flat on purpose: no rise, a touch slower */
+      [/\b(deadpan|flatly|evenly|dryly|drily|monoton)/i, { pitch: -0.04, rate: 0.96, energy: -1 }]
     ];
     /* the narration right before or after a quote, the ~40 characters nearest it */
     function saidTag(u, prev, next){
@@ -6436,10 +6440,10 @@
     function express(u, ctx){
       ctx = ctx || {};
       var k = ctx.expr === "off" ? 0 : ctx.expr === "dramatic" ? 1.8 : 1;
-      var t = u.text || "", pitch = 0, rate = 1, vol = 1, pause = 0;
+      var t = u.text || "", pitch = 0, rate = 1, vol = 1, pause = 0, energy = 0;
       var tail = t.replace(/[\s"”’)\]»]+$/, ""), end = tail.charAt(tail.length - 1);
       if (end === "?"){ pitch += 0.08; pause = 260; }
-      else if (end === "!"){ pitch += 0.1; rate *= 1.08; pause = 260; }
+      else if (end === "!"){ pitch += 0.1; rate *= 1.08; pause = 260; energy += 0.5; }
       else if (end === "…" || /\.\.\.$/.test(tail)){ rate *= 0.92; pause = 500; }
       else if (end === "."){ pause = 260; }
       else if (end === "," || end === ";" || end === ":"){ pause = 120; }
@@ -6455,6 +6459,7 @@
           if (d.pitch) pitch += d.pitch;
           if (d.rate) rate *= d.rate;
           if (d.volume !== undefined) vol = Math.min(vol, d.volume);
+          if (d.energy) energy += d.energy;
         });
       }
       /* a word in capitals: engines can't stress one word, so the whole unit slows a touch */
@@ -6464,6 +6469,7 @@
         pitch: r3(1 + clamp(pitch * k, -0.3, 0.3)),
         rate: r3(1 + clamp((rate - 1) * k, -0.45, 0.45)),
         volume: r3(1 - Math.min(0.6, (1 - vol) * k)),
+        energy: r3(clamp(energy, -1, 1) * k),
         pauseAfter: pause
       };
     }
@@ -7230,11 +7236,11 @@
             '<p class="hint" id="ttsFilterNone" hidden>' + _t("No voice matches that.") + '</p>' +
             '<div class="v-list" id="ttsList">' + list.html + '</div></details>' +
         '</section>' +
-        '<section class="group" data-engine-only="device">' +
+        '<section class="group" data-engine-only="device kokoro piper">' +
           '<div class="label">' + V_ICONS.expr + '<span>' + _t("Expression") + '</span></div>' +
           '<div class="rowline"><label id="ttsExprL">' + _t("Expression") + '</label><div class="chips seg" role="radiogroup" aria-labelledby="ttsExprL" id="ttsExpr">' + exprChips() + '</div></div>' +
           '<div class="hint">' + _t("Natural follows the punctuation and the said-tags around speech; dramatic pushes harder.") + '</div>' +
-          '<div class="rowline"><label for="ttsPitch">' + _t("Pitch") + '</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
+          '<div class="rowline" data-engine-only="device"><label for="ttsPitch">' + _t("Pitch") + '</label><input type="range" id="ttsPitch" min="0.7" max="1.3" step="0.05" value="' + pitchPref + '"><span class="val" id="ttsPitchV">' + pitchLabel() + '</span></div>' +
         '</section>' +
         '<section class="group">' +
           '<div class="label">' + V_ICONS.clock + '<span>' + _t("Sleep timer") + '</span></div>' +

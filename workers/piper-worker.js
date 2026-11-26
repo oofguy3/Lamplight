@@ -178,12 +178,14 @@ function ids(cfg, ph) {
   return out;
 }
 
-async function run(m, x, sid, speed) {
+/* noise and noiseW: the app's liveliness for this line (noise_scale, noise_w), else the voice's own config (its voices
+   come set to a flat 0.333 for both) */
+async function run(m, x, sid, speed, noise, noiseW) {
   const inf = m.cfg.inference || {}, session = m.session;
   const feeds = {
     input: new ort.Tensor("int64", BigInt64Array.from(x, (n) => BigInt(n)), [1, x.length]),
     input_lengths: new ort.Tensor("int64", BigInt64Array.from([BigInt(x.length)]), [1]),
-    scales: new ort.Tensor("float32", Float32Array.from([inf.noise_scale ?? 0.667, (inf.length_scale ?? 1) / (speed > 0 ? speed : 1), inf.noise_w ?? 0.8]), [3])
+    scales: new ort.Tensor("float32", Float32Array.from([noise > 0 ? noise : (inf.noise_scale ?? 0.667), (inf.length_scale ?? 1) / (speed > 0 ? speed : 1), noiseW > 0 ? noiseW : (inf.noise_w ?? 0.8)]), [3])
   };
   if (session.inputNames.includes("sid")) feeds.sid = new ort.Tensor("int64", BigInt64Array.from([BigInt(sid)]), [1]);
   const out = await session.run(feeds);
@@ -202,7 +204,7 @@ async function make(job) {
       const x = ids(cfg, ph);
       if (x.length <= 3) continue;
       if (parts.length) parts.push(new Float32Array(gap));
-      parts.push(await run(m, x, sid, job.speed));
+      parts.push(await run(m, x, sid, job.speed, job.noise, job.noiseW));
     }
     /* nothing to say (a row of stars): a moment of silence, so reading moves on */
     if (!parts.length) parts.push(new Float32Array(Math.round(0.1 * rate)));
@@ -241,7 +243,7 @@ self.onmessage = (e) => {
       self.postMessage({ type: "error", id: null, message: message(err) });
     });
   } else if (m.type === "generate") {
-    queue.push({ id: m.id, text: String(m.text || ""), voice: m.voice, speed: m.speed, gen });
+    queue.push({ id: m.id, text: String(m.text || ""), voice: m.voice, speed: m.speed, noise: m.noise, noiseW: m.noiseW, gen });
     pump();
   } else if (m.type === "cancel") {
     queue = [];

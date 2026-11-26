@@ -1325,6 +1325,12 @@
     var ck = plan.src.castKey, rec = plan.rec, gone = false;
     if (!rec.picked) rec.picked = {};
     if (!rec.picked[ck]) rec.picked[ck] = {};
+    /* Best's voices are cast best-graded first now (KOKORO_VOICES): a book cast before that is cast again, once, all but
+       the voices the reader picked */
+    if (ck === "kokoro" && rec.graded !== 1){
+      Object.keys(rec[ck]).forEach(function(k){ if (!rec.picked[ck][k]) delete rec[ck][k]; });
+      rec.graded = 1; gone = true;
+    }
     /* natural voices: a voice the model cannot give this document (another language's) is cast again */
     if (plan.src.nat){
       var ok = {};
@@ -1377,12 +1383,56 @@
       }
     }
     if (cur) clips.push(cur);
+    plan.expr = exprNow();
     for (i = 0; i < clips.length; i++){
       clips[i].prev = i > 0 ? clips[i - 1].text.slice(-CONTEXT) : "";
       clips[i].next = i + 1 < clips.length ? clips[i + 1].text.slice(0, CONTEXT) : "";
+      if (plan.src.nat) clips[i].style = natStyle(clips, i);
     }
     plan.clips = clips; plan.firstClip = first;
     expectNext = null;
+  }
+  /* ---- how a natural voice says a clip ----
+     Speak's expression of the clip's last unit (the device voice's own: the punctuation, a heading, the end of a
+     paragraph, the said-tags around speech, the Expression setting), turned into what the models take: their speed
+     (Kokoro bends little, 0.9–1.1; Piper 0.85–1.15), the loudness (the samples scaled), Piper's liveliness (noise_scale
+     and noise_w: its voices come set to a flat 0.333; here 0.6, from 0.45 for a whisper or a deadpan to 0.75 for a
+     shout, and 0.5), and the
+     pause after the clip, made of silence inside the clip (natShape), so it holds with the screen off where a timer
+     would not. A clip followed by the rest of its own unit gets barely a breath */
+  function exprNow(){ var S = window.llSpeak; return S && S.settings ? S.settings().expr : "natural"; }
+  function natStyle(clips, k){
+    var c = clips[k], units = plan.units || [], u = units[c.last], S = window.llSpeak, x = null;
+    try { x = S && S.express && u ? S.express(u, { prev: units[c.last - 1], next: units[c.last + 1], expr: plan.expr }) : null; } catch(_){}
+    if (!x) x = { rate: 1, volume: 1, energy: 0, pauseAfter: 260 };
+    var kok = plan.src === SRC.kokoro, nx = clips[k + 1], e = Math.max(-1, Math.min(1, +x.energy || 0));
+    var pause = nx && nx.first === c.last ? 0.06 : 0.06 + Math.max(0, +x.pauseAfter || 0) / 1000;
+    var speed = Math.max(kok ? 0.9 : 0.85, Math.min(kok ? 1.1 : 1.15, +x.rate || 1));
+    var gain = Math.max(0.4, Math.min(1, (+x.volume || 1) * (e > 0 ? 1 : 0.9)));
+    var base = plan.expr === "off" ? 0.5 : plan.expr === "dramatic" ? 0.66 : 0.6;
+    /* noise_w varies how long each sound lasts: at 0.75 a voice also slows by a tenth (measured), at 0.5 by a fiftieth */
+    var noise = kok ? null : Math.round(Math.max(0.3, Math.min(0.8, base + e * 0.15)) * 1000) / 1000, noiseW = kok ? null : (plan.expr === "off" ? 0.333 : plan.expr === "dramatic" ? 0.6 : 0.5);
+    var r3 = function(v){ return Math.round(v * 1000) / 1000; };
+    var st = { speed: r3(speed), gain: r3(gain), pause: r3(pause), noise: noise, noiseW: noiseW };
+    st.sig = "s2|" + st.speed + "|" + st.gain + "|" + st.pause + "|" + (noise === null ? "-" : noise + "/" + noiseW);
+    return st;
+  }
+  /* the model's own silence at both ends trimmed (Kokoro leaves about 0.35 s before every clip and 0.45 s after, Piper
+     next to none), the loudness scaled, a 5 ms fade at both ends (no click), and the clip's pause after it;
+     speech: how many samples are the voice (the highlight follows those, not the pause) */
+  function natShape(x, rate, st){
+    var n = x.length, th = 0.006, a = 0, b = n - 1, edge = Math.round(0.04 * rate), i;
+    while (a < n && Math.abs(x[a]) < th) a++;
+    while (b > a && Math.abs(x[b]) < th) b--;
+    if (a >= n){ a = 0; b = -1; }
+    else { a = Math.max(0, a - edge); b = Math.min(n - 1, b + edge); }
+    var speech = b - a + 1, y = new Float32Array(speech + Math.round(st.pause * rate)), g = st.gain, fade = Math.min(Math.round(0.005 * rate), speech >> 1);
+    for (i = 0; i < speech; i++){
+      var v = x[a + i] * g;
+      if (fade > 0){ if (i < fade) v *= i / fade; else if (i >= speech - fade) v *= (speech - 1 - i) / fade; }
+      y[i] = v;
+    }
+    return { samples: y, speech: speech };
   }
   function isRunning(){ var e = Speak && Speak.activeEngine && Speak.activeEngine(); return !!e && (e === engine || e === kEngine || e === pEngine); }
   function elevenRunning(){ return !!(Speak && Speak.activeEngine && Speak.activeEngine() === engine); }
@@ -1417,7 +1467,7 @@
   }
   function clipKey(clip){
     if (clip.key) return Promise.resolve(clip.key);
-    return sha256(clip.voice + "\n" + clip.model + "\n" + clip.text).then(function(h){ clip.key = clip.doc + ":" + h; return clip.key; });
+    return sha256(clip.voice + "\n" + clip.model + "\n" + clip.text + (clip.style ? "\n" + clip.style.sig : "")).then(function(h){ clip.key = clip.doc + ":" + h; return clip.key; });
   }
   function cached(k){
     if (!Library) return Promise.resolve(null);
@@ -1589,15 +1639,21 @@
      ============================================================ */
   /* the 28 English voices of Kokoro-82M (kokoro-js 1.2.1 knows these and no others); the first letter is the
      language (a American, b British), the second the gender */
+  /* each voice with its grade in Kokoro's own list of its voices (VOICES.md, from A for af_heart down to F+ for am_adam,
+     as 10 down to 1): a book's characters are cast best-graded first (kokoroPool), so its first man gets Fenrir, Michael
+     or Puck (C+), not Adam (F+) as he did in the list's alphabetical order */
   var KOKORO_VOICES = (function(){
     var spec = [
-      ["af", "American", "female", "heart bella nicole sarah sky alloy aoede jessica kore nova river"],
-      ["am", "American", "male", "adam echo eric fenrir liam michael onyx puck santa"],
-      ["bf", "British", "female", "alice emma isabella lily"],
-      ["bm", "British", "male", "daniel fable george lewis"]
+      ["af", "American", "female", "heart:10 bella:9 nicole:7 aoede:6 kore:6 sarah:6 nova:5 alloy:5 sky:4 jessica:3 river:3"],
+      ["am", "American", "male", "fenrir:6 michael:6 puck:6 echo:3 eric:3 liam:3 onyx:3 santa:2 adam:1"],
+      ["bf", "British", "female", "emma:7 isabella:5 alice:3 lily:3"],
+      ["bm", "British", "male", "george:5 fable:5 lewis:3.5 daniel:3"]
     ], out = [];
     spec.forEach(function(s){
-      s[3].split(" ").forEach(function(n){ out.push({ id: s[0] + "_" + n, name: n.charAt(0).toUpperCase() + n.slice(1), group: s[1], gender: s[2], lang: s[0].charAt(0) }); });
+      s[3].split(" ").forEach(function(w){
+        var p = w.split(":"), n = p[0];
+        out.push({ id: s[0] + "_" + n, name: n.charAt(0).toUpperCase() + n.slice(1), group: s[1], gender: s[2], lang: s[0].charAt(0), grade: +p[1] });
+      });
     });
     return out;
   })();
@@ -1616,9 +1672,9 @@
   function kokoroPool(lang){
     lang = String(lang || "en").slice(0, 2).toLowerCase();
     var letters = KOKORO_LANGS[lang] || "", pool = KOKORO_VOICES.filter(function(v){ return letters.indexOf(v.lang) >= 0; });
-    if (pool.length) return pool;
-    natWarn(lang, false);
-    return KOKORO_VOICES.filter(function(v){ return v.lang === "a" || v.lang === "b"; });
+    if (!pool.length){ natWarn(lang, false); pool = KOKORO_VOICES.filter(function(v){ return v.lang === "a" || v.lang === "b"; }); }
+    /* best-graded first, across the American and British voices (a stable sort: a tie keeps the list's order) */
+    return pool.slice().sort(function(a, b){ return (b.grade || 0) - (a.grade || 0); });
   }
   function kokoroOptions(list, selected){
     var groups = [], by = {};
@@ -1874,12 +1930,12 @@
     el.removeAttribute("data-step");
     if (!hold) el.setAttribute("aria-live", "polite");
   }
-  function natGenerate(m, text, voice){
+  function natGenerate(m, text, voice, st){
     var id = ++m.seq;
     m.used = Date.now();
     return new Promise(function(res, rej){
       m.jobs[id] = { res: res, rej: rej, n: String(text || "").length };
-      try { natWorker(m).postMessage({ type: "generate", id: id, text: text, voice: voice, speed: 1 }); }
+      try { natWorker(m).postMessage({ type: "generate", id: id, text: text, voice: voice, speed: st ? st.speed : 1, noise: st ? st.noise : null, noiseW: st ? st.noiseW : null }); }
       catch(err){ delete m.jobs[id]; rej(err); }
     });
   }
@@ -1903,10 +1959,11 @@
   }
   /* a clip from the worker: the whole clip is one part (or, were it packed, parts in proportion to their text) */
   function natClip(m, task){
-    var clip = task.clip;
-    return natLoad(m).then(function(){ return natGenerate(m, clip.text, clip.voice); }).then(function(r){
-      var secs = r.samples.length / r.sampleRate, len = clip.text.length || 1;
-      return { blob: wavBlob(r.samples, r.sampleRate), times: clip.parts.map(function(p){ return { a: p.s / len * secs, b: p.e / len * secs }; }) };
+    var clip = task.clip, st = clip.style || null;
+    return natLoad(m).then(function(){ return natGenerate(m, clip.text, clip.voice, st); }).then(function(r){
+      var out = st ? natShape(r.samples, r.sampleRate, st) : { samples: r.samples, speech: r.samples.length };
+      var secs = out.speech / r.sampleRate, len = clip.text.length || 1;
+      return { blob: wavBlob(out.samples, r.sampleRate), times: clip.parts.map(function(p){ return { a: p.s / len * secs, b: p.e / len * secs }; }) };
     }).catch(function(err){
       if (err && err.cancelled) throw err;
       var e = new Error(!navigator.onLine && m.ready ? _t("Offline — this natural voice isn’t on the device yet") : (err && err.message) || _t("Natural voices couldn’t make the audio"));
@@ -2209,6 +2266,8 @@
       return;
     }
     if (!plan || !plan.clips){ opts.onerror(_t("not ready")); return; }
+    /* the Expression setting changed since the clips were planned: they are planned (and made) again in the new style */
+    if (plan.src.nat && plan.expr !== exprNow()){ cancelQueued(); buildClips(); ci = plan.firstClip[i]; }
     /* straight on from the clip that just ended, rather than a start (play, a skip, a new reading) */
     var cont = endedAt > 0 && Date.now() - endedAt < 1500;
     endedAt = 0;
@@ -3228,5 +3287,7 @@
                          holdFor: holdFor, feed: feedKick, prepareBook: prepareBook,
                          /* Speak's engine changed: a natural-voices worker no longer chosen is let go once idle */
                          engineChanged: function(){ natIdle(1000); },
-                         clearAudio: clearAudio, audioTotal: audioTotal, trimAudio: trimAudio, wavBlob: wavBlob, assignVoices: assignVoices };
+                         clearAudio: clearAudio, audioTotal: audioTotal, trimAudio: trimAudio, wavBlob: wavBlob, assignVoices: assignVoices,
+                         /* test hooks: a natural voice's plan for the open document (its clips, each with its style), and the shaping */
+                         natPlan: function(key){ return castPlan(SRC[key]); }, natShape: natShape, natClip: natClip };
 })();
